@@ -527,6 +527,7 @@ async function runInstallScript(releaseTag: string, isDev: boolean = false, inst
 
     const scriptsDir = path.join(cachedExtensionPath, 'scripts');
     let command: string;
+    let taskName = 'Install rq CLI';
 
     if (isDev) {
         const devScriptPath = path.join(scriptsDir, 'install-rq-dev.sh');
@@ -537,14 +538,9 @@ async function runInstallScript(releaseTag: string, isDev: boolean = false, inst
             if (localDir) {
                 command += ` --install-dir "${localDir}"`;
             }
+            taskName = 'Install rq CLI (Dev)';
 
-            const terminal = vscode.window.createTerminal({
-                name: 'rq CLI Dev Installer',
-                shellPath: '/bin/bash'
-            });
-            watchInstallerTerminal(terminal);
-            terminal.show();
-            terminal.sendText(command);
+            await runInstallationTask(command, taskName);
             return;
         }
     }
@@ -566,21 +562,32 @@ async function runInstallScript(releaseTag: string, isDev: boolean = false, inst
         }
     }
 
-    const terminal = vscode.window.createTerminal({
-        name: 'rq CLI Installer',
-        shellPath: process.platform === 'win32' ? 'powershell.exe' : '/bin/bash'
-    });
-    watchInstallerTerminal(terminal);
-    terminal.show();
-    terminal.sendText(command);
+    await runInstallationTask(command, taskName);
 }
 
-function watchInstallerTerminal(terminal: vscode.Terminal): void {
-    const listener = vscode.window.onDidCloseTerminal(closed => {
-        if (closed === terminal) {
-            listener.dispose();
+async function runInstallationTask(command: string, name: string): Promise<void> {
+    const task = new vscode.Task(
+        { type: 'shell', task: name },
+        vscode.TaskScope.Workspace,
+        name,
+        'rq',
+        new vscode.ShellExecution(command)
+    );
+
+    const execution = await vscode.tasks.executeTask(task);
+    
+    // We don't await the task completion here to avoid blocking execution,
+    // but we register a listener to update state when it finishes.
+    const disposable = vscode.tasks.onDidEndTaskProcess(e => {
+        if (e.execution === execution) {
+            disposable.dispose();
             setCliInstalling(false);
-            installFinishedCallback?.();
+            if (e.exitCode === 0) {
+                installFinishedCallback?.();
+                vscode.window.showInformationMessage('rq CLI installation completed successfully.');
+            } else {
+                vscode.window.showErrorMessage(`rq CLI installation failed with exit code ${e.exitCode}`);
+            }
         }
     });
 }

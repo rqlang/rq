@@ -54,9 +54,32 @@ jobs:
           echo "Computed version: $version"
 
   build-cli:
-    name: Build CLI (macOS x86_64)
+    name: Build CLI ${{ matrix.os }}
     needs: version
-    runs-on: macos-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            artifact_name: rq
+            asset_name: rq-linux-ubuntu-22.04-x86_64
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact_name: rq
+            asset_name: rq-linux-x86_64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact_name: rq.exe
+            asset_name: rq-windows-x86_64.exe
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact_name: rq
+            asset_name: rq-macos-x86_64
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact_name: rq
+            asset_name: rq-macos-aarch64
     defaults:
       run:
         working-directory: ./cli
@@ -71,11 +94,17 @@ jobs:
         with:
           profile: minimal
           toolchain: stable
-          target: x86_64-apple-darwin
+          target: ${{ matrix.target }}
           override: true
 
       - name: Set version in Cargo.toml
-        run: sed -i '' "s/^version = \".*\"/version = \"${{ needs.version.outputs.version }}\"/" Cargo.toml
+        shell: bash
+        run: |
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            sed -i "s/^version = \".*\"/version = \"${{ needs.version.outputs.version }}\"/" Cargo.toml
+          else
+            sed -i.bak "s/^version = \".*\"/version = \"${{ needs.version.outputs.version }}\"/" Cargo.toml
+          fi
 
       - name: Cache cargo registry
         uses: actions/cache@v4
@@ -89,34 +118,45 @@ jobs:
             ${{ runner.os }}-cargo-
 
       - name: Build (release)
-        run: cargo build --release --target x86_64-apple-darwin --verbose
+        run: cargo build --release --target ${{ matrix.target }} --verbose
+
+      - name: Code sign macOS binary
+        if: runner.os == 'macOS'
+        run: |
+          codesign --force --deep --sign - \
+            --options runtime --timestamp \
+            target/${{ matrix.target }}/release/${{ matrix.artifact_name }}
+
+      - name: Code sign Windows binary
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        env:
+          PFX_BASE64: ${{ secrets.CODE_SIGNING_CERT }}
+          PFX_PASSWORD: ${{ secrets.CODE_SIGNING_CERT_PWD }}
+        run: |
+          $pfxPath = Join-Path -Path $env:RUNNER_TEMP -ChildPath "certificate.pfx"
+          [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:PFX_BASE64))
+          
+          $signtool = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin" -Filter "signtool.exe" -Recurse | Where-Object { $_.FullName -like "*x64*" } | Sort-Object FullName -Descending | Select-Object -First 1
+          if (-not $signtool) { throw "signtool.exe not found" }
+          
+          & $signtool.FullName sign /f $pfxPath /p $env:PFX_PASSWORD /tr http://timestamp.digicert.com /td sha256 /fd sha256 "target/${{ matrix.target }}/release/${{ matrix.artifact_name }}"
+          
+          Remove-Item $pfxPath
 
       - name: Locate binary
         id: binpath
+        shell: bash
         run: |
-          bin="target/x86_64-apple-darwin/release/rq"
+          bin="target/${{ matrix.target }}/release/${{ matrix.artifact_name }}"
           if [ ! -f "$bin" ]; then echo "Binary not found: $bin"; exit 1; fi
           echo "path=$bin" >> $GITHUB_OUTPUT
 
-      - name: Compute SHA256
-        run: |
-          bin="${{ steps.binpath.outputs.path }}"
-          shasum -a 256 "$bin" | awk '{print $1 "  rq"}' > rq-macos-x86_64.sha256
-          cat rq-macos-x86_64.sha256
-
-      - name: Prepare zip archive
-        run: |
-          bin="${{ steps.binpath.outputs.path }}"
-          cp "$bin" rq
-          chmod +x rq
-          zip rq-macos-x86_64.zip rq rq-macos-x86_64.sha256
-          ls -lh rq-macos-x86_64.*
-
-      - name: Upload artifact (zip)
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: rq-macos-x86_64
-          path: cli/rq-macos-x86_64.zip
+          name: ${{ matrix.asset_name }}
+          path: cli/${{ steps.binpath.outputs.path }}
           if-no-files-found: error
 
   build-extension:

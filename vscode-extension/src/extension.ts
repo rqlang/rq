@@ -36,7 +36,7 @@ export function activate(context: vscode.ExtensionContext) {
     });
     context.subscriptions.push(requestExplorerView);
 
-    cliService.checkCliVersion('rq.rq-language').then(() => {
+    cliService.checkCliVersion('rq-lang.rq-language').then(() => {
         requestExplorerProvider.refresh();
     });
 

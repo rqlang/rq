@@ -105,11 +105,11 @@ impl Config {
         auth_provider.validate(&self.name, &self.fields)
     }
 
-    /// - redirect_uri: "vscode://rq.rq-language/oauth-callback" (if not present)
+    /// - redirect_uri: "vscode://rq-lang.rq-language/oauth-callback" (if not present)
     /// - code_challenge_method: "S256" (if not present)
     ///   fields.insert("client_id".to_string(), "my-client".to_string());
     ///   name: "oauth".to_string(),
-    ///   assert_eq!(config.fields.get("redirect_uri").unwrap(), "vscode://rq.rq-language/auth-callback");
+    ///   assert_eq!(config.fields.get("redirect_uri").unwrap(), "vscode://rq-lang.rq-language/auth-callback");
     ///   assert_eq!(config.fields.get("code_challenge_method").unwrap(), "S256");
     pub fn apply_defaults(&mut self) {
         match self.auth_type {
@@ -119,7 +119,7 @@ impl Config {
                         "redirect_uri".to_string(),
                         Token {
                             token_type: crate::syntax::token::TokenType::String,
-                            value: "vscode://rq.rq-language/oauth-callback".to_string(),
+                            value: "vscode://rq-lang.rq-language/oauth-callback".to_string(),
                             span: 0..0,
                         },
                     );
@@ -142,7 +142,7 @@ impl Config {
                         "redirect_uri".to_string(),
                         Token {
                             token_type: crate::syntax::token::TokenType::String,
-                            value: "vscode://rq.rq-language/oauth-callback".to_string(),
+                            value: "vscode://rq-lang.rq-language/oauth-callback".to_string(),
                             span: 0..0,
                         },
                     );
@@ -255,7 +255,7 @@ mod tests {
 
         assert_eq!(
             config.fields.get("redirect_uri").unwrap().value,
-            "vscode://rq.rq-language/oauth-callback"
+            "vscode://rq-lang.rq-language/oauth-callback"
         );
         assert_eq!(
             config.fields.get("code_challenge_method").unwrap().value,

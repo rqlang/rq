@@ -90,7 +90,7 @@ export async function performOAuth2Flow(
             tokenUrl: authConfig.fields.token_url,
             // Default to VS Code URI handler if not specified
             // This provides the best user experience without requiring a local server
-            redirectUri: authConfig.fields.redirect_uri || 'vscode://rq.rq-language/oauth-callback',
+            redirectUri: authConfig.fields.redirect_uri || 'vscode://rq-lang.rq-language/oauth-callback',
             scope: authConfig.fields.scope || undefined,
             codeChallengeMethod: (authConfig.fields.code_challenge_method as 'S256' | 'plain') || 'S256',
             useState: authConfig.fields.use_state !== 'false',

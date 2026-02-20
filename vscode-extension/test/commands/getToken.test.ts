@@ -73,7 +73,7 @@ describe('getToken Command (Integration)', () => {
                 client_id: 'test-client',
                 authorization_url: 'https://auth.example.com/authorize',
                 token_url: 'https://auth.example.com/token',
-                redirect_uri: 'vscode://rq.rq-language/callback',
+                redirect_uri: 'vscode://rq-lang.rq-language/callback',
                 scope: 'api:read'
             }
         });
@@ -116,7 +116,7 @@ describe('getToken Command (Integration)', () => {
 
         // 6. Simulate callback from browser via URI handler
         await authUriHandler.handleUri({
-            toString: () => `vscode://rq.rq-language/callback?code=auth-code-123&state=${state}`,
+            toString: () => `vscode://rq-lang.rq-language/callback?code=auth-code-123&state=${state}`,
             query: `code=auth-code-123&state=${state}`
         } as any);
 
@@ -165,7 +165,7 @@ describe('getToken Command (Integration)', () => {
                 client_id: 'test-client',
                 authorization_url: 'https://auth.example.com/authorize',
                 token_url: 'https://auth.example.com/token',
-                redirect_uri: 'vscode://rq.rq-language/callback'
+                redirect_uri: 'vscode://rq-lang.rq-language/callback'
             }
         });
 

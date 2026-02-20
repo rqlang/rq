@@ -384,7 +384,7 @@ export async function checkCliVersion(extensionId: string): Promise<void> {
 }
 
 export async function promptInstallCli(): Promise<void> {
-    const extension = vscode.extensions.getExtension('rq.rq-language');
+    const extension = vscode.extensions.getExtension('rq-lang.rq-language');
     if (!extension) {
         return;
     }

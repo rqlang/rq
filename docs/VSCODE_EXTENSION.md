@@ -88,7 +88,7 @@ The extension automatically selects the best handling strategy based on the `red
 1.  **VS Code URI Handler (`vscode://...`)**
 
 	<a id="default-redirect-uri"></a>
-	This is the **preferred and default option**. If you do not specify a `redirect_uri`, the extension automatically uses `vscode://rq.rq-language/oauth-callback`.
+	This is the **preferred and default option**. If you do not specify a `redirect_uri`, the extension automatically uses `vscode://rq-lang.rq-language/oauth-callback`.
 
 	- **Why it is preferred**: This URI instructs the identity provider to redirect control directly back to the RQ extension. It provides the most seamless experience (no manual copy-pasting) and works reliable across local setups, WSL, SSH remotes, and Codespaces without needing to open local ports.
 

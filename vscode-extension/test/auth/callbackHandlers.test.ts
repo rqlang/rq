@@ -38,7 +38,7 @@ describe('CallbackHandlers', () => {
         it('should parse access_token from URL fragment', async () => {
             // Mock waitForUri to return our test URI immediately
             const mockUri = {
-                toString: () => 'vscode://rq.rq-language/callback#access_token=foo&state=bar',
+                toString: () => 'vscode://rq-lang.rq-language/callback#access_token=foo&state=bar',
                 query: '',
                 fragment: 'access_token=foo&state=bar'
             };
@@ -61,7 +61,7 @@ describe('CallbackHandlers', () => {
 
         it('should parse access_token from URL query (fallback)', async () => {
             const mockUri = {
-                toString: () => 'vscode://rq.rq-language/callback?access_token=foo&state=bar',
+                toString: () => 'vscode://rq-lang.rq-language/callback?access_token=foo&state=bar',
                 query: 'access_token=foo&state=bar',
                 fragment: ''
             };
@@ -82,7 +82,7 @@ describe('CallbackHandlers', () => {
 
         it('should handle errors in fragment', async () => {
             const mockUri = {
-                toString: () => 'vscode://rq.rq-language/callback#error=access_denied&error_description=bad',
+                toString: () => 'vscode://rq-lang.rq-language/callback#error=access_denied&error_description=bad',
                 query: '',
                 fragment: 'error=access_denied&error_description=bad'
             };
@@ -103,7 +103,7 @@ describe('CallbackHandlers', () => {
 
         it('should parse code from URL query', async () => {
             const mockUri = {
-                toString: () => 'vscode://rq.rq-language/callback?code=foo&state=bar',
+                toString: () => 'vscode://rq-lang.rq-language/callback?code=foo&state=bar',
                 query: 'code=foo&state=bar',
                 fragment: ''
             };
@@ -124,7 +124,7 @@ describe('CallbackHandlers', () => {
 
         it('should handle errors in query', async () => {
             const mockUri = {
-                toString: () => 'vscode://rq.rq-language/callback?error=invalid_request',
+                toString: () => 'vscode://rq-lang.rq-language/callback?error=invalid_request',
                 query: 'error=invalid_request',
                 fragment: ''
             };

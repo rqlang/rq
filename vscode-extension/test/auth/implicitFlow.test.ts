@@ -19,7 +19,7 @@ describe('ImplicitFlow', () => {
         clientId: 'test-client-id',
         authorizationUrl: 'https://auth.example.com/authorize',
         // tokenUrl is not required for implicit flow
-        redirectUri: 'vscode://rq.rq-language/callback',
+        redirectUri: 'vscode://rq-lang.rq-language/callback',
         scope: 'read write'
     };
 

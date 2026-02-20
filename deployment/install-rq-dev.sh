@@ -116,7 +116,12 @@ for zip in *.zip; do
   unzip -o -q "${zip}"
 done
 
-mapfile -t RQ_CANDIDATES < <(find "${WORK_ROOT}" -name 'rq' -type f 2>/dev/null)
+# 'mapfile' is bash 4+, not available in macos bash 3.2 by default
+# Convert find output into array using while read loop
+RQ_CANDIDATES=()
+while IFS= read -r file; do
+    RQ_CANDIDATES+=("$file")
+done < <(find "${WORK_ROOT}" -name 'rq' -type f 2>/dev/null)
 
 if [[ ${#RQ_CANDIDATES[@]} -eq 0 ]]; then
   error "Did not find rq binary inside artifact '${ARTIFACT_NAME}'. Contents:

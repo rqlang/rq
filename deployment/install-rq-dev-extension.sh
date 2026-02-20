@@ -81,30 +81,32 @@ command -v gh   >/dev/null 2>&1 || error "GitHub CLI (gh) not found in PATH. Ins
 command -v code >/dev/null 2>&1 || error "VS Code CLI (code) not found in PATH. Ensure VS Code is installed and added to PATH."
 
 if [[ -z "${RUN_ID}" ]]; then
-  RUN_ID="$(get_latest_run_id)"
+  # Fetch latest run_id using gh run list
+  # We filter by workflow and status=success, limit 1
+  # The run id is the 7th column in the table output by default if formatted, but let's use json
+  # gh run list --workflow release_cd.yaml --status success --limit 1 --json databaseId --jq '.[0].databaseId'
+  
+  RUN_ID=$(gh run list --workflow release_cd.yaml --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+  
+  if [[ -z "${RUN_ID}" || "${RUN_ID}" == "null" ]]; then
+     error "Could not find any successful run for workflow release_cd.yaml"
+  fi
+  info "Using latest run id: ${RUN_ID}"
 fi
 
 info "Fetching artifacts list for run ${RUN_ID} ..."
-ARTIFACTS_JSON="$(gh api "repos/${REPO}/actions/runs/${RUN_ID}/artifacts" 2>/dev/null)" \
-  || error "Failed to fetch artifacts for run ${RUN_ID} in repo ${REPO}"
 
-ARTIFACT_NAME="$(printf '%s' "${ARTIFACTS_JSON}" \
-  | gh api --input - --jq ".artifacts[] | select(.name | startswith(\"${ARTIFACT_PATTERN}\")) | .name" /dev/stdin 2>/dev/null \
-  | head -n1)" || true
+# We will let 'gh run download' do the artifact selection for us if possible,
+# or list artifacts first properly.
+# But 'gh run download' downloads EVERYTHING if we don't specify name.
+# We want the one starting with rq-language-extension-...
+# Let's find the exact name first.
 
-if [[ -z "${ARTIFACT_NAME}" ]]; then
-  ARTIFACT_NAME="$(printf '%s' "${ARTIFACTS_JSON}" \
-    | sed -n 's/.*"name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
-    | grep "^${ARTIFACT_PATTERN}" \
-    | head -n1)"
-fi
+ARTIFACT_NAME=$(gh api "repos/rqlang/rq/actions/runs/${RUN_ID}/artifacts" --jq '.artifacts[] | select(.name | startswith("rq-language-extension-")) | .name' | head -n1)
 
 if [[ -z "${ARTIFACT_NAME}" ]]; then
-  AVAILABLE="$(printf '%s' "${ARTIFACTS_JSON}" | sed -n 's/.*"name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/  - \1/p')"
-  error "No artifacts matching pattern '${ARTIFACT_PATTERN}*' found in run ${RUN_ID}. Available artifacts:
-${AVAILABLE}"
+    error "No artifact found starting with 'rq-language-extension-' in run ${RUN_ID}"
 fi
-
 info "Selected artifact: ${ARTIFACT_NAME}"
 
 WORK_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/rq-extension-XXXXXX")"
@@ -128,7 +130,11 @@ for zip in *.zip; do
   unzip -o -q "${zip}" -d "${EXTRACT_DIR}"
 done
 
-mapfile -t VSIX_CANDIDATES < <(find "${WORK_ROOT}" -name '*.vsix' -type f 2>/dev/null)
+# Try to find vsix recursively if not immediately expanded or if zip contained folders
+VSIX_CANDIDATES=()
+while IFS= read -r file; do
+  VSIX_CANDIDATES+=("$file")
+done < <(find "${WORK_ROOT}" -name '*.vsix' -type f 2>/dev/null)
 
 if [[ ${#VSIX_CANDIDATES[@]} -eq 0 ]]; then
   error "Did not find .vsix file inside artifact '${ARTIFACT_NAME}'. Contents:

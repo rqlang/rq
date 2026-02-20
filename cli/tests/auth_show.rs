@@ -605,10 +605,10 @@ auth minimal_oauth(auth_type.oauth2_authorization_code) {
 
     // Check that defaults were applied
     if fields.get("redirect_uri").and_then(|v| v.as_str())
-        != Some("vscode://rq.rq-language/oauth-callback")
+        != Some("vscode://rq-lang.rq-language/oauth-callback")
     {
         return Err(format!(
-            "Expected default redirect_uri 'vscode://rq.rq-language/oauth-callback', got: {:?}",
+            "Expected default redirect_uri 'vscode://rq-lang.rq-language/oauth-callback', got: {:?}",
             fields.get("redirect_uri")
         )
         .into());

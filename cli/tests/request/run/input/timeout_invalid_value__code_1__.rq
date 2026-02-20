@@ -1,0 +1,3 @@
+let bad = "not_a_number";
+[timeout($bad)]
+rq get("http://localhost:8080/get");

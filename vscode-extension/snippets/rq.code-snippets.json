@@ -1,0 +1,64 @@
+{
+  "Environment": {
+    "prefix": "env",
+    "body": [
+      "env ${1:local} {",
+      "\t${2:api_url}: \"${3:http://localhost:8080}\",",
+      "\t${4:token}: \"${5:your-token}\"",
+      "}"
+    ],
+    "description": "Create an environment configuration"
+  },
+  "RQ Request": {
+    "prefix": "rq",
+    "body": [
+      "rq ${1:request_name}(\"${2:https://api.example.com/endpoint}\");"
+    ],
+    "description": "Create a basic RQ request"
+  },
+  "RQ Request with Headers": {
+    "prefix": "rq-headers",
+    "body": [
+      "rq ${1:request_name}(",
+      "\t\"${2:https://api.example.com/endpoint}\",",
+      "\t[",
+      "\t\t\"${3:Authorization}\": \"${4:Bearer {{token}}}\",",
+      "\t\t\"${5:Content-Type}\": \"${6:application/json}\"",
+      "\t]",
+      ");"
+    ],
+    "description": "Create an RQ request with headers"
+  },
+  "RQ POST Request": {
+    "prefix": "rq-post",
+    "body": [
+      "[method(POST)]",
+      "rq ${1:request_name}(",
+      "\t\"${2:https://api.example.com/endpoint}\",",
+      "\t[",
+      "\t\t\"Content-Type\": \"application/json\"",
+      "\t],",
+      "\t{",
+      "\t\t\"${3:key}\": \"${4:value}\"",
+      "\t}",
+      ");"
+    ],
+    "description": "Create a POST RQ request with JSON body"
+  },
+  "Variables Block": {
+    "prefix": "variables",
+    "body": [
+      "variables {",
+      "\t${1:variable_name}: \"${2:value}\"",
+      "}"
+    ],
+    "description": "Create a variables block"
+  },
+  "Import Statement": {
+    "prefix": "import",
+    "body": [
+      "import \"${1:./path/to/file.rq}\";"
+    ],
+    "description": "Import another RQ file"
+  }
+}

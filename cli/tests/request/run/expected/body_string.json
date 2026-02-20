@@ -1,0 +1,23 @@
+{
+    "http": {
+        "method": "POST",
+        "baseUrl": "",
+        "originalUrl": "/post-string",
+        "protocol": "http"
+    },
+    "request": {
+        "params": {
+            "0": "/post-string"
+        },
+        "query": {},
+        "cookies": {},
+        "body": "hello world",
+        "headers": {
+            "user-agent": "rq/0.0.0",
+            "accept": "*/*",
+            "host": "localhost:8080",
+            "content-type": "text/plain",
+            "content-length": "11"
+        }
+    }
+}

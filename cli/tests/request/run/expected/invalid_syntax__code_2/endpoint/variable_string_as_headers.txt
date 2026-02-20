@@ -1,0 +1,1 @@
+Error: Syntax error in tests/request/run/input/invalid_syntax__code_2/endpoint/variable_string_as_headers.rq at line 2, column 26: Variable 's' has invalid type for this parameter

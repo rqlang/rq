@@ -1,0 +1,7 @@
+// Test that .env is loaded from source path, not from .rq file directory
+
+let test_var = "default_value";
+
+rq test_env_source("http://localhost:8080/api/env-test", [
+    "X-Test-Var": "{{test_var}}"
+]);

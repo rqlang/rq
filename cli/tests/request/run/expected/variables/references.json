@@ -1,0 +1,10 @@
+{
+  "http": {
+    "originalUrl": "/get?user_id=12345"
+  },
+  "request": {
+    "headers": {
+      "authorization": "Bearer abc123"
+    }
+  }
+}

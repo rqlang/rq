@@ -1,0 +1,4 @@
+// CLI variable override test: -v color=red should override file-level let color = "blue"
+let color = "blue";
+
+rq cli_variable_override("http://localhost:8080/get?color={{color}}");

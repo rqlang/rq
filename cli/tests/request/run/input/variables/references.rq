@@ -1,0 +1,14 @@
+// Test variable-to-variable assignment
+
+// File level variables
+let base_url = "http://localhost:8080";
+let endpoint_path = "/get";
+let full_url = base_url;  // Reference to base_url
+let auth_token = "abc123";
+let token = auth_token;  // Reference to auth_token
+let user_id = "12345";
+let id = user_id;  // Reference to user_id
+
+rq test_variable_references("{{full_url}}{{endpoint_path}}?user_id={{id}}", [
+    "Authorization": "Bearer {{token}}"
+]);

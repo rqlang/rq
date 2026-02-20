@@ -1,0 +1,3 @@
+// THIS IS A BASIC REQUEST
+
+rq basic("http://localhost:8080/get");

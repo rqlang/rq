@@ -1,0 +1,26 @@
+{
+    "http": {
+        "method": "GET",
+        "baseUrl": "",
+        "originalUrl": "/",
+        "protocol": "http"
+    },
+    "request": {
+        "params": {
+            "0": "/"
+        },
+        "query": {},
+        "cookies": {},
+        "body": {
+            "inline": "yes"
+        },
+        "headers": {
+            "user-agent": "rq/0.0.0",
+            "accept": "application/json",
+            "host": "localhost:8080",
+            "content-type": "application/json",
+            "content-length": "17",
+            "x-inline": "yes"
+        }
+    }
+}

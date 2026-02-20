@@ -1,0 +1,1 @@
+Error: Syntax error in tests/request/run/input/endpoint_inheritance/unknown_template__code_2__.rq at line 1, column 10: Unknown template endpoint: unknown

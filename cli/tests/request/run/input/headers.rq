@@ -1,0 +1,4 @@
+rq get("http://localhost:8080/get", [
+    "header-1": "value-1",
+    "header-2": "value 2",
+]);

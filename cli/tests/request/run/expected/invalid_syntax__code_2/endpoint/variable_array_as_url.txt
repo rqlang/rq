@@ -1,0 +1,1 @@
+Error: Syntax error in tests/request/run/input/invalid_syntax__code_2/endpoint/variable_array_as_url.rq at line 2, column 6: Variable 'a' has invalid type for this parameter

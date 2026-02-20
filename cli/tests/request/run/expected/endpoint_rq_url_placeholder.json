@@ -1,0 +1,19 @@
+{
+  "http": {
+    "method": "GET",
+    "baseUrl": "",
+    "originalUrl": "/api/users/suffix",
+    "protocol": "http"
+  },
+  "request": {
+    "params": {"0": "/api/users/suffix"},
+    "query": {},
+    "cookies": {},
+    "body": {},
+    "headers": {
+      "user-agent": "rq/0.0.0",
+      "accept": "*/*",
+      "host": "localhost:8080"
+    }
+  }
+}

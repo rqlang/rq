@@ -1,0 +1,17 @@
+// Test file for auth show with .env and let variables
+
+let file_token = "token_from_let";
+
+auth test_auth_let_interpolation(auth_type.bearer) {
+    token: "{{file_token}}"
+}
+
+auth test_auth_env_interpolation(auth_type.bearer) {
+    token: "{{env_secret}}"
+}
+
+auth test_auth_combined_interpolation(auth_type.bearer) {
+    token: "{{file_token}}-{{env_secret}}"
+}
+
+rq dummy("http://localhost:8080/test");

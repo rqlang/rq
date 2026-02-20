@@ -1,0 +1,1 @@
+Error: Syntax error in tests/request/run/input/invalid_syntax__code_2/request/invalid_variable_url.rq at line 2, column 16: Variable 'h' has invalid type for this parameter

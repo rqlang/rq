@@ -1,0 +1,9 @@
+auth implicit_auth(auth_type.oauth2_implicit) {
+    client_id: "test-client",
+    authorization_url: "https://auth.example.com/authorize",
+    scope: "read:all",
+    redirect_uri: "http://localhost:8080/cb"
+}
+
+[auth("implicit_auth")]
+rq get_implicit("{{MOCK_URL}}/protected");

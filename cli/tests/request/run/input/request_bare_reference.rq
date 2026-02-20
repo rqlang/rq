@@ -1,0 +1,7 @@
+// Test request with bare identifier reference
+
+let base_url = "http://localhost:8080";
+let endpoint_path = "/api/test";
+
+rq test_bare_url(base_url);
+rq test_bare_path("http://localhost:8080/api/test");

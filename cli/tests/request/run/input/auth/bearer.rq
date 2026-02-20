@@ -1,0 +1,7 @@
+// Test auth bearer token
+
+auth bearer_auth(auth_type.bearer) {
+    token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
+}
+
+rq test_request_bearer("http://localhost:8080/api/test");

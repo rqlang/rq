@@ -1,0 +1,4 @@
+let file_content = io.read_file("data.txt");
+
+[method(POST)]
+rq sys_var("http://localhost:8080/api/data", ["Content-Type": "text/plain"], file_content);

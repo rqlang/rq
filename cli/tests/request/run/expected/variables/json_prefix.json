@@ -1,0 +1,26 @@
+{
+  "http": {
+    "method": "POST",
+    "baseUrl": "",
+    "originalUrl": "/post-json-prefix",
+    "protocol": "http"
+  },
+  "request": {
+    "params": {
+      "0": "/post-json-prefix"
+    },
+    "query": {},
+    "cookies": {},
+    "body": {
+      "inline": true,
+      "answer": 42
+    },
+    "headers": {
+      "user-agent": "rq/0.0.0",
+      "accept": "*/*",
+      "host": "localhost:8080",
+      "content-type": "application/json",
+      "content-length": "27"
+    }
+  }
+}

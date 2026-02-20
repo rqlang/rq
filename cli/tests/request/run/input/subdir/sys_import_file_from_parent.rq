@@ -1,0 +1,7 @@
+let file_data = io.read_file("test-content.txt");
+
+rq sys_import_from_subdir(
+    "http://localhost:8080",
+    ["Content-Type": "text/plain"],
+    "{{file_data}}"
+);

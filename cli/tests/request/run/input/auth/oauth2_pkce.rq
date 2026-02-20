@@ -1,0 +1,10 @@
+auth github_oauth(auth_type.oauth2_authorization_code) {
+    client_id: "my-github-client-id",
+    authorization_url: "https://github.com/login/oauth/authorize",
+    token_url: "https://github.com/login/oauth/access_token",
+    code_challenge_method: "S256",
+    scope: "repo user",
+    redirect_uri: "http://localhost:8080/callback"
+}
+
+rq test_request_oauth2_pkce("http://localhost:8080/api/test");

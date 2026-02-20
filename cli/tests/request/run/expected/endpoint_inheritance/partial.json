@@ -1,0 +1,15 @@
+{
+    "http": {
+        "method": "GET",
+        "originalUrl": "/get?v=1"
+    },
+    "request": {
+        "headers": {
+            "x-base": "1",
+            "x-child": "3"
+        },
+        "query": {
+            "v": "1"
+        }
+    }
+}

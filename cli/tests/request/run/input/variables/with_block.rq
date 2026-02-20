@@ -1,0 +1,7 @@
+let base_url = "http://localhost:8080";
+let auth_token = "test-token-123";
+
+rq get_users("{{base_url}}/api/users", [
+    "Authorization": "Bearer {{ auth_token }}",
+    "X-Test": "variable-resolution"
+]);

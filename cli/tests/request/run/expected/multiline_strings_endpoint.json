@@ -1,0 +1,12 @@
+{
+  "http": {
+    "method": "POST",
+    "originalUrl": "/api/post"
+  },
+  "request": {
+    "body": "Body Line 1 Body Line 2",
+    "headers": {
+      "x-ep-multiline": "Ep Line 1 Ep Line 2"
+    }
+  }
+}

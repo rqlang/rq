@@ -1,0 +1,4 @@
+let d = datetime.now();
+let f = datetime.now("%Y-%m-%d");
+
+rq get("http://localhost:8080?d={{d}}&f={{f}}");

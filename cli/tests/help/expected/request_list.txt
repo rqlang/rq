@@ -1,0 +1,9 @@
+List requests
+
+Usage: rq request list [OPTIONS]
+
+Options:
+  -d, --debug            Enable debug logging
+  -s, --source <SOURCE>  Path to the .rq file or directory [default: .]
+  -o, --output <OUTPUT>  Output format: text or json [default: text] [possible values: text, json]
+  -h, --help             Print help

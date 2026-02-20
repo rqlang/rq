@@ -1,0 +1,57 @@
+name: Extension BVT
+
+on:
+  push:
+    branches:
+      - features/*
+      - fix/*
+    paths:
+      - 'vscode-extension/**'
+      - '.github/workflows/extension_bvt.yaml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'vscode-extension/**'
+      - '.github/workflows/extension_bvt.yaml'
+
+jobs:
+  build-and-test:
+    name: Build and Test VS Code Extension
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./vscode-extension
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: vscode-extension/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint TypeScript
+        run: npm run lint
+
+      - name: Compile TypeScript
+        run: npm run compile
+
+      - name: Verify compilation output
+        run: |
+          if [ ! -f "out/extension.js" ]; then
+            echo "Error: extension.js not found in out/ directory"
+            exit 1
+          fi
+          echo "✓ Extension compiled successfully"
+          ls -lh out/
+
+      - name: Run tests
+        run: npm test

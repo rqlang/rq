@@ -1,0 +1,25 @@
+{
+    "http": {
+        "method": "GET",
+        "baseUrl": "",
+        "originalUrl": "/users?timeout=30",
+        "protocol": "http"
+    },
+    "request": {
+        "params": {"0": "/users"},
+        "query": {"timeout": "30"},
+        "cookies": {},
+        "body": {"endpoint": "api", "key": "secret-api-key"},
+        "headers": {
+            "user-agent": "rq/0.0.0",
+            "authorization": "Bearer secret-api-key",
+            "content-length": "66",
+            "content-type": "application/json",
+            "host": "localhost:8080",
+            "x-global": "Global-Value",
+            "x-timeout": "30",
+            "x-user-id": "123",
+            "accept": "*/*"
+        }
+    }
+}

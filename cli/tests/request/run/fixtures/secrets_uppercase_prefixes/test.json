@@ -1,0 +1,21 @@
+{
+    "http": {
+      "method": "GET",
+      "baseUrl": "",
+      "originalUrl": "/api/prefix",
+      "protocol": "http"
+    },
+    "request": {
+      "params": {"0": "/api/prefix"},
+      "query": {},
+      "cookies": {},
+      "body": {},
+      "headers": {
+        "user-agent": "{{regex:rq/.*}}",
+        "accept": "*/*",
+        "host": "localhost:8080",
+        "x-env-file": "val_file",
+        "x-os-var": "val_os"
+      }
+    }
+}

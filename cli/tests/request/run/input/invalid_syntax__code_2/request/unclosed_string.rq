@@ -1,0 +1,4 @@
+rq test(
+    "http://localhost",
+    ["header": "unclosed]
+);

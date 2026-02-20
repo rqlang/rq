@@ -1,0 +1,7 @@
+rq post(
+    "http://localhost:8080/post-obj", 
+    [
+        "Accept": "application/json"
+    ],
+    ${"greeting":"hello","value":123}
+);

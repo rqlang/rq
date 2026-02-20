@@ -1,0 +1,1 @@
+Error: Syntax error in tests/request/run/input/auth_errors/unexpected_field__code_2__/unexpected_field.rq at line 3, column 5: bearer auth 'invalid_auth' has unexpected field 'extra'. Expected fields: token

@@ -1,0 +1,1 @@
+rq sys_body("http://localhost:8080/api/upload", ["Content-Type": "text/plain"], io.read_file("data.txt"));

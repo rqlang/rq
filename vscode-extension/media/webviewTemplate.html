@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RQ Request Result</title>
+    <style>
+        body {
+            font-family: var(--vscode-font-family);
+            font-size: var(--vscode-font-size);
+            color: var(--vscode-foreground);
+            background-color: var(--vscode-editor-background);
+            padding: 20px;
+            line-height: 1.6;
+        }
+
+        .header {
+            border-bottom: 2px solid var(--vscode-panel-border);
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+
+        .request-name {
+            font-size: 1.5em;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .request-info {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 10px;
+        }
+
+        .method {
+            font-weight: bold;
+            padding: 4px 8px;
+            border-radius: 4px;
+            background-color: var(--vscode-badge-background);
+            color: var(--vscode-badge-foreground);
+        }
+
+        .url {
+            font-family: var(--vscode-editor-font-family);
+            color: var(--vscode-textLink-foreground);
+        }
+
+        .status-line {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            margin-top: 10px;
+        }
+
+        .status {
+            font-weight: bold;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 1.1em;
+        }
+
+        .status.success {
+            background-color: #2ea043;
+            color: white;
+        }
+
+        .status.error {
+            background-color: #cf222e;
+            color: white;
+        }
+
+        .status.info {
+            background-color: #0969da;
+            color: white;
+        }
+
+        .elapsed {
+            color: var(--vscode-descriptionForeground);
+        }
+
+        .section {
+            margin: 25px 0;
+        }
+
+        .section-title {
+            font-weight: bold;
+            font-size: 1.1em;
+            margin-bottom: 10px;
+            color: var(--vscode-foreground);
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .section-title:hover {
+            color: var(--vscode-textLink-foreground);
+        }
+
+        .section-title::before {
+            content: '▼ ';
+            display: inline-block;
+            transition: transform 0.2s;
+            margin-right: 6px;
+        }
+
+        .section-title.collapsed::before {
+            transform: rotate(-90deg);
+        }
+
+        .section-content {
+            overflow: hidden;
+            transition: max-height 0.3s ease-out;
+        }
+
+        .section-content.collapsed {
+            max-height: 0;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-family: var(--vscode-editor-font-family);
+        }
+
+        td {
+            padding: 6px 10px;
+            border: 1px solid var(--vscode-panel-border);
+        }
+
+        .header-key {
+            font-weight: bold;
+            width: 30%;
+            background-color: var(--vscode-editor-inactiveSelectionBackground);
+        }
+
+        .header-value {
+            font-family: var(--vscode-editor-font-family);
+            word-break: break-all;
+        }
+
+        pre {
+            background-color: var(--vscode-textCodeBlock-background);
+            border: 1px solid var(--vscode-panel-border);
+            border-radius: 4px;
+            padding: 15px;
+            overflow-x: auto;
+            font-family: var(--vscode-editor-font-family);
+            font-size: var(--vscode-editor-font-size);
+        }
+
+        code {
+            font-family: var(--vscode-editor-font-family);
+        }
+
+        /* JSON renderer styles */
+        #json-body {
+            font-family: var(--vscode-editor-font-family);
+            font-size: var(--vscode-editor-font-size);
+            line-height: 1.5;
+        }
+
+        .json-toggle {
+            cursor: pointer;
+            user-select: none;
+            color: var(--vscode-foreground);
+            margin-right: 4px;
+            display: inline-block;
+            width: 12px;
+        }
+
+        .json-toggle:hover {
+            color: var(--vscode-textLink-activeForeground);
+        }
+
+        .json-content {
+            margin-left: 16px;
+        }
+
+        .json-line {
+            margin: 2px 0;
+        }
+
+        .json-key {
+            color: var(--vscode-symbolIcon-variableForeground, #9CDCFE);
+        }
+
+        .json-string {
+            color: var(--vscode-symbolIcon-stringForeground, #CE9178);
+        }
+
+        .json-number {
+            color: var(--vscode-symbolIcon-numberForeground, #B5CEA8);
+        }
+
+        .json-boolean {
+            color: var(--vscode-symbolIcon-booleanForeground, #569CD6);
+        }
+
+        .json-null {
+            color: var(--vscode-symbolIcon-nullForeground, #569CD6);
+        }
+
+        .json-bracket {
+            color: var(--vscode-foreground);
+        }
+
+        .json-comma {
+            color: var(--vscode-foreground);
+        }
+
+        .run-again-btn {
+            background-color: var(--vscode-button-background);
+            color: var(--vscode-button-foreground);
+            border: none;
+            padding: 6px 12px;
+            border-radius: 2px;
+            cursor: pointer;
+            font-family: var(--vscode-font-family);
+            font-weight: bold;
+            margin-left: auto;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .run-again-btn:hover {
+            background-color: var(--vscode-button-hoverBackground);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="header">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div class="request-name">{{REQUEST_NAME}}</div>
+            <button class="run-again-btn" onclick="runAgain()" title="Run this request again">
+                <span>&#x21bb;</span> Run Again
+            </button>
+        </div>
+        <div class="request-info">
+            <span class="method">{{METHOD}}</span>
+            <span class="url">{{URL}}</span>
+        </div>
+        <div class="status-line">
+            <span class="status {{STATUS_CLASS}}">{{STATUS}}</span>
+            <span class="elapsed">{{ELAPSED_MS}} ms</span>
+        </div>
+    </div>
+
+    <div class="section">
+        <div class="section-title collapsed" onclick="toggleSection(this)">Request Headers ({{REQUEST_HEADERS_COUNT}})
+        </div>
+        <div class="section-content collapsed">
+            <table>
+                {{REQUEST_HEADERS_HTML}}
+            </table>
+        </div>
+    </div>
+
+    <div class="section">
+        <div class="section-title collapsed" onclick="toggleSection(this)">Response Headers ({{RESPONSE_HEADERS_COUNT}})
+        </div>
+        <div class="section-content collapsed">
+            <table>
+                {{RESPONSE_HEADERS_HTML}}
+            </table>
+        </div>
+    </div>
+
+    <div class="section">
+        <div class="section-title" onclick="toggleSection(this)">Body</div>
+        <div class="section-content">
+            {{BODY_CONTENT}}
+        </div>
+    </div>
+
+    <script>
+        const vscode = acquireVsCodeApi();
+
+        function runAgain() {
+            vscode.postMessage({
+                command: 'runAgain'
+            });
+        }
+
+        function toggleSection(element) {
+            element.classList.toggle('collapsed');
+            const content = element.nextElementSibling;
+            content.classList.toggle('collapsed');
+        }
+
+        {{JSON_SCRIPT}}
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,145 @@
+name: Release Production
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            artifact_name: rq
+            asset_name: rq-linux-ubuntu-22.04-x86_64
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact_name: rq
+            asset_name: rq-linux-x86_64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact_name: rq.exe
+            asset_name: rq-windows-x86_64.exe
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact_name: rq
+            asset_name: rq-macos-x86_64
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact_name: rq
+            asset_name: rq-macos-aarch64
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get version from release
+        id: read_version
+        shell: bash
+        run: |
+          VERSION="${{ github.event.release.tag_name }}"
+          VERSION="${VERSION#v}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Building version: $VERSION"
+
+      - name: Update Cargo.toml version
+        shell: bash
+        run: |
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            sed -i "s/^version = \".*\"/version = \"${{ steps.read_version.outputs.version }}\"/" cli/Cargo.toml
+          else
+            sed -i.bak "s/^version = \".*\"/version = \"${{ steps.read_version.outputs.version }}\"/" cli/Cargo.toml
+          fi
+          cat cli/Cargo.toml | grep "^version"
+
+      - name: Install Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          target: ${{ matrix.target }}
+
+      - name: Build
+        run: |
+          cd cli
+          cargo build --release --target ${{ matrix.target }}
+
+      - name: Code sign macOS binary
+        if: runner.os == 'macOS'
+        run: |
+          codesign --force --deep --sign - \
+            --options runtime --timestamp \
+            ./cli/target/${{ matrix.target }}/release/${{ matrix.artifact_name }}
+
+      - name: Rename artifact
+        shell: bash
+        run: |
+          cp ./cli/target/${{ matrix.target }}/release/${{ matrix.artifact_name }} ./${{ matrix.asset_name }}
+
+      - name: Upload Asset to Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload ${{ github.event.release.tag_name }} ./${{ matrix.asset_name }} --clobber
+
+  build-extension:
+    name: Build VS Code Extension
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get version from release
+        id: read_version
+        run: |
+          VERSION="${{ github.event.release.tag_name }}"
+          VERSION="${VERSION#v}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Building extension version: $VERSION"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: vscode-extension/package-lock.json
+
+      - name: Bundle installer scripts
+        working-directory: ./vscode-extension
+        run: |
+          mkdir -p scripts
+          cp ../deployment/install-rq.sh scripts/
+          cp ../deployment/install-rq.ps1 scripts/
+
+      - name: Install dependencies
+        working-directory: ./vscode-extension
+        run: npm ci
+
+      - name: Install vsce
+        run: npm install -g @vscode/vsce
+
+      - name: Update version in package.json
+        working-directory: ./vscode-extension
+        run: npm version ${{ steps.read_version.outputs.version }} --no-git-tag-version
+
+      - name: Compile TypeScript
+        working-directory: ./vscode-extension
+        run: npm run compile
+
+      - name: Package extension
+        working-directory: ./vscode-extension
+        run: vsce package --allow-missing-repository
+
+      - name: Upload VSIX to Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload ${{ github.event.release.tag_name }} vscode-extension/*.vsix --clobber

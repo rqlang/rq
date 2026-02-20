@@ -1,0 +1,22 @@
+[
+  {
+    "http": {
+      "originalUrl": "/child"
+    },
+    "request": {
+      "headers": {
+        "host": "localhost:8080"
+      }
+    }
+  },
+  {
+    "http": {
+      "originalUrl": "/parent"
+    },
+    "request": {
+      "headers": {
+        "host": "localhost:8080"
+      }
+    }
+  }
+]

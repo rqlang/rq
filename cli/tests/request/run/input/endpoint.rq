@@ -1,0 +1,11 @@
+// Demonstrate endpoint with headers passed via variable (positional) and child overriding one.
+let ep_headers = [
+    "Accept": "application/json",
+    "X-Ep": "yes"
+];
+
+ep api("http://localhost:8080", ep_headers) {
+    rq get("/get", [
+        "X-Req": "child"
+    ], ${"shared":true});
+}

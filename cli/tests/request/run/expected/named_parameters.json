@@ -1,0 +1,21 @@
+[
+  {
+    "http": { "originalUrl": "/get" },
+    "request": { "body": { "test": "named_parameters" } }
+  },
+  {
+    "http": { "originalUrl": "/simple" }
+  },
+  {
+    "http": { "originalUrl": "/mixed" },
+    "request": { "headers": { "x-mixed": "positional-url-named-headers" } }
+  },
+  {
+    "http": { "originalUrl": "/api/users" },
+    "request": { "body": {} }
+  },
+  {
+    "http": { "originalUrl": "/api/posts" },
+    "request": { "body": {} }
+  }
+]

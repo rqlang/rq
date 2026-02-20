@@ -1,0 +1,6 @@
+// Test io.read_file with variable reference (not just simple variable)
+
+let base_filename = "data.txt";
+let my_file = base_filename;
+
+rq test_import_reference("http://localhost:8080/api/upload", ["Content-Type": "text/plain"], io.read_file("{{my_file}}"));

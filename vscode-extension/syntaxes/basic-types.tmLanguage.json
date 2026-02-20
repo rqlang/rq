@@ -1,0 +1,207 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "RQ Basic Types",
+  "scopeName": "source.rq.basic",
+  "patterns": [
+    {
+      "include": "#string-type"
+    },
+    {
+      "include": "#array-type"
+    },
+    {
+      "include": "#json-type"
+    },
+    {
+      "include": "#number-type"
+    }
+  ],
+  "repository": {
+    "number-type": {
+      "name": "constant.numeric.rq",
+      "match": "\\b[0-9]+(\\.[0-9]+)?\\b"
+    },
+    "string-type": {
+      "name": "string.quoted.double.rq",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [
+        {
+          "name": "constant.character.escape.rq",
+          "match": "\\\\."
+        },
+        {
+          "include": "#variable-interpolation"
+        }
+      ]
+    },
+    "array-type": {
+      "patterns": [
+        {
+          "name": "meta.variable.array.rq",
+          "begin": "\\[",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.definition.brackets.begin.rq"
+            }
+          },
+          "end": "\\]",
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.definition.brackets.end.rq"
+            }
+          },
+          "patterns": [
+            {
+              "include": "#string-type"
+            },
+            {
+              "include": "#variable-name"
+            },
+            {
+              "include": "#punctuation"
+            }
+          ]
+        }
+      ]
+    },
+    "json-type": {
+      "patterns": [
+        {
+          "name": "meta.json.embedded.rq",
+          "begin": "(\\$)(\\{)",
+          "beginCaptures": {
+            "1": {
+              "name": "keyword.operator.json.rq"
+            },
+            "2": {
+              "name": "punctuation.definition.block.rq"
+            }
+          },
+          "end": "(\\})",
+          "endCaptures": {
+            "1": {
+              "name": "punctuation.definition.block.rq"
+            }
+          },
+          "patterns": [
+            {
+              "include": "#string-type"
+            },
+            {
+              "name": "punctuation.separator.keyvalue.rq",
+              "match": ":"
+            },
+            {
+              "name": "punctuation.separator.comma.rq",
+              "match": ","
+            }
+          ]
+        }
+      ]
+    },
+    "variable-interpolation": {
+      "patterns": [
+        {
+          "name": "meta.embedded.variable.rq",
+          "match": "(\\{\\{)(.*?)(\\}\\})",
+          "captures": {
+            "1": {
+              "name": "keyword.operator.rq"
+            },
+            "2": {
+              "name": "variable.other.interpolated.rq"
+            },
+            "3": {
+              "name": "keyword.operator.rq"
+            }
+          }
+        }
+      ]
+    },
+    "key-value-pair-type": {
+      "patterns": [
+        {
+          "name": "meta.keyvalue.rq",
+          "begin": "^\\s*([a-zA-Z_][a-zA-Z0-9_-]*)\\s*:\\s*",
+          "beginCaptures": {
+            "1": {
+              "name": "variable.other.key.rq"
+            }
+          },
+          "end": "(?=$|\\})",
+          "patterns": [
+            {
+              "include": "#string-type"
+            },
+            {
+              "include": "#variable-name"
+            }
+          ]
+        }
+      ]
+    },
+    "enum-type": {
+      "begin": "\\b(?=[a-zA-Z_][a-zA-Z0-9_-]*\\.)",
+      "end": "(?<=\\.)[a-zA-Z_][a-zA-Z0-9_-]*\\b",
+      "endCaptures": {
+        "0": {
+          "name": "variable.other.enummember.rq"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#entity-name"
+        },
+        {
+          "match": "\\.",
+          "name": "punctuation.accessor.rq"
+        }
+      ]
+    },
+    "entity-name": {
+      "match": "\\G([a-zA-Z_][a-zA-Z0-9_-]*)",
+      "captures": {
+        "1": {
+          "name": "entity.name.type.rq"
+        }
+      }
+    },
+    "variable-name": {
+      "name": "variable.other.rq",
+      "match": "\\b[a-zA-Z_][a-zA-Z0-9_-]*\\b"
+    },
+    "system-functions": {
+      "patterns": [
+        {
+          "name": "support.function.system.rq",
+          "match": "\\b(sys|random|datetime)\\.[a-zA-Z_][a-zA-Z0-9_]*\\b"
+        }
+      ]
+    },
+    "operators": {
+      "name": "keyword.operator.rq",
+      "match": "=|==|!=|<|>|<=|>=|\\+|-|\\*|/|%|&&|\\|\\||!|&|\\||\\^|<<|>>"
+    },
+    "punctuation": {
+      "patterns": [
+        {
+          "name": "punctuation.separator.rq",
+          "match": "[,;:]"
+        },
+        {
+          "name": "punctuation.accessor.rq",
+          "match": "\\."
+        }
+      ]
+    },
+    "http-method-type": {
+      "patterns": [
+        {
+          "name": "variable.other.enummember.rq",
+          "match": "\\b(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\\b"
+        }
+      ]
+    }
+  }
+}

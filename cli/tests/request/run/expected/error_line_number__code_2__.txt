@@ -1,0 +1,1 @@
+Error: Syntax error in tests/request/run/input/error_line_number__code_2__.rq at line 3, column 13: Unresolved variable: 'version_qs'

@@ -1,0 +1,4 @@
+import "import_child.rq";
+
+// Parent file adds another request using imported variable
+rq imported_parent("{{host}}/parent");

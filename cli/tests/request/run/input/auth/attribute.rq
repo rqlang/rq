@@ -1,0 +1,7 @@
+auth test_auth(auth_type.bearer) {
+    token: "test-token-123"
+}
+
+// Test: Simple auth attribute
+[auth("test_auth")]
+rq simple_auth("http://localhost:8080/auth-test");

@@ -1,0 +1,12 @@
+{
+  "http": {
+    "originalUrl": "/test"
+  },
+  "request": {
+    "headers": {
+      "x-secret": "from_env_specific_dot_env",
+      "x-test": "from_root_env",
+      "x-env-secret": "secret_from_env_file"
+    }
+  }
+}

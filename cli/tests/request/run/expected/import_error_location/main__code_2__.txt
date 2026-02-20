@@ -1,0 +1,1 @@
+Error: Syntax error in tests/request/run/input/import_error_location/imported.rq at line 1, column 14: Unresolved variable: 'missing_import_var'

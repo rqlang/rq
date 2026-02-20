@@ -1,0 +1,1 @@
+Error: Syntax error in tests/request/run/input/invalid_syntax__code_2/auth/missing_value.rq at line 1, column 34: bearer auth 'myauth' has unexpected field 'key'. Expected fields: token

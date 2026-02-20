@@ -1,0 +1,8 @@
+{
+    "request": {
+        "body": "Hello from imported file!",
+        "headers": {
+            "content-type": "text/plain"
+        }
+    }
+}

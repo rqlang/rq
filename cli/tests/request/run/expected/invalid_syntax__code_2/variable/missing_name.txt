@@ -1,0 +1,1 @@
+Error: Syntax error in tests/request/run/input/invalid_syntax__code_2/variable/missing_name.rq at line 1, column 5: Expected identifier

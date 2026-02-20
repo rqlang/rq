@@ -1,0 +1,1 @@
+Error: Syntax error in tests/request/run/input/duplicates/duplicate_env__code_2__.rq at line 5, column 5: Duplicate environment definition: 'dev'

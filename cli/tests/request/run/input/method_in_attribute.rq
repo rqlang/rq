@@ -1,0 +1,2 @@
+[method(POST)]
+rq basic("http://localhost:8080");

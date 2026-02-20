@@ -1,0 +1,1 @@
+Error: Syntax error in tests/request/run/input/variables/circular_reference__code_2__.rq at line 6, column 14: Circular reference detected for variable: 'var_a'

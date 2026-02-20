@@ -1,0 +1,19 @@
+{
+    "http": {
+        "method": "GET",
+        "baseUrl": "",
+        "originalUrl": "/path/more-path/?api-version=1",
+        "protocol": "http"
+    },
+    "request": {
+        "params": {"0": "/path/more-path/"},
+        "query": {"api-version": "1"},
+        "cookies": {},
+        "body": {},
+        "headers": {
+            "user-agent": "rq/0.0.0",
+            "accept": "*/*",
+            "host": "localhost:8080"
+        }
+    }
+}

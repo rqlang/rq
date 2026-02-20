@@ -1,0 +1,4 @@
+
+auth test_auth(auth_type.bearer) {
+    token: my_var
+}

@@ -1,0 +1,6 @@
+auth my_auth(auth_type.bearer) {
+    token: "my-secret-token"
+}
+
+[auth("my_auth")]
+rq get_protected("{{MOCK_URL}}/protected");

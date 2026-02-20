@@ -1,0 +1,4 @@
+rq test_import_fail(
+    url: "http://localhost:8080",
+    body: io.read_file("non_existent_file.txt")
+);

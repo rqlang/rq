@@ -1,0 +1,5 @@
+import "lib.rq";
+
+ep child < base > {
+    rq my_req("get");
+}

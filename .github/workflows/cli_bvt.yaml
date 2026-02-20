@@ -1,0 +1,90 @@
+
+name: CLI BVT
+
+on:
+  push:
+    branches:
+      - features/*
+      - fix/*
+    paths:
+      - 'cli/**'
+      - '.github/workflows/cli_bvt.yaml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'cli/**'
+      - '.github/workflows/cli_bvt.yaml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./cli
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo registry & target
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            cli/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('cli/**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Formatting check
+        run: cargo fmt --all -- --check
+
+      - name: Clippy (deny warnings)
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Build (debug)
+        run: cargo build --verbose
+
+      - name: Start echo server
+        run: |
+          docker run -d --rm --name rq-echo -p 8080:80 ealen/echo-server
+          echo "Waiting for echo server to be ready..."
+          SERVER_READY=false
+          for i in {1..30}; do
+            if curl -s http://localhost:8080 > /dev/null 2>&1; then
+              echo "Echo server is ready!"
+              SERVER_READY=true
+              break
+            fi
+            echo "Waiting... ($i/30)"
+            sleep 1
+          done
+          
+          if [ "$SERVER_READY" = false ]; then
+            echo "ERROR: Echo server failed to start within 30 seconds"
+            docker logs rq-echo || true
+            exit 1
+          fi
+          
+          echo "Testing server response:"
+          curl -v http://localhost:8080
+
+      - name: Test (all tests)
+        run: cargo test --verbose
+
+      - name: Build (release)
+        run: cargo build --release --verbose
+
+      - name: Stop echo server
+        if: always()
+        run: |
+          docker ps -a
+          docker stop rq-echo || true

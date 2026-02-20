@@ -1,0 +1,30 @@
+[
+    {
+        "http": {
+            "method": "GET",
+            "originalUrl": "/get?foo=bar"
+        },
+        "request": {
+            "headers": {
+                "x-test": "true"
+            },
+            "query": {
+                "foo": "bar"
+            }
+        }
+    },
+    {
+        "http": {
+            "method": "GET",
+            "originalUrl": "/get?foo=bar"
+        },
+        "request": {
+            "headers": {
+                "x-test": "true"
+            },
+            "query": {
+                "foo": "bar"
+            }
+        }
+    }
+]

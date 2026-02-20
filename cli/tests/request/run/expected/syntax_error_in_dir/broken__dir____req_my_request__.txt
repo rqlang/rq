@@ -1,0 +1,1 @@
+Error: Syntax error in tests/request/run/input/syntax_error_in_dir/broken__dir____req_my_request__.rq at line 2, column 6: Expected identifier

@@ -1,0 +1,1 @@
+Error: Syntax error in tests/request/run/input/auth_errors/missing_token__code_2__/missing_token.rq at line 1, column 1: bearer auth 'invalid_auth' missing required field 'token'

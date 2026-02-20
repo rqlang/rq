@@ -1,0 +1,179 @@
+name: Release CD
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    name: Compute Version
+    runs-on: ubuntu-latest
+    outputs:
+      base: ${{ steps.compute.outputs.base }}
+      build: ${{ steps.compute.outputs.build }}
+      version: ${{ steps.compute.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute version from latest tag
+        id: compute
+        run: |
+          tag=""
+          if t=$(git describe --tags --abbrev=0 --match "v*" 2>/dev/null); then
+            tag="$t"
+            base="${tag#v}"
+          elif t=$(git describe --tags --abbrev=0 --match "[0-9]*" 2>/dev/null); then
+            tag="$t"
+            base="$tag"
+          fi
+
+          if [ -n "$tag" ]; then
+            echo "Found latest tag: $tag (base: $base)"
+            build=$(git rev-list "${tag}..HEAD" --count)
+          else
+            base="0.0.0"
+            echo "No version tag found, defaulting to $base"
+            build=$(git rev-list HEAD --count)
+          fi
+
+          if [ "$build" -eq 0 ]; then
+            build=1
+          fi
+
+          version="${base}-dev.${build}"
+          echo "base=$base" >> $GITHUB_OUTPUT
+          echo "build=$build" >> $GITHUB_OUTPUT
+          echo "version=$version" >> $GITHUB_OUTPUT
+          echo "Computed version: $version"
+
+  build-cli:
+    name: Build CLI (macOS x86_64)
+    needs: version
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: ./cli
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          target: x86_64-apple-darwin
+          override: true
+
+      - name: Set version in Cargo.toml
+        run: sed -i '' "s/^version = \".*\"/version = \"${{ needs.version.outputs.version }}\"/" Cargo.toml
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            cli/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('cli/**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Build (release)
+        run: cargo build --release --target x86_64-apple-darwin --verbose
+
+      - name: Locate binary
+        id: binpath
+        run: |
+          bin="target/x86_64-apple-darwin/release/rq"
+          if [ ! -f "$bin" ]; then echo "Binary not found: $bin"; exit 1; fi
+          echo "path=$bin" >> $GITHUB_OUTPUT
+
+      - name: Compute SHA256
+        run: |
+          bin="${{ steps.binpath.outputs.path }}"
+          shasum -a 256 "$bin" | awk '{print $1 "  rq"}' > rq-macos-x86_64.sha256
+          cat rq-macos-x86_64.sha256
+
+      - name: Prepare zip archive
+        run: |
+          bin="${{ steps.binpath.outputs.path }}"
+          cp "$bin" rq
+          chmod +x rq
+          zip rq-macos-x86_64.zip rq rq-macos-x86_64.sha256
+          ls -lh rq-macos-x86_64.*
+
+      - name: Upload artifact (zip)
+        uses: actions/upload-artifact@v4
+        with:
+          name: rq-macos-x86_64
+          path: cli/rq-macos-x86_64.zip
+          if-no-files-found: error
+
+  build-extension:
+    name: Build VS Code Extension
+    needs: version
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./vscode-extension
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: vscode-extension/package-lock.json
+
+      - name: Bundle installer scripts
+        run: |
+          mkdir -p scripts
+          cp ../deployment/install-rq-dev.sh scripts/
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install vsce
+        run: npm install -g @vscode/vsce
+
+      - name: Update version in package.json
+        run: npm version ${{ needs.version.outputs.version }} --no-git-tag-version
+
+      - name: Lint TypeScript
+        run: npm run lint
+
+      - name: Compile TypeScript
+        run: npm run compile
+
+      - name: Verify compilation output
+        run: |
+          if [ ! -f "out/extension.js" ]; then
+            echo "Error: extension.js not found in out/ directory"
+            exit 1
+          fi
+          echo "✓ Extension compiled successfully"
+          ls -lh out/
+
+      - name: Package extension
+        run: |
+          vsce package --allow-missing-repository
+          ls -lh *.vsix
+
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rq-language-extension-${{ needs.version.outputs.version }}
+          path: vscode-extension/*.vsix
+          if-no-files-found: error

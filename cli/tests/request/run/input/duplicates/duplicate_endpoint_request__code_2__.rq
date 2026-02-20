@@ -1,0 +1,4 @@
+ep api("http://localhost") {
+    rq list ("/users");
+    rq list ("/users");
+}

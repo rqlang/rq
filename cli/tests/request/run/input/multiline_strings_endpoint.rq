@@ -1,0 +1,16 @@
+ep multiline_ep(
+    url: "http://localhost:8080
+    /api",
+    headers: [
+        "X-Ep-Multiline": "Ep Line 1
+Ep Line 2",
+        "Content-Type": "text/plain"
+    ]
+) {
+    [method(POST)]
+    rq test_req(
+        url: "/post",
+        body: "Body Line 1
+Body Line 2"
+    );
+}

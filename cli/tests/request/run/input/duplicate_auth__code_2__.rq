@@ -1,0 +1,3 @@
+[auth("my_auth")]
+[auth("other_auth")]
+rq duplicate_auth("http://localhost:8080/get");

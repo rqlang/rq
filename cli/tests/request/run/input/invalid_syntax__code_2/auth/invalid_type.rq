@@ -1,0 +1,1 @@
+auth my_auth (auth_type.invalid_type) {}

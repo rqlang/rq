@@ -1,0 +1,4 @@
+ep test(qs: missing_var) {
+    rq get("get");
+}
+

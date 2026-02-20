@@ -1,0 +1,22 @@
+{
+  "http": {
+    "method": "GET",
+    "baseUrl": "",
+    "originalUrl": "/auth-test",
+    "protocol": "http"
+  },
+  "request": {
+    "params": {
+      "0": "/auth-test"
+    },
+    "query": {},
+    "cookies": {},
+    "body": {},
+    "headers": {
+      "user-agent": "rq/0.0.0",
+      "accept": "*/*",
+      "authorization": "Bearer test-token-123",
+      "host": "localhost:8080"
+    }
+  }
+}

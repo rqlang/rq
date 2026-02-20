@@ -1,0 +1,9 @@
+auth test_auth(auth_type.bearer) {
+    token: "test-token-123"
+}
+
+let auth_var = "test_auth";
+
+// Test: Auth with variable interpolation
+[auth("{{auth_var}}")]
+rq auth_with_variable("http://localhost:8080/auth-variable");

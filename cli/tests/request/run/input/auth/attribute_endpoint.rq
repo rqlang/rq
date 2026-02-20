@@ -1,0 +1,9 @@
+auth test_auth(auth_type.bearer) {
+    token: "test-token-123"
+}
+
+// Test: Endpoint with auth attribute - child inherits it
+[auth("test_auth")]
+ep api_endpoint("http://localhost:8080/api") {
+    rq child_inherits_auth("/protected");
+}

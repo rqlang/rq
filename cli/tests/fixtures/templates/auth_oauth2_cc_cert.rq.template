@@ -1,0 +1,10 @@
+auth cc_cert_auth(auth_type.oauth2_client_credentials) {
+    client_id: "test-client",
+    cert_file: "{{CERT_PATH}}",
+    cert_password: "testpass",
+    token_url: "{{MOCK_URL}}/token",
+    scope: "read:all"
+}
+
+[auth("cc_cert_auth")]
+rq get_resource("{{MOCK_URL}}/api/resource");

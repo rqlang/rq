@@ -1,0 +1,12 @@
+Manage authentication
+
+Usage: rq auth [OPTIONS] <COMMAND>
+
+Commands:
+  list  List authentication configurations
+  show  Show authentication details
+  help  Print this message or the help of the given subcommand(s)
+
+Options:
+  -d, --debug  Enable debug logging
+  -h, --help   Print help

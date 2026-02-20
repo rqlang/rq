@@ -1,0 +1,7 @@
+auth basic1 (auth_type.bearer) {
+    token: "t"
+}
+
+auth basic1 (auth_type.bearer) {
+    token: "t"
+}

@@ -1,0 +1,2 @@
+let u = "http://example.com";
+rq my_req(headers: u)

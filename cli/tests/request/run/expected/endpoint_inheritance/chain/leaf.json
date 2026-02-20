@@ -1,0 +1,14 @@
+{
+    "http": {
+        "method": "GET",
+        "originalUrl": "/get",
+        "protocol": "http"
+    },
+    "request": {
+        "headers": {
+            "h-base": "1",
+            "h-mid": "2",
+            "h-leaf": "3"
+        }
+    }
+}

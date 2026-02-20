@@ -1,0 +1,1 @@
+Error: Syntax error in tests/request/run/input/invalid_syntax__code_2/import/missing_string.rq at line 1, column 7: Expected string literal or identifier

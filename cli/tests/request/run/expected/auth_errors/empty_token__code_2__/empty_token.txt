@@ -1,0 +1,1 @@
+Error: Syntax error in tests/request/run/input/auth_errors/empty_token__code_2__/empty_token.rq at line 2, column 12: Bearer auth 'invalid_auth' has empty 'token' field

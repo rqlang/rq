@@ -1,0 +1,6 @@
+env local {}
+
+rq prefix_test("http://localhost:8080/api/prefix", [
+    "X-Env-File": "{{var_from_file}}",
+    "X-Os-Var": "{{var_from_os}}"
+]);

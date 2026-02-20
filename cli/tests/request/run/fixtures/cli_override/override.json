@@ -1,0 +1,19 @@
+{
+  "http": {
+    "method": "GET",
+    "baseUrl": "",
+    "originalUrl": "/get?color=red",
+    "protocol": "http"
+  },
+  "request": {
+    "params": {"0": "/get"},
+    "query": {"color": "red"},
+    "cookies": {},
+    "body": {},
+    "headers": {
+      "user-agent": "rq/0.0.0",
+      "accept": "*/*",
+      "host": "localhost:8080"
+    }
+  }
+}

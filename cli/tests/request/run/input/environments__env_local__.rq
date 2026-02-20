@@ -1,0 +1,17 @@
+// Single local environment test
+env local {
+    base_url: "http://localhost:8080",
+    auth_token: "local-token-123",
+}
+
+// File-level defaults (should be overridden by env local)
+let base_url = "http://fallback.local";
+let auth_token = "file-token-123";
+
+auth local_auth(auth_type.bearer) {
+    token: "{{auth_token}}"
+}
+
+rq env_local_demo("{{base_url}}/api/env-test", [
+    "Authorization": "Bearer {{auth_token}}"
+]);

@@ -1,0 +1,14 @@
+// Test OAuth2 with bearer token fallback
+// When auth_token variable is defined, OAuth2 should use it as a bearer token
+
+let auth_token = "oauth-bearer-fallback-token-123";
+
+auth api_oauth(auth_type.oauth2_authorization_code) {
+    client_id: "test-client-id",
+    authorization_url: "https://auth.example.com/authorize",
+    token_url: "https://auth.example.com/token",
+    scope: "read write"
+}
+
+[auth("api_oauth")]
+rq test_request_oauth2_fallback("http://localhost:8080/api/test");

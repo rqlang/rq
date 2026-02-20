@@ -1,0 +1,5 @@
+// let version_qs = "version=1";
+
+ep base(qs: version_qs) {
+    rq my_req(url: "http://example.com");
+}

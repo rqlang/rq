@@ -1,0 +1,1 @@
+Error: Syntax error in tests/request/run/input/invalid_syntax__code_2/endpoint/named_url_wrong_type.rq at line 1, column 16: Expected string literal or identifier

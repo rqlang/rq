@@ -1,0 +1,1 @@
+Error: Syntax error in tests/request/run/input/invalid_syntax__code_2/endpoint/pos_qs_wrong_type.rq at line 1, column 37: Expected string literal or identifier

@@ -1,0 +1,11 @@
+let u = "http://localhost:8080";
+let h = ["X-Test": "true"];
+let q = "foo=bar";
+
+ep e1 ( u, h, q ) {
+    rq get ( "/get" );
+}
+
+ep e2 ( url: u, headers: h, qs: q ) {
+    rq get ( "/get" );
+}

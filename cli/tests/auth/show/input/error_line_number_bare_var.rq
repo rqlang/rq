@@ -1,0 +1,8 @@
+auth keycloak(auth_type.oauth2_authorization_code) {
+    client_id: client_id,
+    authorization_url: "https://auth.example.com/auth",
+    token_url: "https://auth.example.com/token",
+    redirect_uri: "http://localhost:8080/callback"
+}
+
+rq test_req("http://localhost:8080");

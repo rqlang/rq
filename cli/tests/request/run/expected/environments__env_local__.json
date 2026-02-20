@@ -1,0 +1,20 @@
+{
+  "http": {
+    "method": "GET",
+    "baseUrl": "",
+    "originalUrl": "/api/env-test",
+    "protocol": "http"
+  },
+  "request": {
+    "params": {"0": "/api/env-test"},
+    "query": {},
+    "cookies": {},
+    "body": {},
+    "headers": {
+      "user-agent": "rq/0.0.0",
+      "authorization": "Bearer local-token-123",
+      "accept": "*/*",
+      "host": "localhost:8080"
+    }
+  }
+}

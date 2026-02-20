@@ -1,0 +1,1 @@
+Error: Syntax error in tests/request/run/input/invalid_syntax__code_2/variable/missing_semicolon.rq at line 1, column 20: Expected ';'

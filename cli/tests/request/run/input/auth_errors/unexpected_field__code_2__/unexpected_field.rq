@@ -1,0 +1,9 @@
+auth invalid_auth(auth_type.bearer) {
+    token: "secret";
+    extra: "not-allowed";
+}
+
+request my_req {
+    url: "http://example.com";
+    auth: invalid_auth;
+}

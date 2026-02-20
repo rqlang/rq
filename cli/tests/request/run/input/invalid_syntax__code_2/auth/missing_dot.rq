@@ -1,0 +1,1 @@
+auth myauth (auth_type bearer) {}

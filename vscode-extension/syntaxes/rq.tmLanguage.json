@@ -1,0 +1,340 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "RQ",
+  "scopeName": "source.rq",
+  "patterns": [
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#attributes"
+    },
+    {
+      "include": "#import"
+    },
+    {
+      "include": "#auth"
+    },
+    {
+      "include": "#environment"
+    },
+    {
+      "include": "#request"
+    },
+    {
+      "include": "#endpoint"
+    },
+    {
+      "include": "#variable-assignment"
+    },
+    {
+      "include": "source.rq.basic#json-type"
+    },
+    {
+      "include": "source.rq.basic#string-type"
+    },
+    {
+      "include": "source.rq.basic#number-type"
+    },
+    {
+      "include": "source.rq.basic#variable-name"
+    },
+    {
+      "include": "source.rq.basic#system-functions"
+    },
+    {
+      "include": "source.rq.basic#operators"
+    },
+    {
+      "include": "source.rq.basic#punctuation"
+    }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.double-slash.rq",
+          "match": "//.*$"
+        }
+      ]
+    },
+    "import": {
+      "patterns": [
+        {
+          "name": "meta.import.rq",
+          "begin": "^\\s*(import)\\s+",
+          "beginCaptures": {
+            "1": {
+              "name": "keyword.control.import.rq"
+            }
+          },
+          "end": ";",
+          "patterns": [
+            {
+              "include": "source.rq.basic#string-type"
+            }
+          ]
+        }
+      ]
+    },
+    "variable-assignment": {
+      "patterns": [
+        {
+          "name": "meta.variable.assignment.rq",
+          "begin": "^\\s*(let)\\s+([a-zA-Z_][a-zA-Z0-9_-]*)\\s*=",
+          "beginCaptures": {
+            "1": {
+              "name": "storage.type.rq"
+            },
+            "2": {
+              "name": "variable.other.declaration.rq"
+            }
+          },
+          "end": ";",
+          "patterns": [
+            {
+              "include": "source.rq.basic#string-type"
+            },
+            {
+              "include": "source.rq.basic#variable-name"
+            },
+            {
+              "include": "source.rq.basic#array-type"
+            },
+            {
+              "include": "source.rq.basic#json-type"
+            }
+          ]
+        }
+      ]
+    },
+    "environment": {
+      "patterns": [
+        {
+          "name": "meta.environment.rq",
+          "begin": "^\\s*(env)\\s+",
+          "beginCaptures": {
+            "1": {
+              "name": "storage.type.rq"
+            }
+          },
+          "end": "\\}",
+          "patterns": [
+            {
+              "include": "source.rq.basic#entity-name"
+            },
+            {
+              "match": "\\{",
+              "name": "punctuation.definition.block.rq"
+            },
+            {
+              "include": "#comments"
+            },
+            {
+              "include": "source.rq.basic#key-value-pair-type"
+            }
+          ]
+        }
+      ]
+    },
+    "auth": {
+      "patterns": [
+        {
+          "name": "meta.auth.rq",
+          "begin": "^\\s*(auth)\\s+",
+          "beginCaptures": {
+            "1": {
+              "name": "storage.type.rq"
+            }
+          },
+          "end": "\\}",
+          "patterns": [
+            {
+              "include": "source.rq.basic#entity-name"
+            },
+            {
+              "include": "#comments"
+            },
+            {
+              "include": "source.rq.basic#enum-type"
+            },
+            {
+              "include": "source.rq.basic#json-type"
+            },
+            {
+              "include": "source.rq.basic#string-type"
+            },
+            {
+              "include": "source.rq.basic#key-value-pair-type"
+            },
+            {
+              "name": "punctuation.definition.parameters.rq",
+              "match": "[()]"
+            },
+            {
+              "name": "punctuation.definition.block.rq",
+              "match": "\\{"
+            }
+          ]
+        }
+      ]
+    },
+    "request": {
+      "patterns": [
+        {
+          "name": "meta.request.rq",
+          "begin": "^\\s*(rq)\\s+",
+          "beginCaptures": {
+            "1": {
+              "name": "storage.type.rq"
+            }
+          },
+          "end": ";",
+          "patterns": [
+            {
+              "include": "source.rq.basic#entity-name"
+            },
+            {
+              "include": "source.rq.basic#string-type"
+            },
+            {
+              "include": "source.rq.basic#number-type"
+            },
+            {
+              "include": "source.rq.basic#array-type"
+            },
+            {
+              "include": "source.rq.basic#json-type"
+            }
+          ]
+        }
+      ]
+    },
+    "endpoint": {
+      "patterns": [
+        {
+          "begin": "^\\s*(ep)\\s+([a-zA-Z_][a-zA-Z0-9_-]*)(?:\\s*(<)\\s*([a-zA-Z_][a-zA-Z0-9_-]*)\\s*(>))?",
+          "beginCaptures": {
+            "1": {
+              "name": "storage.type.rq"
+            },
+            "2": {
+              "name": "entity.name.type.rq"
+            },
+            "3": {
+              "name": "punctuation.definition.typeparameters.begin.rq"
+            },
+            "4": {
+              "name": "entity.name.type.inherited.rq"
+            },
+            "5": {
+              "name": "punctuation.definition.typeparameters.end.rq"
+            }
+          },
+          "end": "\\}|;",
+          "patterns": [
+            {
+              "include": "#endpoint-body"
+            }
+          ]
+        }
+      ]
+    },
+    "endpoint-body": {
+      "patterns": [
+        {
+          "include": "#attributes"
+        },
+        {
+          "include": "#comments"
+        },
+        {
+          "include": "#request"
+        },
+        {
+          "include": "source.rq.basic#json-type"
+        },
+        {
+          "include": "source.rq.basic#string-type"
+        },
+        {
+          "include": "source.rq.basic#variable-name"
+        },
+        {
+          "include": "source.rq.basic#punctuation"
+        },
+        {
+          "name": "punctuation.definition.parameters.rq",
+          "match": "[()]"
+        },
+        {
+          "name": "punctuation.definition.block.rq",
+          "match": "[{}]"
+        }
+      ]
+    },
+    "attributes": {
+      "name": "meta.attribute.rq",
+      "begin": "\\[",
+      "beginCaptures": {
+        "0": {
+          "name": "punctuation.definition.attribute.begin.rq"
+        }
+      },
+      "end": "\\]",
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.attribute.end.rq"
+        }
+      },
+      "patterns": [
+        {
+          "name": "meta.attribute.method.rq",
+          "begin": "\\b(method)\\s*(\\()",
+          "beginCaptures": {
+            "1": {
+              "name": "entity.name.function.attribute.rq"
+            },
+            "2": {
+              "name": "punctuation.definition.arguments.rq"
+            }
+          },
+          "end": "\\)",
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.definition.arguments.rq"
+            }
+          },
+          "patterns": [
+            {
+              "include": "source.rq.basic#http-method-type"
+            }
+          ]
+        },
+        {
+          "name": "meta.attribute.auth.rq",
+          "begin": "\\b(auth)\\s*(\\()",
+          "beginCaptures": {
+            "1": {
+              "name": "entity.name.function.attribute.rq"
+            },
+            "2": {
+              "name": "punctuation.definition.arguments.rq"
+            }
+          },
+          "end": "\\)",
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.definition.arguments.rq"
+            }
+          },
+          "patterns": [
+            {
+              "include": "source.rq.basic#string-type"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

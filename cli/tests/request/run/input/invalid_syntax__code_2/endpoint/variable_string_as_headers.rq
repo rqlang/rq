@@ -1,0 +1,4 @@
+let s = "not_array";
+ep e("http://localhost", s) {
+    rq get("/get");
+}

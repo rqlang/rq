@@ -1,0 +1,20 @@
+{
+    "http": {
+      "method": "GET",
+      "baseUrl": "",
+      "originalUrl": "/api/secret-test",
+      "protocol": "http"
+    },
+    "request": {
+      "params": {"0": "/api/secret-test"},
+      "query": {},
+      "cookies": {},
+      "body": {},
+      "headers": {
+        "user-agent": "{{regex:rq/.*}}",
+        "accept": "*/*",
+        "host": "localhost:8080",
+        "x-secret": "from_uppercase_env_file"
+      }
+    }
+}

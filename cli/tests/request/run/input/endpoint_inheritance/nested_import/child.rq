@@ -1,0 +1,5 @@
+import "parent.rq";
+
+ep child<base>(url: "http://localhost:8080/child", headers: ["X-Child": "2"], qs: "v=2") {
+    rq get("get");
+}

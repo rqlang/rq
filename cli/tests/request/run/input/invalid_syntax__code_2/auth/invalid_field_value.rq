@@ -1,0 +1,3 @@
+auth my_auth (auth_type.bearer) {
+    token: 123
+}

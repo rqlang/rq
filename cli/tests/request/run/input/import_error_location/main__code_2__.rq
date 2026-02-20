@@ -1,0 +1,3 @@
+import "imported.rq";
+
+rq test_req("http://localhost/{{my_var}}");

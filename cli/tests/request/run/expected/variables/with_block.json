@@ -1,0 +1,23 @@
+{
+    "http": {
+        "method": "GET",
+        "baseUrl": "",
+        "originalUrl": "/api/users",
+        "protocol": "http"
+    },
+    "request": {
+        "params": {
+            "0": "/api/users"
+        },
+        "query": {},
+        "cookies": {},
+        "body": {},
+        "headers": {
+            "user-agent": "rq/0.0.0",
+            "authorization": "Bearer test-token-123",
+            "x-test": "variable-resolution",
+            "accept": "*/*",
+            "host": "localhost:8080"
+        }
+    }
+}

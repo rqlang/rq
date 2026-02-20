@@ -1,0 +1,4 @@
+// Child file defining a shared variable and a request
+let host = "http://localhost:8080";
+
+rq imported_child("{{host}}/child");

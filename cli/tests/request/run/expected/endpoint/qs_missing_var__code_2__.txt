@@ -1,0 +1,1 @@
+Error: Syntax error in tests/request/run/input/endpoint/qs_missing_var__code_2__.rq at line 1, column 13: Unresolved variable: 'missing_var'

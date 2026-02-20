@@ -1,0 +1,1 @@
+Error: Syntax error in tests/request/run/input/invalid_syntax__code_2/request/named_body_wrong_type.rq at line 1, column 12: Expected string, identifier, or JSON object for body

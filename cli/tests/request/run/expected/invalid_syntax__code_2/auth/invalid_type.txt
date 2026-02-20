@@ -1,0 +1,1 @@
+Error: Syntax error in tests/request/run/input/invalid_syntax__code_2/auth/invalid_type.rq at line 1, column 25: Unknown auth type: invalid_type

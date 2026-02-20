@@ -1,0 +1,1 @@
+Error: Syntax error in tests/request/run/input/invalid_syntax__code_2/top_level.rq at line 1, column 1: Unexpected token 'invalid' at top level

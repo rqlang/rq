@@ -1,0 +1,5 @@
+let json_body = ${
+    "id": "{{ random.guid() }}",
+    "year": "{{ datetime.now("yyyy") }}",
+};
+rq post("http://localhost:8080", body: json_body);

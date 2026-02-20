@@ -1,0 +1,18 @@
+let var_body = "Line 1
+Line 2";
+
+[method(POST)]
+rq multiline_strings(
+    url: "http://localhost:8080
+    /post",
+    headers: [
+        "Content-Type": "text/plain",
+        "X-Multiline": "Line 1
+Line 2",
+        "X-Indented": "Line 1
+        Line 2",
+        "X-Var": "{{var_body}}"
+    ],
+    body: "Line 1
+Line 2"
+);

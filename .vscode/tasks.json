@@ -1,0 +1,51 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"type": "cargo",
+			"command": "test",
+			"args": [],
+			"problemMatcher": ["$rustc"],
+			"group": {"kind": "test", "isDefault": true},
+			"label": "rust: cargo test (all)",
+			"options": {"cwd": "${workspaceFolder}/cli"}
+		},
+		{
+			"type": "cargo",
+			"command": "test",
+			"args": ["--test", "request_run"],
+			"problemMatcher": ["$rustc"],
+			"group": "test",
+			"label": "rust: cargo test (run)",
+			"options": {"cwd": "${workspaceFolder}/cli"}
+		},
+		{
+			"type": "cargo",
+			"command": "test",
+			"args": ["--test", "env_list"],
+			"problemMatcher": ["$rustc"],
+			"group": "test",
+			"label": "rust: cargo test (env)",
+			"options": {"cwd": "${workspaceFolder}/cli"}
+		},
+		{
+			"label": "Extension Compile",
+			"type": "shell",
+			"command": "/usr/bin/env",
+			"args": ["bash", "-c", "npm ci && npm run compile"],
+			"options": {"cwd": "${workspaceFolder}/vscode-extension"},
+			"problemMatcher": ["$tsc"],
+			"group": {"kind": "build", "isDefault": true}
+		},
+		{
+			"label": "Extension Watch",
+			"type": "shell",
+			"command": "/usr/bin/env",
+			"args": ["bash", "-c", "npm ci && npm run watch"],
+			"options": {"cwd": "${workspaceFolder}/vscode-extension"},
+			"isBackground": true,
+			"problemMatcher": ["$tsc-watch"],
+			"group": {"kind": "build", "isDefault": false}
+		}
+	]
+}

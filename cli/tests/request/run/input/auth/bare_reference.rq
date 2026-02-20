@@ -1,0 +1,9 @@
+// Test auth with bare identifier reference (no quotes, no braces)
+
+let my_client_id = "test-client-123";
+
+auth test_bare_reference(auth_type.bearer) {
+    token: my_client_id
+}
+
+rq dummy("http://localhost:8080/test");

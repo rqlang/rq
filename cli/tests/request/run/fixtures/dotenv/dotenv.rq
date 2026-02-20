@@ -1,0 +1,7 @@
+env local {}
+
+rq dotenv_test("http://localhost:8080/test", headers: [
+    "X-Secret": "{{secret_value}}",
+    "X-Test": "{{test_var}}",
+    "X-Env-Secret": "{{env_secret}}"
+]);

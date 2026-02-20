@@ -1,0 +1,8 @@
+auth my_ac_auth(auth_type.oauth2_authorization_code) {
+    client_id: "my-client",
+    authorization_url: "https://example.com/auth",
+    token_url: "https://example.com/token"
+}
+
+[auth("my_ac_auth")]
+rq get_protected("{{MOCK_URL}}/protected");

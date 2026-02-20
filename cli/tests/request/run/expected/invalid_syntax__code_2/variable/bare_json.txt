@@ -1,0 +1,1 @@
+Error: Syntax error in tests/request/run/input/invalid_syntax__code_2/variable/bare_json.rq at line 1, column 13: Bare '{' syntax is not supported. Use '${' prefix.

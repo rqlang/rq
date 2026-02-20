@@ -1,0 +1,11 @@
+// Chained interpolation with host defined in environment 'local'
+let base_url = "{{host}}/path";
+let api_version = "1";
+
+env local {
+    host: "http://localhost:8080"
+}
+
+ep foo("{{base_url}}/more-path") {
+    rq get("?api-version={{api_version}}");
+}

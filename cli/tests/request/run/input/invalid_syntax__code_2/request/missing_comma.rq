@@ -1,0 +1,7 @@
+rq test(
+    "http://localhost",
+    [
+        "header": "value"
+        "header2": "value2"
+    ]
+);

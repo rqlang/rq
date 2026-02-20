@@ -1,0 +1,10 @@
+{
+    "request": {
+        "body": "Line 1 Line 2",
+        "headers": {
+            "x-multiline": "Line 1 Line 2",
+            "x-indented": "Line 1 Line 2",
+            "x-var": "Line 1 Line 2"
+        }
+    }
+}

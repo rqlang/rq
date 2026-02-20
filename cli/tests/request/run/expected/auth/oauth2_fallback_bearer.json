@@ -1,0 +1,22 @@
+{
+  "http": {
+    "method": "GET",
+    "baseUrl": "",
+    "originalUrl": "/api/test",
+    "protocol": "http"
+  },
+  "request": {
+    "params": {
+      "0": "/api/test"
+    },
+    "query": {},
+    "cookies": {},
+    "body": {},
+    "headers": {
+      "user-agent": "rq/0.0.0",
+      "accept": "*/*",
+      "authorization": "Bearer oauth-bearer-fallback-token-123",
+      "host": "localhost:8080"
+    }
+  }
+}

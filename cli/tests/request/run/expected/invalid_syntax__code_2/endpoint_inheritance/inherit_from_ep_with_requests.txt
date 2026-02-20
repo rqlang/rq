@@ -1,0 +1,1 @@
+Error: Syntax error in tests/request/run/input/invalid_syntax__code_2/endpoint_inheritance/inherit_from_ep_with_requests.rq at line 5, column 10: Endpoint 'base' cannot be used as template because it contains requests

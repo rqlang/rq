@@ -1,0 +1,5 @@
+let query_id = "12345";
+
+ep api("http://localhost:8080", headers: ["x-id3": query_id]) {
+    rq get("/users");
+}

@@ -1,0 +1,1 @@
+Error: Syntax error in tests/request/run/input/invalid_syntax__code_2/auth/wrong_namespace.rq at line 1, column 14: Expected namespace 'auth_type', got 'wrong'

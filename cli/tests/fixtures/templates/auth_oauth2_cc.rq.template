@@ -1,0 +1,9 @@
+auth cc_auth(auth_type.oauth2_client_credentials) {
+    client_id: "test-client",
+    client_secret: "test-secret",
+    token_url: "{{MOCK_URL}}/token",
+    scope: "read:all"
+}
+
+[auth("cc_auth")]
+rq get_resource("{{MOCK_URL}}/api/resource");

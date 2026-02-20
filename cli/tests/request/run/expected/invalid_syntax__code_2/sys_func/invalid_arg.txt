@@ -1,0 +1,1 @@
+Error: Syntax error in tests/request/run/input/invalid_syntax__code_2/sys_func/invalid_arg.rq at line 1, column 22: Expected string literal

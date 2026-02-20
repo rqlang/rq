@@ -1,0 +1,1 @@
+Error: Syntax error in tests/request/run/input/duplicate_attributes__code_2__.rq at line 2, column 1: Duplicate attribute 'method'

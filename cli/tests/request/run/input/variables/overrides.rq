@@ -1,0 +1,21 @@
+// Variables override scenario: request-level overrides endpoint-level, endpoint-level uses file-level
+let base_url = "http://localhost:8080";
+let global_header = "Global-Value";
+let default_timeout = "30";
+
+ep api("http://localhost:8080") {
+    let api_key = "secret-api-key";
+    let content_type = "application/json";
+    let user_id = "123";
+
+    rq get("/users?timeout={{default_timeout}}", [
+        "Authorization": "Bearer {{api_key}}",
+        "Content-Type": "{{ content_type }}",
+        "X-Global": "{{global_header}}",
+        "X-Timeout": "{{ default_timeout }}",
+        "X-User-ID": "{{ user_id }}"
+    ], ${
+        "endpoint": "api",
+        "key": "{{api_key}}"
+    });
+}

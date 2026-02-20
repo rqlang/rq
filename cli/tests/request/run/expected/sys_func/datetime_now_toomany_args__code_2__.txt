@@ -1,0 +1,1 @@
+Error: Syntax error in tests/request/run/input/sys_func/datetime_now_toomany_args__code_2__.rq at line 1, column 18: datetime.now takes at most one argument (format)

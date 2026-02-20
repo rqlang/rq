@@ -1,0 +1,13 @@
+// Test inline variable usage for url, headers, body
+let base = "http://localhost:8080";
+let path = "/get";
+let inline = "yes";
+let h = [
+    "Accept": "application/json", 
+    "X-Inline": "{{ inline }}"
+];
+// Quote the interpolation so it becomes a valid JSON string value
+let payload = ${"inline": "{{inline}}"};
+
+
+rq inline_mix("{{base}}", h, body: payload);

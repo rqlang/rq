@@ -1,0 +1,2 @@
+rq my_req ("http://localhost");
+rq my_req ("http://localhost");

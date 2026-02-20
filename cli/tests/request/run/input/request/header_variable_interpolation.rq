@@ -1,0 +1,3 @@
+let query_id = "12345";
+
+rq get("http://localhost:8080/users", headers: ["x-id3": query_id]);

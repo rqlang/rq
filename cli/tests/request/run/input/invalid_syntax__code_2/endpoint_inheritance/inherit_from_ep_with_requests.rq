@@ -1,0 +1,7 @@
+ep base(url: "http://localhost:8080") {
+    rq get("get");
+}
+
+ep child<base> {
+    rq get("get");
+}

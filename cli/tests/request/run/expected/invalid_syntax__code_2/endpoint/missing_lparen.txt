@@ -1,0 +1,1 @@
+Error: Syntax error in tests/request/run/input/invalid_syntax__code_2/endpoint/missing_lparen.rq at line 1, column 16: Expected '{' or ';'

@@ -1,0 +1,10 @@
+
+auth "my-auth" {
+    type: "bearer"
+    # value is missing! Syntax error!
+}
+
+POST "my_request" {
+    url: "http://localhost:8080/post"
+    auth: "my-auth"
+}

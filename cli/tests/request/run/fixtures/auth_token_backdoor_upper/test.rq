@@ -1,0 +1,11 @@
+// This provider usually fails because interactive auth is not implemented
+auth implicit_test(auth_type.oauth2_implicit) {
+    client_id: "my-client";
+    authorization_url: "https://example.com/auth";
+}
+
+// We provide the backdoor token in UPPERCASE
+let AUTH_TOKEN = "backdoor-token-upper";
+
+[auth("implicit_test")]
+rq backdoor_test("http://localhost:8080/api/managed");

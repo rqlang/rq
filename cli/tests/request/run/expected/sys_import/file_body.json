@@ -1,0 +1,21 @@
+{
+    "http": {
+        "method": "GET",
+        "baseUrl": "",
+        "originalUrl": "/api/upload",
+        "protocol": "http"
+    },
+    "request": {
+        "params": {"0": "/api/upload"},
+        "query": {},
+        "cookies": {},
+        "body": "Hello from imported file!",
+        "headers": {
+            "user-agent": "rq/0.0.0",
+            "accept": "*/*",
+            "host": "localhost:8080",
+            "content-type": "text/plain",
+            "content-length": "25"
+        }
+    }
+}

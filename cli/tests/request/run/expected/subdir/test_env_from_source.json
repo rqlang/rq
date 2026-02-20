@@ -1,0 +1,7 @@
+{
+    "request": {
+        "headers": {
+            "x-test-var": "from_subdir_env"
+        }
+    }
+}

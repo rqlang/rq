@@ -1,0 +1,1 @@
+Error: Syntax error in tests/request/run/input/invalid_syntax__code_2/import/missing_semi.rq at line 1, column 17: Expected ';'

@@ -21,7 +21,7 @@ $ErrorActionPreference = 'Stop'
 
 $Repo = 'rqlang/rq'
 $Workflow = 'release_cd.yaml'
-$ArtifactName = 'rq-windows-amd64'
+$ArtifactName = 'rq-windows-x86_64.exe'
 
 if (-not $Env:LOCALAPPDATA) {
     throw 'LOCALAPPDATA environment variable is not set; cannot determine user install directory.'

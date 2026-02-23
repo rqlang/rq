@@ -34,6 +34,10 @@ INSTALL_DIR=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --release-tag)
+      # Ignored in dev script but accepted for compatibility with prod script invocation
+      shift 2
+      ;;
     -d|--install-dir)
       [[ $# -ge 2 ]] || error "Missing value for $1"
       INSTALL_DIR="$2"

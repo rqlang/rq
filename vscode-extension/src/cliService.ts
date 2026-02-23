@@ -534,10 +534,23 @@ async function runInstallScript(releaseTag: string, isDev: boolean = false, inst
         const fs = await import('fs');
         if (fs.existsSync(devScriptPath)) {
             const localDir = !installOnPath ? getLocalInstallDir() : '';
-            command = `bash "${devScriptPath}"`;
-            if (localDir) {
-                command += ` --install-dir "${localDir}"`;
+            
+            if (process.platform === 'win32') {
+                const devScriptPs1 = path.join(scriptsDir, 'install-rq-dev.ps1');
+                command = `powershell -ExecutionPolicy Bypass -File "${devScriptPs1}"`;
+                if (localDir) {
+                    command += ` -InstallDir "${localDir}"`;
+                }
+            } else {
+                command = `bash "${devScriptPath}"`;
+                if (installOnPath) {
+                    // Use -E to preserve environment variables (especially PATH for gh CLI)
+                    command = `sudo -E ${command}`;
+                } else if (localDir) {
+                    command += ` --install-dir "${localDir}"`;
+                }
             }
+
             taskName = 'Install rq CLI (Dev)';
 
             await runInstallationTask(command, taskName);

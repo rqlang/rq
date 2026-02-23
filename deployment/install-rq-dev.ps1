@@ -22,6 +22,16 @@ if (-not $Env:LOCALAPPDATA) {
 }
 $DestinationBin = Join-Path $Env:LOCALAPPDATA 'rq'
 
+# Allow script to be called with -ReleaseTag param for compatibility, though ignored for dev builds
+Param(
+    [string]$ReleaseTag = "",
+    [string]$InstallDir = ""
+)
+
+if ($InstallDir) {
+    $DestinationBin = $InstallDir
+}
+
 function Write-Info($msg){ Write-Host "[INFO ] $msg" -ForegroundColor Cyan }
 function Write-Warn($msg){ Write-Warning $msg }
 function Write-Err ($msg){ Write-Host "[ERROR] $msg" -ForegroundColor Red }

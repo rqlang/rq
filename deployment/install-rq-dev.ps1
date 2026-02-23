@@ -10,6 +10,12 @@ The install directory is added to the user PATH if not already present.
 Requires: gh CLI installed and authenticated (gh auth login). Requires PowerShell 5.1+ or PowerShell Core.
 #>
 
+# Allow script to be called with -ReleaseTag param for compatibility, though ignored for dev builds
+Param(
+    [string]$ReleaseTag = "",
+    [string]$InstallDir = ""
+)
+
 set-strictmode -version latest
 $ErrorActionPreference = 'Stop'
 
@@ -21,12 +27,6 @@ if (-not $Env:LOCALAPPDATA) {
     throw 'LOCALAPPDATA environment variable is not set; cannot determine user install directory.'
 }
 $DestinationBin = Join-Path $Env:LOCALAPPDATA 'rq'
-
-# Allow script to be called with -ReleaseTag param for compatibility, though ignored for dev builds
-Param(
-    [string]$ReleaseTag = "",
-    [string]$InstallDir = ""
-)
 
 if ($InstallDir) {
     $DestinationBin = $InstallDir

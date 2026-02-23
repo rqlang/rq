@@ -181,6 +181,7 @@ jobs:
         run: |
           mkdir -p scripts
           cp ../deployment/install-rq-dev.sh scripts/
+          cp ../deployment/install-rq-dev.ps1 scripts/
 
       - name: Install dependencies
         run: npm ci

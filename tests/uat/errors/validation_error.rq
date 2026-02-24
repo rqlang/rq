@@ -1,0 +1,6 @@
+auth invalid_bearer(auth_type.bearer) {
+    token_url: "https://example.com/token",
+}
+
+[auth("invalid_bearer")]
+rq should_not_validate("http://localhost:8080/test");

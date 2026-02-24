@@ -1,0 +1,6 @@
+let base_url = "http://localhost:8080";
+let shared_path = "/test";
+
+auth shared_bearer(auth_type.bearer) {
+    token: "{{api_token}}",
+}

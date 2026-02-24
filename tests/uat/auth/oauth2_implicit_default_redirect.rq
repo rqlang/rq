@@ -1,0 +1,8 @@
+auth oauth_implicit_default(auth_type.oauth2_implicit) {
+    client_id: "{{oauth_client_id}}",
+    authorization_url: "{{oauth_authorization_url}}",
+    scope: "{{oauth_scope}}"
+}
+
+[auth("oauth_implicit_default")]
+rq get_implicit_default_redirect("http://localhost:8080/test");

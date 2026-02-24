@@ -1,0 +1,14 @@
+let base_url = "http://localhost:8080";
+let api_path = "/test";
+
+env local {
+    base_url: "http://127.0.0.1:8080",
+    api_path: "/test",
+}
+
+env alt {
+    base_url: "http://localhost:8080",
+    api_path: "/alt",
+}
+
+rq env_demo("{{base_url}}{{api_path}}");

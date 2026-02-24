@@ -1,0 +1,13 @@
+let base = "http://localhost:8080";
+let default_headers = [
+    "X-Uat": "endpoint",
+];
+
+ep api(url: base, headers: default_headers, qs: "v=1") {
+    rq root("/test");
+}
+
+ep users<api>("/users") {
+    rq list();
+    rq get("/123");
+}

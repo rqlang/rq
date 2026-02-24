@@ -1,0 +1,10 @@
+auth oauth_ac_custom(auth_type.oauth2_authorization_code) {
+    client_id: "{{oauth_client_id}}",
+    authorization_url: "{{oauth_authorization_url}}",
+    token_url: "{{oauth_token_url}}",
+    redirect_uri: "http://localhost:8080/custom",
+    scope: "{{oauth_scope}}"
+}
+
+[auth("oauth_ac_custom")]
+rq get_ac_custom_redirect("http://localhost:8080/test");

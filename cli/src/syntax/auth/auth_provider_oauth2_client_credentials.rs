@@ -214,6 +214,7 @@ impl AuthProvider for OAuth2ClientCredentialsProvider {
                     "sub": client_id,
                     "aud": token_url,
                     "jti": Uuid::new_v4().to_string(),
+                    "iat": now,
                     "nbf": now - 60, // Allow for 1 minute clock skew
                     "exp": now + 300
                 });

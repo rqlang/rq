@@ -1,0 +1,81 @@
+{
+  "realm": "rq-uat",
+  "enabled": true,
+  "displayName": "rq UAT",
+  "loginWithEmailAllowed": false,
+  "registrationAllowed": false,
+  "resetPasswordAllowed": true,
+  "sslRequired": "external",
+  "users": [
+    {
+      "username": "uat",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "uat",
+          "temporary": false
+        }
+      ]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "rq-uat-ac",
+      "name": "rq-uat (Authorization Code + PKCE)",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "vscode://rq-lang.rq-language/*",
+        "http://localhost:3000/*",
+        "http://127.0.0.1:3000/*",
+        "https://example.com/*"
+      ],
+      "webOrigins": [
+        "*"
+      ]
+    },
+    {
+      "clientId": "rq-uat-implicit",
+      "name": "rq-uat (Implicit)",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "vscode://rq-lang.rq-language/*",
+        "http://localhost:3000/*",
+        "http://127.0.0.1:3000/*"
+      ],
+      "webOrigins": [
+        "*"
+      ]
+    },
+    {
+      "clientId": "rq-uat-cc",
+      "name": "rq-uat (Client Credentials)",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "rq-uat-secret",
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "redirectUris": [],
+      "webOrigins": [
+        "*"
+      ]
+    }
+  ]
+}

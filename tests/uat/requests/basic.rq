@@ -1,0 +1,30 @@
+let base_url = "http://localhost:8080";
+
+rq get_basic("{{base_url}}/test");
+
+[timeout(2)]
+rq get_with_headers(
+    "{{base_url}}/test",
+    [
+        "Accept": "application/json",
+        "X-Uat": "basic",
+    ]
+);
+
+[method(POST)]
+rq post_json(
+    "{{base_url}}/test",
+    [
+        "X-Uat": "post-json",
+    ],
+    ${"hello":"world","n":123}
+);
+
+rq post_text(
+    url: "{{base_url}}/test",
+    headers: [
+        "Content-Type": "text/plain",
+        "X-Uat": "post-text",
+    ],
+    body: "hello"
+);

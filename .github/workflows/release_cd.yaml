@@ -190,7 +190,17 @@ jobs:
         run: npm install -g @vscode/vsce
 
       - name: Update version in package.json
-        run: npm version ${{ needs.version.outputs.version }} --no-git-tag-version
+        shell: bash
+        run: |
+          current=$(node -p "require('./package.json').version")
+          target="${{ needs.version.outputs.version }}"
+          echo "Current version: $current"
+          echo "Target version:  $target"
+          if [ "$current" != "$target" ]; then
+            npm version "$target" --no-git-tag-version
+          else
+            echo "package.json already at $target; skipping npm version"
+          fi
 
       - name: Lint TypeScript
         run: npm run lint

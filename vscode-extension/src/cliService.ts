@@ -414,18 +414,6 @@ async function startInstall(extensionVersion: string, isDevVersion: boolean): Pr
     await runInstallScript(extensionVersion, isDevVersion);
 }
 
-function isWSL(): boolean {
-    if (process.env.WSL_DISTRO_NAME) {
-        return true;
-    }
-    try {
-        const procVersion = fs.readFileSync('/proc/version', 'utf8');
-        return /microsoft/i.test(procVersion);
-    } catch {
-        return false;
-    }
-}
-
 function getLocalInstallDir(): string {
     if (process.platform === 'win32') {
         return path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'rq');

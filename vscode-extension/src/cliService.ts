@@ -323,7 +323,11 @@ function getCliCommand(): { executable: string; args: string[]; cwd?: string } {
 
     const customPath = vscode.workspace.getConfiguration('rq').get<string>('cli.path', '');
     if (customPath) {
-        return { executable: customPath, args: [] };
+        try {
+            if (fs.existsSync(customPath)) {
+                return { executable: customPath, args: [] };
+            }
+        } catch (_) { /* ignore */ }
     }
 
     return { executable: resolveRqBinary(), args: [] };
@@ -374,9 +378,7 @@ export async function checkCliVersion(extensionId: string): Promise<void> {
             'Update Now'
         );
         if (selection === 'Update Now') {
-            const config = vscode.workspace.getConfiguration('rq');
-            const installOnPath = config.get<boolean>('cli.installOnPath', true);
-            await runInstallScript(extensionVersion, isDevVersion, installOnPath);
+            await runInstallScript(extensionVersion, isDevVersion);
         } else {
             setCliInstalling(false);
         }
@@ -402,27 +404,14 @@ export async function promptInstallCli(): Promise<void> {
 }
 
 async function startInstall(extensionVersion: string, isDevVersion: boolean): Promise<void> {
-    let installOnPath: boolean;
-    if (process.platform === 'win32') {
-        installOnPath = true;
-    } else if (isUbuntuDesktop()) {
-        installOnPath = false;
+    const installDir = getLocalInstallDir();
+    const config = vscode.workspace.getConfiguration('rq');
+    
+    const binaryName = process.platform === 'win32' ? 'rq.exe' : 'rq';
+    const fullPath = path.join(installDir, binaryName);
+    await config.update('cli.path', fullPath, vscode.ConfigurationTarget.Global);
 
-        const config = vscode.workspace.getConfiguration('rq');
-        await config.update('cli.installOnPath', false, vscode.ConfigurationTarget.Global);
-
-        const installDir = getLocalInstallDir();
-        const fullPath = path.join(installDir, 'rq');
-        await config.update('cli.path', fullPath, vscode.ConfigurationTarget.Global);
-    } else {
-        const choice = await askInstallOnPath();
-        if (choice === undefined) {
-            setCliInstalling(false);
-            return;
-        }
-        installOnPath = choice;
-    }
-    await runInstallScript(extensionVersion, isDevVersion, installOnPath);
+    await runInstallScript(extensionVersion, isDevVersion);
 }
 
 function isWSL(): boolean {
@@ -432,18 +421,6 @@ function isWSL(): boolean {
     try {
         const procVersion = fs.readFileSync('/proc/version', 'utf8');
         return /microsoft/i.test(procVersion);
-    } catch {
-        return false;
-    }
-}
-
-function isUbuntuDesktop(): boolean {
-    if (process.platform !== 'linux' || isWSL()) {
-        return false;
-    }
-    try {
-        const osRelease = fs.readFileSync('/etc/os-release', 'utf8');
-        return /^ID=ubuntu$/m.test(osRelease);
     } catch {
         return false;
     }
@@ -466,8 +443,8 @@ function getPathInstallDir(): string {
 function resolveRqBinary(): string {
     const binaryName = process.platform === 'win32' ? 'rq.exe' : 'rq';
     const knownDirs = [
-        getPathInstallDir(),
-        getLocalInstallDir()
+        getLocalInstallDir(),
+        getPathInstallDir()
     ];
 
     for (const dir of knownDirs) {
@@ -482,44 +459,7 @@ function resolveRqBinary(): string {
     return 'rq';
 }
 
-async function askInstallOnPath(): Promise<boolean | undefined> {
-    const onPath: vscode.QuickPickItem = {
-        label: '$(check) Install on system PATH',
-        description: process.platform === 'win32'
-            ? 'Installs to %LOCALAPPDATA%\\rq and adds it to your user PATH'
-            : 'Installs to /usr/local/bin (requires sudo — your password will be requested)',
-        detail: 'Recommended. The rq command will be available in any terminal.'
-    };
-
-    const localOnly: vscode.QuickPickItem = {
-        label: '$(folder) Install locally (no PATH changes)',
-        description: `Installs to ${getLocalInstallDir()}`,
-        detail: 'No elevated permissions needed. The extension will invoke the CLI directly using the stored path.'
-    };
-
-    const choice = await vscode.window.showQuickPick([onPath, localOnly], {
-        title: 'How would you like to install the rq CLI?',
-        placeHolder: 'Choose an installation method',
-        ignoreFocusOut: true
-    });
-
-    if (!choice) {
-        return undefined;
-    }
-
-    const wantOnPath = choice === onPath;
-    const config = vscode.workspace.getConfiguration('rq');
-    await config.update('cli.installOnPath', wantOnPath, vscode.ConfigurationTarget.Global);
-
-    const installDir = wantOnPath ? getPathInstallDir() : getLocalInstallDir();
-    const binaryName = process.platform === 'win32' ? 'rq.exe' : 'rq';
-    const fullPath = path.join(installDir, binaryName);
-    await config.update('cli.path', fullPath, vscode.ConfigurationTarget.Global);
-
-    return wantOnPath;
-}
-
-async function runInstallScript(releaseTag: string, isDev: boolean = false, installOnPath: boolean = true): Promise<void> {
+async function runInstallScript(releaseTag: string, isDev: boolean = false): Promise<void> {
     if (!cachedExtensionPath) {
         vscode.window.showErrorMessage('Cannot locate extension path. Please reinstall the extension.');
         return;
@@ -533,22 +473,13 @@ async function runInstallScript(releaseTag: string, isDev: boolean = false, inst
         const devScriptPath = path.join(scriptsDir, 'install-rq-dev.sh');
         const fs = await import('fs');
         if (fs.existsSync(devScriptPath)) {
-            const localDir = !installOnPath ? getLocalInstallDir() : '';
+            const localDir = getLocalInstallDir();
             
             if (process.platform === 'win32') {
                 const devScriptPs1 = path.join(scriptsDir, 'install-rq-dev.ps1');
-                command = `powershell -ExecutionPolicy Bypass -File "${devScriptPs1}"`;
-                if (localDir) {
-                    command += ` -InstallDir "${localDir}"`;
-                }
+                command = `powershell -ExecutionPolicy Bypass -File "${devScriptPs1}" -InstallDir "${localDir}"`;
             } else {
-                command = `bash "${devScriptPath}"`;
-                if (installOnPath) {
-                    // Use -E to preserve environment variables (especially PATH for gh CLI)
-                    command = `sudo -E ${command}`;
-                } else if (localDir) {
-                    command += ` --install-dir "${localDir}"`;
-                }
+                command = `bash "${devScriptPath}" --install-dir "${localDir}"`;
             }
 
             taskName = 'Install rq CLI (Dev)';
@@ -558,21 +489,14 @@ async function runInstallScript(releaseTag: string, isDev: boolean = false, inst
         }
     }
 
-    const localDir = !installOnPath ? getLocalInstallDir() : '';
+    const localDir = getLocalInstallDir();
 
     if (process.platform === 'win32') {
         const scriptPath = path.join(scriptsDir, 'install-rq.ps1');
-        command = `powershell -ExecutionPolicy Bypass -File "${scriptPath}" -ReleaseTag "${releaseTag}"`;
-        if (localDir) {
-            command += ` -InstallDir "${localDir}"`;
-        }
+        command = `powershell -ExecutionPolicy Bypass -File "${scriptPath}" -ReleaseTag "${releaseTag}" -InstallDir "${localDir}"`;
     } else {
         const scriptPath = path.join(scriptsDir, 'install-rq.sh');
-        if (installOnPath) {
-            command = `sudo bash "${scriptPath}" --release-tag "${releaseTag}"`;
-        } else {
-            command = `bash "${scriptPath}" --release-tag "${releaseTag}" --install-dir "${localDir}"`;
-        }
+        command = `bash "${scriptPath}" --release-tag "${releaseTag}" --install-dir "${localDir}"`;
     }
 
     await runInstallationTask(command, taskName);

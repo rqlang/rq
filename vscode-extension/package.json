@@ -107,11 +107,6 @@
           "default": false,
           "description": "Use local development CLI (cargo run) instead of installed rq binary"
         },
-        "rq.cli.installOnPath": {
-          "type": "boolean",
-          "default": true,
-          "description": "Install the rq CLI to a system-wide directory already on PATH (requires sudo on Linux/macOS). When false, the CLI is installed to a local directory and invoked by the extension directly."
-        },
         "rq.cli.path": {
           "type": "string",
           "default": "",

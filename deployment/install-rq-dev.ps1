@@ -36,24 +36,6 @@ function Write-Info($msg){ Write-Host "[INFO ] $msg" -ForegroundColor Cyan }
 function Write-Warn($msg){ Write-Warning $msg }
 function Write-Err ($msg){ Write-Host "[ERROR] $msg" -ForegroundColor Red }
 
-function Add-DirectoryToPath {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Directory
-    )
-
-    $Directory = [IO.Path]::GetFullPath($Directory)
-    $currentUserPath = [Environment]::GetEnvironmentVariable('Path', 'User')
-    if ($currentUserPath -split ';' | Where-Object { $_.TrimEnd('\') -eq $Directory.TrimEnd('\') }) {
-        Write-Info "'$Directory' is already in user PATH"
-        return
-    }
-    $newPath = "$currentUserPath;$Directory"
-    [Environment]::SetEnvironmentVariable('Path', $newPath, 'User')
-    $env:Path = "$Directory;$env:Path"
-    Write-Info "Added '$Directory' to user PATH"
-}
-
 function Get-LatestRunId {
     Write-Info "Auto-detecting latest successful workflow run (repo=$Repo workflow=$Workflow)"
     
@@ -153,8 +135,6 @@ try {
     if (-not (Test-Path $destExe)) { throw 'Failed to place rq.exe in destination.' }
 
     Write-Host "Success: Installed rq.exe to $destExe" -ForegroundColor Green
-
-    Add-DirectoryToPath -Directory $resolvedDestBin
 }
 finally {
     Pop-Location

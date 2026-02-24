@@ -37,41 +37,6 @@ function Write-Info($msg) { Write-Host "[INFO ] $msg" -ForegroundColor Cyan }
 function Write-Warn($msg) { Write-Warning $msg }
 function Write-Err($msg)  { Write-Host "[ERROR] $msg" -ForegroundColor Red }
 
-function Add-DirectoryToPath {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Directory
-    )
-
-    $Directory = [IO.Path]::GetFullPath($Directory)
-    
-    # Update only the user PATH so admin rights are not required
-    $userKey = 'HKCU:\Environment'
-    try {
-        $userPath = ''
-        if (Test-Path $userKey) {
-            $userPath = (Get-ItemProperty -Path $userKey -Name Path -ErrorAction SilentlyContinue).Path
-        }
-        $parts = @()
-        if ($userPath) { $parts = $userPath.Split(';') | Where-Object { $_ } }
-        if ($parts -notcontains $Directory) {
-            $newPath = ($userPath.TrimEnd(';'))
-            if ($newPath) { $newPath += ';' }
-            $newPath += $Directory
-            if (-not (Test-Path $userKey)) {
-                New-Item -Path $userKey -Force | Out-Null
-            }
-            Set-ItemProperty -Path $userKey -Name Path -Value $newPath
-            Write-Info "Added $Directory to user PATH. Open a new terminal to see the change."
-        } else {
-            Write-Info "$Directory already present in user PATH."
-        }
-    }
-    catch {
-        Write-Warn "Failed to update user PATH: $($_.Exception.Message)"
-    }
-}
-
 # Use a temp file for the download to avoid leaving rq.exe in the current directory
 $DownloadDirectory = [IO.Path]::GetTempPath()
 
@@ -185,7 +150,10 @@ $installExe = Join-Path $installRoot 'rq.exe'
 Write-Info "Copying rq.exe to $installExe"
 Copy-Item -Path $rqPath -Destination $installExe -Force
 
-if (-not (Test-Path $installExe)) {
+if ($installExe -and (Test-Path $installExe)) {
+    Write-Info "Installed rq.exe to $installExe"
+    Write-Host "Success!" -ForegroundColor Green
+} else {
     throw "Failed to install rq.exe to $installExe"
 }
 
@@ -193,8 +161,3 @@ if (-not (Test-Path $installExe)) {
 if (Test-Path $rqPath) {
     Remove-Item -Path $rqPath -Force -ErrorAction SilentlyContinue
 }
-
-# Ensure install directory is on PATH
-Add-DirectoryToPath -Directory $installRoot
-
-Write-Host "Success: Installed rq.exe to $installExe" -ForegroundColor Green

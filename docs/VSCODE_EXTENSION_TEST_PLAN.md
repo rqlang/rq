@@ -28,26 +28,6 @@ The start script imports a realm named `rq-uat` and creates clients for Authoriz
 
 If your VS Code is running in a container/remote environment, ensure `http://localhost:9090` is reachable from that environment (you may need port forwarding).
 
-Keycloak setup requirements:
-
-- Keycloak is running and reachable from your VS Code environment.
-- Create a dedicated realm (for example `rq-uat`).
-- Create OIDC clients that cover the supported auth types:
-   - Authorization code + PKCE: a client with Standard Flow enabled, PKCE enabled (S256), and redirect URIs that include `vscode://rq-lang.rq-language/oauth-callback` and/or a localhost callback you will use for redirect capture.
-   - Implicit: a client with Implicit Flow enabled and matching redirect URIs.
-   - Client credentials: a confidential client with Service Accounts enabled; note the client secret.
-- Create at least one test user in the realm (username + password) for interactive flows.
-- Record the realm endpoints to use in the `.rq` auth fixtures:
-   - Authorization endpoint URL
-   - Token endpoint URL
-
-Extension/CLI requirements:
-
-- VS Code installed
-- The extension installed (dev or prod build)
-- `rq` CLI available (or intentionally missing, for install tests)
-- GitHub CLI (`gh`) authenticated if you are testing dev/integration installers
-
 ## Test data (workspace fixtures)
 
 Use the committed UAT fixture workspace under:
@@ -55,16 +35,6 @@ Use the committed UAT fixture workspace under:
 - [../tests/uat](../tests/uat)
 
 These files cover request discovery (folders/endpoints), environments/variables, imports, auth variants, and intentional error cases.
-
-If you want deterministic request execution during tests, run an echo server on `http://localhost:8080` (same setup as the CLI tests; see [docs/LOCAL_DEVELOPMENT.md](docs/LOCAL_DEVELOPMENT.md)).
-
-## Observability
-
-When running tests, keep these visible:
-
-- VS Code Output panel → channel “RQ”
-- Problems panel
-- RQ Request Explorer view
 
 ## Test matrix
 
@@ -86,7 +56,7 @@ Repeat key flows in both modes if applicable:
 
 Steps:
 
-1. Ensure `rq` is installed and on PATH (or configured via `rq.cli.path`).
+1. Ensure `rq` CLI is installed and available to the extension.
 2. Open VS Code to the test workspace.
 3. Wait for activation (open any `.rq` file if needed).
 
@@ -100,8 +70,7 @@ Expected:
 
 Steps:
 
-1. Ensure `rq` is not available:
-   - Remove from PATH, and clear `rq.cli.path`.
+1. Ensure `rq` is not available to the extension (no working CLI binary configured).
 2. Reload VS Code window.
 3. Observe the prompt.
 
@@ -124,7 +93,7 @@ Expected:
 - The “Installing…” placeholder disappears automatically.
 - RQ Request Explorer refreshes and loads real request items.
 
-## A4. Version mismatch (update path)
+## A4. Version mismatch (update CLI)
 
 Steps:
 

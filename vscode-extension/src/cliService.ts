@@ -300,7 +300,7 @@ function findCliPath(): string | null {
                     cachedCliPath = cliPath;
                     return cliPath;
                 }
-            } catch (_) {}
+            } catch (_) { /* empty */ }
         }
     }
 
@@ -338,7 +338,7 @@ function getCliCommand(): { executable: string; args: string[]; cwd?: string } {
             if (fs.existsSync(customPath)) {
                 return { executable: customPath, args: [], cwd: workspaceCwd };
             }
-        } catch (_) {}
+        } catch (_) { /* empty */ }
     }
 
     return { executable: resolveRqBinary(), args: [], cwd: workspaceCwd };
@@ -366,7 +366,7 @@ export async function checkCliVersion(extensionId: string): Promise<void> {
         if (match) {
             cliVersion = match[1];
         }
-    } catch (_) {}
+    } catch (_) { /* empty */ }
 
     if (cliVersion === null) {
         setCliInstalling(true);
@@ -452,7 +452,7 @@ function resolveRqBinary(): string {
             if (fs.existsSync(fullPath)) {
                 return fullPath;
             }
-        } catch (_) {}
+        } catch (_) { /* empty */ }
     }
 
     return 'rq';

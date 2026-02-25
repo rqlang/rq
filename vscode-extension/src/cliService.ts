@@ -127,13 +127,17 @@ function parseAndReportErrors(stderr: string, cwd?: string): void {
     const diagnosticsMap = new Map<string, vscode.Diagnostic[]>();
 
     while ((match = errorRegex.exec(stderr)) !== null) {
-        const rawFilePath = match[1];
+        const rawFilePath = match[1].trim();
         const line = parseInt(match[2], 10) - 1; // VS Code is 0-indexed
         const column = parseInt(match[3], 10) - 1;
         const message = match[4];
 
         let filePath = rawFilePath;
-        if (!path.isAbsolute(rawFilePath)) {
+        // On macOS/Linux, paths starting with / are absolute. On Windows, paths starting with X: or \ are absolute.
+        // path.isAbsolute might fail if the path format is slightly off or due to environment differences.
+        const looksLikeAbsolute = rawFilePath.startsWith('/') || /^[a-zA-Z]:/.test(rawFilePath) || rawFilePath.startsWith('\\');
+
+        if (!path.isAbsolute(rawFilePath) && !looksLikeAbsolute) {
             const basePath = cwd || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
             if (basePath) {
                 filePath = path.resolve(basePath, rawFilePath);

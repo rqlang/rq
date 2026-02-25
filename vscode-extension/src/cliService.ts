@@ -132,6 +132,9 @@ function parseAndReportErrors(stderr: string, cwd?: string): void {
         const column = parseInt(match[3], 10) - 1;
         const message = match[4];
 
+        if (outputChannel) {
+            outputChannel.appendLine(`[Error Parsing] Found error in: ${rawFilePath} (cwd: ${cwd})`);
+        }
         console.log(`[Error Parsing] Found error in: ${rawFilePath} (cwd: ${cwd})`);
 
         let filePath = rawFilePath;
@@ -141,6 +144,9 @@ function parseAndReportErrors(stderr: string, cwd?: string): void {
 
         if (!path.isAbsolute(rawFilePath) && !looksLikeAbsolute) {
             const basePath = cwd || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+             if (outputChannel) {
+                 outputChannel.appendLine(`[Error Parsing] Resolving relative path with base: ${basePath}`);
+             }
              console.log(`[Error Parsing] Resolving relative path with base: ${basePath}`);
             if (basePath) {
                 filePath = path.resolve(basePath, rawFilePath);
@@ -149,9 +155,15 @@ function parseAndReportErrors(stderr: string, cwd?: string): void {
              // Handle cases where looksLikeAbsolute is true but path.isAbsolute is false (e.g. mixed separators)
              // Trust rawFilePath as absolute if it looks like one
              filePath = rawFilePath;
+             if (outputChannel) {
+                 outputChannel.appendLine(`[Error Parsing] Treating '${rawFilePath}' as absolute path despite path.isAbsolute check`);
+             }
         }
         
         filePath = normalizePath(filePath);
+        if (outputChannel) {
+            outputChannel.appendLine(`[Error Parsing] Normalized path: ${filePath}`);
+        }
         console.log(`[Error Parsing] Normalized path: ${filePath}`);
 
         const range = new vscode.Range(line, column, line, Number.MAX_VALUE);
@@ -165,6 +177,9 @@ function parseAndReportErrors(stderr: string, cwd?: string): void {
              // This is a specific workaround for the reported issue where paths get duplicated
              // e.g. /ws/tests/uat/errors/Users/user/ws/tests/uat/errors/file.rq
              const potentialReal = filePath.substring(filePath.lastIndexOf('/Users/'));
+             if (outputChannel) {
+                 outputChannel.appendLine(`[Error Parsing] Detected potential duplicate path. Fixing to: ${potentialReal}`);
+             }
              console.log(`[Error Parsing] Detected potential duplicate path. Fixing to: ${potentialReal}`);
              if (potentialReal.startsWith('/')) {
                  filePath = potentialReal;

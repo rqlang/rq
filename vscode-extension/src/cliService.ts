@@ -128,7 +128,7 @@ function parseAndReportErrors(stderr: string, cwd?: string): void {
 
     while ((match = errorRegex.exec(stderr)) !== null) {
         const rawFilePath = match[1].trim();
-        const line = parseInt(match[2], 10) - 1; // VS Code is 0-indexed
+        const line = parseInt(match[2], 10) - 1; 
         const column = parseInt(match[3], 10) - 1;
         const message = match[4];
 
@@ -138,8 +138,6 @@ function parseAndReportErrors(stderr: string, cwd?: string): void {
         console.log(`[Error Parsing] Found error in: ${rawFilePath} (cwd: ${cwd})`);
 
         let filePath = rawFilePath;
-        // On macOS/Linux, paths starting with / are absolute. On Windows, paths starting with X: or \ are absolute.
-        // path.isAbsolute might fail if the path format is slightly off or due to environment differences.
         const looksLikeAbsolute = rawFilePath.startsWith('/') || /^[a-zA-Z]:/.test(rawFilePath) || rawFilePath.startsWith('\\');
 
         if (!path.isAbsolute(rawFilePath) && !looksLikeAbsolute) {
@@ -152,12 +150,7 @@ function parseAndReportErrors(stderr: string, cwd?: string): void {
                 filePath = path.resolve(basePath, rawFilePath);
             }
         } else if (looksLikeAbsolute && !path.isAbsolute(rawFilePath)) {
-             // Handle cases where looksLikeAbsolute is true but path.isAbsolute is false (e.g. mixed separators)
-             // Trust rawFilePath as absolute if it looks like one
              filePath = rawFilePath;
-             if (outputChannel) {
-                 outputChannel.appendLine(`[Error Parsing] Treating '${rawFilePath}' as absolute path despite path.isAbsolute check`);
-             }
         }
         
         filePath = normalizePath(filePath);
@@ -169,22 +162,6 @@ function parseAndReportErrors(stderr: string, cwd?: string): void {
         const range = new vscode.Range(line, column, line, Number.MAX_VALUE);
         const diagnostic = new vscode.Diagnostic(range, message, vscode.DiagnosticSeverity.Error);
         diagnostic.source = 'rq-cli';
-
-        // Fix for potential duplicate path segments in error reporting
-        // If the calculated path seems to contain the workspace root twice, try to fix it
-        if (filePath.includes(cwd || '') && filePath.split(path.sep).filter(p => p === 'Users').length > 1) {
-             // Heuristic: If 'Users' appears twice and path contains cwd, it might be a double resolution
-             // This is a specific workaround for the reported issue where paths get duplicated
-             // e.g. /ws/tests/uat/errors/Users/user/ws/tests/uat/errors/file.rq
-             const potentialReal = filePath.substring(filePath.lastIndexOf('/Users/'));
-             if (outputChannel) {
-                 outputChannel.appendLine(`[Error Parsing] Detected potential duplicate path. Fixing to: ${potentialReal}`);
-             }
-             console.log(`[Error Parsing] Detected potential duplicate path. Fixing to: ${potentialReal}`);
-             if (potentialReal.startsWith('/')) {
-                 filePath = potentialReal;
-             }
-        }
 
         const uri = vscode.Uri.file(filePath);
         const uriStr = uri.toString();
@@ -245,10 +222,6 @@ export interface AuthConfig {
 
 export type AuthListOutput = string[];
 
-/**
- * Raw JSON shape returned by `rq auth show -o json`.
- * Keys are capitalised because the CLI uses Serde rename attributes.
- */
 interface AuthShowRaw {
     'Auth Configuration': string;
     Type: string;
@@ -276,10 +249,6 @@ export interface ListRequestsResult {
     errors?: string[];
 }
 
-/**
- * Raw JSON shape returned by `rq request show -o json`.
- * Keys are capitalised because the CLI uses Serde rename attributes.
- */
 interface RequestShowRaw {
     Request: string;
     URL: string;
@@ -331,7 +300,7 @@ function findCliPath(): string | null {
                     cachedCliPath = cliPath;
                     return cliPath;
                 }
-            } catch (_) { /* ignore */ }
+            } catch (_) {}
         }
     }
 
@@ -361,16 +330,18 @@ function getCliCommand(): { executable: string; args: string[]; cwd?: string } {
         return { executable: 'cargo', args: ['run', '--'], cwd: findCliPath() || undefined };
     }
 
+    const workspaceCwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+
     const customPath = vscode.workspace.getConfiguration('rq').get<string>('cli.path', '');
     if (customPath) {
         try {
             if (fs.existsSync(customPath)) {
-                return { executable: customPath, args: [] };
+                return { executable: customPath, args: [], cwd: workspaceCwd };
             }
-        } catch (_) { /* ignore */ }
+        } catch (_) {}
     }
 
-    return { executable: resolveRqBinary(), args: [] };
+    return { executable: resolveRqBinary(), args: [], cwd: workspaceCwd };
 }
 
 export async function checkCliVersion(extensionId: string): Promise<void> {
@@ -395,7 +366,7 @@ export async function checkCliVersion(extensionId: string): Promise<void> {
         if (match) {
             cliVersion = match[1];
         }
-    } catch (_) { /* CLI not found */ }
+    } catch (_) {}
 
     if (cliVersion === null) {
         setCliInstalling(true);
@@ -481,7 +452,7 @@ function resolveRqBinary(): string {
             if (fs.existsSync(fullPath)) {
                 return fullPath;
             }
-        } catch (_) { /* ignore */ }
+        } catch (_) {}
     }
 
     return 'rq';
@@ -541,8 +512,6 @@ async function runInstallationTask(command: string, name: string): Promise<void>
 
     const execution = await vscode.tasks.executeTask(task);
     
-    // We don't await the task completion here to avoid blocking execution,
-    // but we register a listener to update state when it finishes.
     const disposable = vscode.tasks.onDidEndTaskProcess(e => {
         if (e.execution === execution) {
             disposable.dispose();

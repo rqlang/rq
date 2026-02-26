@@ -1,9 +1,0 @@
-auth oauth_ac_default(auth_type.oauth2_authorization_code) {
-    client_id: "{{oauth_client_id}}",
-    authorization_url: "{{oauth_authorization_url}}",
-    token_url: "{{oauth_token_url}}",
-    scope: "{{oauth_scope}}"
-}
-
-[auth("oauth_ac_default")]
-rq get_ac_default_redirect("http://localhost:8080/test");

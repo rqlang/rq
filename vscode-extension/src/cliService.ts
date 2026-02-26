@@ -220,7 +220,12 @@ export interface AuthConfig {
     name: string;
 }
 
-export type AuthListOutput = string[];
+export interface AuthListEntry {
+    name: string;
+    auth_type: string;
+}
+
+export type AuthListOutput = AuthListEntry[];
 
 interface AuthShowRaw {
     'Auth Configuration': string;
@@ -567,7 +572,7 @@ export async function listEnvironments(sourceDirectory?: string): Promise<string
     }
 }
 
-export async function listAuthConfigs(sourceDirectory?: string): Promise<string[]> {
+export async function listAuthConfigs(sourceDirectory?: string): Promise<AuthListEntry[]> {
     try {
         const { executable, args: baseArgs, cwd } = getCliCommand();
         const args = [...baseArgs, 'auth', 'list'];

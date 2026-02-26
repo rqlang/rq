@@ -61,7 +61,7 @@
     "commands": [
       {
         "command": "rq.getToken",
-        "title": "Get Token",
+        "title": "Get OAuth2 Token",
         "category": "RQ"
       },
       {

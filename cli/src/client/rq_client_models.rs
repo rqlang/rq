@@ -1,6 +1,12 @@
 use serde::Serialize;
 use std::collections::HashMap;
 
+#[derive(Debug, Serialize, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct AuthListEntry {
+    pub name: String,
+    pub auth_type: String,
+}
+
 pub struct RequestDetails {
     pub name: String,
     pub auth_name: Option<String>,

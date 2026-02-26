@@ -3,11 +3,11 @@ let default_headers = [
     "X-Uat": "endpoint",
 ];
 
-ep api(url: base, headers: default_headers, qs: "v=1") {
-    rq root("/test");
-}
+let user_id = "123";
 
-ep users<api>("/users") {
+ep api(url: base, headers: default_headers, qs: "v=1");
+
+ep users<api>("{{base}}/users") {
     rq list();
-    rq get("/123");
+    rq get(user_id);
 }

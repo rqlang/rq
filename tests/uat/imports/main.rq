@@ -1,4 +1,0 @@
-import "shared";
-
-[auth("shared_bearer")]
-rq imported_request("{{base_url}}{{shared_path}}");

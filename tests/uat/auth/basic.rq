@@ -1,0 +1,6 @@
+import "shared";
+
+let base_url = "http://localhost:8080";
+
+[auth("{{auth_name}}")]
+rq auth_basic("{{base_url}}/test");

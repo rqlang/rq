@@ -1,6 +1,0 @@
-auth bearer_auth(auth_type.bearer) {
-    token: "{{api_token}}",
-}
-
-[auth("bearer_auth")]
-rq get_with_bearer("http://localhost:8080/test");

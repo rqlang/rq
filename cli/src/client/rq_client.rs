@@ -287,7 +287,7 @@ impl RqClient {
         })
     }
 
-    pub fn list_auth(source_path: &Path) -> Result<Vec<String>, RqError> {
+    pub fn list_auth(source_path: &Path) -> Result<Vec<super::rq_client_models::AuthListEntry>, RqError> {
         if !source_path.exists() {
             return Err(RqError::DirectoryNotFound(
                 source_path.display().to_string(),
@@ -298,10 +298,13 @@ impl RqClient {
             return Err(RqError::NotADirectory(source_path.display().to_string()));
         }
 
-        let mut auth_names = HashSet::new();
-        Self::collect_auth_names(source_path, &mut auth_names)?;
+        let mut auth_map = HashMap::new();
+        Self::collect_auth_entries(source_path, &mut auth_map)?;
 
-        let mut auth_list: Vec<String> = auth_names.into_iter().collect();
+        let mut auth_list: Vec<super::rq_client_models::AuthListEntry> = auth_map
+            .into_iter()
+            .map(|(name, auth_type)| super::rq_client_models::AuthListEntry { name, auth_type })
+            .collect();
         auth_list.sort();
 
         Ok(auth_list)
@@ -588,7 +591,7 @@ impl RqClient {
         }
     }
 
-    fn collect_auth_names(dir: &Path, auth_names: &mut HashSet<String>) -> Result<(), RqError> {
+    fn collect_auth_entries(dir: &Path, auth_map: &mut HashMap<String, String>) -> Result<(), RqError> {
         if !dir.is_dir() {
             return Ok(());
         }
@@ -598,11 +601,11 @@ impl RqClient {
             let path = entry.path();
 
             if path.is_dir() {
-                Self::collect_auth_names(&path, auth_names)?;
+                Self::collect_auth_entries(&path, auth_map)?;
             } else if path.extension().and_then(|s| s.to_str()) == Some("rq") {
                 if let Ok(rq_file) = RqFile::from_path(&path) {
-                    for auth_name in rq_file.auth_providers.keys() {
-                        auth_names.insert(auth_name.clone());
+                    for (auth_name, provider) in rq_file.auth_providers.iter() {
+                        auth_map.insert(auth_name.clone(), provider.auth_type.as_str().to_string());
                     }
                 }
             }

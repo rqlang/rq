@@ -1,10 +1,13 @@
-let base_url = "http://localhost:8080";
+import "shared";
 
-rq get_basic("{{base_url}}/test");
+let base = "http://localhost:8080";
+
+rq get_basic("{{base}}/test");
+rq shared_with_env("{{base_url}}{{api_path}}");
 
 [timeout(2)]
 rq get_with_headers(
-    "{{base_url}}/test",
+    "{{base}}/test",
     [
         "Accept": "application/json",
         "X-Uat": "basic",
@@ -13,7 +16,7 @@ rq get_with_headers(
 
 [method(POST)]
 rq post_json(
-    "{{base_url}}/test",
+    "{{base}}/test",
     [
         "X-Uat": "post-json",
     ],
@@ -21,7 +24,7 @@ rq post_json(
 );
 
 rq post_text(
-    url: "{{base_url}}/test",
+    url: "{{base}}/test",
     headers: [
         "Content-Type": "text/plain",
         "X-Uat": "post-text",

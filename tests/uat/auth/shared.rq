@@ -1,0 +1,63 @@
+env bearer_env {
+    auth_name: "bearer_auth",
+}
+
+env oauth_ac_default_env {
+    auth_name: "oauth_ac_default",
+}
+
+env oauth_ac_custom_env {
+    auth_name: "oauth_ac_custom",
+}
+
+env oauth_cc_env {
+    auth_name: "oauth_cc",
+}
+
+env oauth_cc_cert_env {
+    auth_name: "oauth_cc_cert",
+}
+
+env oauth_implicit_default_env {
+    auth_name: "oauth_implicit_default",
+}
+
+auth bearer_auth(auth_type.bearer) {
+    token: "{{api_token}}",
+}
+
+auth oauth_ac_default(auth_type.oauth2_authorization_code) {
+    client_id: "{{oauth_client_id}}",
+    authorization_url: "{{oauth_authorization_url}}",
+    token_url: "{{oauth_token_url}}",
+    scope: "{{oauth_scope}}",
+}
+
+auth oauth_ac_custom(auth_type.oauth2_authorization_code) {
+    client_id: "{{oauth_client_id}}",
+    authorization_url: "{{oauth_authorization_url}}",
+    token_url: "{{oauth_token_url}}",
+    redirect_uri: "http://localhost:8080/custom",
+    scope: "{{oauth_scope}}",
+}
+
+auth oauth_cc(auth_type.oauth2_client_credentials) {
+    client_id: "{{oauth_client_id}}",
+    client_secret: "{{oauth_client_secret}}",
+    token_url: "{{oauth_token_url}}",
+    scope: "{{oauth_scope}}",
+}
+
+auth oauth_cc_cert(auth_type.oauth2_client_credentials) {
+    client_id: "{{oauth_cc_cert_client_id}}",
+    token_url: "{{oauth_token_url}}",
+    cert_file: "../scripts/keycloak/uat/generated/rq-uat-cc-cert.p12",
+    cert_password: "{{oauth_cc_cert_password}}",
+    scope: "{{oauth_scope}}",
+}
+
+auth oauth_implicit_default(auth_type.oauth2_implicit) {
+    client_id: "{{oauth_client_id}}",
+    authorization_url: "{{oauth_authorization_url}}",
+    scope: "{{oauth_scope}}",
+}

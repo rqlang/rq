@@ -1,0 +1,11 @@
+
+auth implicit "BearerToken" {
+    type: "bearer";
+    token: "my-token";
+}
+
+rq my_request {
+    url: "https://example.com";
+    method: "GET";
+    auth: "BearerToken";
+}

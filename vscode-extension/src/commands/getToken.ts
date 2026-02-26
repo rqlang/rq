@@ -54,10 +54,22 @@ export function registerGetTokenCommand(context: vscode.ExtensionContext, output
                 return;
             }
             
-            // Step 3: Let user choose an auth config (required)
-            const selectedAuthName = await vscode.window.showQuickPick(authConfigs, {
-                placeHolder: 'Select an authentication configuration',
-                title: 'Choose Authentication'
+            // Step 3: Filter for supported OAuth2 configurations
+            const oauthConfigs = authConfigs
+                .filter(config => 
+                    config.auth_type === 'oauth2_authorization_code' || 
+                    config.auth_type === 'oauth2_implicit'
+                )
+                .map(config => config.name);
+
+            if (oauthConfigs.length === 0) {
+                vscode.window.showWarningMessage('No supported OAuth2 configurations found (authorization_code or implicit).');
+                return;
+            }
+
+            const selectedAuthName = await vscode.window.showQuickPick(oauthConfigs, {
+                placeHolder: 'Select an OAuth2 authentication configuration',
+                title: 'Get OAuth2 Token'
             });
             
             if (!selectedAuthName) {
@@ -73,28 +85,33 @@ export function registerGetTokenCommand(context: vscode.ExtensionContext, output
                 selectedEnvironment
             );
             
-            // Step 5: Perform OAuth2 flow (flow type determined by auth_type)
+            // Step 5: Perform OAuth2 flow
             console.log(`Starting OAuth2 flow for auth type: ${authConfig.auth_type}`);
-            vscode.window.showInformationMessage('Starting OAuth2 authentication flow...');
             
-            try {
-                const accessToken = await performOAuth2Flow(authConfig, context, outputChannel);
-                
-                // Step 7: Show success and offer to copy token
-                const action = await vscode.window.showInformationMessage(
-                    'OAuth2 authentication successful! Access token obtained.',
-                    'Copy Token'
-                );
-                
-                if (action === 'Copy Token') {
-                    await vscode.env.clipboard.writeText(accessToken);
-                    vscode.window.showInformationMessage('Access token copied to clipboard');
+            await vscode.window.withProgress({
+                location: vscode.ProgressLocation.Notification,
+                title: 'Getting OAuth2 access token...',
+                cancellable: false
+            }, async () => {
+                try {
+                    const accessToken = await performOAuth2Flow(authConfig, context, outputChannel);
+                    
+                    // Step 7: Show success and offer to copy token
+                    const action = await vscode.window.showInformationMessage(
+                        `OAuth2 authentication successful! Access token obtained.`,
+                        'Copy Token'
+                    );
+                    
+                    if (action === 'Copy Token') {
+                        await vscode.env.clipboard.writeText(accessToken);
+                        vscode.window.showInformationMessage('Access token copied to clipboard');
+                    }
+                } catch (error) {
+                    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+                    console.error('OAuth2 flow failed:', errorMessage);
+                    vscode.window.showErrorMessage(`OAuth2 authentication failed: ${errorMessage}`);
                 }
-            } catch (error) {
-                const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-                console.error('OAuth2 flow failed:', errorMessage);
-                vscode.window.showErrorMessage(`OAuth2 authentication failed: ${errorMessage}`);
-            }
+            });
             
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';

@@ -1,4 +1,5 @@
 use crate::commands::shared::{EnvArgs, OutputArgs, SourceArgs};
+use crate::core::formatter::OutputFormat;
 use clap::{Args, Subcommand};
 use serde::Serialize;
 use std::{collections::HashMap, path::Path};
@@ -63,15 +64,24 @@ pub fn execute_list(args: &ListArgs) -> Result<(), Box<dyn std::error::Error>> {
     let source_path = Path::new(&args.source.source);
     let auth_list = crate::client::RqClient::list_auth(source_path)?;
 
-    let formatter = crate::core::formatter::get_formatter(&args.output.output);
-    print!(
-        "{}",
-        formatter.format_list(
-            &auth_list,
-            "Auth configurations found:",
-            "No auth configurations found"
-        )
-    );
+    match args.output.output {
+        OutputFormat::Json => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&auth_list).unwrap_or("[]".to_string())
+            );
+        }
+        OutputFormat::Text => {
+            if auth_list.is_empty() {
+                println!("No auth configurations found");
+            } else {
+                println!("Auth configurations found:");
+                for auth in auth_list {
+                    println!("- {} ({})", auth.name, auth.auth_type);
+                }
+            }
+        }
+    }
 
     Ok(())
 }

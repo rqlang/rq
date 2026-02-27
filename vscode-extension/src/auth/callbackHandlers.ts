@@ -81,7 +81,7 @@ export async function handleLocalServerCallback(authUrl: string, redirectUri: st
                     res.end(`
                         <html>
                         <body style="font-family: Arial, sans-serif; padding: 40px; text-align: center;">
-                            <h1 style="color: #0a0;">✓ Authentication Successful!</h1>
+                            <h1 style="color: #0a0;">Authentication Successful!</h1>
                             <p>You have been authenticated successfully.</p>
                             <p>You can close this window and return to VS Code.</p>
                         </body>

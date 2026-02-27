@@ -10,6 +10,10 @@ env oauth_ac_custom_env {
     auth_name: "oauth_ac_custom",
 }
 
+env oauth_ac_external_env {
+    auth_name: "oauth_ac_external",
+}
+
 env oauth_cc_env {
     auth_name: "oauth_cc",
 }
@@ -37,7 +41,15 @@ auth oauth_ac_custom(auth_type.oauth2_authorization_code) {
     client_id: "{{oauth_client_id}}",
     authorization_url: "{{oauth_authorization_url}}",
     token_url: "{{oauth_token_url}}",
-    redirect_uri: "http://localhost:8080/custom",
+    redirect_uri: "http://localhost:3000/custom",
+    scope: "{{oauth_scope}}",
+}
+
+auth oauth_ac_external(auth_type.oauth2_authorization_code) {
+    client_id: "{{oauth_client_id}}",
+    authorization_url: "{{oauth_authorization_url}}",
+    token_url: "{{oauth_token_url}}",
+    redirect_uri: "https://example.com/callback",
     scope: "{{oauth_scope}}",
 }
 

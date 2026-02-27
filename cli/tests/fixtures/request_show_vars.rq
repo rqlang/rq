@@ -1,0 +1,10 @@
+let base_url = "https://api.example.com";
+let auth_provider_name = "my_oauth";
+
+auth my_oauth(auth_type.oauth2_implicit) {
+    client_id: "client-id",
+    authorization_url: "https://auth.example.com"
+}
+
+[auth("{{auth_provider_name}}")]
+rq my_request("{{base_url}}/resource");

@@ -211,3 +211,97 @@ fn test_request_show_invalid_name() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
+
+#[test]
+fn test_request_show_resolved_variables() -> Result<(), Box<dyn std::error::Error>> {
+    let output = rq_cmd()
+        .args([
+            "request",
+            "show",
+            "-s",
+            "tests/fixtures/request_show_vars.rq",
+            "-n",
+            "my_request",
+        ])
+        .output()?;
+
+    if !output.status.success() {
+        return Err(format!(
+            "Command failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    if !stdout.contains("Request: my_request") {
+        return Err("Output missing request name".into());
+    }
+    if !stdout.contains("URL: https://api.example.com/resource") {
+        // Handle output format differences if any
+        if !stdout.contains("api.example.com") {
+            return Err("Output missing resolved URL part".into());
+        }
+    }
+    if !stdout.contains("name: my_oauth") {
+        return Err("Output missing auth name".into());
+    }
+    if !stdout.contains("type: oauth2_implicit") {
+        return Err("Output missing auth type".into());
+    }
+
+    Ok(())
+}
+
+#[test]
+fn test_request_show_resolved_variables_json() -> Result<(), Box<dyn std::error::Error>> {
+    let output = rq_cmd()
+        .args([
+            "request",
+            "show",
+            "-s",
+            "tests/fixtures/request_show_vars.rq",
+            "-n",
+            "my_request",
+            "-o",
+            "json",
+        ])
+        .output()?;
+
+    if !output.status.success() {
+        return Err(format!(
+            "Command failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: Value = serde_json::from_str(&stdout)?;
+
+    if json["URL"] != "https://api.example.com/resource" {
+        return Err(format!(
+            "Expected URL 'https://api.example.com/resource', got '{}'",
+            json["URL"]
+        )
+        .into());
+    }
+
+    if json["Auth"]["name"] != "my_oauth" {
+        return Err(format!(
+            "Expected Auth name 'my_oauth', got '{}'",
+            json["Auth"]["name"]
+        )
+        .into());
+    }
+
+    if json["Auth"]["type"] != "oauth2_implicit" {
+        return Err(format!(
+            "Expected Auth type 'oauth2_implicit', got '{}'",
+            json["Auth"]["type"]
+        )
+        .into());
+    }
+
+    Ok(())
+}

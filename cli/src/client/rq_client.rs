@@ -248,7 +248,7 @@ impl RqClient {
     pub fn get_request_details(
         source_path: &Path,
         request_name: &str,
-        _environment: Option<&str>,
+        environment: Option<&str>,
     ) -> Result<RequestDetails, RqError> {
         let rq_files = Self::get_rq_files_to_process(source_path, Some(request_name))?;
 
@@ -259,35 +259,134 @@ impl RqClient {
 
         let req_with_vars = rq_file
             .requests
-            .iter()
+            .into_iter()
             .find(|r| r.request.name == request_name)
             .ok_or_else(|| RqError::RequestNotFound(request_name.to_string()))?;
 
-        let (auth_name, auth_type) = if let Some(auth_name) = &req_with_vars.request.auth {
-            if let Some(auth_provider) = rq_file.auth_providers.get(auth_name) {
+        // Context Setup
+        // Check loaded variables and auth providers from imports
+        let mut loaded_variables = rq_file.file_variables.clone();
+        let mut loaded_auth_providers = rq_file.auth_providers.clone();
+        let mut processed_files = std::collections::HashSet::new();
+        processed_files.insert(rq_file.path.clone());
+
+        let mut files_to_process = rq_file.imported_files.clone();
+
+        // Simple iterative import loading (handling one level of depth or basic loops)
+        // In a real implementation this should be robust against cycles and depth
+        while let Some(file_path) = files_to_process.pop() {
+            if processed_files.contains(&file_path) {
+                continue;
+            }
+            processed_files.insert(file_path.clone());
+
+            if file_path.exists() {
+                if let Ok(content) = std::fs::read_to_string(&file_path) {
+                    if let Ok(tokens) = crate::syntax::tokenize(&content) {
+                        if let Ok(result) =
+                            crate::syntax::analyze(&tokens, file_path.clone(), &content)
+                        {
+                            loaded_variables.extend(result.file_variables);
+                            for (k, v) in result.auth_providers {
+                                loaded_auth_providers.insert(k, v);
+                            }
+                            // Add nested imports
+                            for import in result.imported_files {
+                                if !processed_files.contains(&import) {
+                                    files_to_process.push(import);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        let env_vars = if let Some(env_name) = environment {
+            if let Some(vars) = rq_file.environments.get(env_name) {
+                vars.clone()
+            } else {
+                Vec::new()
+            }
+        } else {
+            Vec::new()
+        };
+
+        let secret_vars = {
+            crate::syntax::variables::load_secrets(source_path, environment)
+                .map_err(|e| RqError::Generic(e.to_string()))?
+        };
+
+        let context = crate::syntax::variable_context::VariableContext {
+            file_variables: loaded_variables,
+            environment_variables: env_vars,
+            secret_variables: secret_vars,
+            endpoint_variables: req_with_vars.endpoint_variables.clone(),
+            request_variables: req_with_vars.request_variables.clone(),
+            cli_variables: Vec::new(),
+        };
+
+        // Variables needed to resolve auth name
+        let source_files = vec![rq_file.path.clone()];
+
+        let (auth_name, auth_type) = if let Some(raw_auth_name) = &req_with_vars.request.auth {
+            // Resolve the auth name first
+            let resolved_auth_name =
+                crate::syntax::resolve::resolve_string(raw_auth_name, &context, &source_files)
+                    .map_err(|e| RqError::Generic(e.to_string()))?;
+
+            if let Some(auth_provider) = loaded_auth_providers.get(&resolved_auth_name) {
                 (
-                    Some(auth_name.clone()),
+                    Some(resolved_auth_name),
                     Some(auth_provider.auth_type.as_str().to_string()),
                 )
             } else {
-                (Some(auth_name.clone()), None)
+                (Some(resolved_auth_name), None)
             }
         } else {
             (None, None)
+        };
+
+        // Fully resolve request properties
+        let resolved_url = crate::syntax::resolve::resolve_string(
+            &req_with_vars.request.url,
+            &context,
+            &source_files,
+        )
+        .map_err(|e| RqError::Generic(e.to_string()))?;
+
+        let mut resolved_headers = Vec::new();
+        for (k, v) in &req_with_vars.request.headers {
+            let resolved_k = crate::syntax::resolve::resolve_string(k, &context, &source_files)
+                .map_err(|e| RqError::Generic(e.to_string()))?;
+            let resolved_v = crate::syntax::resolve::resolve_string(v, &context, &source_files)
+                .map_err(|e| RqError::Generic(e.to_string()))?;
+            resolved_headers.push((resolved_k, resolved_v));
+        }
+
+        let resolved_body = if let Some(body) = &req_with_vars.request.body {
+            Some(
+                crate::syntax::resolve::resolve_string(body, &context, &source_files)
+                    .map_err(|e| RqError::Generic(e.to_string()))?,
+            )
+        } else {
+            None
         };
 
         Ok(RequestDetails {
             name: req_with_vars.request.name.clone(),
             auth_name,
             auth_type,
-            url: req_with_vars.request.url.clone(),
-            headers: req_with_vars.request.headers.clone(),
+            url: resolved_url,
+            headers: resolved_headers,
             method: req_with_vars.request.method.as_str().to_string(),
-            body: req_with_vars.request.body.clone(),
+            body: resolved_body,
         })
     }
 
-    pub fn list_auth(source_path: &Path) -> Result<Vec<super::rq_client_models::AuthListEntry>, RqError> {
+    pub fn list_auth(
+        source_path: &Path,
+    ) -> Result<Vec<super::rq_client_models::AuthListEntry>, RqError> {
         if !source_path.exists() {
             return Err(RqError::DirectoryNotFound(
                 source_path.display().to_string(),
@@ -591,7 +690,10 @@ impl RqClient {
         }
     }
 
-    fn collect_auth_entries(dir: &Path, auth_map: &mut HashMap<String, String>) -> Result<(), RqError> {
+    fn collect_auth_entries(
+        dir: &Path,
+        auth_map: &mut HashMap<String, String>,
+    ) -> Result<(), RqError> {
         if !dir.is_dir() {
             return Ok(());
         }

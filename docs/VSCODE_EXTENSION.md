@@ -14,6 +14,8 @@ The extension understands rq files and provides:
 - **Basic validation** of syntax errors surfaced in the VS Code **Problems** view.
 - A tight integration with the rq CLI for executing requests.
 
+- **IntelliSense autocomplete and snippets** for common rq constructs, including language keywords, functions, and request templates.
+
 For a complete description of the rq language (statements, variables, environments, auth, endpoints, imports, functions, etc.), refer to the [Language Definition](./LANGUAGE_DEFINITION.md).
 
 ## Request Explorer
@@ -75,6 +77,7 @@ When you run a request that uses an OAuth2-based auth provider (for example `oau
 - The extension detects that the flow requires user interaction.
 - It guides you through the login/consent process and captures the resulting token.
 - The token is then passed to the rq engine so the request can be executed.
+- The access token is cached using VS Code's standard secrets API so it can be safely reused in later flows.
 
 Supported flows:
 

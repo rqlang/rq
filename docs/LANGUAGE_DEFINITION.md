@@ -39,7 +39,7 @@ rq supports two types of comments:
 
 ## The `rq` Statement
 
-An `rq` statement declares a named HTTP request and specifies how it should be executed (URL, headers, body, etc.).
+A `rq` statement declares a named HTTP request and specifies how it should be executed (URL, headers, body, etc.).
 
 At its simplest, a request looks like this:
 
@@ -295,6 +295,13 @@ let id = random.guid();
 rq get("http://localhost:8080?id={{id}}");
 ```
 
+Example of the resulting HTTP request (values will vary):
+
+```http
+GET /?id=550e8400-e29b-41d4-a716-446655440000 HTTP/1.1
+Host: localhost:8080
+```
+
 ### `datetime.now()`
 
 Returns the current local date-time as a formatted string.
@@ -307,6 +314,13 @@ let d = datetime.now();
 let f = datetime.now("yyyy-MM-dd");
 
 rq get("http://localhost:8080?d={{d}}&f={{f}}");
+```
+
+Example of the resulting HTTP request (values will vary):
+
+```http
+GET /?d=2024-03-05T12:34:56.789+0100&f=2024-03-05 HTTP/1.1
+Host: localhost:8080
 ```
 
 ### `io.read_file()`

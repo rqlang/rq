@@ -6,7 +6,7 @@ This document describes how to install the rq VS Code extension.
 
 ## VS Code extension
 
-The rq VS Code extension is distributed through the VS Code Marketplace (extension link coming soon).
+The rq VS Code extension is distributed through the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=rq-lang.rq-language)
 
 The extension uses the rq CLI as its backend. When the extension starts it will:
 

@@ -47,6 +47,19 @@ jobs:
             build=1
           fi
 
+          # Increment patch version for dev builds to follow SemVer (next version)
+          IFS='.' read -r -a parts <<< "$base"
+          if [ "${#parts[@]}" -ge 3 ]; then
+            # We only increment if we have Major.Minor.Patch
+            patch="${parts[2]}"
+            # Strip any existing suffixes if present
+            clean_patch="${patch%%-*}"
+            # Increment
+            new_patch=$((clean_patch + 1))
+            base="${parts[0]}.${parts[1]}.${new_patch}"
+            echo "Incremented version base to: $base"
+          fi
+
           version="${base}-dev.${build}"
           echo "base=$base" >> $GITHUB_OUTPUT
           echo "build=$build" >> $GITHUB_OUTPUT

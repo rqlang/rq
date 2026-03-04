@@ -302,8 +302,21 @@ pub(crate) fn parse_endpoint_with_context(
     let mut related_files = Vec::new();
 
     if let Some(parent) = parent_ep {
-        if base_url.is_empty() {
-            base_url = parent.url;
+        if !parent.url.is_empty() {
+            let is_absolute = base_url.to_lowercase().starts_with("http://")
+                || base_url.to_lowercase().starts_with("https://");
+
+            if !is_absolute {
+                if base_url.is_empty() {
+                    base_url = parent.url;
+                } else if parent.url.ends_with('/') && base_url.starts_with('/') {
+                    base_url = format!("{}{}", parent.url, &base_url[1..]);
+                } else if parent.url.ends_with('/') || base_url.starts_with('/') {
+                    base_url = format!("{}{}", parent.url, base_url);
+                } else {
+                    base_url = format!("{}/{}", parent.url, base_url);
+                }
+            }
         }
         let mut merged_headers = parent.headers;
         for (k, v) in ep_headers {
@@ -321,8 +334,11 @@ pub(crate) fn parse_endpoint_with_context(
         if ep_headers_var.is_none() {
             ep_headers_var = parent.headers_var;
         }
-        if ep_qs.is_none() {
-            ep_qs = parent.qs;
+        if let Some(p_qs) = &parent.qs {
+            match &ep_qs {
+                Some(c_qs) => ep_qs = Some(format!("{}&{}", p_qs, c_qs)),
+                None => ep_qs = Some(p_qs.clone()),
+            }
         }
         if ctx.auth.is_none() {
             ctx.auth = parent.auth;

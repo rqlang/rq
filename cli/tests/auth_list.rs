@@ -98,7 +98,7 @@ fn test_auth_list_json_case_insensitive() -> Result<(), Box<dyn std::error::Erro
     if !json.is_array() {
         return Err(format!("Expected JSON array, got: {json}").into());
     }
-    
+
     let items_array = json.as_array().unwrap();
     if !items_array
         .iter()
@@ -106,7 +106,7 @@ fn test_auth_list_json_case_insensitive() -> Result<(), Box<dyn std::error::Erro
     {
         return Err(format!("Expected 'bearer_auth' in items array, got: {items_array:?}").into());
     }
-    
+
     Ok(())
 }
 
@@ -266,7 +266,8 @@ rq test("http://localhost:8080/test");
         return Err(format!("Expected 3 auth configs, got: {}", items.len()).into());
     }
 
-    if items[0]["name"] != "auth_a" || items[1]["name"] != "auth_b" || items[2]["name"] != "auth_c" {
+    if items[0]["name"] != "auth_a" || items[1]["name"] != "auth_b" || items[2]["name"] != "auth_c"
+    {
         return Err(format!(
             "Expected alphabetical order [auth_a, auth_b, auth_c], got: {items:?}"
         )
@@ -335,7 +336,9 @@ rq test("http://localhost:8080/test");
         return Err(format!("Expected 2 auth configs, got: {}", items.len()).into());
     }
 
-    let has_root = items.iter().any(|v| v["name"].as_str() == Some("root_auth"));
+    let has_root = items
+        .iter()
+        .any(|v| v["name"].as_str() == Some("root_auth"));
     let has_sub = items.iter().any(|v| v["name"].as_str() == Some("sub_auth"));
 
     if !has_root || !has_sub {

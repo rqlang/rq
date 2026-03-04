@@ -141,7 +141,9 @@ impl RqClient {
                     let auth_name =
                         crate::syntax::resolve_string(auth_name_raw, &context, &search_paths)?;
 
-                    if let Some(auth_provider) = rq_file.auth_providers.get(&auth_name) {
+                    if auth_name.trim().is_empty() {
+                        // Empty auth name means no auth
+                    } else if let Some(auth_provider) = rq_file.auth_providers.get(&auth_name) {
                         let mut resolved_provider = auth_provider.clone();
                         for (_, token) in resolved_provider.fields.iter_mut() {
                             token.value = crate::syntax::resolve_string(
@@ -335,7 +337,9 @@ impl RqClient {
                 crate::syntax::resolve::resolve_string(raw_auth_name, &context, &source_files)
                     .map_err(|e| RqError::Generic(e.to_string()))?;
 
-            if let Some(auth_provider) = loaded_auth_providers.get(&resolved_auth_name) {
+            if resolved_auth_name.trim().is_empty() {
+                (None, None)
+            } else if let Some(auth_provider) = loaded_auth_providers.get(&resolved_auth_name) {
                 (
                     Some(resolved_auth_name),
                     Some(auth_provider.auth_type.as_str().to_string()),

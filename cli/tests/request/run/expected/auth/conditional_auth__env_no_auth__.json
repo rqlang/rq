@@ -1,0 +1,9 @@
+{
+    "http": {
+        "method": "GET",
+        "originalUrl": "/get"
+    },
+    "request": {
+        "headers": {}
+    }
+}

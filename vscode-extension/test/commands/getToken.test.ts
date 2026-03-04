@@ -65,7 +65,9 @@ describe('getToken Command (Integration)', () => {
     test('full OAuth2 flow with VS Code URI handler', async () => {
         // 1. Setup CLI mocks
         (cliService.listEnvironments as jest.Mock).mockResolvedValue(['dev']);
-        (cliService.listAuthConfigs as jest.Mock).mockResolvedValue(['auth1']);
+        (cliService.listAuthConfigs as jest.Mock).mockResolvedValue([
+            { name: 'auth1', auth_type: 'oauth2_authorization_code' }
+        ]);
         (cliService.showAuthConfig as jest.Mock).mockResolvedValue({
             name: 'auth1',
             auth_type: 'oauth2_authorization_code',
@@ -84,7 +86,6 @@ describe('getToken Command (Integration)', () => {
             .mockResolvedValueOnce('auth1'); // Select auth config
         
         (vscode.window.showInformationMessage as jest.Mock)
-            .mockResolvedValueOnce(undefined) // Starting flow message
             .mockResolvedValueOnce('Copy Token'); // Success message
 
         // 3. Setup Fetch Mock for Token Exchange
@@ -156,7 +157,9 @@ describe('getToken Command (Integration)', () => {
 
         // 2. Setup CLI mocks
         (cliService.listEnvironments as jest.Mock).mockResolvedValue(['dev']);
-        (cliService.listAuthConfigs as jest.Mock).mockResolvedValue(['auth1']);
+        (cliService.listAuthConfigs as jest.Mock).mockResolvedValue([
+            { name: 'auth1', auth_type: 'oauth2_authorization_code' }
+        ]);
         (cliService.showAuthConfig as jest.Mock).mockResolvedValue({
             name: 'auth1',
             auth_type: 'oauth2_authorization_code',
@@ -175,7 +178,6 @@ describe('getToken Command (Integration)', () => {
             .mockResolvedValueOnce('auth1');
         
         (vscode.window.showInformationMessage as jest.Mock)
-            .mockResolvedValueOnce(undefined)
             .mockResolvedValueOnce('Copy Token');
 
         // 4. Execute command

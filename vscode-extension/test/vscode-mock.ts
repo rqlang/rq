@@ -40,7 +40,9 @@ export const window = {
     createWebviewPanel: jest.fn(),
     registerUriHandler: jest.fn(),
     showTextDocument: jest.fn(),
-    withProgress: jest.fn()
+    withProgress: jest.fn().mockImplementation(async (_options, task) => {
+        return await task({ report: jest.fn() }, { isCancellationRequested: false, onCancellationRequested: jest.fn() });
+    })
 };
 
 // Mock commands

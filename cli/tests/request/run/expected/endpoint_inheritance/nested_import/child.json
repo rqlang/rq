@@ -1,7 +1,7 @@
 {
     "http": {
         "method": "GET",
-        "originalUrl": "/child/get?v=2",
+        "originalUrl": "/child/get?v=1&v=2",
         "protocol": "http"
     },
     "request": {
@@ -10,7 +10,10 @@
             "x-child": "2"
         },
         "query": {
-            "v": "2"
+            "v": [
+                "1",
+                "2"
+            ]
         }
     }
 }

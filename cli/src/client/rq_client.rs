@@ -355,8 +355,34 @@ impl RqClient {
         )
         .map_err(|e| RqError::Generic(e.to_string()))?;
 
+        let mut headers_to_resolve = req_with_vars.request.headers.clone();
+
+        if let Some(header_var) = &req_with_vars.request.headers_var {
+            match Self::expand_headers_var(header_var, &context) {
+                Ok(expanded) => {
+                    let mut merged = expanded;
+                    for (ck, cv) in headers_to_resolve {
+                        if let Some(i) = merged
+                            .iter()
+                            .position(|(ek, _)| ek.eq_ignore_ascii_case(&ck))
+                        {
+                            merged[i] = (ck, cv);
+                        } else {
+                            merged.push((ck, cv));
+                        }
+                    }
+                    headers_to_resolve = merged;
+                }
+                Err(e) => {
+                    return Err(RqError::Validation(format!(
+                        "Failed to expand headers variable '{header_var}': {e}"
+                    )));
+                }
+            }
+        }
+
         let mut resolved_headers = Vec::new();
-        for (k, v) in &req_with_vars.request.headers {
+        for (k, v) in &headers_to_resolve {
             let resolved_k = crate::syntax::resolve::resolve_string(k, &context, &source_files)
                 .map_err(|e| RqError::Generic(e.to_string()))?;
             let resolved_v = crate::syntax::resolve::resolve_string(v, &context, &source_files)

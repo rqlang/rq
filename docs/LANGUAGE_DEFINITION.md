@@ -667,6 +667,19 @@ Field values can be:
 - A string literal, e.g. `"my-secret-token"`.
 - An identifier, e.g. `token_url: mock_url_var`, which is interpreted as `"{{mock_url_var}}"` and resolved using the same variable precedence rules as the rest of the language.
 
+### Conditional Authentication
+
+The name passed to the `auth` attribute determines the auth provider to use. If this name resolves to an empty string, authentication is disabled for that request. This is useful for conditionally enabling authentication based on environment variables or other logic.
+
+```rq
+let auth_provider = ""; // Empty string disables auth
+
+[auth("{{auth_provider}}")]
+rq public_request("http://localhost:8080/public");
+```
+
+In this example, because `auth_provider` is empty, `rq public_request` will be sent without any authentication headers. If `auth_provider` were set to a valid provider name (e.g., `"my_auth"`), the request would be authenticated using that provider.
+
 ### Supported auth types
 
 rq currently supports several auth types, each with its own set of required and optional fields.

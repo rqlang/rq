@@ -1,0 +1,13 @@
+env with_auth {
+    auth_config: "my_auth"
+}
+env no_auth {
+    auth_config: ""
+}
+
+auth my_auth(auth_type.bearer) {
+    token: "MyToken"
+}
+
+[auth("{{auth_config}}")]
+rq get("http://localhost:8080/get");

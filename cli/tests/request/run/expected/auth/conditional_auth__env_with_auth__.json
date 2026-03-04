@@ -1,0 +1,11 @@
+{
+    "http": {
+        "method": "GET",
+        "originalUrl": "/get"
+    },
+    "request": {
+        "headers": {
+            "authorization": "Bearer MyToken"
+        }
+    }
+}

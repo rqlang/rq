@@ -172,7 +172,10 @@ impl AuthProvider for OAuth2ClientCredentialsProvider {
                     )
                 } else {
                     // Try parsing as P12/PFX using OpenSSL (robust for AES encrypted PFX)
-                    let pass = cert_password.map(|s| s.as_str()).unwrap_or("");
+                    let pass = match cert_password {
+                        Some(s) => s.as_str(),
+                        None => "",
+                    };
                     let pkcs12 = Pkcs12::from_der(&cert_content)
                         .and_then(|p12| p12.parse2(pass))
                         .map_err(|e| AuthError::new(format!("OpenSSL failed to parse P12: {e}")))?;

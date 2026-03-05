@@ -204,7 +204,7 @@ export class OAuthProvider implements vscode.AuthenticationProvider, vscode.Disp
         try {
             const cacheArray = Array.from(this._tokenCache.entries());
             await this.context.secrets.store('oauth-token-cache', JSON.stringify(cacheArray));
-            console.log(`Stored ${this._tokenCache.size} cached token(s)`);
+            console.log('Stored token cache');
         } catch (error) {
             console.error('Error storing token cache:', error);
         }

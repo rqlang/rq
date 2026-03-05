@@ -4,7 +4,7 @@ title: CLI
 nav_order: 6
 ---
 
-# rq CLI
+# CLI
 
 The `rq` CLI is the command-line interface for working with `.rq` files. It lets you discover and run requests, inspect environments and authentication configurations, and is the main way to integrate rq into scripts and CI.
 

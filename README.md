@@ -2,31 +2,14 @@
 
 rq is a domain-specific language designed for managing and executing HTTP requests. It was originally inspired by the [HTTP file format](https://www.jetbrains.com/help/idea/exploring-http-syntax.html) created by JetBrains for their IDEs.
 
+```rq
+rq get("https://rqlang.com");
+```
+
 The project provides two main tools to work with `.rq` files:
 
 - **Command-Line Interface (CLI)**: A powerful command-line tool that allows you to execute HTTP requests directly from your terminal, perfect for scripting, automation, and CI/CD pipelines.
 - **VS Code Extension**: A rich, interactive experience within Visual Studio Code, featuring syntax highlighting, request execution, and a visual interface for managing your API requests.
-
-## Status & Disclaimer
-
-rq — both the language and the associated tools (CLI and VS Code extension) — is currently in **preview**. This means:
-
-- You may encounter bugs, incomplete features, or rough edges in everyday use.
-- The language syntax and semantics are **not yet stable**, and future versions may introduce **breaking changes**.
-
-In particular, there is **no guarantee of long-term backward compatibility** for `.rq` files written against early versions of the language. If we discover that a particular construct, keyword, or design choice blocks important future capabilities, we reserve the right to:
-
-- Redesign or remove that feature.
-- Introduce new syntax that is not compatible with older `.rq` files.
-- Adjust runtime behavior in ways that may require you to update existing files.
-
-While this is not the primary goal, the priority at this stage is to keep the language flexible enough to evolve. If you rely on rq in critical environments, you should:
-
-- Pin specific versions of the CLI and VS Code extension.
-- Treat `.rq` files as **preview assets** that may need updates over time.
-- Review release notes before upgrading to new versions.
-
-Feedback, bug reports, and suggestions are very welcome and will directly influence how the language and tools evolve.
 
 ## Why rq?
 
@@ -40,20 +23,40 @@ rq is not just a text template format; it is a **programming language focused on
 
 ## Installation
 
-See [INSTALLATION.md](docs/INSTALLATION.md) for installation instructions.
+See [installation](docs/INSTALLATION.md) for installation instructions.
 
 ## Getting Started
 
-See [GETTING_STARTED.md](docs/GETTING_STARTED.md) for a guided introduction to rq and its core concepts.
+See [getting started](docs/GETTING_STARTED.md) for a guided introduction to rq and its core concepts.
 
 ## Language Definition
 
-See [LANGUAGE_DEFINITION.md](docs/LANGUAGE_DEFINITION.md) for a detailed description of the rq language syntax and semantics.
+See [language definition](docs/LANGUAGE_DEFINITION.md) for a detailed description of the rq language syntax and semantics.
 
 ## VS Code Extension
 
-See [VSCODE_EXTENSION.md](docs/VSCODE_EXTENSION.md) for details about the Visual Studio Code extension and its features.
+See [Vs Code extension](docs/VSCODE_EXTENSION.md) for details about the Visual Studio Code extension and its features.
 
 ## CLI
 
-See [CLI.md](docs/CLI.md) for documentation of the rq command-line interface.
+See [CLI](docs/CLI.md) for documentation of the rq command-line interface.
+
+> [!NOTE]
+> rq — both the language and the associated tools (CLI and VS Code extension) — is currently in **preview**. This means:
+>
+> - You may encounter bugs, incomplete features, or rough edges in everyday use.
+> - The language syntax and semantics are **not yet stable**, and future versions may introduce **breaking changes**.
+>
+> In particular, there is **no guarantee of long-term backward compatibility** for `.rq` files written against early versions of the language. If we discover that a particular construct, keyword, or design choice blocks important future capabilities, we reserve the right to:
+>
+> - Redesign or remove that feature.
+> - Introduce new syntax that is not compatible with older `.rq` files.
+> - Adjust runtime behavior in ways that may require you to update existing files.
+>
+> While this is not the primary goal, the priority at this stage is to keep the language flexible enough to evolve. If you rely on rq in critical environments, you should:
+>
+> - Pin specific versions of the CLI and VS Code extension.
+> - Treat `.rq` files as **preview assets** that may need updates over time.
+> - Review release notes before upgrading to new versions.
+>
+> Feedback, bug reports, and suggestions are very welcome and will directly influence how the language and tools evolve.

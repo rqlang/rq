@@ -1,7 +1,7 @@
 {
   "name": "rq-language",
-  "displayName": "RQ",
-  "description": "Language support for RQ, a language for managing HTTP requests",
+  "displayName": "rq",
+  "description": "Language support for rq, a language for managing and executing HTTP requests",
   "version": "0.1.0",
   "publisher": "rq-lang",
   "icon": "rq.png",
@@ -18,11 +18,13 @@
   ],
   "keywords": [
     "rq",
-    "http",
-    "rest",
-    "api",
+    "HTTP",
+    "REST",
+    "API",
     "request",
-    "oauth2"
+    "OAuth2",
+    "language",
+    "API client"
   ],
   "main": "./out/extension.js",
   "activationEvents": [

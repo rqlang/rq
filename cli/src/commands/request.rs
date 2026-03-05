@@ -130,9 +130,10 @@ pub fn execute_show(args: &ShowArgs) -> Result<(), Box<dyn std::error::Error>> {
         .request_name_args
         .name
         .as_deref()
-        .ok_or("Request name is required")?;
+        .ok_or("Request name is required")?
+        .replace('.', "/");
     let details =
-        RqClient::get_request_details(source_path, name, args.env_args.environment.as_deref())?;
+        RqClient::get_request_details(source_path, &name, args.env_args.environment.as_deref())?;
 
     let formatter = crate::core::formatter::get_formatter(&args.output.output);
 
@@ -167,7 +168,11 @@ pub fn execute_show(args: &ShowArgs) -> Result<(), Box<dyn std::error::Error>> {
 pub async fn execute_run(args: &RunArgs) -> Result<(), Box<dyn std::error::Error>> {
     let config = RqConfig {
         source_path: args.source.source.clone(),
-        request_name: args.request_name_args.name.clone(),
+        request_name: args
+            .request_name_args
+            .name
+            .as_deref()
+            .map(|n| n.replace('.', "/")),
         environment: args.env_args.environment.clone(),
         variables: args.variable.clone(),
         output_format: args.output.output.to_string(),

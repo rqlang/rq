@@ -254,6 +254,35 @@ fn test_request_show_resolved_variables() -> Result<(), Box<dyn std::error::Erro
 }
 
 #[test]
+fn test_request_show_ep_dot_notation() -> Result<(), Box<dyn std::error::Error>> {
+    let output = rq_cmd()
+        .args([
+            "request",
+            "show",
+            "-s",
+            "tests/request/run/input/endpoint.rq",
+            "-n",
+            "api.get",
+        ])
+        .output()?;
+
+    if !output.status.success() {
+        return Err(format!(
+            "Command failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    if !stdout.contains("Request: api/get") {
+        return Err(format!("Output missing 'Request: api/get', got: {stdout}").into());
+    }
+
+    Ok(())
+}
+
+#[test]
 fn test_request_show_resolved_variables_json() -> Result<(), Box<dyn std::error::Error>> {
     let output = rq_cmd()
         .args([

@@ -97,7 +97,7 @@ rq request show [OPTIONS]
 Options:
 
 - `-s, --source <SOURCE>` – Path to the `.rq` file or directory (default: `.`).
-- `-n, --name <NAME>` – Name of the request to show (required). If the request is defined inside an endpoint, use `<endpoint>/<request>` (for example `users/list`).
+- `-n, --name <NAME>` – Name of the request to show (required). If the request is defined inside an endpoint, use `<endpoint>/<request>` or `<endpoint>.<request>` (for example `users/list` or `users.list`).
 - `-e, --env <ENVIRONMENT>` – Environment name to resolve variables and env-specific settings.
 - `-o, --output <OUTPUT>` – Output format: `text` or `json` (default: `text`).
 
@@ -125,7 +125,7 @@ rq request run [OPTIONS]
 Options:
 
 - `-s, --source <SOURCE>` – Path to the `.rq` file or directory (default: `.`).
-- `-n, --name <NAME>` – Name of the request to run. If omitted and multiple requests exist, the CLI will usually fail and ask you to be explicit. If the request is defined inside an endpoint, use `<endpoint>/<request>` (for example `users/list`).
+- `-n, --name <NAME>` – Name of the request to run. If omitted and multiple requests exist, the CLI will usually fail and ask you to be explicit. If the request is defined inside an endpoint, use `<endpoint>/<request>` or `<endpoint>.<request>` (for example `users/list` or `users.list`).
 - `-e, --env <ENVIRONMENT>` – Environment name.
 - `-v, --variable <NAME=VALUE>` – Override variables at runtime (can be provided multiple times).
 - `-o, --output <OUTPUT>` – Output format: `text` or `json` (default: `text`).

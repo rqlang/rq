@@ -9,6 +9,7 @@
     "type": "git",
     "url": "https://github.com/rqlang/rq"
   },
+  "homepage": "https://www.rqlang.com",
   "engines": {
     "vscode": "^1.105.0"
   },

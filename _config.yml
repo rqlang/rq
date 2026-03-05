@@ -1,5 +1,7 @@
 remote_theme: just-the-docs/just-the-docs
 
+color_scheme: dark
+
 title: rq
 description: A domain-specific language for managing and executing HTTP requests.
 

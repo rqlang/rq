@@ -19,7 +19,7 @@ The project provides two main tools to work with `.rq` files:
 
 ## Why rq?
 
-rq is not just a text template format; it is a **programming language focused on the HTTP domain**. This has several advantages compared to ad‑hoc `.http` files or plain text snippets:
+rq is not just a text template format; it is a **programming language focused on the HTTP domain**. This has several advantages compared to ad‑hoc `.http` files, plain text snippets or visual tools:
 
 - **Structured, robust definitions**: Requests are expressed with clear syntax and semantics (requests, variables, endpoints, environments, etc.), which reduces ambiguity and makes it easier to validate and evolve your API interactions over time.
 - **Safer than free‑form templates**: Because rq has a well-defined grammar, tools can parse and analyze your files reliably, catching many mistakes (missing variables, invalid attributes, inconsistent structures) before the request is even sent.
@@ -47,7 +47,9 @@ See [Vs Code extension](docs/VSCODE_EXTENSION.md) for details about the Visual S
 
 See [CLI](docs/CLI.md) for documentation of the rq command-line interface.
 
-> [!NOTE]
+<br><br>
+
+
 > rq — both the language and the associated tools (CLI and VS Code extension) — is currently in **preview**. This means:
 >
 > - You may encounter bugs, incomplete features, or rough edges in everyday use.

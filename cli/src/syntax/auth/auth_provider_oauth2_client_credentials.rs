@@ -173,7 +173,7 @@ impl AuthProvider for OAuth2ClientCredentialsProvider {
                 } else {
                     // Try parsing as P12/PFX using OpenSSL (robust for AES encrypted PFX)
                     let pass = match cert_password {
-                        Some(ref s) => s.as_str(),
+                        Some(s) => s.as_str(),
                         None => "",
                     };
                     let pkcs12 = Pkcs12::from_der(&cert_content)

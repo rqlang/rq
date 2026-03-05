@@ -6,6 +6,50 @@ pub struct Logger {
     debug: bool,
 }
 
+fn sanitize_message(message: &str) -> String {
+    // Simple best-effort redaction of obviously sensitive key-value pairs.
+    // This avoids logging secrets like passwords or tokens in cleartext.
+    let sensitive_keys = ["password", "passwd", "token", "secret", "apikey", "api_key", "auth"];
+
+    let mut redacted = String::with_capacity(message.len());
+
+    for (i, part) in message.split_whitespace().enumerate() {
+        let mut replaced = false;
+
+        for key in &sensitive_keys {
+            if let Some(rest) = part.strip_prefix(&format!("{key}=")) {
+                let _ = rest; // suppress unused warning if not in debug assertions
+                redacted.push_str(key);
+                redacted.push('=');
+                redacted.push_str("***");
+                replaced = true;
+                break;
+            } else if let Some(rest) = part.strip_prefix(&format!("{key}:")) {
+                let _ = rest;
+                redacted.push_str(key);
+                redacted.push(':');
+                redacted.push_str("***");
+                replaced = true;
+                break;
+            }
+        }
+
+        if !replaced {
+            redacted.push_str(part);
+        }
+
+        if i != message.split_whitespace().count().saturating_sub(1) {
+            redacted.push(' ');
+        }
+    }
+
+    if redacted.is_empty() {
+        message.to_owned()
+    } else {
+        redacted
+    }
+}
+
 impl Logger {
     pub fn init(debug: bool) {
         let _ = LOGGER.get_or_init(|| Logger { debug });
@@ -20,7 +64,8 @@ impl Logger {
     pub fn debug(message: &str) {
         let logger = Self::get();
         if logger.debug {
-            eprintln!("{message}");
+            let sanitized = sanitize_message(message);
+            eprintln!("{sanitized}");
         }
     }
 
@@ -28,7 +73,9 @@ impl Logger {
     pub fn debug_fmt(args: std::fmt::Arguments) {
         let logger = Self::get();
         if logger.debug {
-            eprintln!("{args}");
+            let formatted = format!("{args}");
+            let sanitized = sanitize_message(&formatted);
+            eprintln!("{sanitized}");
         }
     }
 }

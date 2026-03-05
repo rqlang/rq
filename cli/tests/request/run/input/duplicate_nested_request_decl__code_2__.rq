@@ -1,0 +1,5 @@
+ep api("http://example.com") {
+    rq test("/1");
+    rq test("/2");
+}
+rq default("http://example.com");

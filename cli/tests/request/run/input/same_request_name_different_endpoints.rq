@@ -1,0 +1,7 @@
+ep api1("http://localhost:8080") {
+    rq test("/get?endpoint=1");
+}
+ep api2("http://localhost:8080") {
+    rq test("/get?endpoint=2");
+}
+rq default("http://localhost:8080/get");

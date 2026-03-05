@@ -1,0 +1,3 @@
+auth test(auth_type.bearer) { token: "123" }
+auth test(auth_type.bearer) { token: "456" }
+rq default("http://example.com");

@@ -238,6 +238,14 @@ pub(crate) fn parse_endpoint_with_context(
         "Expected identifier",
     )?;
     let ep_name = name_tok.value.clone();
+
+    if existing_endpoints.contains_key(&ep_name) {
+        return Err(r.create_error_with_file(
+            format!("Duplicate endpoint definition: '{ep_name}'"),
+            name_tok.span.clone(),
+        ));
+    }
+
     r.advance();
     r.skip_ignorable();
 

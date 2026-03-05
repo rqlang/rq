@@ -1,0 +1,4 @@
+ep api("http://localhost:8080") {
+    rq test("/get?scope=nested");
+}
+rq test("http://localhost:8080/get?scope=outer");

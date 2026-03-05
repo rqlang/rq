@@ -1,0 +1,17 @@
+[
+    {
+        "request": {
+            "query": {"endpoint": "1"}
+        }
+    },
+    {
+        "request": {
+            "query": {"endpoint": "2"}
+        }
+    },
+    {
+        "request": {
+            "query": {}
+        }
+    }
+]

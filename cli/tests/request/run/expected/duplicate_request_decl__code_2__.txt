@@ -1,0 +1,1 @@
+Error: Syntax error in tests/request/run/input/duplicate_request_decl__code_2__.rq at line 2, column 4: Duplicate request definition: 'test'

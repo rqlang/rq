@@ -1,3 +1,9 @@
+---
+layout: default
+title: Getting Started
+nav_order: 2
+---
+
 # Getting Started
 
 This guide walks you through your first steps with **rq**, using the Visual Studio Code extension to create and execute a simple HTTP request.
@@ -31,7 +37,7 @@ Once the rq extension is installed and active, VS Code should automatically:
 
 Paste the following minimal example into your new `getting-started.rq` file:
 
-```rq
+```
 rq hello("https://httpbin.org/get");
 ```
 

@@ -1,3 +1,9 @@
+---
+layout: default
+title: Installation
+nav_order: 3
+---
+
 # Installation
 
 rq is a domain-specific language designed for managing and executing HTTP requests.
@@ -46,22 +52,22 @@ If you prefer not to rely on the extension to install the CLI, or if you want to
 3. Optionally rename the downloaded file to a shorter name (for example `rq`).
 4. Make the file executable (Linux / macOS):
 
-	```bash
-	chmod +x ./rq-linux-x86_64
-	```
+  ```bash
+  chmod +x ./rq-linux-x86_64
+  ```
 
 5. Either run it directly from the download location:
 
-	```bash
-	./rq-linux-x86_64 --version
-	```
+  ```bash
+  ./rq-linux-x86_64 --version
+  ```
 
 	Or move it to a directory on your `PATH` (for example `/usr/local/bin` or `~/.local/bin`) and run it from anywhere:
 
-	```bash
-	mv ./rq-linux-x86_64 /usr/local/bin/rq
-	rq --version
-	```
+  ```bash
+  mv ./rq-linux-x86_64 /usr/local/bin/rq
+  rq --version
+  ```
 
 On Windows, you can run the portable executable directly after downloading (for example from your Downloads folder):
 

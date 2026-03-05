@@ -1,8 +1,7 @@
 ---
 layout: default
 title: Getting Started
-nav_order: 2
-parent: Docs
+nav_order: 3
 ---
 
 # Getting Started

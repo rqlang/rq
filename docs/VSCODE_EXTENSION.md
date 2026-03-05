@@ -1,8 +1,7 @@
 ---
 layout: default
 title: VS Code Extension
-nav_order: 4
-parent: Docs
+nav_order: 5
 ---
 
 # VS Code Extension

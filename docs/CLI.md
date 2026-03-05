@@ -1,8 +1,7 @@
 ---
 layout: default
 title: CLI
-nav_order: 5
-parent: Docs
+nav_order: 6
 ---
 
 # rq CLI

@@ -1,8 +1,7 @@
 ---
 layout: default
 title: Installation
-nav_order: 1
-parent: Docs
+nav_order: 2
 ---
 
 # Installation

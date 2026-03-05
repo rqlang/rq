@@ -1,8 +1,7 @@
 ---
 layout: default
 title: Language Definition
-nav_order: 3
-parent: Docs
+nav_order: 4
 ---
 
 # Language Definition

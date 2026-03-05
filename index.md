@@ -27,13 +27,13 @@ rq is not just a text template format; it is a **programming language focused on
 - **File‑based workflow, Git‑friendly**: rq is based on plain files in your repository. There is no hidden state or proprietary project format: you can version, review, branch, and merge your request definitions using the same Git workflows you already use for code.
 - **Integrated, open tooling**: The main UI for working with rq is delivered as an extension for **Visual Studio Code**, an open and widely adopted editor. You can use your existing VS Code setup (themes, keybindings, extensions) while benefiting from a dedicated rq explorer, request runner, and rich response viewer.
 
-## Installation
-
-See [installation](docs/INSTALLATION.md) for installation instructions.
-
 ## Getting Started
 
 See [getting started](docs/GETTING_STARTED.md) for a guided introduction to rq and its core concepts.
+
+## Installation
+
+See [installation](docs/INSTALLATION.md) for installation instructions.
 
 ## Language Definition
 

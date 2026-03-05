@@ -15,7 +15,7 @@ rq has a small set of formatting conventions intended to keep files readable and
 - **Identifiers in snake_case**: Request names, variable names (`let`), environment names (`env`), and keys inside `env` blocks must use snake_case: all lowercase, alphanumeric characters (`a`–`z`, `0`–`9`) and underscores (`_`), with words separated by `_`.
 - **Braces on the same line**: Blocks such as `env` and `ep` open their braces on the same line as the declaration:
 
-  ```rq
+  ```
   env local {
     base_url: "http://localhost:8080",
   }
@@ -29,14 +29,14 @@ rq supports two types of comments:
 
 1. **Single-line comments**: Start with `//` and extend to the end of the line.
 
-  ```rq
+  ```
   // This is a single-line comment
   rq get("http://example.com"); // Comment at the end of a line
   ```
 
 2. **Block comments**: Enclosed in `/*` and `*/`. They can span multiple lines.
 
-  ```rq
+  ```
   /* This is a comment
      that spans multiple
      lines */
@@ -49,7 +49,7 @@ A `rq` statement declares a named HTTP request and specifies how it should be ex
 
 At its simplest, a request looks like this:
 
-```rq
+```
 // A basic GET request
 rq basic("http://localhost:8080/get");
 ```
@@ -68,7 +68,7 @@ By default, the HTTP method is **GET**. You can change the method in two ways:
 
 1. **Via an attribute** attached to the request:
 
-   ```rq
+   ```
    [method(POST)]
    rq basic("http://localhost:8080");
    ```
@@ -77,7 +77,7 @@ By default, the HTTP method is **GET**. You can change the method in two ways:
 
 2. **Via the request name when it matches a standard method name** (e.g. `get`, `post`, etc.). For example, the following is interpreted as a `POST` request, even without an explicit attribute:
 
-   ```rq
+   ```
    rq post("http://localhost:8080");
    ```
 
@@ -97,7 +97,7 @@ These parameters can be passed **positionally** or using **named parameters**.
 
 The positional form is concise and works well for simple cases:
 
-```rq
+```
 // URL only
 rq basic("http://localhost:8080/get");
 
@@ -136,7 +136,7 @@ If no body is provided, an empty body is sent.
 
 For more complex requests, you can use named parameters, which make the role of each argument explicit and allow omitting any of them:
 
-```rq
+```
 // Fully named
 rq named_params_request(
   url: "http://localhost:8080/get",
@@ -165,7 +165,7 @@ Rules for named parameters:
 
 rq supports variables that you can define with `let` and then reuse in `rq` statements for URLs, headers, and bodies.
 
-```rq
+```
 let base_url = "http://localhost:8080";
 
 // Uses the value of base_url ("http://localhost:8080")
@@ -177,7 +177,7 @@ rq test_bare_path("http://localhost:8080/api/test");
 
 Variables can also be combined with interpolation syntax inside strings to build URLs and other values:
 
-```rq
+```
 let host = "http://127.0.0.1:8080";
 
 rq get("{{ host }}");
@@ -207,7 +207,7 @@ The most common values in rq are strings, used in URLs, headers, bodies, and env
 
 String literals can span multiple lines. Newlines and indentation inside the quotes are preserved in the final value, which makes it convenient to work with multiline content:
 
-```rq
+```
 let var_body = "Line 1
 Line 2";
 
@@ -234,7 +234,7 @@ In this example the line breaks in `var_body`, the URL, headers, and body are al
 
 The `headers` parameter in `rq` and `ep` uses a dictionary-like literal written with square brackets and `"key": "value"` pairs. These values can also be stored in variables:
 
-```rq
+```
 let default_headers = [
   "Accept": "application/json",
   "X-App": "rq-demo",
@@ -249,7 +249,7 @@ These dictionaries are typically used for HTTP headers, but the structure is gen
 
 For request bodies, rq supports JSON object literals introduced with `${...}`. You can pass them directly as the `body` parameter or assign them to variables:
 
-```rq
+```
 let payload = ${"greeting": "hello", "value": 123};
 
 rq send_json(
@@ -296,7 +296,7 @@ The currently supported namespaces and functions are:
 
 Generates a new random GUID/UUID v4 as a string:
 
-```rq
+```
 let id = random.guid();
 rq get("http://localhost:8080?id={{id}}");
 ```
@@ -315,7 +315,7 @@ Returns the current local date-time as a formatted string.
 - Without arguments, it produces an ISO-like timestamp (e.g. `2024-03-05T12:34:56.789+0100`).
 - With a `format` string, it uses a simplified pattern based on `strftime`, with a few shortcuts like `yyyy`, `MM`, `dd`, `HH`, `mm`, and `ss` that are internally mapped to the appropriate `strftime` specifiers.
 
-```rq
+```
 let d = datetime.now();
 let f = datetime.now("yyyy-MM-dd");
 
@@ -335,7 +335,7 @@ Reads the contents of a text file relative to the current `.rq` file and returns
 
 The path argument can be relative; its base context is always the directory of the current `.rq` file.
 
-```rq
+```
 // data.txt lives next to this .rq file
 rq sys_body(
   "http://localhost:8080/api/upload",
@@ -346,7 +346,7 @@ rq sys_body(
 
 You can also pass interpolated file names:
 
-```rq
+```
 let base_filename = "data.txt";
 let my_file = base_filename;
 
@@ -363,7 +363,7 @@ Unknown function namespaces or names, or invalid arguments (for example calling 
 
 Attributes are annotations written in square brackets that modify how a request behaves. They are placed immediately above an `rq` statement:
 
-```rq
+```
 [method(POST)]
 rq basic("http://localhost:8080");
 
@@ -384,7 +384,7 @@ The following attributes are currently supported:
 
 The `method` attribute overrides the HTTP method used for a request, regardless of the request name:
 
-```rq
+```
 [method(POST)]
 rq basic("http://localhost:8080");
 ```
@@ -405,7 +405,7 @@ The currently supported standard HTTP methods are:
 
 The `timeout` attribute sets a per-request timeout (in seconds) for the HTTP call:
 
-```rq
+```
 [timeout(10)]
 rq get("http://localhost:8080/get");
 ```
@@ -424,7 +424,7 @@ Environments allow you to group variable values under a named context (such as `
 
 You declare an environment with the `env` keyword, followed by the environment name and a block of key–value pairs.
 
-```rq
+```
 env local {
   base_url: "http://localhost:8080",
 }
@@ -440,7 +440,7 @@ In this example:
 
 You can declare multiple environments in the same file:
 
-```rq
+```
 env dev {
   api_url: "https://dev.api.com",
 }
@@ -510,7 +510,7 @@ The choice of `.env` and the `ENV__<ENV_NAME>__<VAR>` convention is intentional:
 
 Inside rq files you can then use these names with interpolation:
 
-```rq
+```
 rq get("{{api_url}}/status", [
   "Authorization": "Bearer {{api_key}}",
 ]);
@@ -543,7 +543,7 @@ In rq, an endpoint represents a concrete HTTP endpoint in your API (for example 
 
 At its simplest, an endpoint looks like this:
 
-```rq
+```
 let user_id = 123;
 
 ep users("http://localhost:8080/api/users") {
@@ -564,7 +564,7 @@ Here:
 
 An endpoint can take the same kinds of parameters as an `rq` request (except body), but they apply as **defaults** to all child requests:
 
-```rq
+```
 let u = "http://localhost:8080";
 let h = ["X-Test": "true"];
 let q = "foo=bar";
@@ -588,7 +588,7 @@ Child requests can add more headers or query parameters; these are merged with t
 
 You can also pass query string defaults using named parameters:
 
-```rq
+```
 ep api("http://localhost:8080/api", qs: "api-version=1") {
   rq get("/users");
 }
@@ -600,7 +600,7 @@ This produces a request to `/api/users?api-version=1`.
 
 The `rq` requests defined inside an endpoint block support the same attributes as any other `rq` statement (such as `timeout` or `auth`). These attributes are attached to each action and are evaluated together with the endpoint configuration.
 
-```rq
+```
 [timeout(20)]
 ep users("http://localhost:8080/api/users") {
   [timeout(10)]
@@ -617,7 +617,7 @@ In this example, the endpoint `users` defines a base timeout of `20` seconds. Th
 
 Endpoints can be used as **templates** and extended by other endpoints using a simple templated-like syntax:
 
-```rq
+```
 let user_id = 123;
 ep base(url: "http://localhost:8080", headers: ["X-Base": "1"], qs: "v=1");
 
@@ -652,7 +652,7 @@ At a high level, you:
 
 An auth provider is declared at the top level of an `.rq` file:
 
-```rq
+```
 auth my_auth(auth_type.bearer) {
   token: "{{api_token}}",
 }
@@ -677,7 +677,7 @@ Field values can be:
 
 The name passed to the `auth` attribute determines the auth provider to use. If this name resolves to an empty string, authentication is disabled for that request. This is useful for conditionally enabling authentication based on environment variables or other logic.
 
-```rq
+```
 let auth_provider = ""; // Empty string disables auth
 
 [auth("{{auth_provider}}")]
@@ -754,7 +754,7 @@ As your rq files grow, it is often useful to split them into smaller, focused fi
 
 An import pulls in everything defined in another `.rq` file: requests, variables, environments, auth providers, and endpoints.
 
-```rq
+```
 // base.rq
 let user_id = 123;
 
@@ -763,7 +763,7 @@ auth my_auth(auth_type.bearer) {
 }
 ```
 
-```rq
+```
 // main.rq
 import "base";
 

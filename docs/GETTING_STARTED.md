@@ -37,7 +37,7 @@ Once the rq extension is installed and active, VS Code should automatically:
 
 Paste the following minimal example into your new `getting-started.rq` file:
 
-```js
+```rq
 rq hello("https://httpbin.org/get");
 ```
 

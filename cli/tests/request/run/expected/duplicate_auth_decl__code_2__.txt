@@ -1,0 +1,1 @@
+Error: Syntax error in tests/request/run/input/duplicate_auth_decl__code_2__.rq at line 2, column 6: Duplicate auth provider definition: 'test'

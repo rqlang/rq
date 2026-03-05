@@ -1,0 +1,2 @@
+rq test("http://example.com/1");
+rq test("http://example.com/2");

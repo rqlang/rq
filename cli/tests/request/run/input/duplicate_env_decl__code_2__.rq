@@ -1,0 +1,7 @@
+env dev {
+    host: "localhost"
+}
+env dev {
+    host: "127.0.0.1"
+}
+rq default("http://example.com");

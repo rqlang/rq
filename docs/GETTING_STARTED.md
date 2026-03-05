@@ -1,3 +1,10 @@
+---
+layout: default
+title: Getting Started
+nav_order: 2
+parent: Docs
+---
+
 # Getting Started
 
 This guide walks you through your first steps with **rq**, using the Visual Studio Code extension to create and execute a simple HTTP request.

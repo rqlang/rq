@@ -1,3 +1,10 @@
+---
+layout: default
+title: Installation
+nav_order: 1
+parent: Docs
+---
+
 # Installation
 
 rq is a domain-specific language designed for managing and executing HTTP requests.

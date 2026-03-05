@@ -1,3 +1,10 @@
+---
+layout: default
+title: Language Definition
+nav_order: 3
+parent: Docs
+---
+
 # Language Definition
 
 This document describes the rq language. It is a work in progress and will evolve as the language stabilizes.

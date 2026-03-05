@@ -1,3 +1,9 @@
+---
+layout: home
+title: Home
+nav_order: 1
+---
+
 # rq
 
 rq is a domain-specific language designed for managing and executing HTTP requests. It was originally inspired by the [HTTP file format](https://www.jetbrains.com/help/idea/exploring-http-syntax.html) created by JetBrains for their IDEs.

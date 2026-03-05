@@ -1,0 +1,18 @@
+remote_theme: just-the-docs/just-the-docs
+
+title: rq
+description: A domain-specific language for managing and executing HTTP requests.
+
+# Enable navigation
+nav_enabled: true
+
+# Exclude non-docs files from Jekyll processing
+exclude:
+  - cli/
+  - deployment/
+  - tests/
+  - vscode-extension/
+  - test.rq
+  - "*.toml"
+  - "*.lock"
+  - Makefile

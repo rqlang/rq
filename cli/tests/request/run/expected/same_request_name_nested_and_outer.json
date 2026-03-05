@@ -1,0 +1,12 @@
+[
+    {
+        "request": {
+            "query": {"scope": "nested"}
+        }
+    },
+    {
+        "request": {
+            "query": {"scope": "outer"}
+        }
+    }
+]

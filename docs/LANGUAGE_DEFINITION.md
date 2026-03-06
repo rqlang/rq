@@ -117,7 +117,7 @@ rq post(
 );
 
 // URL + headers + string body
-rq post("http://localhost:8080/post-string", [
+rq other_post("http://localhost:8080/post-string", [
   "Content-Type": "text/plain"
 ], "hello world");
 ```
@@ -159,7 +159,7 @@ Rules for named parameters:
 
 - Supported names for `rq` are currently: `url`, `headers`, and `body`.
 - Each of these parameters may appear **at most once** in a given request.
--- You may mix positional and named arguments, but the effective meaning must be unambiguous. A common pattern is positional `url` plus named `headers` and/or `body`.
+- You may mix positional and named arguments, but the effective meaning must be unambiguous. A common pattern is positional `url` plus named `headers` and/or `body`.
 
 ## Variables
 
@@ -170,9 +170,6 @@ let base_url = "http://localhost:8080";
 
 // Uses the value of base_url ("http://localhost:8080")
 rq test_bare_url(base_url);
-
-// Direct string literal
-rq test_bare_path("http://localhost:8080/api/test");
 ```
 
 Variables can also be combined with interpolation syntax inside strings to build URLs and other values:
@@ -223,8 +220,7 @@ Line 2",
     Line 2",
     "X-Var": "{{var_body}}",
   ],
-  body: "Line 1
-Line 2",
+  body: var_body
 );
 ```
 
@@ -252,6 +248,7 @@ For request bodies, rq supports JSON object literals introduced with `${...}`. Y
 ```
 let payload = ${"greeting": "hello", "value": 123};
 
+[method(POST)]
 rq send_json(
   "http://localhost:8080/post-obj",
   [],
@@ -547,7 +544,7 @@ At its simplest, an endpoint looks like this:
 let user_id = 123;
 
 ep users("http://localhost:8080/api/users") {
-    rq list();
+  rq list();
   rq get("/{{user_id}}");
 }
 ```
@@ -622,12 +619,12 @@ let user_id = 123;
 ep base(url: "http://localhost:8080", headers: ["X-Base": "1"], qs: "v=1");
 
 ep users<base>("/users") {
-  rq get(user_id);
+  rq get("/{{user_id}}");
 }
 
 ep widgets<base>("/widgets") {
   rq list();
-    rq list_by_user("/by-user/{{user_id}}");
+  rq list_by_user("/by-user/{{user_id}}");
 }
 ```
 
@@ -759,7 +756,7 @@ An import pulls in everything defined in another `.rq` file: requests, variables
 let user_id = 123;
 
 auth my_auth(auth_type.bearer) {
-    token: "{{api_token}}",
+  token: "{{api_token}}",
 }
 ```
 

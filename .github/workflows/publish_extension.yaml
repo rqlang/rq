@@ -2,6 +2,10 @@ name: Publish Extension to Marketplace
 
 on:
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to publish (e.g. v0.2.0)'
+        required: true
 
 permissions:
   contents: read
@@ -11,15 +15,15 @@ jobs:
     name: Publish Extension
     runs-on: ubuntu-latest
     steps:
-      - name: Download VSIX from latest release_prod
-        uses: dawidd6/action-download-artifact@v6
-        with:
-          workflow: release_prod.yaml
-          workflow_conclusion: success
-          name: vscode-extension-vsix
-          path: extension-artifact
-          check_artifacts: true
-          search_artifacts: true
+      - name: Download VSIX from release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p extension-artifact
+          gh release download ${{ github.event.inputs.tag }} \
+            --repo ${{ github.repository }} \
+            --pattern "*.vsix" \
+            --dir extension-artifact
 
       - name: Display downloaded files
         run: ls -R extension-artifact

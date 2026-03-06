@@ -27,6 +27,14 @@ rq is not just a text template format; it is a **programming language focused on
 - **File‑based workflow, Git‑friendly**: rq is based on plain files in your repository. There is no hidden state or proprietary project format: you can version, review, branch, and merge your request definitions using the same Git workflows you already use for code.
 - **Integrated, open tooling**: The main UI for working with rq is delivered as an extension for **Visual Studio Code**, an open and widely adopted editor. You can use your existing VS Code setup (themes, keybindings, extensions) while benefiting from a dedicated rq explorer, request runner, and rich response viewer.
 
+## Free and Open Source — Forever
+
+rq, the CLI, and the VS Code extension are **free and open source**, and there is an unconditional commitment to keep them that way — not as a temporary launch strategy, but as a founding principle.
+
+The full source code is [publicly available on GitHub](https://github.com/rqlang/rq) and auditable. There are no paywalled tiers, no "community vs. enterprise" splits, and no features gated behind a subscription. Every capability available today, and every capability added in the future, will remain freely accessible to everyone.
+
+This is not a promise that expires when a funding round closes or a business model shifts. The tools exist to make API development better for developers, and that purpose is incompatible with access restrictions. If you build workflows, scripts, or integrations on top of rq, you can do so with the confidence that the foundation will not be pulled from under you.
+
 ## Getting Started
 
 See [getting started](docs/GETTING_STARTED.md) for a guided introduction to rq and its core concepts.

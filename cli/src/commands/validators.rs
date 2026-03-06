@@ -3,7 +3,7 @@ use regex::Regex;
 use std::path::Path;
 
 lazy_static! {
-    static ref NAME_REGEX: Regex = Regex::new(r"^[a-zA-Z_][a-zA-Z0-9_/-]*$").unwrap();
+    static ref NAME_REGEX: Regex = Regex::new(r"^[a-zA-Z_][a-zA-Z0-9_./-]*$").unwrap();
 }
 
 pub fn validate_path_exists(path: &str) -> Result<String, String> {
@@ -19,7 +19,7 @@ pub fn validate_name(name: &str) -> Result<String, String> {
         return Err("Name must be 50 characters or less".to_string());
     }
     if !NAME_REGEX.is_match(name) {
-        return Err("Name must match pattern: ^[a-zA-Z_][a-zA-Z0-9_/-]*$".to_string());
+        return Err("Name must match pattern: ^[a-zA-Z_][a-zA-Z0-9_./-]*$".to_string());
     }
     Ok(name.to_string())
 }
@@ -48,6 +48,8 @@ mod tests {
         assert!(validate_name("valid-name").is_ok());
         assert!(validate_name("valid/name").is_ok());
         assert!(validate_name("valid_name/with/slashes").is_ok());
+        assert!(validate_name("ep.rq").is_ok());
+        assert!(validate_name("endpoint.request_name").is_ok());
 
         assert!(validate_name("1invalid").is_err());
         assert!(validate_name("-invalid").is_err());

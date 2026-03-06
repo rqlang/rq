@@ -48,6 +48,10 @@ fn main() {
             "request_run_invalid_variable_name",
             test_request_run_invalid_variable_name,
         ),
+        Trial::test(
+            "request_run_ep_dot_notation",
+            test_request_run_ep_dot_notation,
+        ),
     ];
 
     // Discover tests from organized directories
@@ -324,6 +328,34 @@ fn test_request_run_invalid_variable_name() -> Result<(), Failed> {
         return Err(
             format!("Expected error message about invalid variable name, got: {stderr}").into(),
         );
+    }
+
+    Ok(())
+}
+
+fn test_request_run_ep_dot_notation() -> Result<(), Failed> {
+    let output = Command::new("target/debug/rq")
+        .args([
+            "request",
+            "run",
+            "-s",
+            "tests/request/run/input/endpoint.rq",
+            "-n",
+            "api.get",
+        ])
+        .output()
+        .map_err(|e| format!("Failed to execute command: {e}"))?;
+
+    if output.status.code() == Some(2) {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Validation rejected dot notation name: {stderr}").into());
+    }
+    if output.status.code() == Some(5) {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!(
+            "Request 'api.get' was not found (dot notation not normalized): {stderr}"
+        )
+        .into());
     }
 
     Ok(())

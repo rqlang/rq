@@ -15,7 +15,9 @@ jest.mock('../../src/requestExplorer', () => {
             setSelectedEnvironment: jest.fn(),
             refresh: jest.fn(),
             getTreeItem: jest.fn(),
-            getChildren: jest.fn()
+            getChildren: jest.fn(),
+            setItemLoading: jest.fn(),
+            setTreeLoading: jest.fn()
         }))
     };
 });
@@ -112,6 +114,9 @@ describe('runRequest Commands', () => {
             }));
             expect(vscode.window.createWebviewPanel).toHaveBeenCalled();
             expect(mockWebviewPanel.webview.html).toBe('<html></html>');
+            expect(provider.setItemLoading).toHaveBeenCalledTimes(2);
+            expect(provider.setItemLoading).toHaveBeenNthCalledWith(1, item, true);
+            expect(provider.setItemLoading).toHaveBeenNthCalledWith(2, item, false);
         });
 
         test('handles OAuth2 auth', async () => {
@@ -132,6 +137,9 @@ describe('runRequest Commands', () => {
             expect(cliService.executeRequest).toHaveBeenCalledWith(expect.objectContaining({
                 variables: { auth_token: 'mock-token' }
             }));
+            expect(provider.setItemLoading).toHaveBeenCalledTimes(2);
+            expect(provider.setItemLoading).toHaveBeenNthCalledWith(1, item, true);
+            expect(provider.setItemLoading).toHaveBeenNthCalledWith(2, item, false);
         });
 
         test('handles execution error', async () => {
@@ -144,6 +152,9 @@ describe('runRequest Commands', () => {
             await requestRunner.runRequest(item, provider);
 
             expect(vscode.window.showErrorMessage).toHaveBeenCalledWith('Failed to run request: Execution failed');
+            expect(provider.setItemLoading).toHaveBeenCalledTimes(2);
+            expect(provider.setItemLoading).toHaveBeenNthCalledWith(1, item, true);
+            expect(provider.setItemLoading).toHaveBeenNthCalledWith(2, item, false);
         });
 
         test('filters cargo output from error message', async () => {
@@ -168,6 +179,9 @@ describe('runRequest Commands', () => {
 
             const expectedError = 'error: invalid value';
             expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(expectedError);
+            expect(provider.setItemLoading).toHaveBeenCalledTimes(2);
+            expect(provider.setItemLoading).toHaveBeenNthCalledWith(1, item, true);
+            expect(provider.setItemLoading).toHaveBeenNthCalledWith(2, item, false);
         });
     });
 
@@ -194,6 +208,9 @@ describe('runRequest Commands', () => {
             expect(cliService.executeRequest).toHaveBeenCalledWith(expect.objectContaining({
                 variables: { var1: 'val1', var2: 'val2' }
             }));
+            expect(provider.setItemLoading).toHaveBeenCalledTimes(2);
+            expect(provider.setItemLoading).toHaveBeenNthCalledWith(1, item, true);
+            expect(provider.setItemLoading).toHaveBeenNthCalledWith(2, item, false);
         });
 
         test('cancels if input cancelled', async () => {
@@ -206,6 +223,25 @@ describe('runRequest Commands', () => {
             await requestRunner.runRequestWithVariables(item, provider);
 
             expect(cliService.executeRequest).not.toHaveBeenCalled();
+            expect(provider.setItemLoading).toHaveBeenCalledTimes(2);
+            expect(provider.setItemLoading).toHaveBeenNthCalledWith(1, item, true);
+            expect(provider.setItemLoading).toHaveBeenNthCalledWith(2, item, false);
+        });
+
+        test('clears loading state when execution throws', async () => {
+            const request = { name: 'throw-req', endpoint: 'GET /', file: 'test.rq' };
+            const item = new RequestTreeItem('throw-req', request, 0);
+
+            (cliService.showRequest as jest.Mock).mockResolvedValue({ name: 'throw-req' });
+            (vscode.window.showInputBox as jest.Mock).mockResolvedValue('');
+            (cliService.executeRequest as jest.Mock).mockRejectedValue(new Error('CLI crashed'));
+
+            await requestRunner.runRequestWithVariables(item, provider);
+
+            expect(vscode.window.showErrorMessage).toHaveBeenCalledWith('Failed to run request: CLI crashed');
+            expect(provider.setItemLoading).toHaveBeenCalledTimes(2);
+            expect(provider.setItemLoading).toHaveBeenNthCalledWith(1, item, true);
+            expect(provider.setItemLoading).toHaveBeenNthCalledWith(2, item, false);
         });
     });
 });

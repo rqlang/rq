@@ -151,6 +151,39 @@ describe('RequestExplorerProvider', () => {
         }
     });
 
+    test('setItemLoading(true) saves original icon and sets spinner', () => {
+        const item = new RequestTreeItem('req', { name: 'req', endpoint: null, file: '/root/req.rq' }, vscode.TreeItemCollapsibleState.None);
+        const originalIcon = item.iconPath;
+
+        target.setItemLoading(item, true);
+
+        expect(item.iconPath).toEqual(new vscode.ThemeIcon('sync~spin'));
+        expect(item.iconPath).not.toBe(originalIcon);
+    });
+
+    test('setItemLoading(false) restores original icon', () => {
+        const item = new RequestTreeItem('req', { name: 'req', endpoint: null, file: '/root/req.rq' }, vscode.TreeItemCollapsibleState.None);
+        const originalIcon = item.iconPath;
+
+        target.setItemLoading(item, true);
+        target.setItemLoading(item, false);
+
+        expect(item.iconPath).toEqual(originalIcon);
+    });
+
+    test('setItemLoading fires onDidChangeTreeData for the item', () => {
+        const item = new RequestTreeItem('req', { name: 'req', endpoint: null, file: '/root/req.rq' }, vscode.TreeItemCollapsibleState.None);
+        const eventSpy = jest.fn();
+        target.onDidChangeTreeData(eventSpy);
+
+        target.setItemLoading(item, true);
+        expect(eventSpy).toHaveBeenCalledWith(item);
+
+        target.setItemLoading(item, false);
+        expect(eventSpy).toHaveBeenCalledWith(item);
+        expect(eventSpy).toHaveBeenCalledTimes(2);
+    });
+
     test('getChildren() handles files outside workspace root gracefully', async () => {
         const mockOutput = [
             { name: 'req1', endpoint: null, file: '/outside/req1.http' }

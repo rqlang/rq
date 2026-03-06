@@ -21,6 +21,7 @@ export class RequestExplorerProvider implements vscode.TreeDataProvider<RequestT
     readonly onDidChangeTreeData: vscode.Event<RequestTreeItem | undefined | null | void> = this._onDidChangeTreeData.event;
     private selectedEnvironment: string | undefined;
     private envItem: RequestTreeItem | undefined;
+    private readonly originalIcons = new WeakMap<RequestTreeItem, vscode.TreeItem['iconPath']>();
 
     constructor(private workspaceRoot: string | undefined) {}
 
@@ -37,7 +38,13 @@ export class RequestExplorerProvider implements vscode.TreeDataProvider<RequestT
     }
 
     setItemLoading(item: RequestTreeItem, loading: boolean): void {
-        item.iconPath = new vscode.ThemeIcon(loading ? 'sync~spin' : 'symbol-interface');
+        if (loading) {
+            this.originalIcons.set(item, item.iconPath);
+            item.iconPath = new vscode.ThemeIcon('sync~spin');
+        } else {
+            item.iconPath = this.originalIcons.get(item) ?? new vscode.ThemeIcon('symbol-interface');
+            this.originalIcons.delete(item);
+        }
         this._onDidChangeTreeData.fire(item);
     }
 

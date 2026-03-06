@@ -38,12 +38,13 @@ export class RequestRunner {
             return;
         }
 
-        try {
-            if (!requestItem.request) {
-                vscode.window.showErrorMessage('Cannot run: No request information available');
-                return;
-            }
+        if (!requestItem.request) {
+            vscode.window.showErrorMessage('Cannot run: No request information available');
+            return;
+        }
 
+        provider.setItemLoading(requestItem, true);
+        try {
             const requestName = requestItem.request.name;
             const sourceDirectory = this.getSourceDirectory();
             const environment = provider.getSelectedEnvironment();
@@ -55,6 +56,8 @@ export class RequestRunner {
 
         } catch (error) {
             this.handleError(error);
+        } finally {
+            provider.setItemLoading(requestItem, false);
         }
     }
 
@@ -69,12 +72,13 @@ export class RequestRunner {
             return;
         }
 
-        try {
-            if (!requestItem.request) {
-                vscode.window.showErrorMessage('Cannot run: No request information available');
-                return;
-            }
+        if (!requestItem.request) {
+            vscode.window.showErrorMessage('Cannot run: No request information available');
+            return;
+        }
 
+        provider.setItemLoading(requestItem, true);
+        try {
             const requestName = requestItem.request.name;
             const sourceDirectory = this.getSourceDirectory();
             const environment = provider.getSelectedEnvironment();
@@ -86,6 +90,8 @@ export class RequestRunner {
 
         } catch (error) {
             this.handleError(error);
+        } finally {
+            provider.setItemLoading(requestItem, false);
         }
     }
 

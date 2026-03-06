@@ -20,8 +20,26 @@ export class RequestExplorerProvider implements vscode.TreeDataProvider<RequestT
     private _onDidChangeTreeData: vscode.EventEmitter<RequestTreeItem | undefined | null | void> = new vscode.EventEmitter<RequestTreeItem | undefined | null | void>();
     readonly onDidChangeTreeData: vscode.Event<RequestTreeItem | undefined | null | void> = this._onDidChangeTreeData.event;
     private selectedEnvironment: string | undefined;
+    private envItem: RequestTreeItem | undefined;
 
     constructor(private workspaceRoot: string | undefined) {}
+
+    setTreeLoading(loading: boolean): void {
+        if (!this.envItem) { return; }
+        if (loading) {
+            this.envItem.iconPath = new vscode.ThemeIcon('sync~spin');
+            this.envItem.description = 'Loading\u2026';
+        } else {
+            this.envItem.iconPath = new vscode.ThemeIcon(this.selectedEnvironment ? 'server-environment' : 'circle-slash');
+            this.envItem.description = this.selectedEnvironment || 'None';
+        }
+        this._onDidChangeTreeData.fire(this.envItem);
+    }
+
+    setItemLoading(item: RequestTreeItem, loading: boolean): void {
+        item.iconPath = new vscode.ThemeIcon(loading ? 'sync~spin' : 'symbol-interface');
+        this._onDidChangeTreeData.fire(item);
+    }
 
     getSelectedEnvironment(): string | undefined {
         return this.selectedEnvironment;
@@ -76,7 +94,8 @@ export class RequestExplorerProvider implements vscode.TreeDataProvider<RequestT
         envItem.tooltip = this.selectedEnvironment
             ? `Current environment: ${this.selectedEnvironment}\n\nClick the environment icon in the toolbar to change.`
             : 'No environment selected.\n\nClick the environment icon in the toolbar to select one.';
-        
+        this.envItem = envItem;
+
         items.push(envItem);
 
         // If the CLI is currently being installed, show a placeholder

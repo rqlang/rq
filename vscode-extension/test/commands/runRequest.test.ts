@@ -15,7 +15,9 @@ jest.mock('../../src/requestExplorer', () => {
             setSelectedEnvironment: jest.fn(),
             refresh: jest.fn(),
             getTreeItem: jest.fn(),
-            getChildren: jest.fn()
+            getChildren: jest.fn(),
+            setItemLoading: jest.fn(),
+            setTreeLoading: jest.fn()
         }))
     };
 });

@@ -117,7 +117,8 @@ rq post(
 );
 
 // URL + headers + string body
-rq other_post("http://localhost:8080/post-string", [
+[method(POST)]
+rq post_string("http://localhost:8080/post-string", [
   "Content-Type": "text/plain"
 ], "hello world");
 ```

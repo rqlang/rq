@@ -6,7 +6,7 @@ use super::{
     reader::TokenReader,
     token::TokenType,
     tokenize::tokenize,
-    variable_context::{Variable, VariableContext, VariableValue},
+    variable_context::{VariableContext, VariableValue},
 };
 use std::io::BufRead;
 use std::path::{Path, PathBuf};
@@ -147,7 +147,7 @@ fn execute_system_function(
 
 fn resolve_variable_value(
     var_name: &str,
-    context: &VariableContext,
+    map: &std::collections::HashMap<&str, &VariableValue>,
     visited: &mut std::collections::HashSet<String>,
     source_files: &[PathBuf],
 ) -> ResolutionStatus {
@@ -155,35 +155,13 @@ fn resolve_variable_value(
         return ResolutionStatus::CircularReference;
     }
     visited.insert(var_name.to_string());
-    let all_vars: std::collections::HashMap<String, &VariableValue> = {
-        let mut map = std::collections::HashMap::new();
-        for var in &context.file_variables {
-            map.insert(var.name.clone(), &var.value);
-        }
-        for var in &context.environment_variables {
-            map.insert(var.name.clone(), &var.value);
-        }
-        for var in &context.secret_variables {
-            map.insert(var.name.clone(), &var.value);
-        }
-        for var in &context.endpoint_variables {
-            map.insert(var.name.clone(), &var.value);
-        }
-        for var in &context.request_variables {
-            map.insert(var.name.clone(), &var.value);
-        }
-        for var in &context.cli_variables {
-            map.insert(var.name.clone(), &var.value);
-        }
-        map
-    };
-    if let Some(v) = all_vars.get(var_name) {
+    if let Some(v) = map.get(var_name) {
         match v {
             VariableValue::String(s) => ResolutionStatus::Resolved(s.clone()),
             VariableValue::Array(arr) => ResolutionStatus::Resolved(arr.join(",")),
             VariableValue::Json(j) => ResolutionStatus::Resolved(j.clone()),
             VariableValue::Reference(rn) => {
-                let status = resolve_variable_value(rn, context, visited, source_files);
+                let status = resolve_variable_value(rn, map, visited, source_files);
                 if let ResolutionStatus::NotFound = status {
                     let (line, col, path) = find_variable_location(source_files, rn);
                     let loc = if line > 0 {
@@ -196,7 +174,7 @@ fn resolve_variable_value(
                     status
                 }
             }
-            VariableValue::Headers(_hdrs) => ResolutionStatus::Resolved(String::new()), // headers not interpolated directly
+            VariableValue::Headers(_hdrs) => ResolutionStatus::Resolved(String::new()),
             VariableValue::SystemFunction { name, args } => {
                 match execute_system_function(name, args, source_files) {
                     Ok(res) => ResolutionStatus::Resolved(res),
@@ -209,216 +187,199 @@ fn resolve_variable_value(
     }
 }
 
+fn resolve_vars_in_string(
+    result: &mut String,
+    map: &std::collections::HashMap<&str, &VariableValue>,
+    source_files: &[PathBuf],
+) -> Result<bool, SyntaxError> {
+    let mut changed = false;
+    for var_name in map.keys() {
+        let patterns = [
+            format!("{{{{{var_name}}}}}"),
+            format!("{{{{ {var_name} }}}}"),
+            format!("{{{{ {var_name}}}}}"),
+            format!("{{{{{var_name} }}}}"),
+        ];
+        if !patterns.iter().any(|p| result.contains(p.as_str())) {
+            continue;
+        }
+        let mut visited = std::collections::HashSet::new();
+        match resolve_variable_value(var_name, map, &mut visited, source_files) {
+            ResolutionStatus::Resolved(replacement) => {
+                for pattern in &patterns {
+                    if result.contains(pattern.as_str()) {
+                        let new_res = result.replace(pattern.as_str(), &replacement);
+                        if new_res != *result {
+                            changed = true;
+                            *result = new_res;
+                        }
+                    }
+                }
+            }
+            ResolutionStatus::CircularReference => {
+                let (line, col, path) = find_variable_location(source_files, var_name);
+                return Err(SyntaxError::with_file(
+                    format!("Circular reference detected for variable: '{var_name}'"),
+                    line,
+                    col,
+                    0..0,
+                    format_path(&path),
+                ));
+            }
+            ResolutionStatus::Error(msg, loc) => {
+                let (line, col, path) = if let Some((l, c, p)) = loc {
+                    (l, c, p)
+                } else {
+                    find_variable_location(source_files, var_name)
+                };
+                return Err(SyntaxError::with_file(
+                    msg,
+                    line,
+                    col,
+                    0..0,
+                    format_path(&path),
+                ));
+            }
+            ResolutionStatus::NotFound => {}
+        }
+    }
+    Ok(changed)
+}
+
+fn try_resolve_system_func(
+    result: &mut String,
+    context: &VariableContext,
+    source_files: &[PathBuf],
+    func_pattern: &regex::Regex,
+) -> Result<bool, SyntaxError> {
+    if !result.contains("{{$") {
+        return Ok(false);
+    }
+    let match_data = if let Some(caps) = func_pattern.captures(result) {
+        let full_match = caps.get(0).unwrap();
+        let range = full_match.range();
+        let namespace = caps[1].to_string();
+        let func_name = caps[2].to_string();
+        let args_str = caps[3].to_string();
+        Some((range, namespace, func_name, args_str))
+    } else {
+        None
+    };
+    if let Some((range, namespace, func_name, args_str)) = match_data {
+        let args: Vec<String> = if args_str.is_empty() {
+            Vec::new()
+        } else {
+            let mut resolved_args = Vec::new();
+            for s in args_str.split('\x1F') {
+                resolved_args.push(resolve_string(s, context, source_files)?);
+            }
+            resolved_args
+        };
+        let full_func_name = format!("{namespace}.{func_name}");
+        let replacement = match execute_system_function(&full_func_name, &args, source_files) {
+            Ok(res) => res,
+            Err(msg) => {
+                let (line, col, path) = find_sys_call_location(source_files, &full_func_name);
+                return Err(SyntaxError::with_file(
+                    msg,
+                    line,
+                    col,
+                    0..0,
+                    format_path(&path),
+                ));
+            }
+        };
+        result.replace_range(range, &replacement);
+        return Ok(true);
+    }
+    Ok(false)
+}
+
+fn try_resolve_user_func(
+    result: &mut String,
+    context: &VariableContext,
+    source_files: &[PathBuf],
+    user_func_pattern: &regex::Regex,
+) -> Result<bool, SyntaxError> {
+    let Some(caps) = user_func_pattern.captures(result) else {
+        return Ok(false);
+    };
+    let full_match = caps.get(0).unwrap();
+    let range = full_match.range();
+    let namespace = caps[1].to_string();
+    let func_name = caps[2].to_string();
+    let args_raw = caps[3].to_string();
+
+    if !functions::is_known_namespace(&namespace) {
+        return Ok(false);
+    }
+
+    let fake_source = format!("{namespace}.{func_name}({args_raw})");
+    let tokens = tokenize(&fake_source).map_err(|e| {
+        SyntaxError::with_file(
+            format!("Failed to tokenize function call: {e:?}"),
+            0,
+            0,
+            0..0,
+            String::new(),
+        )
+    })?;
+    let mut reader = TokenReader::new(tokens, PathBuf::from(""), fake_source);
+    reader.advance();
+    reader.skip_ignorable();
+    reader.advance();
+
+    match parse_system_function(&mut reader, &namespace) {
+        Ok(VariableValue::SystemFunction { name: _, args }) => {
+            let mut resolved_args = Vec::new();
+            for arg in args {
+                resolved_args.push(resolve_string(&arg, context, source_files)?);
+            }
+            let full_func_name = format!("{namespace}.{func_name}");
+            let replacement =
+                match execute_system_function(&full_func_name, &resolved_args, source_files) {
+                    Ok(res) => res,
+                    Err(msg) => {
+                        let (line, col, path) =
+                            find_sys_call_location(source_files, &full_func_name);
+                        return Err(SyntaxError::with_file(
+                            msg,
+                            line,
+                            col,
+                            0..0,
+                            format_path(&path),
+                        ));
+                    }
+                };
+            result.replace_range(range, &replacement);
+            Ok(true)
+        }
+        Ok(_) => Ok(false),
+        Err(e) => Err(e),
+    }
+}
+
 pub fn resolve_string(
     input: &str,
     context: &VariableContext,
     source_files: &[PathBuf],
 ) -> Result<String, SyntaxError> {
-    let all_vars: std::collections::HashMap<String, &VariableValue> = {
-        let mut map = std::collections::HashMap::new();
-        for var in &context.file_variables {
-            map.insert(var.name.clone(), &var.value);
-        }
-        for var in &context.environment_variables {
-            map.insert(var.name.clone(), &var.value);
-        }
-        for var in &context.secret_variables {
-            map.insert(var.name.clone(), &var.value);
-        }
-        for var in &context.endpoint_variables {
-            map.insert(var.name.clone(), &var.value);
-        }
-        for var in &context.request_variables {
-            map.insert(var.name.clone(), &var.value);
-        }
-        for var in &context.cli_variables {
-            map.insert(var.name.clone(), &var.value);
-        }
-        map
-    };
+    let map = context.as_map();
     let mut result = input.to_string();
-
-    let mut iterations = 0;
     let func_pattern =
         regex::Regex::new(r"\{\{\$([a-zA-Z0-9_]+)\.([a-zA-Z0-9_]+)\x1E(.*?)\}\}").unwrap();
-
-    // Regex for user-facing function syntax {{ namespace.func(...) }}
     let user_func_pattern =
         regex::Regex::new(r"\{\{\s*([a-zA-Z0-9_]+)\.([a-zA-Z0-9_]+)\s*\((.*?)\)\s*\}\}").unwrap();
 
+    let mut iterations = 0;
     while iterations < 10 {
         iterations += 1;
-        let mut changed = false;
-        for var_name in all_vars.keys() {
-            let patterns = [
-                format!("{{{{{var_name}}}}}"),
-                format!("{{{{ {var_name} }}}}"),
-                format!("{{{{ {var_name}}}}}"),
-                format!("{{{{{var_name} }}}}"),
-            ];
-
-            let is_used = patterns.iter().any(|p| result.contains(p));
-            if !is_used {
-                continue;
-            }
-
-            let mut visited = std::collections::HashSet::new();
-            match resolve_variable_value(var_name, context, &mut visited, source_files) {
-                ResolutionStatus::Resolved(replacement) => {
-                    for pattern in patterns.iter() {
-                        if result.contains(pattern) {
-                            let new_res = result.replace(pattern, &replacement);
-                            if new_res != result {
-                                changed = true;
-                                result = new_res;
-                            }
-                        }
-                    }
-                }
-                ResolutionStatus::CircularReference => {
-                    let (line, col, path) = find_variable_location(source_files, var_name);
-                    return Err(SyntaxError::with_file(
-                        format!("Circular reference detected for variable: '{var_name}'"),
-                        line,
-                        col,
-                        0..0,
-                        format_path(&path),
-                    ));
-                }
-                ResolutionStatus::Error(msg, loc) => {
-                    let (line, col, path) = if let Some((l, c, p)) = loc {
-                        (l, c, p)
-                    } else {
-                        find_variable_location(source_files, var_name)
-                    };
-                    return Err(SyntaxError::with_file(
-                        msg,
-                        line,
-                        col,
-                        0..0,
-                        format_path(&path),
-                    ));
-                }
-                ResolutionStatus::NotFound => {}
-            }
-        }
-
-        if result.contains("{{$") {
-            let match_data = if let Some(caps) = func_pattern.captures(&result) {
-                let full_match = caps.get(0).unwrap();
-                let range = full_match.range();
-                let namespace = caps[1].to_string();
-                let func_name = caps[2].to_string();
-                let args_str = caps[3].to_string();
-                Some((range, namespace, func_name, args_str))
-            } else {
-                None
-            };
-
-            if let Some((range, namespace, func_name, args_str)) = match_data {
-                let args: Vec<String> = if args_str.is_empty() {
-                    Vec::new()
-                } else {
-                    let mut resolved_args = Vec::new();
-                    for s in args_str.split('\x1F') {
-                        resolved_args.push(resolve_string(s, context, source_files)?);
-                    }
-                    resolved_args
-                };
-
-                let full_func_name = format!("{namespace}.{func_name}");
-                let replacement =
-                    match execute_system_function(&full_func_name, &args, source_files) {
-                        Ok(res) => res,
-                        Err(msg) => {
-                            let (line, col, path) =
-                                find_sys_call_location(source_files, &full_func_name);
-                            return Err(SyntaxError::with_file(
-                                msg,
-                                line,
-                                col,
-                                0..0,
-                                format_path(&path),
-                            ));
-                        }
-                    };
-
-                result.replace_range(range, &replacement);
-                changed = true;
-            }
-        }
-
+        let mut changed = resolve_vars_in_string(&mut result, &map, source_files)?;
+        changed |= try_resolve_system_func(&mut result, context, source_files, &func_pattern)?;
         if !changed {
-            // Also check for user-facing function syntax {{ namespace.func(...) }}
-            if let Some(caps) = user_func_pattern.captures(&result) {
-                let full_match = caps.get(0).unwrap();
-                let range = full_match.range();
-                let namespace = caps[1].to_string();
-                let func_name = caps[2].to_string();
-                let args_raw = caps[3].to_string();
-
-                if functions::is_known_namespace(&namespace) {
-                    // We need to parse the function call properly to handle arguments
-                    // Construct a fake source string: namespace.func(args)
-                    let fake_source = format!("{namespace}.{func_name}({args_raw})");
-                    let tokens = tokenize(&fake_source).map_err(|e| {
-                        SyntaxError::with_file(
-                            format!("Failed to tokenize function call: {e:?}"),
-                            0,
-                            0,
-                            0..0,
-                            String::new(),
-                        )
-                    })?;
-                    let mut reader = TokenReader::new(tokens, PathBuf::from(""), fake_source);
-                    // consume namespace
-                    reader.advance();
-                    reader.skip_ignorable();
-                    // consume dot
-                    reader.advance();
-                    // parse_system_function expects to be called AFTER the dot
-
-                    match parse_system_function(&mut reader, &namespace) {
-                        Ok(VariableValue::SystemFunction { name: _, args }) => {
-                            // Resolve args recursively
-                            let mut resolved_args = Vec::new();
-                            for arg in args {
-                                resolved_args.push(resolve_string(&arg, context, source_files)?);
-                            }
-
-                            let full_func_name = format!("{namespace}.{func_name}");
-                            let replacement = match execute_system_function(
-                                &full_func_name,
-                                &resolved_args,
-                                source_files,
-                            ) {
-                                Ok(res) => res,
-                                Err(msg) => {
-                                    let (line, col, path) =
-                                        find_sys_call_location(source_files, &full_func_name);
-                                    return Err(SyntaxError::with_file(
-                                        msg,
-                                        line,
-                                        col,
-                                        0..0,
-                                        format_path(&path),
-                                    ));
-                                }
-                            };
-                            result.replace_range(range, &replacement);
-                            changed = true;
-                        }
-                        Ok(_) => {} // Should not happen
-                        Err(e) => {
-                            // Only report error if we are sure it was meant to be a function call
-                            // check if regex match is valid
-                            return Err(e);
-                        }
-                    }
-                }
-            }
+            changed =
+                try_resolve_user_func(&mut result, context, source_files, &user_func_pattern)?;
         }
-
         if !changed {
             break;
         }
@@ -427,15 +388,12 @@ pub fn resolve_string(
     let unresolved_pattern = regex::Regex::new(r"\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}").unwrap();
     if let Some(caps) = unresolved_pattern.captures(&result) {
         let var_name = &caps[1];
-
         let msg = if iterations >= 10 {
             format!("Circular reference or recursion limit exceeded for variable: '{var_name}'")
         } else {
             format!("Unresolved variable: '{var_name}'")
         };
-
         let (line, col, path) = find_variable_location(source_files, var_name);
-
         return Err(SyntaxError::with_file(
             msg,
             line,
@@ -464,27 +422,20 @@ pub fn resolve_variables(
     if let Some(timeout) = &request.timeout {
         request.timeout = Some(resolve_string(timeout, context, source_files)?);
     }
+    if let Some(auth) = &request.auth {
+        request.auth = Some(resolve_string(auth, context, source_files)?);
+    }
     Ok(request)
 }
 
 pub fn resolve_auth_provider(
     mut auth_config: super::auth::Config,
-    env_variables: &[Variable],
+    context: &VariableContext,
     source_files: &[PathBuf],
 ) -> Result<super::auth::Config, SyntaxError> {
-    let context = VariableContext {
-        file_variables: env_variables.to_vec(),
-        environment_variables: Vec::new(),
-        secret_variables: Vec::new(),
-        endpoint_variables: Vec::new(),
-        request_variables: Vec::new(),
-        cli_variables: Vec::new(),
-    };
-
     for (_, token) in auth_config.fields.iter_mut() {
-        token.value = resolve_string(&token.value, &context, source_files)?;
+        token.value = resolve_string(&token.value, context, source_files)?;
     }
-
     Ok(auth_config)
 }
 
@@ -493,7 +444,18 @@ mod tests {
     use super::*;
     use crate::syntax::auth::{AuthType, Config};
     use crate::syntax::token::{Token, TokenType};
-    use crate::syntax::variable_context::{Variable, VariableValue};
+    use crate::syntax::variable_context::{Variable, VariableContext, VariableValue};
+
+    fn make_context(vars: Vec<Variable>) -> VariableContext {
+        VariableContext {
+            file_variables: vars,
+            environment_variables: Vec::new(),
+            secret_variables: Vec::new(),
+            endpoint_variables: Vec::new(),
+            request_variables: Vec::new(),
+            cli_variables: Vec::new(),
+        }
+    }
     use std::collections::HashMap;
 
     fn t(s: &str) -> Token {
@@ -521,7 +483,7 @@ mod tests {
             value: VariableValue::String("secret-token-123".to_string()),
         }];
 
-        let resolved = resolve_auth_provider(config, &env_vars, &[]).unwrap();
+        let resolved = resolve_auth_provider(config, &make_context(env_vars), &[]).unwrap();
 
         assert_eq!(
             resolved.fields.get("token").unwrap().value,
@@ -563,7 +525,7 @@ mod tests {
             },
         ];
 
-        let resolved = resolve_auth_provider(config, &env_vars, &[]).unwrap();
+        let resolved = resolve_auth_provider(config, &make_context(env_vars), &[]).unwrap();
 
         assert_eq!(
             resolved.fields.get("client_id").unwrap().value,
@@ -600,7 +562,7 @@ mod tests {
             value: VariableValue::String("spaced-token".to_string()),
         }];
 
-        let resolved = resolve_auth_provider(config, &env_vars, &[]).unwrap();
+        let resolved = resolve_auth_provider(config, &make_context(env_vars), &[]).unwrap();
 
         assert_eq!(resolved.fields.get("token").unwrap().value, "spaced-token");
     }
@@ -622,7 +584,7 @@ mod tests {
             value: VariableValue::String("unused-value".to_string()),
         }];
 
-        let resolved = resolve_auth_provider(config, &env_vars, &[]).unwrap();
+        let resolved = resolve_auth_provider(config, &make_context(env_vars), &[]).unwrap();
 
         assert_eq!(
             resolved.fields.get("token").unwrap().value,
@@ -647,7 +609,7 @@ mod tests {
             value: VariableValue::String("other-value".to_string()),
         }];
 
-        let result = resolve_auth_provider(config, &env_vars, &[]);
+        let result = resolve_auth_provider(config, &make_context(env_vars), &[]);
         assert!(result.is_err());
     }
 
@@ -677,7 +639,7 @@ mod tests {
             },
         ];
 
-        let resolved = resolve_auth_provider(config, &env_vars, &[]).unwrap();
+        let resolved = resolve_auth_provider(config, &make_context(env_vars), &[]).unwrap();
 
         assert_eq!(
             resolved.fields.get("url").unwrap().value,
@@ -699,7 +661,7 @@ mod tests {
 
         let env_vars: Vec<Variable> = vec![];
 
-        let result = resolve_auth_provider(config, &env_vars, &[]);
+        let result = resolve_auth_provider(config, &make_context(env_vars), &[]);
         assert!(result.is_err());
     }
 
@@ -727,7 +689,7 @@ mod tests {
             },
         ];
 
-        let resolved = resolve_auth_provider(config, &env_vars, &[]).unwrap();
+        let resolved = resolve_auth_provider(config, &make_context(env_vars), &[]).unwrap();
 
         assert_eq!(
             resolved.fields.get("client_id").unwrap().value,

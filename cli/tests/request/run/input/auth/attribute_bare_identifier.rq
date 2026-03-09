@@ -1,0 +1,8 @@
+let auth_name = "test_auth";
+
+auth test_auth(auth_type.bearer) {
+    token: "test-token-123"
+}
+
+[auth(auth_name)]
+rq auth_bare_identifier("http://localhost:8080/auth-test");

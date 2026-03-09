@@ -186,14 +186,18 @@ impl AttributeParser for AuthAttributeParser {
         r.skip_ignorable();
         let auth_name_tok = expect(
             r,
-            |t| t.token_type == TokenType::String,
-            "Expected string literal",
+            |t| t.token_type == TokenType::String || t.token_type == TokenType::Identifier,
+            "Expected string literal or identifier",
         )?;
-        let auth_name = auth_name_tok
-            .value
-            .trim_matches('"')
-            .trim_matches('\'')
-            .to_string();
+        let auth_name = if auth_name_tok.token_type == TokenType::Identifier {
+            format!("{{{{{}}}}}", auth_name_tok.value)
+        } else {
+            auth_name_tok
+                .value
+                .trim_matches('"')
+                .trim_matches('\'')
+                .to_string()
+        };
         r.advance();
 
         r.skip_ignorable();

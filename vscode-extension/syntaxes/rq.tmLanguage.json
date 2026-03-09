@@ -210,6 +210,12 @@
             },
             {
               "include": "source.rq.basic#json-type"
+            },
+            {
+              "include": "source.rq.basic#named-parameter-type"
+            },
+            {
+              "include": "source.rq.basic#variable-name"
             }
           ]
         }

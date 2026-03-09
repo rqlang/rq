@@ -47,16 +47,13 @@ jobs:
             build=1
           fi
 
-          # Increment patch version for dev builds to follow SemVer (next version)
+          # Increment minor version for dev builds (next sprint target)
           IFS='.' read -r -a parts <<< "$base"
           if [ "${#parts[@]}" -ge 3 ]; then
-            # We only increment if we have Major.Minor.Patch
-            patch="${parts[2]}"
-            # Strip any existing suffixes if present
-            clean_patch="${patch%%-*}"
-            # Increment
-            new_patch=$((clean_patch + 1))
-            base="${parts[0]}.${parts[1]}.${new_patch}"
+            minor="${parts[1]}"
+            clean_minor="${minor%%-*}"
+            new_minor=$((clean_minor + 1))
+            base="${parts[0]}.${new_minor}.0"
             echo "Incremented version base to: $base"
           fi
 

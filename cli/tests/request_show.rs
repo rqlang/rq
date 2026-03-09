@@ -145,6 +145,41 @@ fn test_request_show_json() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
+fn test_request_show_auth_bare_identifier() -> Result<(), Box<dyn std::error::Error>> {
+    let output = rq_cmd()
+        .args([
+            "request",
+            "show",
+            "-s",
+            "tests/request/run/input/auth/attribute_bare_identifier.rq",
+            "-n",
+            "auth_bare_identifier",
+        ])
+        .output()?;
+
+    if !output.status.success() {
+        return Err(format!(
+            "Command failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    if !stdout.contains("Request: auth_bare_identifier") {
+        return Err("Output missing request name".into());
+    }
+    if !stdout.contains("name: test_auth") {
+        return Err("Output missing auth name".into());
+    }
+    if !stdout.contains("type: bearer") {
+        return Err("Output missing auth type".into());
+    }
+
+    Ok(())
+}
+
+#[test]
 fn test_request_show_nonexistent() -> Result<(), Box<dyn std::error::Error>> {
     let output = rq_cmd()
         .args([

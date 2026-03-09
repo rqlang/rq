@@ -60,5 +60,62 @@
       "import \"${1:./path/to/file.rq}\";"
     ],
     "description": "Import another RQ file"
+  },
+  "Auth Bearer": {
+    "prefix": "auth-bearer",
+    "body": [
+      "auth ${1:my_auth}(auth_type.bearer) {",
+      "\ttoken: \"${2:your-token}\",",
+      "}"
+    ],
+    "description": "Create a bearer token auth block"
+  },
+  "Auth OAuth2 Authorization Code": {
+    "prefix": "auth-auth-code",
+    "body": [
+      "auth ${1:my_auth}(auth_type.oauth2_authorization_code) {",
+      "\tclient_id: \"${2:your-client-id}\",",
+      "\tauthorization_url: \"${3:https://auth.example.com/authorize}\",",
+      "\ttoken_url: \"${4:https://auth.example.com/token}\",",
+      "\tscope: \"${5:openid profile}\",",
+      "}"
+    ],
+    "description": "Create an OAuth2 authorization code auth block"
+  },
+  "Auth OAuth2 Client Credentials (Secret)": {
+    "prefix": "auth-client-credentials",
+    "body": [
+      "auth ${1:my_auth}(auth_type.oauth2_client_credentials) {",
+      "\tclient_id: \"${2:your-client-id}\",",
+      "\tclient_secret: \"${3:your-client-secret}\",",
+      "\ttoken_url: \"${4:https://auth.example.com/token}\",",
+      "\tscope: \"${5:api}\",",
+      "}"
+    ],
+    "description": "Create an OAuth2 client credentials auth block using a client secret"
+  },
+  "Auth OAuth2 Client Credentials (Certificate)": {
+    "prefix": "auth-client-credentials-cert",
+    "body": [
+      "auth ${1:my_auth}(auth_type.oauth2_client_credentials) {",
+      "\tclient_id: \"${2:your-client-id}\",",
+      "\tcert_file: \"${3:./path/to/cert.p12}\",",
+      "\tcert_password: \"${4:cert-password}\",",
+      "\ttoken_url: \"${5:https://auth.example.com/token}\",",
+      "\tscope: \"${6:api}\",",
+      "}"
+    ],
+    "description": "Create an OAuth2 client credentials auth block using a certificate (private_key_jwt)"
+  },
+  "Auth OAuth2 Implicit": {
+    "prefix": "auth-implicit",
+    "body": [
+      "auth ${1:my_auth}(auth_type.oauth2_implicit) {",
+      "\tclient_id: \"${2:your-client-id}\",",
+      "\tauthorization_url: \"${3:https://auth.example.com/authorize}\",",
+      "\tscope: \"${4:openid profile}\",",
+      "}"
+    ],
+    "description": "Create an OAuth2 implicit flow auth block"
   }
 }

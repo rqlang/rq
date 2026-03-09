@@ -146,6 +146,18 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
                         detail: 'OAuth2 Authorization Code with PKCE',
                         description: 'OAuth2 authorization code flow with PKCE. Requires: client_id, authorization_url, token_url, redirect_uri, scope, code_challenge_method',
                         insertText: 'oauth2_authorization_code'
+                    },
+                    {
+                        name: 'oauth2_client_credentials',
+                        detail: 'OAuth2 Client Credentials',
+                        description: 'OAuth2 client credentials flow. Requires: client_id, token_url. Authentication via client_secret or cert_file (private_key_jwt)',
+                        insertText: 'oauth2_client_credentials'
+                    },
+                    {
+                        name: 'oauth2_implicit',
+                        detail: 'OAuth2 Implicit Flow',
+                        description: 'OAuth2 implicit flow. Requires: client_id, authorization_url, redirect_uri, scope',
+                        insertText: 'oauth2_implicit'
                     }
                 ];
 

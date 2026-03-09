@@ -37,6 +37,16 @@ On **Ubuntu Desktop** (and many other modern Linux distributions), `~/.local/bin
 
 On **macOS**, **Windows**, and other systems where `~/.local/bin` is not in the `PATH`, you will need to add the installation directory to your `PATH` manually if you wish to use the CLI outside of VS Code.
 
+## VS Code Extension (Manual Install from VSIX)
+
+Each release publishes a `.vsix` file as a release asset on GitHub. You can download and install it manually if you prefer not to use the Marketplace.
+
+1. Go to the [Releases page](https://github.com/rqlang/rq/releases) and open the release you want.
+2. Under **Assets**, download the `.vsix` file (e.g. `rq-language-extension-0.2.0.vsix`).
+3. Open VS Code and go to the **Extensions** view (`Ctrl+Shift+X` / `Cmd+Shift+X`).
+4. Click the **`...`** icon (top-right of the Extensions panel, next to the refresh button).
+5. Select **Install from VSIX...** and choose the downloaded file.
+
 ## CLI (Manual Download)
 
 If you prefer not to rely on the extension to install the CLI, or if you want to use the CLI independently, you can download the prebuilt **portable** binary directly from the GitHub Releases page. The binaries are self-contained and do not require any additional runtime or installation steps.

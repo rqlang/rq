@@ -2,13 +2,6 @@
 name: CLI BVT
 
 on:
-  push:
-    branches:
-      - features/*
-      - fix/*
-    paths:
-      - 'cli/**'
-      - '.github/workflows/cli_bvt.yaml'
   pull_request:
     branches:
       - main

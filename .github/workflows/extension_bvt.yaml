@@ -1,13 +1,6 @@
 name: Extension BVT
 
 on:
-  push:
-    branches:
-      - features/*
-      - fix/*
-    paths:
-      - 'vscode-extension/**'
-      - '.github/workflows/extension_bvt.yaml'
   pull_request:
     branches:
       - main

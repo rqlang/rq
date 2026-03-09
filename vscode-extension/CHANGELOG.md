@@ -1,7 +1,5 @@
 # Changelog
 
-All notable changes to the rq VS Code extension will be documented in this file.
-
 ## [0.2.0]
 
 ### Bug Fixes

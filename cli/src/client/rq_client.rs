@@ -137,46 +137,43 @@ impl RqClient {
                 let mut resolved_request =
                     crate::syntax::resolve_variables(working, &context, &search_paths)?;
 
-                if let Some(auth_name_raw) = &resolved_request.auth {
-                    let auth_name =
-                        crate::syntax::resolve_string(auth_name_raw, &context, &search_paths)?;
-
-                    if auth_name.trim().is_empty() {
-                        // Empty auth name means no auth
-                    } else if let Some(auth_provider) = rq_file.auth_providers.get(&auth_name) {
-                        let mut resolved_provider = auth_provider.clone();
-                        for (_, token) in resolved_provider.fields.iter_mut() {
-                            token.value = crate::syntax::resolve_string(
-                                &token.value,
+                if let Some(auth_name) = resolved_request.auth.as_deref() {
+                    if !auth_name.trim().is_empty() {
+                        if let Some(auth_provider) = rq_file.auth_providers.get(auth_name) {
+                            let resolved_provider = crate::syntax::resolve_auth_provider(
+                                auth_provider.clone(),
                                 &context,
                                 &search_paths,
                             )?;
-                        }
 
-                        let provider = resolved_provider.auth_type.get_config();
+                            let provider = resolved_provider.auth_type.get_config();
 
-                        match provider
-                            .configure(
-                                &resolved_provider,
-                                &context,
-                                resolved_request.url.clone(),
-                                resolved_request.headers.clone(),
-                            )
-                            .await
-                        {
-                            Ok((modified_url, modified_headers)) => {
-                                resolved_request.url = modified_url;
-                                resolved_request.headers = modified_headers;
+                            match provider
+                                .configure(
+                                    &resolved_provider,
+                                    &context,
+                                    resolved_request.url.clone(),
+                                    resolved_request.headers.clone(),
+                                )
+                                .await
+                            {
+                                Ok((modified_url, modified_headers)) => {
+                                    resolved_request.url = modified_url;
+                                    resolved_request.headers = modified_headers;
+                                }
+                                Err(e) => {
+                                    return Err(RqError::Auth(
+                                        crate::syntax::error::AuthError::new(format!(
+                                            "Configuration '{auth_name}' failed: {e}"
+                                        )),
+                                    ));
+                                }
                             }
-                            Err(e) => {
-                                return Err(RqError::Auth(crate::syntax::error::AuthError::new(
-                                    format!("Configuration '{auth_name}' failed: {e}"),
-                                )));
-                            }
+                        } else {
+                            return Err(RqError::Validation(format!(
+                                "Auth configuration '{auth_name}' not found"
+                            )));
                         }
-                    } else {
-                        let msg = format!("Auth configuration '{auth_name}' not found");
-                        return Err(RqError::Validation(msg));
                     }
                 }
 
@@ -472,8 +469,16 @@ impl RqClient {
             source_files.push(env_path);
         }
 
-        let config =
-            crate::syntax::resolve_auth_provider(auth_provider, &all_variables, &source_files)?;
+        let context = crate::syntax::variable_context::VariableContext {
+            file_variables: all_variables,
+            environment_variables: Vec::new(),
+            secret_variables: Vec::new(),
+            endpoint_variables: Vec::new(),
+            request_variables: Vec::new(),
+            cli_variables: Vec::new(),
+        };
+
+        let config = crate::syntax::resolve_auth_provider(auth_provider, &context, &source_files)?;
 
         let auth_type_str = match config.auth_type {
             crate::syntax::auth::AuthType::Bearer => "bearer",
@@ -556,72 +561,63 @@ impl RqClient {
         }
     }
 
+    fn collect_rq_paths(dir: &Path, paths: &mut Vec<PathBuf>) -> Result<(), RqError> {
+        if !dir.is_dir() {
+            return Ok(());
+        }
+        for entry in fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_dir() {
+                Self::collect_rq_paths(&path, paths)?;
+            } else if path.extension().and_then(|s| s.to_str()) == Some("rq") {
+                paths.push(path);
+            }
+        }
+        Ok(())
+    }
+
     fn find_rq_file_with_request(
         dir: &Path,
         request_name: &str,
     ) -> Result<Option<RqFile>, RqError> {
-        if !dir.is_dir() {
-            return Ok(None);
-        }
-
-        for entry in fs::read_dir(dir)? {
-            let entry = entry?;
-            let path = entry.path();
-
-            if path.is_dir() {
-                if let Some(rq_file) = Self::find_rq_file_with_request(&path, request_name)? {
-                    return Ok(Some(rq_file));
-                }
-            } else if path.extension().and_then(|s| s.to_str()) == Some("rq") {
-                match RqFile::from_path(&path) {
-                    Ok(rq_file) => {
-                        if rq_file
-                            .requests
-                            .iter()
-                            .any(|r| r.request.name == request_name)
-                        {
-                            return Ok(Some(rq_file));
-                        }
+        let mut paths = Vec::new();
+        Self::collect_rq_paths(dir, &mut paths)?;
+        for path in paths {
+            match RqFile::from_path(&path) {
+                Ok(rq_file) => {
+                    if rq_file
+                        .requests
+                        .iter()
+                        .any(|r| r.request.name == request_name)
+                    {
+                        return Ok(Some(rq_file));
                     }
-                    Err(e) => {
-                        if let Some(syntax_err) =
-                            e.downcast_ref::<crate::syntax::error::SyntaxError>()
-                        {
-                            return Err(RqError::Syntax(syntax_err.clone()));
-                        }
+                }
+                Err(e) => {
+                    if let Some(syntax_err) = e.downcast_ref::<crate::syntax::error::SyntaxError>()
+                    {
+                        return Err(RqError::Syntax(syntax_err.clone()));
                     }
                 }
             }
         }
-
         Ok(None)
     }
 
     fn collect_rq_files_parsed(dir: &Path, rq_files: &mut Vec<RqFile>) -> Result<(), RqError> {
-        if !dir.is_dir() {
-            return Ok(());
-        }
-
-        for entry in fs::read_dir(dir)? {
-            let entry = entry?;
-            let path = entry.path();
-
-            if path.is_dir() {
-                Self::collect_rq_files_parsed(&path, rq_files)?;
-            } else if path.extension().and_then(|s| s.to_str()) == Some("rq") {
-                match RqFile::from_path(&path) {
-                    Ok(rq_file) => rq_files.push(rq_file),
-                    Err(e) => {
-                        eprintln!(
-                            "Warning: Failed to parse {}: {}",
-                            crate::core::paths::clean_path(&path),
-                            e
-                        );
-                    }
-                }
+        let mut paths = Vec::new();
+        Self::collect_rq_paths(dir, &mut paths)?;
+        for path in paths {
+            match RqFile::from_path(&path) {
+                Ok(rq_file) => rq_files.push(rq_file),
+                Err(e) => eprintln!(
+                    "Warning: Failed to parse {}: {}",
+                    crate::core::paths::clean_path(&path),
+                    e
+                ),
             }
         }
-
         Ok(())
     }
 
@@ -724,25 +720,15 @@ impl RqClient {
         dir: &Path,
         auth_map: &mut HashMap<String, String>,
     ) -> Result<(), RqError> {
-        if !dir.is_dir() {
-            return Ok(());
-        }
-
-        for entry in fs::read_dir(dir)? {
-            let entry = entry?;
-            let path = entry.path();
-
-            if path.is_dir() {
-                Self::collect_auth_entries(&path, auth_map)?;
-            } else if path.extension().and_then(|s| s.to_str()) == Some("rq") {
-                if let Ok(rq_file) = RqFile::from_path(&path) {
-                    for (auth_name, provider) in rq_file.auth_providers.iter() {
-                        auth_map.insert(auth_name.clone(), provider.auth_type.as_str().to_string());
-                    }
+        let mut paths = Vec::new();
+        Self::collect_rq_paths(dir, &mut paths)?;
+        for path in paths {
+            if let Ok(rq_file) = RqFile::from_path(&path) {
+                for (auth_name, provider) in rq_file.auth_providers.iter() {
+                    auth_map.insert(auth_name.clone(), provider.auth_type.as_str().to_string());
                 }
             }
         }
-
         Ok(())
     }
 
@@ -750,27 +736,15 @@ impl RqClient {
         dir: &Path,
         name: &str,
     ) -> Result<Option<(crate::syntax::auth::Config, PathBuf)>, RqError> {
-        if !dir.is_dir() {
-            return Ok(None);
-        }
-
-        for entry in fs::read_dir(dir)? {
-            let entry = entry?;
-            let path = entry.path();
-
-            if path.is_dir() {
-                if let Some(config) = Self::find_auth_provider(&path, name)? {
-                    return Ok(Some(config));
-                }
-            } else if path.extension().and_then(|s| s.to_str()) == Some("rq") {
-                if let Ok(rq_file) = RqFile::from_path(&path) {
-                    if let Some(config) = rq_file.auth_providers.get(name) {
-                        return Ok(Some((config.clone(), path)));
-                    }
+        let mut paths = Vec::new();
+        Self::collect_rq_paths(dir, &mut paths)?;
+        for path in paths {
+            if let Ok(rq_file) = RqFile::from_path(&path) {
+                if let Some(config) = rq_file.auth_providers.get(name) {
+                    return Ok(Some((config.clone(), path)));
                 }
             }
         }
-
         Ok(None)
     }
 
@@ -778,25 +752,15 @@ impl RqClient {
         dir: &Path,
         env_names: &mut HashSet<String>,
     ) -> Result<(), RqError> {
-        if !dir.is_dir() {
-            return Ok(());
-        }
-
-        for entry in fs::read_dir(dir)? {
-            let entry = entry?;
-            let path = entry.path();
-
-            if path.is_dir() {
-                Self::collect_environment_names(&path, env_names)?;
-            } else if path.extension().and_then(|s| s.to_str()) == Some("rq") {
-                if let Ok(rq_file) = RqFile::from_path(&path) {
-                    for env_name in rq_file.environments.keys() {
-                        env_names.insert(env_name.clone());
-                    }
+        let mut paths = Vec::new();
+        Self::collect_rq_paths(dir, &mut paths)?;
+        for path in paths {
+            if let Ok(rq_file) = RqFile::from_path(&path) {
+                for env_name in rq_file.environments.keys() {
+                    env_names.insert(env_name.clone());
                 }
             }
         }
-
         Ok(())
     }
 }

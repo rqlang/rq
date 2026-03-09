@@ -6,7 +6,7 @@ use super::{
     reader::TokenReader,
     token::TokenType,
     tokenize::tokenize,
-    variable_context::{Variable, VariableContext, VariableValue},
+    variable_context::{VariableContext, VariableValue},
 };
 use std::io::BufRead;
 use std::path::{Path, PathBuf};
@@ -464,27 +464,20 @@ pub fn resolve_variables(
     if let Some(timeout) = &request.timeout {
         request.timeout = Some(resolve_string(timeout, context, source_files)?);
     }
+    if let Some(auth) = &request.auth {
+        request.auth = Some(resolve_string(auth, context, source_files)?);
+    }
     Ok(request)
 }
 
 pub fn resolve_auth_provider(
     mut auth_config: super::auth::Config,
-    env_variables: &[Variable],
+    context: &VariableContext,
     source_files: &[PathBuf],
 ) -> Result<super::auth::Config, SyntaxError> {
-    let context = VariableContext {
-        file_variables: env_variables.to_vec(),
-        environment_variables: Vec::new(),
-        secret_variables: Vec::new(),
-        endpoint_variables: Vec::new(),
-        request_variables: Vec::new(),
-        cli_variables: Vec::new(),
-    };
-
     for (_, token) in auth_config.fields.iter_mut() {
-        token.value = resolve_string(&token.value, &context, source_files)?;
+        token.value = resolve_string(&token.value, context, source_files)?;
     }
-
     Ok(auth_config)
 }
 
@@ -493,7 +486,18 @@ mod tests {
     use super::*;
     use crate::syntax::auth::{AuthType, Config};
     use crate::syntax::token::{Token, TokenType};
-    use crate::syntax::variable_context::{Variable, VariableValue};
+    use crate::syntax::variable_context::{Variable, VariableContext, VariableValue};
+
+    fn make_context(vars: Vec<Variable>) -> VariableContext {
+        VariableContext {
+            file_variables: vars,
+            environment_variables: Vec::new(),
+            secret_variables: Vec::new(),
+            endpoint_variables: Vec::new(),
+            request_variables: Vec::new(),
+            cli_variables: Vec::new(),
+        }
+    }
     use std::collections::HashMap;
 
     fn t(s: &str) -> Token {
@@ -521,7 +525,7 @@ mod tests {
             value: VariableValue::String("secret-token-123".to_string()),
         }];
 
-        let resolved = resolve_auth_provider(config, &env_vars, &[]).unwrap();
+        let resolved = resolve_auth_provider(config, &make_context(env_vars), &[]).unwrap();
 
         assert_eq!(
             resolved.fields.get("token").unwrap().value,
@@ -563,7 +567,7 @@ mod tests {
             },
         ];
 
-        let resolved = resolve_auth_provider(config, &env_vars, &[]).unwrap();
+        let resolved = resolve_auth_provider(config, &make_context(env_vars), &[]).unwrap();
 
         assert_eq!(
             resolved.fields.get("client_id").unwrap().value,
@@ -600,7 +604,7 @@ mod tests {
             value: VariableValue::String("spaced-token".to_string()),
         }];
 
-        let resolved = resolve_auth_provider(config, &env_vars, &[]).unwrap();
+        let resolved = resolve_auth_provider(config, &make_context(env_vars), &[]).unwrap();
 
         assert_eq!(resolved.fields.get("token").unwrap().value, "spaced-token");
     }
@@ -622,7 +626,7 @@ mod tests {
             value: VariableValue::String("unused-value".to_string()),
         }];
 
-        let resolved = resolve_auth_provider(config, &env_vars, &[]).unwrap();
+        let resolved = resolve_auth_provider(config, &make_context(env_vars), &[]).unwrap();
 
         assert_eq!(
             resolved.fields.get("token").unwrap().value,
@@ -647,7 +651,7 @@ mod tests {
             value: VariableValue::String("other-value".to_string()),
         }];
 
-        let result = resolve_auth_provider(config, &env_vars, &[]);
+        let result = resolve_auth_provider(config, &make_context(env_vars), &[]);
         assert!(result.is_err());
     }
 
@@ -677,7 +681,7 @@ mod tests {
             },
         ];
 
-        let resolved = resolve_auth_provider(config, &env_vars, &[]).unwrap();
+        let resolved = resolve_auth_provider(config, &make_context(env_vars), &[]).unwrap();
 
         assert_eq!(
             resolved.fields.get("url").unwrap().value,
@@ -699,7 +703,7 @@ mod tests {
 
         let env_vars: Vec<Variable> = vec![];
 
-        let result = resolve_auth_provider(config, &env_vars, &[]);
+        let result = resolve_auth_provider(config, &make_context(env_vars), &[]);
         assert!(result.is_err());
     }
 
@@ -727,7 +731,7 @@ mod tests {
             },
         ];
 
-        let resolved = resolve_auth_provider(config, &env_vars, &[]).unwrap();
+        let resolved = resolve_auth_provider(config, &make_context(env_vars), &[]).unwrap();
 
         assert_eq!(
             resolved.fields.get("client_id").unwrap().value,

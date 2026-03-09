@@ -1,4 +1,4 @@
-use crate::syntax::error::{AuthError, SyntaxError};
+use crate::syntax::error::SyntaxError;
 use std::fmt;
 use std::io;
 
@@ -6,7 +6,7 @@ use std::io;
 pub enum RqError {
     Io(io::Error),
     Syntax(SyntaxError),
-    Auth(AuthError),
+    Auth(String),
     Validation(String),
     DirectoryNotFound(String),
     NotADirectory(String),
@@ -20,7 +20,7 @@ impl fmt::Display for RqError {
         match self {
             RqError::Io(err) => write!(f, "IO error: {err}"),
             RqError::Syntax(err) => write!(f, "{err}"),
-            RqError::Auth(err) => write!(f, "{err}"),
+            RqError::Auth(msg) => write!(f, "Auth error: {msg}"),
             RqError::Validation(msg) => write!(f, "Validation error: {msg}"),
             RqError::DirectoryNotFound(path) => write!(
                 f,
@@ -44,7 +44,6 @@ impl std::error::Error for RqError {
         match self {
             RqError::Io(err) => Some(err),
             RqError::Syntax(err) => Some(err),
-            RqError::Auth(err) => Some(err),
             _ => None,
         }
     }
@@ -59,12 +58,6 @@ impl From<io::Error> for RqError {
 impl From<SyntaxError> for RqError {
     fn from(err: SyntaxError) -> Self {
         RqError::Syntax(err)
-    }
-}
-
-impl From<AuthError> for RqError {
-    fn from(err: AuthError) -> Self {
-        RqError::Auth(err)
     }
 }
 

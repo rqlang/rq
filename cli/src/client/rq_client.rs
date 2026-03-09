@@ -75,65 +75,42 @@ impl RqClient {
             for (i, req_with_vars) in filtered_requests.into_iter().enumerate() {
                 Logger::debug(&format!("Request {}: {:?}", i + 1, req_with_vars.request));
 
-                let context = crate::syntax::variable_context::VariableContext {
-                    file_variables: rq_file.file_variables.clone(),
-                    environment_variables: env_vars.clone(),
-                    secret_variables: secret_vars.clone(),
-                    endpoint_variables: req_with_vars.endpoint_variables,
-                    request_variables: req_with_vars.request_variables,
-                    cli_variables: cli_vars.clone(),
-                };
+                let context = crate::syntax::variable_context::VariableContext::builder()
+                    .file_variables(rq_file.file_variables.clone())
+                    .environment_variables(env_vars.clone())
+                    .secret_variables(secret_vars.clone())
+                    .endpoint_variables(req_with_vars.endpoint_variables)
+                    .request_variables(req_with_vars.request_variables)
+                    .cli_variables(cli_vars.clone())
+                    .build();
 
                 let mut working = req_with_vars.request;
 
-                let mut search_paths = Vec::new();
-                if let Some(src) = &working.source_path {
-                    search_paths.push(PathBuf::from(src));
-                }
-                search_paths.push(rq_file.path.clone());
-                search_paths.extend(rq_file.imported_files.clone());
-                for rf in &working.related_files {
-                    search_paths.push(PathBuf::from(rf));
-                }
+                let search_paths = Self::build_search_paths(
+                    &working,
+                    &rq_file.path,
+                    &rq_file.imported_files,
+                    source_path,
+                );
 
-                let env_path = source_path.join(".env");
-                if env_path.exists() {
-                    search_paths.push(env_path);
-                }
-
-                if let Some(header_var) = &working.headers_var {
-                    match Self::expand_headers_var(header_var, &context) {
-                        Ok(expanded) => {
-                            let mut merged = expanded;
-                            for (ck, cv) in working.headers.iter() {
-                                if let Some(i) = merged
-                                    .iter()
-                                    .position(|(ek, _)| ek.eq_ignore_ascii_case(ck))
-                                {
-                                    merged[i] = (ck.clone(), cv.clone());
-                                } else {
-                                    merged.push((ck.clone(), cv.clone()));
-                                }
-                            }
-                            working.headers = merged;
-                        }
-                        Err(e) => {
+                if let Some(header_var) = working.headers_var.clone() {
+                    let headers = std::mem::take(&mut working.headers);
+                    working.headers = Self::apply_headers_var(&header_var, headers, &context)
+                        .map_err(|e| {
                             let (line, col, path) = crate::syntax::resolve::find_variable_location(
                                 &search_paths,
-                                header_var,
+                                &header_var,
                             );
-                            return Err(RqError::Syntax(
-                                crate::syntax::error::SyntaxError::with_file(
-                                    e,
-                                    line,
-                                    col,
-                                    0..0,
-                                    path.display().to_string(),
-                                ),
-                            ));
-                        }
-                    }
+                            RqError::Syntax(crate::syntax::error::SyntaxError::with_file(
+                                e,
+                                line,
+                                col,
+                                0..0,
+                                path.display().to_string(),
+                            ))
+                        })?;
                 }
+
                 let mut resolved_request =
                     crate::syntax::resolve_variables(working, &context, &search_paths)?;
 
@@ -162,11 +139,9 @@ impl RqClient {
                                     resolved_request.headers = modified_headers;
                                 }
                                 Err(e) => {
-                                    return Err(RqError::Auth(
-                                        crate::syntax::error::AuthError::new(format!(
-                                            "Configuration '{auth_name}' failed: {e}"
-                                        )),
-                                    ));
+                                    return Err(RqError::Auth(format!(
+                                        "Configuration '{auth_name}' failed: {e}"
+                                    )));
                                 }
                             }
                         } else {
@@ -208,7 +183,7 @@ impl RqClient {
                         });
                     }
                     Err(error) => {
-                        return Err(RqError::Generic(error.to_string()));
+                        return Err(RqError::Generic(error));
                     }
                 }
             }
@@ -316,98 +291,59 @@ impl RqClient {
                 .map_err(|e| RqError::Generic(e.to_string()))?
         };
 
-        let context = crate::syntax::variable_context::VariableContext {
-            file_variables: loaded_variables,
-            environment_variables: env_vars,
-            secret_variables: secret_vars,
-            endpoint_variables: req_with_vars.endpoint_variables.clone(),
-            request_variables: req_with_vars.request_variables.clone(),
-            cli_variables: Vec::new(),
-        };
+        let context = crate::syntax::variable_context::VariableContext::builder()
+            .file_variables(loaded_variables)
+            .environment_variables(env_vars)
+            .secret_variables(secret_vars)
+            .endpoint_variables(req_with_vars.endpoint_variables.clone())
+            .request_variables(req_with_vars.request_variables.clone())
+            .build();
 
-        // Variables needed to resolve auth name
-        let source_files = vec![rq_file.path.clone()];
+        let mut working = req_with_vars.request;
 
-        let (auth_name, auth_type) = if let Some(raw_auth_name) = &req_with_vars.request.auth {
-            // Resolve the auth name first
-            let resolved_auth_name =
-                crate::syntax::resolve::resolve_string(raw_auth_name, &context, &source_files)
-                    .map_err(|e| RqError::Generic(e.to_string()))?;
+        let search_paths = Self::build_search_paths(
+            &working,
+            &rq_file.path,
+            &rq_file.imported_files,
+            source_path,
+        );
 
-            if resolved_auth_name.trim().is_empty() {
+        if let Some(header_var) = working.headers_var.clone() {
+            let headers = std::mem::take(&mut working.headers);
+            working.headers =
+                Self::apply_headers_var(&header_var, headers, &context).map_err(|e| {
+                    RqError::Validation(format!(
+                        "Failed to expand headers variable '{header_var}': {e}"
+                    ))
+                })?;
+        }
+
+        let resolved = crate::syntax::resolve_variables(working, &context, &search_paths)
+            .map_err(|e| RqError::Generic(e.to_string()))?;
+
+        let (auth_name, auth_type) = if let Some(auth_name) = resolved.auth.as_deref() {
+            if auth_name.trim().is_empty() {
                 (None, None)
-            } else if let Some(auth_provider) = loaded_auth_providers.get(&resolved_auth_name) {
+            } else if let Some(auth_provider) = loaded_auth_providers.get(auth_name) {
                 (
-                    Some(resolved_auth_name),
+                    Some(auth_name.to_string()),
                     Some(auth_provider.auth_type.as_str().to_string()),
                 )
             } else {
-                (Some(resolved_auth_name), None)
+                (Some(auth_name.to_string()), None)
             }
         } else {
             (None, None)
         };
 
-        // Fully resolve request properties
-        let resolved_url = crate::syntax::resolve::resolve_string(
-            &req_with_vars.request.url,
-            &context,
-            &source_files,
-        )
-        .map_err(|e| RqError::Generic(e.to_string()))?;
-
-        let mut headers_to_resolve = req_with_vars.request.headers.clone();
-
-        if let Some(header_var) = &req_with_vars.request.headers_var {
-            match Self::expand_headers_var(header_var, &context) {
-                Ok(expanded) => {
-                    let mut merged = expanded;
-                    for (ck, cv) in headers_to_resolve {
-                        if let Some(i) = merged
-                            .iter()
-                            .position(|(ek, _)| ek.eq_ignore_ascii_case(&ck))
-                        {
-                            merged[i] = (ck, cv);
-                        } else {
-                            merged.push((ck, cv));
-                        }
-                    }
-                    headers_to_resolve = merged;
-                }
-                Err(e) => {
-                    return Err(RqError::Validation(format!(
-                        "Failed to expand headers variable '{header_var}': {e}"
-                    )));
-                }
-            }
-        }
-
-        let mut resolved_headers = Vec::new();
-        for (k, v) in &headers_to_resolve {
-            let resolved_k = crate::syntax::resolve::resolve_string(k, &context, &source_files)
-                .map_err(|e| RqError::Generic(e.to_string()))?;
-            let resolved_v = crate::syntax::resolve::resolve_string(v, &context, &source_files)
-                .map_err(|e| RqError::Generic(e.to_string()))?;
-            resolved_headers.push((resolved_k, resolved_v));
-        }
-
-        let resolved_body = if let Some(body) = &req_with_vars.request.body {
-            Some(
-                crate::syntax::resolve::resolve_string(body, &context, &source_files)
-                    .map_err(|e| RqError::Generic(e.to_string()))?,
-            )
-        } else {
-            None
-        };
-
         Ok(RequestDetails {
-            name: req_with_vars.request.name.clone(),
+            name: resolved.name,
             auth_name,
             auth_type,
-            url: resolved_url,
-            headers: resolved_headers,
-            method: req_with_vars.request.method.as_str().to_string(),
-            body: resolved_body,
+            url: resolved.url,
+            headers: resolved.headers,
+            method: resolved.method.as_str().to_string(),
+            body: resolved.body,
         })
     }
 
@@ -469,14 +405,9 @@ impl RqClient {
             source_files.push(env_path);
         }
 
-        let context = crate::syntax::variable_context::VariableContext {
-            file_variables: all_variables,
-            environment_variables: Vec::new(),
-            secret_variables: Vec::new(),
-            endpoint_variables: Vec::new(),
-            request_variables: Vec::new(),
-            cli_variables: Vec::new(),
-        };
+        let context = crate::syntax::variable_context::VariableContext::builder()
+            .file_variables(all_variables)
+            .build();
 
         let config = crate::syntax::resolve_auth_provider(auth_provider, &context, &source_files)?;
 
@@ -619,6 +550,47 @@ impl RqClient {
             }
         }
         Ok(())
+    }
+
+    fn build_search_paths(
+        request: &crate::syntax::parse_result::Request,
+        file_path: &Path,
+        imported_files: &[PathBuf],
+        base_dir: &Path,
+    ) -> Vec<PathBuf> {
+        let mut paths = Vec::new();
+        if let Some(src) = &request.source_path {
+            paths.push(PathBuf::from(src));
+        }
+        paths.push(file_path.to_path_buf());
+        paths.extend_from_slice(imported_files);
+        for rf in &request.related_files {
+            paths.push(PathBuf::from(rf));
+        }
+        let env_path = base_dir.join(".env");
+        if env_path.exists() {
+            paths.push(env_path);
+        }
+        paths
+    }
+
+    fn apply_headers_var(
+        header_var: &str,
+        existing_headers: Vec<(String, String)>,
+        ctx: &crate::syntax::variable_context::VariableContext,
+    ) -> Result<Vec<(String, String)>, String> {
+        let mut merged = Self::expand_headers_var(header_var, ctx)?;
+        for (ck, cv) in existing_headers {
+            if let Some(i) = merged
+                .iter()
+                .position(|(ek, _)| ek.eq_ignore_ascii_case(&ck))
+            {
+                merged[i] = (ck, cv);
+            } else {
+                merged.push((ck, cv));
+            }
+        }
+        Ok(merged)
     }
 
     fn expand_headers_var(

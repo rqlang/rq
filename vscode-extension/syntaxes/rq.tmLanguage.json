@@ -53,6 +53,11 @@
     "comments": {
       "patterns": [
         {
+          "name": "comment.block.rq",
+          "begin": "/\\*",
+          "end": "\\*/"
+        },
+        {
           "name": "comment.line.double-slash.rq",
           "match": "//.*$"
         }

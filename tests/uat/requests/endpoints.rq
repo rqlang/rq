@@ -7,6 +7,10 @@ let user_id = "123";
 
 ep api(url: base, headers: default_headers, qs: "v=1");
 
+  /* This is a comment
+     that spans multiple
+     lines */
+
 ep users<api>("{{base}}/users") {
     rq list();
     rq get(user_id);

@@ -14,6 +14,7 @@ interface RequestExecutionContext {
 export class RequestRunner {
     private resultsPanel: vscode.WebviewPanel | undefined;
     private lastExecutionContext: RequestExecutionContext | undefined;
+    private lastBody: string | undefined;
 
     constructor(
         private context: vscode.ExtensionContext,
@@ -216,6 +217,7 @@ export class RequestRunner {
             this.createWebviewPanel(requestName);
         }
 
+        this.lastBody = result.results[0].body;
         const html = await getWebviewContent(this.context, result.results[0]);
         if (this.resultsPanel) {
             this.resultsPanel.webview.html = html;
@@ -259,6 +261,10 @@ export class RequestRunner {
                     this.lastExecutionContext.environment,
                     this.lastExecutionContext.variables
                 );
+            }
+            if (message.command === 'copyBody' && this.lastBody !== undefined) {
+                vscode.env.clipboard.writeText(this.lastBody);
+                vscode.window.showInformationMessage('Body copied to clipboard');
             }
         }, undefined, this.context.subscriptions);
     }

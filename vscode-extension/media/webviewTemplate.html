@@ -226,6 +226,29 @@
         .run-again-btn:hover {
             background-color: var(--vscode-button-hoverBackground);
         }
+
+        .copy-body-btn {
+            background: none;
+            border: none;
+            padding: 2px 4px;
+            cursor: pointer;
+            color: var(--vscode-foreground);
+            opacity: 0.7;
+            display: inline-flex;
+            align-items: center;
+            border-radius: 4px;
+        }
+
+        .copy-body-btn:hover {
+            opacity: 1;
+            background-color: var(--vscode-toolbar-hoverBackground);
+        }
+
+        .section-title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
     </style>
 </head>
 
@@ -268,7 +291,7 @@
     </div>
 
     <div class="section">
-        <div class="section-title" onclick="toggleSection(this)">Body</div>
+        <div class="section-title" onclick="toggleSection(this)">Body <button class="copy-body-btn" onclick="event.stopPropagation(); copyBody()" title="Copy body to clipboard"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M4 4v10h10V4H4zm9 9H5V5h8v8zm-4-9V2H1v10h2V4h6z"/></svg></button></div>
         <div class="section-content">
             {{BODY_CONTENT}}
         </div>
@@ -280,6 +303,12 @@
         function runAgain() {
             vscode.postMessage({
                 command: 'runAgain'
+            });
+        }
+
+        function copyBody() {
+            vscode.postMessage({
+                command: 'copyBody'
             });
         }
 

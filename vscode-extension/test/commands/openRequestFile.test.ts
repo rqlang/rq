@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as cliService from '../../src/cliService';
 import { registerOpenRequestFileCommand } from '../../src/commands/openRequestFile';
-import { RequestExplorerProvider } from '../../src/requestExplorer';
+import { RequestExplorerProvider, RequestTreeItem } from '../../src/requestExplorer';
 
 jest.mock('../../src/cliService');
 jest.mock('../../src/requestExplorer');
@@ -24,10 +24,7 @@ describe('openRequestFile Command', () => {
             setItemLoading: jest.fn()
         } as unknown as jest.Mocked<RequestExplorerProvider>;
 
-        mockDocument = {
-            getText: jest.fn().mockReturnValue('some content\nrq myRequest\nmore content'),
-            positionAt: jest.fn().mockReturnValue({ line: 1, character: 0 })
-        };
+        mockDocument = {};
 
         mockEditor = {
             selection: null,
@@ -83,5 +80,31 @@ describe('openRequestFile Command', () => {
 
         expect(vscode.window.showErrorMessage).toHaveBeenCalledWith('Request not found');
         expect(vscode.workspace.openTextDocument).not.toHaveBeenCalled();
+    });
+
+    test('sets and clears loading state when item is provided', async () => {
+        const item = new RequestTreeItem('myRequest', null, vscode.TreeItemCollapsibleState.None);
+
+        await commandCallback('myRequest', item);
+
+        expect(mockProvider.setItemLoading).toHaveBeenCalledWith(item, true);
+        expect(mockProvider.setItemLoading).toHaveBeenCalledWith(item, false);
+        expect(mockProvider.setItemLoading).toHaveBeenCalledTimes(2);
+    });
+
+    test('clears loading state even when request fails', async () => {
+        (cliService.showRequest as jest.Mock).mockRejectedValue(new Error('Request not found'));
+        const item = new RequestTreeItem('myRequest', null, vscode.TreeItemCollapsibleState.None);
+
+        await commandCallback('myRequest', item);
+
+        expect(mockProvider.setItemLoading).toHaveBeenCalledWith(item, true);
+        expect(mockProvider.setItemLoading).toHaveBeenCalledWith(item, false);
+    });
+
+    test('does not call setItemLoading when no item is provided', async () => {
+        await commandCallback('myRequest');
+
+        expect(mockProvider.setItemLoading).not.toHaveBeenCalled();
     });
 });

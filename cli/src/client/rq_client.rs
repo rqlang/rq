@@ -426,7 +426,7 @@ impl RqClient {
                 RqError::Validation(format!("Auth configuration '{auth_name}' not found"))
             })?;
 
-        let auth_file = auth_provider.file_path.to_string_lossy().to_string();
+        let auth_file = crate::core::paths::clean_path(&auth_provider.file_path);
         let auth_line = auth_provider.line;
         let auth_character = auth_provider.character;
 

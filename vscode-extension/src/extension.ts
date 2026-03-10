@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as cliService from './cliService';
-import { RequestExplorerProvider } from './requestExplorer';
+import { RequestExplorerProvider, RequestTreeItem } from './requestExplorer';
 import { ConfigurationExplorerProvider } from './configurationExplorer';
 import { completionProvider } from './language/completionProvider';
 import { hoverProvider } from './language/hoverProvider';
@@ -57,16 +57,21 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Register commands
     registerRefreshRequestsCommand(context, requestExplorerProvider);
-    registerOpenRequestFileCommand(context);
-    registerOpenConfigurationFileCommand(context);
+    registerOpenRequestFileCommand(context, requestExplorerProvider);
+    registerOpenConfigurationFileCommand(context, configurationExplorerProvider);
     context.subscriptions.push(
-        vscode.commands.registerCommand('rq.openEndpoint', async (file: string, line: number, character: number) => {
-            const { normalizePath } = await import('./utils');
-            const document = await vscode.workspace.openTextDocument(normalizePath(file));
-            const editor = await vscode.window.showTextDocument(document);
-            const position = new vscode.Position(line, character);
-            editor.selection = new vscode.Selection(position, position);
-            editor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.InCenter);
+        vscode.commands.registerCommand('rq.openEndpoint', async (file: string, line: number, character: number, item?: RequestTreeItem) => {
+            if (item) { requestExplorerProvider.setItemLoading(item, true); }
+            try {
+                const { normalizePath } = await import('./utils');
+                const document = await vscode.workspace.openTextDocument(normalizePath(file));
+                const editor = await vscode.window.showTextDocument(document);
+                const position = new vscode.Position(line, character);
+                editor.selection = new vscode.Selection(position, position);
+                editor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.InCenter);
+            } finally {
+                if (item) { requestExplorerProvider.setItemLoading(item, false); }
+            }
         })
     );
     context.subscriptions.push(

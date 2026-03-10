@@ -1,16 +1,22 @@
 import * as vscode from 'vscode';
 import * as cliService from './cliService';
+import { applyTreeItemLoading } from './utils';
 
 type ItemKind = 'section-environments' | 'section-auth' | 'environment' | 'auth-config';
 
 export class ConfigurationExplorerProvider implements vscode.TreeDataProvider<ConfigurationTreeItem> {
     private _onDidChangeTreeData = new vscode.EventEmitter<ConfigurationTreeItem | undefined | null | void>();
     readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
+    private readonly originalIcons = new WeakMap<ConfigurationTreeItem, vscode.TreeItem['iconPath']>();
 
     constructor(private workspaceRoot: string | undefined) {}
 
     refresh(): void {
         this._onDidChangeTreeData.fire();
+    }
+
+    setItemLoading(item: ConfigurationTreeItem, loading: boolean): void {
+        applyTreeItemLoading(item, loading, this.originalIcons, (i) => this._onDidChangeTreeData.fire(i as ConfigurationTreeItem));
     }
 
     getTreeItem(element: ConfigurationTreeItem): vscode.TreeItem {
@@ -35,7 +41,7 @@ export class ConfigurationExplorerProvider implements vscode.TreeDataProvider<Co
                 return names.map(name => {
                     const item = new ConfigurationTreeItem(name, 'environment', vscode.TreeItemCollapsibleState.None);
                     item.iconPath = new vscode.ThemeIcon('server-environment');
-                    item.command = { command: 'rq.openConfigurationFile', title: 'Open File', arguments: ['env', name] };
+                    item.command = { command: 'rq.openConfigurationFile', title: 'Open File', arguments: ['env', name, item] };
                     return item;
                 });
             }
@@ -46,7 +52,7 @@ export class ConfigurationExplorerProvider implements vscode.TreeDataProvider<Co
                     const item = new ConfigurationTreeItem(e.name, 'auth-config', vscode.TreeItemCollapsibleState.None);
                     item.iconPath = new vscode.ThemeIcon('key');
                     item.description = e.auth_type;
-                    item.command = { command: 'rq.openConfigurationFile', title: 'Open File', arguments: ['auth', e.name] };
+                    item.command = { command: 'rq.openConfigurationFile', title: 'Open File', arguments: ['auth', e.name, item] };
                     return item;
                 });
             }

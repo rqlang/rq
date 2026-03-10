@@ -1,14 +1,17 @@
 import * as vscode from 'vscode';
 import * as cliService from '../../src/cliService';
 import { registerOpenRequestFileCommand } from '../../src/commands/openRequestFile';
+import { RequestExplorerProvider } from '../../src/requestExplorer';
 
 jest.mock('../../src/cliService');
+jest.mock('../../src/requestExplorer');
 
 describe('openRequestFile Command', () => {
     let context: vscode.ExtensionContext;
     let commandCallback: Function;
     let mockEditor: any;
     let mockDocument: any;
+    let mockProvider: jest.Mocked<RequestExplorerProvider>;
 
     beforeEach(() => {
         jest.clearAllMocks();
@@ -16,6 +19,10 @@ describe('openRequestFile Command', () => {
         context = {
             subscriptions: []
         } as unknown as vscode.ExtensionContext;
+
+        mockProvider = {
+            setItemLoading: jest.fn()
+        } as unknown as jest.Mocked<RequestExplorerProvider>;
 
         mockDocument = {
             getText: jest.fn().mockReturnValue('some content\nrq myRequest\nmore content'),
@@ -43,7 +50,7 @@ describe('openRequestFile Command', () => {
             return { dispose: jest.fn() };
         });
 
-        registerOpenRequestFileCommand(context);
+        registerOpenRequestFileCommand(context, mockProvider);
     });
 
     test('registers the command', () => {

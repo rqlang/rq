@@ -1,14 +1,17 @@
 import * as vscode from 'vscode';
 import * as cliService from '../../src/cliService';
 import { registerOpenConfigurationFileCommand } from '../../src/commands/openConfigurationFile';
+import { ConfigurationExplorerProvider } from '../../src/configurationExplorer';
 
 jest.mock('../../src/cliService');
+jest.mock('../../src/configurationExplorer');
 
 describe('openConfigurationFile Command', () => {
     let context: vscode.ExtensionContext;
     let commandCallback: Function;
     let mockEditor: any;
     let mockDocument: any;
+    let mockProvider: jest.Mocked<ConfigurationExplorerProvider>;
 
     beforeEach(() => {
         jest.clearAllMocks();
@@ -16,6 +19,10 @@ describe('openConfigurationFile Command', () => {
         context = {
             subscriptions: []
         } as unknown as vscode.ExtensionContext;
+
+        mockProvider = {
+            setItemLoading: jest.fn()
+        } as unknown as jest.Mocked<ConfigurationExplorerProvider>;
 
         mockDocument = {};
         mockEditor = {
@@ -33,7 +40,7 @@ describe('openConfigurationFile Command', () => {
             return { dispose: jest.fn() };
         });
 
-        registerOpenConfigurationFileCommand(context);
+        registerOpenConfigurationFileCommand(context, mockProvider);
     });
 
     test('registers the command', () => {

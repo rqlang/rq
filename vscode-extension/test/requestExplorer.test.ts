@@ -223,7 +223,10 @@ describe('RequestExplorerProvider', () => {
         expect(endpointItem?.contextValue).toBe('endpoint');
         expect(endpointItem?.command).toBeDefined();
         expect(endpointItem?.command?.command).toBe('rq.openEndpoint');
-        expect(endpointItem?.command?.arguments).toEqual(['/root/api.rq', 5, 0]);
+        expect(endpointItem?.command?.arguments?.[0]).toBe('/root/api.rq');
+        expect(endpointItem?.command?.arguments?.[1]).toBe(5);
+        expect(endpointItem?.command?.arguments?.[2]).toBe(0);
+        expect(endpointItem?.command?.arguments?.[3]).toBe(endpointItem);
     });
 
     test('endpoint item has no command when endpoint_file is absent', async () => {

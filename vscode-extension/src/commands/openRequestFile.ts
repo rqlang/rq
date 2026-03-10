@@ -1,9 +1,11 @@
 import * as vscode from 'vscode';
 import * as cliService from '../cliService';
 import { normalizePath } from '../utils';
+import { RequestExplorerProvider, RequestTreeItem } from '../requestExplorer';
 
-export function registerOpenRequestFileCommand(context: vscode.ExtensionContext) {
-    const command = vscode.commands.registerCommand('rq.openRequestFile', async (requestName: string) => {
+export function registerOpenRequestFileCommand(context: vscode.ExtensionContext, provider: RequestExplorerProvider) {
+    const command = vscode.commands.registerCommand('rq.openRequestFile', async (requestName: string, item?: RequestTreeItem) => {
+        if (item) { provider.setItemLoading(item, true); }
         try {
             const sourceDirectory = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
             const result = await cliService.showRequest(requestName, sourceDirectory);
@@ -15,6 +17,8 @@ export function registerOpenRequestFileCommand(context: vscode.ExtensionContext)
             editor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.InCenter);
         } catch (error) {
             vscode.window.showErrorMessage(`Failed to open file: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        } finally {
+            if (item) { provider.setItemLoading(item, false); }
         }
     });
     context.subscriptions.push(command);

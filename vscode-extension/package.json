@@ -96,6 +96,11 @@
         "category": "RQ"
       },
       {
+        "command": "rq.openEndpoint",
+        "title": "Open Endpoint File",
+        "category": "RQ"
+      },
+      {
         "command": "rq.refreshConfiguration",
         "title": "Refresh Configuration",
         "category": "RQ",

@@ -214,8 +214,6 @@ export interface Environment {
     name: string;
 }
 
-export type EnvironmentListOutput = string[];
-
 export interface EnvironmentShowOutput {
     name: string;
     file: string;

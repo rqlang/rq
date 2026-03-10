@@ -524,7 +524,7 @@ impl RqClient {
                     if seen.insert(name.clone()) {
                         entries.push(super::rq_client_models::EnvironmentEntry {
                             name: name.clone(),
-                            file: file.clone(),
+                            file: crate::core::paths::clean_path_str(file).to_string(),
                             line: *line,
                             character: *character,
                         });

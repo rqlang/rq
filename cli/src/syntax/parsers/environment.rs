@@ -16,7 +16,12 @@ impl Parse for EnvironmentParser {
         r.is_keyword(KW_ENV)
     }
     fn parse(&self, r: &mut TokenReader, result: &mut ParseResult) -> Result<(), SyntaxError> {
-        let (env_name, vars) = parse_environment_definition(r, &result.environments)?;
+        let (env_name, vars, line, character) =
+            parse_environment_definition(r, &result.environments)?;
+        let file = r.file_path.to_string_lossy().to_string();
+        result
+            .environment_locations
+            .insert(env_name.clone(), (file, line, character));
         result.environments.insert(env_name, vars);
         Ok(())
     }
@@ -25,7 +30,7 @@ impl Parse for EnvironmentParser {
 pub(crate) fn parse_environment_definition(
     r: &mut TokenReader,
     existing_environments: &HashMap<String, Vec<Variable>>,
-) -> Result<(String, Vec<Variable>), SyntaxError> {
+) -> Result<(String, Vec<Variable>, usize, usize), SyntaxError> {
     expect(
         r,
         |t| t.token_type == TokenType::Keyword && t.value == KW_ENV,
@@ -39,6 +44,9 @@ pub(crate) fn parse_environment_definition(
         "Expected identifier",
     )?;
     let env_name = name_tok.value.clone();
+    let (line_1, col_1) = r.get_line_col(name_tok.span.start);
+    let line = line_1.saturating_sub(1);
+    let character = col_1.saturating_sub(1);
 
     if existing_environments.contains_key(&env_name) {
         return Err(r.create_error_with_file(
@@ -110,5 +118,5 @@ pub(crate) fn parse_environment_definition(
             value: VariableValue::String(value),
         });
     }
-    Ok((env_name, vars))
+    Ok((env_name, vars, line, character))
 }

@@ -214,7 +214,12 @@ export interface Environment {
     name: string;
 }
 
-export type EnvironmentListOutput = string[];
+export interface EnvironmentShowOutput {
+    name: string;
+    file: string;
+    line: number;
+    character: number;
+}
 
 export interface AuthConfig {
     name: string;
@@ -232,6 +237,9 @@ interface AuthShowRaw {
     Type: string;
     Fields: Record<string, string>;
     Environment?: string;
+    file: string;
+    line: number;
+    character: number;
 }
 
 export interface AuthShowOutput {
@@ -239,12 +247,18 @@ export interface AuthShowOutput {
     auth_type: string;
     fields: Record<string, string>;
     environment?: string;
+    file: string;
+    line: number;
+    character: number;
 }
 
 export interface RequestInfo {
     name: string;
     endpoint: string | null;
     file: string;
+    endpoint_file?: string;
+    endpoint_line?: number;
+    endpoint_character?: number;
 }
 
 export type RequestListOutput = RequestInfo[];
@@ -264,6 +278,9 @@ interface RequestShowRaw {
         name: string;
         type: string;
     };
+    file: string;
+    line: number;
+    character: number;
 }
 
 export interface RequestShowOutput {
@@ -272,6 +289,9 @@ export interface RequestShowOutput {
         name: string;
         type: string;
     };
+    file: string;
+    line: number;
+    character: number;
 }
 
 let extensionMode: vscode.ExtensionMode | undefined;
@@ -558,8 +578,8 @@ export async function listEnvironments(sourceDirectory?: string): Promise<string
             }
         }
         
-        const output: EnvironmentListOutput = JSON.parse(stdout);
-        return output;
+        const output: Array<{ name: string }> = JSON.parse(stdout);
+        return output.map(e => e.name);
     } catch (error) {
         console.error('Failed to list environments:', error);
         logCliError('Failed to list environments', error);
@@ -614,9 +634,40 @@ export async function listAuthConfigs(sourceDirectory?: string): Promise<AuthLis
     }
 }
 
+export async function showEnvironment(name: string, sourceDirectory?: string): Promise<EnvironmentShowOutput> {
+    try {
+        const { executable, args: baseArgs, cwd } = getCliCommand();
+        const args = [...baseArgs, 'env', 'show', '-n', name];
+        if (sourceDirectory) {
+            args.push('-s', sourceDirectory);
+        }
+        args.push('-o', 'json');
+
+        const fullCommand = `${executable} ${args.join(' ')}`;
+        logCliExecution(fullCommand, cwd);
+
+        const { stdout, stderr } = await spawnAsync(executable, args, { cwd });
+
+        if (stderr) {
+            parseAndReportErrors(stderr, cwd);
+        } else if (diagnosticCollection) {
+            diagnosticCollection.clear();
+        }
+
+        const raw: EnvironmentShowOutput = JSON.parse(stdout);
+        return { ...raw, file: normalizePath(raw.file) };
+    } catch (error) {
+        logCliError('Failed to show environment', error);
+        if (error instanceof Error && 'stderr' in error) {
+            parseAndReportErrors((error as ExecError).stderr || '', getCliCommand().cwd);
+        }
+        throw new Error(`Failed to show environment: ${getErrorMessage(error)}`);
+    }
+}
+
 export async function showAuthConfig(
-    name: string, 
-    sourceDirectory?: string, 
+    name: string,
+    sourceDirectory?: string,
     environment?: string
 ): Promise<AuthShowOutput> {
     try {
@@ -655,6 +706,9 @@ export async function showAuthConfig(
             auth_type: raw.Type,
             fields: raw.Fields,
             environment: raw.Environment,
+            file: normalizePath(raw.file),
+            line: raw.line,
+            character: raw.character,
         };
         return output;
     } catch (error) {
@@ -712,6 +766,9 @@ export async function listRequests(sourceDirectory?: string): Promise<ListReques
         
         output.forEach(item => {
             item.file = normalizePath(item.file);
+            if (item.endpoint_file) {
+                item.endpoint_file = normalizePath(item.endpoint_file);
+            }
         });
 
         return {
@@ -769,6 +826,9 @@ export async function showRequest(
         const output: RequestShowOutput = {
             name: raw.Request,
             auth: raw.Auth,
+            file: normalizePath(raw.file),
+            line: raw.line,
+            character: raw.character,
         };
         return output;
     } catch (error) {

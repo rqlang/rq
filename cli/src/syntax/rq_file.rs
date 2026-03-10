@@ -1,4 +1,7 @@
-use super::{parse_result::RequestWithVariables, variable_context::Variable};
+use super::{
+    parse_result::{EndpointDefinition, RequestWithVariables},
+    variable_context::Variable,
+};
 use crate::syntax::auth::Config as AuthConfig;
 use std::collections::HashMap;
 use std::fs;
@@ -8,7 +11,9 @@ pub struct RqFile {
     pub path: PathBuf,
     pub requests: Vec<RequestWithVariables>,
     pub environments: HashMap<String, Vec<Variable>>,
+    pub environment_locations: HashMap<String, (String, usize, usize)>,
     pub auth_providers: HashMap<String, AuthConfig>,
+    pub endpoints: HashMap<String, EndpointDefinition>,
     pub file_variables: Vec<Variable>,
     pub imported_files: Vec<PathBuf>,
 }
@@ -32,7 +37,9 @@ impl RqFile {
             path: canonical,
             requests: parse_result.requests,
             environments: parse_result.environments,
+            environment_locations: parse_result.environment_locations,
             auth_providers: parse_result.auth_providers,
+            endpoints: parse_result.endpoints,
             file_variables: parse_result.file_variables,
             imported_files: parse_result.imported_files,
         })

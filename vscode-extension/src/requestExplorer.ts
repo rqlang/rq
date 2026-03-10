@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as cliService from './cliService';
 import * as path from 'path';
-import { normalizePath } from './utils';
+import { normalizePath, applyTreeItemLoading } from './utils';
 
 const CLI_NOT_INSTALLED_MSG = 'rq CLI is not installed. Use the "Install Now" prompt or install it manually.';
 
@@ -9,6 +9,9 @@ export interface RequestInfo {
     name: string;
     endpoint: string | null;
     file: string;
+    endpoint_file?: string;
+    endpoint_line?: number;
+    endpoint_character?: number;
 }
 
 
@@ -38,14 +41,7 @@ export class RequestExplorerProvider implements vscode.TreeDataProvider<RequestT
     }
 
     setItemLoading(item: RequestTreeItem, loading: boolean): void {
-        if (loading) {
-            this.originalIcons.set(item, item.iconPath);
-            item.iconPath = new vscode.ThemeIcon('sync~spin');
-        } else {
-            item.iconPath = this.originalIcons.get(item) ?? new vscode.ThemeIcon('symbol-interface');
-            this.originalIcons.delete(item);
-        }
-        this._onDidChangeTreeData.fire(item);
+        applyTreeItemLoading(item, loading, this.originalIcons, (i) => this._onDidChangeTreeData.fire(i as RequestTreeItem));
     }
 
     getSelectedEnvironment(): string | undefined {
@@ -318,6 +314,14 @@ export class RequestExplorerProvider implements vscode.TreeDataProvider<RequestT
                 children
             );
             endpointItem.iconPath = new vscode.ThemeIcon('globe');
+            const epRef = endpointRequests[0];
+            if (epRef.endpoint_file) {
+                endpointItem.command = {
+                    command: 'rq.openEndpoint',
+                    title: 'Go to Endpoint',
+                    arguments: [epRef.endpoint_file, epRef.endpoint_line ?? 0, epRef.endpoint_character ?? 0, endpointItem]
+                };
+            }
             items.push(endpointItem);
         }
 
@@ -359,7 +363,7 @@ export class RequestTreeItem extends vscode.TreeItem {
             this.command = {
                 command: 'rq.openRequestFile',
                 title: 'Open Request File',
-                arguments: [request.file, request.name]
+                arguments: [request.name, this]
             };
         } else {
             // This is an endpoint group

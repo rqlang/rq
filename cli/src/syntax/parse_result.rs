@@ -15,6 +15,8 @@ pub struct EndpointDefinition {
     pub has_requests: bool,
     pub source_path: Option<String>,
     pub related_files: Vec<String>,
+    pub line: usize,
+    pub character: usize,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -31,6 +33,8 @@ pub struct Request {
     pub timeout: Option<String>,
     pub source_path: Option<String>,
     pub related_files: Vec<String>,
+    pub line: usize,
+    pub character: usize,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -44,6 +48,7 @@ pub struct RequestWithVariables {
 pub struct ParseResult {
     pub requests: Vec<RequestWithVariables>,
     pub environments: std::collections::HashMap<String, Vec<Variable>>,
+    pub environment_locations: std::collections::HashMap<String, (String, usize, usize)>,
     pub auth_providers: std::collections::HashMap<String, AuthProvider>,
     pub endpoints: std::collections::HashMap<String, EndpointDefinition>,
     pub file_variables: Vec<Variable>,

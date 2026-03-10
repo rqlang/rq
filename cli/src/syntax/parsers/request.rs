@@ -303,6 +303,9 @@ pub(crate) fn parse_request_with_context(
         "Expected identifier",
     )?;
     let name = name_tok.value.clone();
+    let (line_1, col_1) = r.get_line_col(name_tok.span.start);
+    let req_line = line_1.saturating_sub(1);
+    let req_character = col_1.saturating_sub(1);
 
     // Check for duplicate request name
     // If endpoint_name is present, the full name is "endpoint/name"
@@ -366,6 +369,8 @@ pub(crate) fn parse_request_with_context(
         timeout: ctx.timeout,
         source_path: Some(r.file_path.to_string_lossy().to_string()),
         related_files: Vec::new(),
+        line: req_line,
+        character: req_character,
     };
     Ok((request, vars))
 }

@@ -120,7 +120,10 @@ rq test("http://localhost/test");
     let json: Value = serde_json::from_str(&stdout)?;
     let items = json.as_array().ok_or("Expected items array in JSON")?;
 
-    if !items.iter().any(|v| v.as_str() == Some("nested_env")) {
+    if !items
+        .iter()
+        .any(|v| v["name"].as_str() == Some("nested_env"))
+    {
         return Err(format!("Expected 'nested_env' to be found, got: {items:?}").into());
     }
 
@@ -203,4 +206,66 @@ fn test_env_list_invalid_output() {
     assert!(stderr.contains("invalid value 'invalid'"));
     assert!(stderr.contains("--output <OUTPUT>"));
     assert!(stderr.contains("[possible values: text, json]"));
+}
+
+#[test]
+fn test_env_show_json() -> Result<(), Box<dyn std::error::Error>> {
+    let output = rq_cmd()
+        .args([
+            "env",
+            "show",
+            "-s",
+            "tests/env/list/input/simple.rq",
+            "-n",
+            "local",
+            "-o",
+            "json",
+        ])
+        .output()?;
+
+    if !output.status.success() {
+        return Err(format!(
+            "Command failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: Value = serde_json::from_str(&stdout)?;
+
+    if json.get("name").and_then(|v| v.as_str()) != Some("local") {
+        return Err(format!("Expected name 'local', got: {json}").into());
+    }
+    if json.get("file").and_then(|v| v.as_str()).is_none() {
+        return Err("Missing 'file' field".into());
+    }
+    if json.get("line").and_then(|v| v.as_u64()).is_none() {
+        return Err("Missing 'line' field".into());
+    }
+    if json.get("character").and_then(|v| v.as_u64()).is_none() {
+        return Err("Missing 'character' field".into());
+    }
+
+    Ok(())
+}
+
+#[test]
+fn test_env_show_not_found() -> Result<(), Box<dyn std::error::Error>> {
+    let output = rq_cmd()
+        .args([
+            "env",
+            "show",
+            "-s",
+            "tests/env/list/input/simple.rq",
+            "-n",
+            "nonexistent_env",
+        ])
+        .output()?;
+
+    if output.status.success() {
+        return Err("Expected command to fail for nonexistent environment".into());
+    }
+
+    Ok(())
 }

@@ -238,6 +238,9 @@ pub(crate) fn parse_endpoint_with_context(
         "Expected identifier",
     )?;
     let ep_name = name_tok.value.clone();
+    let (line_1, col_1) = r.get_line_col(name_tok.span.start);
+    let ep_line = line_1.saturating_sub(1);
+    let ep_character = col_1.saturating_sub(1);
 
     if existing_endpoints.contains_key(&ep_name) {
         return Err(r.create_error_with_file(
@@ -386,6 +389,8 @@ pub(crate) fn parse_endpoint_with_context(
                 has_requests: false,
                 source_path: Some(r.file_path.to_string_lossy().to_string()),
                 related_files,
+                line: ep_line,
+                character: ep_character,
             };
             return Ok((children, ep_def));
         }
@@ -529,6 +534,8 @@ pub(crate) fn parse_endpoint_with_context(
         has_requests: !children.is_empty(),
         source_path: Some(r.file_path.to_string_lossy().to_string()),
         related_files,
+        line: ep_line,
+        character: ep_character,
     };
 
     Ok((children, ep_def))

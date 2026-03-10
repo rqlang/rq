@@ -1,12 +1,10 @@
 import * as vscode from 'vscode';
-import * as cliService from '../../src/cliService';
-import { registerOpenRequestFileCommand } from '../../src/commands/openRequestFile';
+import { registerOpenEndpointCommand } from '../../src/commands/openEndpoint';
 import { RequestExplorerProvider, RequestTreeItem } from '../../src/requestExplorer';
 
-jest.mock('../../src/cliService');
 jest.mock('../../src/requestExplorer');
 
-describe('openRequestFile Command', () => {
+describe('openEndpoint Command', () => {
     let context: vscode.ExtensionContext;
     let commandCallback: Function;
     let mockEditor: any;
@@ -31,35 +29,28 @@ describe('openRequestFile Command', () => {
             revealRange: jest.fn()
         };
 
-        (cliService.showRequest as jest.Mock).mockResolvedValue({
-            file: '/path/to/file.rq',
-            line: 1,
-            character: 0
-        });
-
         (vscode.workspace.openTextDocument as jest.Mock).mockResolvedValue(mockDocument);
         (vscode.window.showTextDocument as jest.Mock).mockResolvedValue(mockEditor);
 
         (vscode.commands.registerCommand as jest.Mock).mockImplementation((command, callback) => {
-            if (command === 'rq.openRequestFile') {
+            if (command === 'rq.openEndpoint') {
                 commandCallback = callback;
             }
             return { dispose: jest.fn() };
         });
 
-        registerOpenRequestFileCommand(context, mockProvider);
+        registerOpenEndpointCommand(context, mockProvider);
     });
 
     test('registers the command', () => {
-        expect(vscode.commands.registerCommand).toHaveBeenCalledWith('rq.openRequestFile', expect.any(Function));
+        expect(vscode.commands.registerCommand).toHaveBeenCalledWith('rq.openEndpoint', expect.any(Function));
         expect(context.subscriptions).toHaveLength(1);
     });
 
-    test('opens file and highlights request', async () => {
-        await commandCallback('myRequest');
+    test('opens file and navigates to position', async () => {
+        await commandCallback('/root/api.rq', 5, 0);
 
-        expect(cliService.showRequest).toHaveBeenCalledWith('myRequest', undefined);
-        expect(vscode.workspace.openTextDocument).toHaveBeenCalledWith('/path/to/file.rq');
+        expect(vscode.workspace.openTextDocument).toHaveBeenCalledWith('/root/api.rq');
         expect(vscode.window.showTextDocument).toHaveBeenCalledWith(mockDocument);
         expect(mockEditor.revealRange).toHaveBeenCalled();
         expect(mockEditor.selection).toBeDefined();
@@ -68,42 +59,33 @@ describe('openRequestFile Command', () => {
     test('handles file open error', async () => {
         (vscode.workspace.openTextDocument as jest.Mock).mockRejectedValue(new Error('File not found'));
 
-        await commandCallback('myRequest');
+        await commandCallback('/root/api.rq', 5, 0);
 
-        expect(vscode.window.showErrorMessage).toHaveBeenCalledWith('File not found');
-    });
-
-    test('does not highlight if showRequest fails', async () => {
-        (cliService.showRequest as jest.Mock).mockRejectedValue(new Error('Request not found'));
-
-        await commandCallback('myRequest');
-
-        expect(vscode.window.showErrorMessage).toHaveBeenCalledWith('Request not found');
-        expect(vscode.workspace.openTextDocument).not.toHaveBeenCalled();
+        expect(vscode.window.showErrorMessage).toHaveBeenCalledWith('Failed to open file: File not found');
     });
 
     test('sets and clears loading state when item is provided', async () => {
-        const item = new RequestTreeItem('myRequest', null, vscode.TreeItemCollapsibleState.None);
+        const item = new RequestTreeItem('ep', null, vscode.TreeItemCollapsibleState.None);
 
-        await commandCallback('myRequest', item);
+        await commandCallback('/root/api.rq', 5, 0, item);
 
         expect(mockProvider.setItemLoading).toHaveBeenCalledWith(item, true);
         expect(mockProvider.setItemLoading).toHaveBeenCalledWith(item, false);
         expect(mockProvider.setItemLoading).toHaveBeenCalledTimes(2);
     });
 
-    test('clears loading state even when request fails', async () => {
-        (cliService.showRequest as jest.Mock).mockRejectedValue(new Error('Request not found'));
-        const item = new RequestTreeItem('myRequest', null, vscode.TreeItemCollapsibleState.None);
+    test('clears loading state even when file open fails', async () => {
+        (vscode.workspace.openTextDocument as jest.Mock).mockRejectedValue(new Error('File not found'));
+        const item = new RequestTreeItem('ep', null, vscode.TreeItemCollapsibleState.None);
 
-        await commandCallback('myRequest', item);
+        await commandCallback('/root/api.rq', 5, 0, item);
 
         expect(mockProvider.setItemLoading).toHaveBeenCalledWith(item, true);
         expect(mockProvider.setItemLoading).toHaveBeenCalledWith(item, false);
     });
 
     test('does not call setItemLoading when no item is provided', async () => {
-        await commandCallback('myRequest');
+        await commandCallback('/root/api.rq', 5, 0);
 
         expect(mockProvider.setItemLoading).not.toHaveBeenCalled();
     });

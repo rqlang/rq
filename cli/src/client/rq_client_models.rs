@@ -15,6 +15,9 @@ pub struct RequestDetails {
     pub headers: Vec<(String, String)>,
     pub method: String,
     pub body: Option<String>,
+    pub file: String,
+    pub line: usize,
+    pub character: usize,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -22,6 +25,17 @@ pub struct RequestInfo {
     pub name: String,
     pub endpoint: Option<String>,
     pub file: String,
+    pub endpoint_file: Option<String>,
+    pub endpoint_line: Option<usize>,
+    pub endpoint_character: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct EnvironmentEntry {
+    pub name: String,
+    pub file: String,
+    pub line: usize,
+    pub character: usize,
 }
 
 #[derive(Debug, Serialize, Clone)]

@@ -91,6 +91,22 @@
         "category": "RQ"
       },
       {
+        "command": "rq.openConfigurationFile",
+        "title": "Open Configuration File",
+        "category": "RQ"
+      },
+      {
+        "command": "rq.openEndpoint",
+        "title": "Open Endpoint File",
+        "category": "RQ"
+      },
+      {
+        "command": "rq.refreshConfiguration",
+        "title": "Refresh Configuration",
+        "category": "RQ",
+        "icon": "$(refresh)"
+      },
+      {
         "command": "rq.runRequest",
         "title": "Run Request",
         "category": "RQ",
@@ -128,6 +144,11 @@
           "id": "rqRequestExplorer",
           "name": "Requests",
           "icon": "$(globe)"
+        },
+        {
+          "id": "rqConfigurationExplorer",
+          "name": "Configuration",
+          "icon": "$(symbol-misc)"
         }
       ]
     },
@@ -141,6 +162,11 @@
         {
           "command": "rq.refreshRequests",
           "when": "view == rqRequestExplorer",
+          "group": "navigation"
+        },
+        {
+          "command": "rq.refreshConfiguration",
+          "when": "view == rqConfigurationExplorer",
           "group": "navigation"
         }
       ],

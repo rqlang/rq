@@ -97,6 +97,8 @@ pub struct Config {
     pub auth_type: AuthType,
     pub fields: HashMap<String, Token>,
     pub file_path: PathBuf,
+    pub line: usize,
+    pub character: usize,
 }
 
 impl Config {
@@ -214,6 +216,8 @@ mod tests {
             auth_type: AuthType::Bearer,
             fields,
             file_path: PathBuf::new(),
+            line: 0,
+            character: 0,
         };
 
         assert!(config.validate().is_ok());
@@ -229,6 +233,8 @@ mod tests {
             auth_type: AuthType::Bearer,
             fields,
             file_path: PathBuf::new(),
+            line: 0,
+            character: 0,
         };
 
         assert!(config.validate().is_err());
@@ -249,6 +255,8 @@ mod tests {
             auth_type: AuthType::OAuth2AuthorizationCode,
             fields,
             file_path: PathBuf::new(),
+            line: 0,
+            character: 0,
         };
 
         config.apply_defaults();
@@ -283,6 +291,8 @@ mod tests {
             auth_type: AuthType::OAuth2AuthorizationCode,
             fields,
             file_path: PathBuf::new(),
+            line: 0,
+            character: 0,
         };
 
         config.apply_defaults();
@@ -307,6 +317,8 @@ mod tests {
             auth_type: AuthType::Bearer,
             fields: fields.clone(),
             file_path: PathBuf::new(),
+            line: 0,
+            character: 0,
         };
 
         config.apply_defaults();

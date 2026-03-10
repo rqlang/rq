@@ -223,11 +223,6 @@ export interface EnvironmentShowOutput {
     character: number;
 }
 
-export interface EndpointEntry {
-    name: string;
-    file: string;
-}
-
 export interface AuthConfig {
     name: string;
 }
@@ -670,17 +665,6 @@ export async function showEnvironment(name: string, sourceDirectory?: string): P
         }
         throw new Error(`Failed to show environment: ${getErrorMessage(error)}`);
     }
-}
-
-export async function listEndpoints(sourceDirectory?: string): Promise<EndpointEntry[]> {
-    const result = await listRequests(sourceDirectory);
-    const seen = new Map<string, string>();
-    for (const req of result.requests) {
-        if (req.endpoint && !seen.has(req.endpoint)) {
-            seen.set(req.endpoint, req.file);
-        }
-    }
-    return Array.from(seen.entries()).map(([name, file]) => ({ name, file }));
 }
 
 export async function showAuthConfig(

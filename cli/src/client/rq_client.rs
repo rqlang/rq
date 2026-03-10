@@ -218,7 +218,9 @@ impl RqClient {
                         if let Some(ep) = rq_file.endpoints.get(ep_name) {
                             let ep_file = ep
                                 .source_path
-                                .clone()
+                                .as_deref()
+                                .map(crate::core::paths::clean_path_str)
+                                .map(str::to_string)
                                 .unwrap_or_else(|| crate::core::paths::clean_path(&rq_file.path));
                             (Some(ep_file), Some(ep.line), Some(ep.character))
                         } else {

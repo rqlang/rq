@@ -12,6 +12,7 @@ import { RequestRunner } from './commands/runRequest';
 import { registerGetTokenCommand } from './commands/getToken';
 import { registerClearOAuthCacheCommand } from './commands/clearOAuthCache';
 import { registerAuthUriHandler } from './auth/authUriHandler';
+import { normalizePath } from './utils';
 
 export function activate(context: vscode.ExtensionContext) {
     console.log('RQ Language Extension is now active');
@@ -63,7 +64,6 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.commands.registerCommand('rq.openEndpoint', async (file: string, line: number, character: number, item?: RequestTreeItem) => {
             if (item) { requestExplorerProvider.setItemLoading(item, true); }
             try {
-                const { normalizePath } = await import('./utils');
                 const document = await vscode.workspace.openTextDocument(normalizePath(file));
                 const editor = await vscode.window.showTextDocument(document);
                 const position = new vscode.Position(line, character);

@@ -550,6 +550,47 @@ impl RqClient {
             .ok_or_else(|| RqError::Validation(format!("Environment '{name}' not found")))
     }
 
+    pub fn get_endpoint(
+        source_path: &Path,
+        name: &str,
+    ) -> Result<super::rq_client_models::EndpointEntry, RqError> {
+        if !source_path.exists() {
+            return Err(RqError::DirectoryNotFound(
+                source_path.display().to_string(),
+            ));
+        }
+
+        let mut paths = Vec::new();
+        if source_path.is_file() {
+            paths.push(source_path.to_path_buf());
+        } else if source_path.is_dir() {
+            Self::collect_rq_paths(source_path, &mut paths)?;
+        } else {
+            return Err(RqError::NotADirectory(source_path.display().to_string()));
+        }
+
+        for path in &paths {
+            if let Ok(rq_file) = RqFile::from_path(path) {
+                if let Some(ep) = rq_file.endpoints.get(name) {
+                    let file = ep
+                        .source_path
+                        .as_deref()
+                        .map(crate::core::paths::clean_path_str)
+                        .map(str::to_string)
+                        .unwrap_or_else(|| crate::core::paths::clean_path(&rq_file.path));
+                    return Ok(super::rq_client_models::EndpointEntry {
+                        name: name.to_string(),
+                        file,
+                        line: ep.line,
+                        character: ep.character,
+                    });
+                }
+            }
+        }
+
+        Err(RqError::Validation(format!("Endpoint '{name}' not found")))
+    }
+
     fn get_rq_files_to_process(
         source_path: &Path,
         request_name: Option<&str>,

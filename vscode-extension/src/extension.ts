@@ -4,6 +4,7 @@ import { RequestExplorerProvider } from './requestExplorer';
 import { ConfigurationExplorerProvider } from './configurationExplorer';
 import { completionProvider } from './language/completionProvider';
 import { hoverProvider } from './language/hoverProvider';
+import { definitionProvider } from './language/definitionProvider';
 import { registerRefreshRequestsCommand } from './commands/refreshRequests';
 import { registerOpenRequestFileCommand } from './commands/openRequestFile';
 import { registerOpenConfigurationFileCommand } from './commands/openConfigurationFile';
@@ -75,7 +76,7 @@ export function activate(context: vscode.ExtensionContext) {
     // Note: OAuth sessions are not cached in VS Code's authentication API
     // Each "Get Token" command executes a fresh OAuth flow using CLI configuration
 
-    context.subscriptions.push(completionProvider, hoverProvider);
+    context.subscriptions.push(completionProvider, hoverProvider, definitionProvider);
 }
 
 

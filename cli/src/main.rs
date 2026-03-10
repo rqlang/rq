@@ -44,7 +44,11 @@ async fn main() {
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
     let is_subcommand = args.len() > 1
-        && (args[1] == "env" || args[1] == "auth" || args[1] == "request" || args[1] == "help");
+        && (args[1] == "env"
+            || args[1] == "auth"
+            || args[1] == "ep"
+            || args[1] == "request"
+            || args[1] == "help");
 
     if is_subcommand {
         let args = Args::parse();
@@ -64,6 +68,11 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 commands::auth::AuthSubcommand::Show(show_args) => {
                     commands::auth::execute_show(&show_args)
+                }
+            },
+            Some(Commands::Ep(ep_command)) => match ep_command.command {
+                commands::ep::EpSubcommand::Show(show_args) => {
+                    commands::ep::execute_show(&show_args)
                 }
             },
             Some(Commands::Request(request_command)) => match request_command.command {

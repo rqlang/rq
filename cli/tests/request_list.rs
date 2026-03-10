@@ -191,19 +191,35 @@ fn test_request_list_json_endpoint_location() -> Result<(), Box<dyn std::error::
         .find(|v| v["endpoint"].as_str().is_some())
         .ok_or("No request with endpoint found")?;
 
-    if ep_request.get("endpoint_file").and_then(|v| v.as_str()).is_none() {
+    if ep_request
+        .get("endpoint_file")
+        .and_then(|v| v.as_str())
+        .is_none()
+    {
         return Err("Item with endpoint missing 'endpoint_file' field".into());
     }
-    if ep_request.get("endpoint_line").and_then(|v| v.as_u64()).is_none() {
+    if ep_request
+        .get("endpoint_line")
+        .and_then(|v| v.as_u64())
+        .is_none()
+    {
         return Err("Item with endpoint missing 'endpoint_line' field".into());
     }
-    if ep_request.get("endpoint_character").and_then(|v| v.as_u64()).is_none() {
+    if ep_request
+        .get("endpoint_character")
+        .and_then(|v| v.as_u64())
+        .is_none()
+    {
         return Err("Item with endpoint missing 'endpoint_character' field".into());
     }
 
     let top_level = items.iter().find(|v| v["endpoint"].is_null());
     if let Some(item) = top_level {
-        if item.get("endpoint_file").map(|v| !v.is_null()).unwrap_or(false) {
+        if item
+            .get("endpoint_file")
+            .map(|v| !v.is_null())
+            .unwrap_or(false)
+        {
             return Err("Top-level request should not have endpoint_file".into());
         }
     }

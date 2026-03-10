@@ -768,6 +768,9 @@ export async function listRequests(sourceDirectory?: string): Promise<ListReques
         
         output.forEach(item => {
             item.file = normalizePath(item.file);
+            if (item.endpoint_file) {
+                item.endpoint_file = normalizePath(item.endpoint_file);
+            }
         });
 
         return {

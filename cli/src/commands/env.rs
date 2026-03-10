@@ -73,7 +73,17 @@ pub fn execute_list(args: &ListArgs) -> Result<(), Box<dyn std::error::Error>> {
 pub fn execute_show(args: &ShowArgs) -> Result<(), Box<dyn std::error::Error>> {
     let path = std::path::Path::new(&args.source.source);
     let entry = crate::client::RqClient::get_environment(path, &args.name)?;
-    let formatter = crate::core::formatter::get_formatter(&args.output.output);
-    print!("{}", formatter.format(&entry));
+    match args.output.output {
+        OutputFormat::Json => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&entry).unwrap_or_default()
+            );
+        }
+        OutputFormat::Text => {
+            let formatter = crate::core::formatter::get_formatter(&args.output.output);
+            print!("{}", formatter.format(&entry));
+        }
+    }
     Ok(())
 }

@@ -86,6 +86,15 @@ fn test_auth_show_bearer_json() -> Result<(), Box<dyn std::error::Error>> {
     {
         return Err(format!("Expected token field in fields, got: {fields}").into());
     }
+    if json.get("file").and_then(|v| v.as_str()).is_none() {
+        return Err("JSON missing 'file' field".into());
+    }
+    if json.get("line").and_then(|v| v.as_u64()) != Some(2) {
+        return Err(format!("Expected line 2, got: {json}").into());
+    }
+    if json.get("character").and_then(|v| v.as_u64()) != Some(5) {
+        return Err(format!("Expected character 5, got: {json}").into());
+    }
 
     Ok(())
 }

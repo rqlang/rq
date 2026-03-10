@@ -1,4 +1,5 @@
 use crate::commands::shared::{OutputArgs, SourceArgs};
+use crate::core::formatter::OutputFormat;
 use clap::{Args, Subcommand};
 
 #[derive(Args)]
@@ -13,6 +14,8 @@ pub struct EnvCommand {
 pub enum EnvSubcommand {
     #[command(about = "List environments")]
     List(ListArgs),
+    #[command(about = "Show environment location")]
+    Show(ShowArgs),
 }
 
 #[derive(Args)]
@@ -24,19 +27,53 @@ pub struct ListArgs {
     pub output: OutputArgs,
 }
 
+#[derive(Args)]
+pub struct ShowArgs {
+    #[command(flatten)]
+    pub source: SourceArgs,
+
+    #[arg(short = 'n', long = "name", help = "Name of the environment to show")]
+    pub name: String,
+
+    #[command(flatten)]
+    pub output: OutputArgs,
+}
+
 pub fn execute_list(args: &ListArgs) -> Result<(), Box<dyn std::error::Error>> {
     let path = std::path::Path::new(&args.source.source);
     let env_list = crate::client::RqClient::list_environments(path)?;
 
-    let formatter = crate::core::formatter::get_formatter(&args.output.output);
-    print!(
-        "{}",
-        formatter.format_list(
-            &env_list,
-            "Environments found:",
-            "No environments found in .rq files"
-        )
-    );
+    match args.output.output {
+        OutputFormat::Json => {
+            let entries: Vec<serde_json::Value> = env_list
+                .iter()
+                .map(|name| serde_json::json!({ "name": name }))
+                .collect();
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&entries).unwrap_or_else(|_| "[]".to_string())
+            );
+        }
+        OutputFormat::Text => {
+            let formatter = crate::core::formatter::get_formatter(&args.output.output);
+            print!(
+                "{}",
+                formatter.format_list(
+                    &env_list,
+                    "Environments found:",
+                    "No environments found in .rq files"
+                )
+            );
+        }
+    }
 
+    Ok(())
+}
+
+pub fn execute_show(args: &ShowArgs) -> Result<(), Box<dyn std::error::Error>> {
+    let path = std::path::Path::new(&args.source.source);
+    let entry = crate::client::RqClient::get_environment(path, &args.name)?;
+    let formatter = crate::core::formatter::get_formatter(&args.output.output);
+    print!("{}", formatter.format(&entry));
     Ok(())
 }

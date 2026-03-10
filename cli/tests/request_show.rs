@@ -140,6 +140,15 @@ fn test_request_show_json() -> Result<(), Box<dyn std::error::Error>> {
     if auth.get("type").and_then(|v| v.as_str()) != Some("bearer") {
         return Err("JSON auth missing or incorrect 'type' field".into());
     }
+    if json.get("file").and_then(|v| v.as_str()).is_none() {
+        return Err("JSON missing 'file' field".into());
+    }
+    if json.get("line").and_then(|v| v.as_u64()) != Some(6) {
+        return Err(format!("Expected line 6, got: {json}").into());
+    }
+    if json.get("character").and_then(|v| v.as_u64()) != Some(3) {
+        return Err(format!("Expected character 3, got: {json}").into());
+    }
 
     Ok(())
 }

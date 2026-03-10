@@ -46,6 +46,9 @@ pub(crate) fn parse_auth_definition(
         "Expected identifier",
     )?;
     let auth_name = name_tok.value.clone();
+    let (line_1, col_1) = r.get_line_col(name_tok.span.start);
+    let auth_line = line_1.saturating_sub(1);
+    let auth_character = col_1.saturating_sub(1);
 
     if existing_providers.contains_key(&auth_name) {
         return Err(r.create_error_with_file(
@@ -210,6 +213,8 @@ pub(crate) fn parse_auth_definition(
         auth_type,
         fields,
         file_path: r.file_path.clone(),
+        line: auth_line,
+        character: auth_character,
     };
 
     if let Err(mut e) = config.validate() {

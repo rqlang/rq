@@ -1,5 +1,8 @@
 import * as vscode from 'vscode';
+import * as cliService from '../../src/cliService';
 import { registerOpenRequestFileCommand } from '../../src/commands/openRequestFile';
+
+jest.mock('../../src/cliService');
 
 describe('openRequestFile Command', () => {
     let context: vscode.ExtensionContext;
@@ -10,26 +13,29 @@ describe('openRequestFile Command', () => {
     beforeEach(() => {
         jest.clearAllMocks();
 
-        // Mock context
         context = {
             subscriptions: []
         } as unknown as vscode.ExtensionContext;
 
-        // Mock document and editor
         mockDocument = {
             getText: jest.fn().mockReturnValue('some content\nrq myRequest\nmore content'),
             positionAt: jest.fn().mockReturnValue({ line: 1, character: 0 })
         };
-        
+
         mockEditor = {
             selection: null,
             revealRange: jest.fn()
         };
 
+        (cliService.showRequest as jest.Mock).mockResolvedValue({
+            file: '/path/to/file.rq',
+            line: 1,
+            character: 0
+        });
+
         (vscode.workspace.openTextDocument as jest.Mock).mockResolvedValue(mockDocument);
         (vscode.window.showTextDocument as jest.Mock).mockResolvedValue(mockEditor);
 
-        // Capture the command callback
         (vscode.commands.registerCommand as jest.Mock).mockImplementation((command, callback) => {
             if (command === 'rq.openRequestFile') {
                 commandCallback = callback;
@@ -37,7 +43,6 @@ describe('openRequestFile Command', () => {
             return { dispose: jest.fn() };
         });
 
-        // Register the command
         registerOpenRequestFileCommand(context);
     });
 
@@ -47,14 +52,11 @@ describe('openRequestFile Command', () => {
     });
 
     test('opens file and highlights request', async () => {
-        await commandCallback('/path/to/file.rq', 'myRequest');
+        await commandCallback('myRequest');
 
+        expect(cliService.showRequest).toHaveBeenCalledWith('myRequest', undefined);
         expect(vscode.workspace.openTextDocument).toHaveBeenCalledWith('/path/to/file.rq');
         expect(vscode.window.showTextDocument).toHaveBeenCalledWith(mockDocument);
-        
-        // Verify highlighting logic
-        expect(mockDocument.getText).toHaveBeenCalled();
-        expect(mockDocument.positionAt).toHaveBeenCalled();
         expect(mockEditor.revealRange).toHaveBeenCalled();
         expect(mockEditor.selection).toBeDefined();
     });
@@ -62,16 +64,17 @@ describe('openRequestFile Command', () => {
     test('handles file open error', async () => {
         (vscode.workspace.openTextDocument as jest.Mock).mockRejectedValue(new Error('File not found'));
 
-        await commandCallback('/path/to/file.rq', 'myRequest');
+        await commandCallback('myRequest');
 
         expect(vscode.window.showErrorMessage).toHaveBeenCalledWith('Failed to open file: File not found');
     });
 
-    test('does not highlight if request not found', async () => {
-        mockDocument.getText.mockReturnValue('some content\nno match here');
-        
-        await commandCallback('/path/to/file.rq', 'myRequest');
+    test('does not highlight if showRequest fails', async () => {
+        (cliService.showRequest as jest.Mock).mockRejectedValue(new Error('Request not found'));
 
-        expect(mockEditor.revealRange).not.toHaveBeenCalled();
+        await commandCallback('myRequest');
+
+        expect(vscode.window.showErrorMessage).toHaveBeenCalledWith('Failed to open file: Request not found');
+        expect(vscode.workspace.openTextDocument).not.toHaveBeenCalled();
     });
 });

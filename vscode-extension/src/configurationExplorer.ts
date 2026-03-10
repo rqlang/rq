@@ -31,28 +31,22 @@ export class ConfigurationExplorerProvider implements vscode.TreeDataProvider<Co
 
         try {
             if (element.kind === 'section-environments') {
-                const entries = await cliService.listEnvironmentsWithFiles(this.workspaceRoot);
-                return entries.map(e => {
-                    const item = new ConfigurationTreeItem(e.name, 'environment', vscode.TreeItemCollapsibleState.None);
+                const names = await cliService.listEnvironments(this.workspaceRoot);
+                return names.map(name => {
+                    const item = new ConfigurationTreeItem(name, 'environment', vscode.TreeItemCollapsibleState.None);
                     item.iconPath = new vscode.ThemeIcon('server-environment');
-                    if (e.file) {
-                        item.command = { command: 'rq.openConfigurationFile', title: 'Open File', arguments: [e.file, 'env', e.name] };
-                        item.tooltip = e.file;
-                    }
+                    item.command = { command: 'rq.openConfigurationFile', title: 'Open File', arguments: ['env', name] };
                     return item;
                 });
             }
 
             if (element.kind === 'section-auth') {
-                const entries = await cliService.listAuthConfigsWithFiles(this.workspaceRoot);
+                const entries = await cliService.listAuthConfigs(this.workspaceRoot);
                 return entries.map(e => {
                     const item = new ConfigurationTreeItem(e.name, 'auth-config', vscode.TreeItemCollapsibleState.None);
                     item.iconPath = new vscode.ThemeIcon('key');
                     item.description = e.auth_type;
-                    if (e.file) {
-                        item.command = { command: 'rq.openConfigurationFile', title: 'Open File', arguments: [e.file, 'auth', e.name] };
-                        item.tooltip = e.file;
-                    }
+                    item.command = { command: 'rq.openConfigurationFile', title: 'Open File', arguments: ['auth', e.name] };
                     return item;
                 });
             }

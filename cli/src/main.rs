@@ -54,6 +54,9 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 commands::env::EnvSubcommand::List(list_args) => {
                     commands::env::execute_list(&list_args)
                 }
+                commands::env::EnvSubcommand::Show(show_args) => {
+                    commands::env::execute_show(&show_args)
+                }
             },
             Some(Commands::Auth(auth_command)) => match auth_command.command {
                 commands::auth::AuthSubcommand::List(list_args) => {

@@ -9,6 +9,9 @@ export interface RequestInfo {
     name: string;
     endpoint: string | null;
     file: string;
+    endpoint_file?: string;
+    endpoint_line?: number;
+    endpoint_character?: number;
 }
 
 
@@ -318,11 +321,14 @@ export class RequestExplorerProvider implements vscode.TreeDataProvider<RequestT
                 children
             );
             endpointItem.iconPath = new vscode.ThemeIcon('globe');
-            endpointItem.command = {
-                command: 'rq.openConfigurationFile',
-                title: 'Go to Endpoint',
-                arguments: [endpointRequests[0].file, 'ep', endpointName]
-            };
+            const epRef = endpointRequests[0];
+            if (epRef.endpoint_file) {
+                endpointItem.command = {
+                    command: 'rq.openEndpoint',
+                    title: 'Go to Endpoint',
+                    arguments: [epRef.endpoint_file, epRef.endpoint_line ?? 0, epRef.endpoint_character ?? 0]
+                };
+            }
             items.push(endpointItem);
         }
 
@@ -364,7 +370,7 @@ export class RequestTreeItem extends vscode.TreeItem {
             this.command = {
                 command: 'rq.openRequestFile',
                 title: 'Open Request File',
-                arguments: [request.file, request.name]
+                arguments: [request.name]
             };
         } else {
             // This is an endpoint group

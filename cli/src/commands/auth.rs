@@ -16,6 +16,21 @@ pub struct AuthDetailsView {
     pub fields: HashMap<String, String>,
 }
 
+#[derive(Serialize)]
+struct AuthDetailsJsonView {
+    #[serde(rename = "Auth Configuration")]
+    name: String,
+    #[serde(rename = "Type")]
+    auth_type: String,
+    #[serde(rename = "Environment", skip_serializing_if = "Option::is_none")]
+    environment: Option<String>,
+    #[serde(rename = "Fields")]
+    fields: HashMap<String, String>,
+    file: String,
+    line: usize,
+    character: usize,
+}
+
 #[derive(Debug, Args)]
 #[command(about = "Manage authentication")]
 pub struct AuthCommand {
@@ -88,21 +103,40 @@ pub fn execute_list(args: &ListArgs) -> Result<(), Box<dyn std::error::Error>> {
 
 pub fn execute_show(args: &ShowArgs) -> Result<(), Box<dyn std::error::Error>> {
     let source_path = Path::new(&args.source.source);
-    let (auth_name, auth_type_str, fields) = crate::client::RqClient::get_auth_details(
-        source_path,
-        &args.name,
-        args.env_args.environment.as_deref(),
-    )?;
+    let (auth_name, auth_type_str, fields, file, line, character) =
+        crate::client::RqClient::get_auth_details(
+            source_path,
+            &args.name,
+            args.env_args.environment.as_deref(),
+        )?;
 
-    let formatter = crate::core::formatter::get_formatter(&args.output.output);
-
-    let view = AuthDetailsView {
-        name: auth_name,
-        auth_type: auth_type_str,
-        environment: args.env_args.environment.clone(),
-        fields,
-    };
-    print!("{}", formatter.format(&view));
+    match args.output.output {
+        OutputFormat::Json => {
+            let view = AuthDetailsJsonView {
+                name: auth_name,
+                auth_type: auth_type_str,
+                environment: args.env_args.environment.clone(),
+                fields,
+                file,
+                line,
+                character,
+            };
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&view).unwrap_or_default()
+            );
+        }
+        OutputFormat::Text => {
+            let formatter = crate::core::formatter::get_formatter(&args.output.output);
+            let view = AuthDetailsView {
+                name: auth_name,
+                auth_type: auth_type_str,
+                environment: args.env_args.environment.clone(),
+                fields,
+            };
+            print!("{}", formatter.format(&view));
+        }
+    }
 
     Ok(())
 }

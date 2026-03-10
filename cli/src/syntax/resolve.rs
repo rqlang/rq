@@ -476,6 +476,8 @@ mod tests {
             auth_type: AuthType::Bearer,
             fields,
             file_path: std::path::PathBuf::new(),
+            line: 0,
+            character: 0,
         };
 
         let env_vars = vec![Variable {
@@ -504,6 +506,8 @@ mod tests {
             auth_type: AuthType::OAuth2AuthorizationCode,
             fields,
             file_path: std::path::PathBuf::new(),
+            line: 0,
+            character: 0,
         };
 
         let env_vars = vec![
@@ -555,6 +559,8 @@ mod tests {
             auth_type: AuthType::Bearer,
             fields,
             file_path: std::path::PathBuf::new(),
+            line: 0,
+            character: 0,
         };
 
         let env_vars = vec![Variable {
@@ -577,6 +583,8 @@ mod tests {
             auth_type: AuthType::Bearer,
             fields,
             file_path: std::path::PathBuf::new(),
+            line: 0,
+            character: 0,
         };
 
         let env_vars = vec![Variable {
@@ -602,6 +610,8 @@ mod tests {
             auth_type: AuthType::Bearer,
             fields,
             file_path: std::path::PathBuf::new(),
+            line: 0,
+            character: 0,
         };
 
         let env_vars = vec![Variable {
@@ -626,6 +636,8 @@ mod tests {
             auth_type: AuthType::OAuth2AuthorizationCode,
             fields,
             file_path: std::path::PathBuf::new(),
+            line: 0,
+            character: 0,
         };
 
         let env_vars = vec![
@@ -657,6 +669,8 @@ mod tests {
             auth_type: AuthType::Bearer,
             fields,
             file_path: std::path::PathBuf::new(),
+            line: 0,
+            character: 0,
         };
 
         let env_vars: Vec<Variable> = vec![];
@@ -676,6 +690,8 @@ mod tests {
             auth_type: AuthType::Bearer,
             fields,
             file_path: std::path::PathBuf::new(),
+            line: 0,
+            character: 0,
         };
 
         let env_vars = vec![

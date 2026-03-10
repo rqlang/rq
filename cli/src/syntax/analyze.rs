@@ -18,6 +18,7 @@ pub fn analyze(
     let mut result = ParseResult {
         requests: Vec::new(),
         environments: std::collections::HashMap::new(),
+        environment_locations: std::collections::HashMap::new(),
         auth_providers: std::collections::HashMap::new(),
         endpoints: std::collections::HashMap::new(),
         file_variables: Vec::new(),

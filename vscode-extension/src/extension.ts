@@ -60,6 +60,16 @@ export function activate(context: vscode.ExtensionContext) {
     registerOpenRequestFileCommand(context);
     registerOpenConfigurationFileCommand(context);
     context.subscriptions.push(
+        vscode.commands.registerCommand('rq.openEndpoint', async (file: string, line: number, character: number) => {
+            const { normalizePath } = await import('./utils');
+            const document = await vscode.workspace.openTextDocument(normalizePath(file));
+            const editor = await vscode.window.showTextDocument(document);
+            const position = new vscode.Position(line, character);
+            editor.selection = new vscode.Selection(position, position);
+            editor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.InCenter);
+        })
+    );
+    context.subscriptions.push(
         vscode.commands.registerCommand('rq.refreshConfiguration', () => configurationExplorerProvider.refresh())
     );
     registerSelectEnvironmentCommand(context, requestExplorerProvider);

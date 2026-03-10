@@ -407,6 +407,8 @@ mod tests {
             auth_type: crate::syntax::auth::AuthType::OAuth2AuthorizationCode,
             fields: HashMap::new(),
             file_path: std::path::PathBuf::new(),
+            line: 0,
+            character: 0,
         };
 
         let context = crate::syntax::variable_context::VariableContext {
@@ -457,6 +459,8 @@ mod tests {
             auth_type: crate::syntax::auth::AuthType::OAuth2AuthorizationCode,
             fields: HashMap::new(),
             file_path: std::path::PathBuf::new(),
+            line: 0,
+            character: 0,
         };
 
         let context = crate::syntax::variable_context::VariableContext {

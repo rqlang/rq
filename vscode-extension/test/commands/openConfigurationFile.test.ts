@@ -1,0 +1,110 @@
+import * as vscode from 'vscode';
+import * as cliService from '../../src/cliService';
+import { registerOpenConfigurationFileCommand } from '../../src/commands/openConfigurationFile';
+
+jest.mock('../../src/cliService');
+
+describe('openConfigurationFile Command', () => {
+    let context: vscode.ExtensionContext;
+    let commandCallback: Function;
+    let mockEditor: any;
+    let mockDocument: any;
+
+    beforeEach(() => {
+        jest.clearAllMocks();
+
+        context = {
+            subscriptions: []
+        } as unknown as vscode.ExtensionContext;
+
+        mockDocument = {};
+        mockEditor = {
+            selection: null,
+            revealRange: jest.fn()
+        };
+
+        (vscode.workspace.openTextDocument as jest.Mock).mockResolvedValue(mockDocument);
+        (vscode.window.showTextDocument as jest.Mock).mockResolvedValue(mockEditor);
+
+        (vscode.commands.registerCommand as jest.Mock).mockImplementation((command, callback) => {
+            if (command === 'rq.openConfigurationFile') {
+                commandCallback = callback;
+            }
+            return { dispose: jest.fn() };
+        });
+
+        registerOpenConfigurationFileCommand(context);
+    });
+
+    test('registers the command', () => {
+        expect(vscode.commands.registerCommand).toHaveBeenCalledWith('rq.openConfigurationFile', expect.any(Function));
+        expect(context.subscriptions).toHaveLength(1);
+    });
+
+    test('opens file at correct position for env artifact', async () => {
+        (cliService.showEnvironment as jest.Mock).mockResolvedValue({
+            name: 'dev',
+            file: '/path/to/env.rq',
+            line: 3,
+            character: 0
+        });
+
+        await commandCallback('env', 'dev');
+
+        expect(cliService.showEnvironment).toHaveBeenCalledWith('dev', undefined);
+        expect(vscode.workspace.openTextDocument).toHaveBeenCalledWith('/path/to/env.rq');
+        expect(vscode.window.showTextDocument).toHaveBeenCalledWith(mockDocument);
+        expect(mockEditor.revealRange).toHaveBeenCalled();
+        expect(mockEditor.selection).toBeDefined();
+    });
+
+    test('opens file at correct position for auth artifact', async () => {
+        (cliService.showAuthConfig as jest.Mock).mockResolvedValue({
+            name: 'my_auth',
+            auth_type: 'bearer',
+            fields: {},
+            file: '/path/to/auth.rq',
+            line: 7,
+            character: 0
+        });
+
+        await commandCallback('auth', 'my_auth');
+
+        expect(cliService.showAuthConfig).toHaveBeenCalledWith('my_auth', undefined);
+        expect(vscode.workspace.openTextDocument).toHaveBeenCalledWith('/path/to/auth.rq');
+        expect(vscode.window.showTextDocument).toHaveBeenCalledWith(mockDocument);
+        expect(mockEditor.revealRange).toHaveBeenCalled();
+    });
+
+    test('shows error message when env lookup fails', async () => {
+        (cliService.showEnvironment as jest.Mock).mockRejectedValue(new Error('Environment not found'));
+
+        await commandCallback('env', 'missing');
+
+        expect(vscode.window.showErrorMessage).toHaveBeenCalledWith('Failed to open file: Environment not found');
+        expect(vscode.workspace.openTextDocument).not.toHaveBeenCalled();
+    });
+
+    test('shows error message when auth lookup fails', async () => {
+        (cliService.showAuthConfig as jest.Mock).mockRejectedValue(new Error('Auth not found'));
+
+        await commandCallback('auth', 'missing');
+
+        expect(vscode.window.showErrorMessage).toHaveBeenCalledWith('Failed to open file: Auth not found');
+        expect(vscode.workspace.openTextDocument).not.toHaveBeenCalled();
+    });
+
+    test('shows error message when file open fails', async () => {
+        (cliService.showEnvironment as jest.Mock).mockResolvedValue({
+            name: 'dev',
+            file: '/path/to/env.rq',
+            line: 0,
+            character: 0
+        });
+        (vscode.workspace.openTextDocument as jest.Mock).mockRejectedValue(new Error('File not found'));
+
+        await commandCallback('env', 'dev');
+
+        expect(vscode.window.showErrorMessage).toHaveBeenCalledWith('Failed to open file: File not found');
+    });
+});

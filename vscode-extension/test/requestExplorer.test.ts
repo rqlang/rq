@@ -201,4 +201,46 @@ describe('RequestExplorerProvider', () => {
         expect(reqItem.label).toBe('req1');
         expect(reqItem.contextValue).toBe('request');
     });
+
+    test('endpoint item has rq.openEndpoint command when endpoint_file is present', async () => {
+        const mockOutput = [
+            {
+                name: 'api/get',
+                endpoint: 'api',
+                file: '/root/api.rq',
+                endpoint_file: '/root/api.rq',
+                endpoint_line: 5,
+                endpoint_character: 0
+            }
+        ];
+
+        shellMock.setCommandOutput('request list', mockOutput);
+
+        const children = await target.getChildren();
+
+        const endpointItem = children.find(c => c.label === 'api');
+        expect(endpointItem).toBeDefined();
+        expect(endpointItem?.contextValue).toBe('endpoint');
+        expect(endpointItem?.command).toBeDefined();
+        expect(endpointItem?.command?.command).toBe('rq.openEndpoint');
+        expect(endpointItem?.command?.arguments).toEqual(['/root/api.rq', 5, 0]);
+    });
+
+    test('endpoint item has no command when endpoint_file is absent', async () => {
+        const mockOutput = [
+            {
+                name: 'api/get',
+                endpoint: 'api',
+                file: '/root/api.rq'
+            }
+        ];
+
+        shellMock.setCommandOutput('request list', mockOutput);
+
+        const children = await target.getChildren();
+
+        const endpointItem = children.find(c => c.label === 'api');
+        expect(endpointItem).toBeDefined();
+        expect(endpointItem?.command).toBeUndefined();
+    });
 });

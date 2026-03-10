@@ -31,6 +31,25 @@ pub struct RequestDetailsView {
 }
 
 #[derive(Serialize)]
+struct RequestDetailsJsonView {
+    #[serde(rename = "Request")]
+    name: String,
+    #[serde(rename = "URL")]
+    url: String,
+    #[serde(rename = "Method")]
+    method: String,
+    #[serde(rename = "Headers")]
+    headers: HashMap<String, String>,
+    #[serde(rename = "Body", skip_serializing_if = "Option::is_none")]
+    body: Option<String>,
+    #[serde(rename = "Auth", skip_serializing_if = "Option::is_none")]
+    auth: Option<AuthConfigView>,
+    file: String,
+    line: usize,
+    character: usize,
+}
+
+#[derive(Serialize)]
 pub struct ExecutionResultsView {
     pub results: Vec<RequestExecutionResult>,
 }
@@ -135,8 +154,6 @@ pub fn execute_show(args: &ShowArgs) -> Result<(), Box<dyn std::error::Error>> {
     let details =
         RqClient::get_request_details(source_path, &name, args.env_args.environment.as_deref())?;
 
-    let formatter = crate::core::formatter::get_formatter(&args.output.output);
-
     let auth = if let (Some(auth_name), Some(auth_type)) = (&details.auth_name, &details.auth_type)
     {
         Some(AuthConfigView {
@@ -152,15 +169,37 @@ pub fn execute_show(args: &ShowArgs) -> Result<(), Box<dyn std::error::Error>> {
         headers_map.insert(key.clone(), value.clone());
     }
 
-    let view = RequestDetailsView {
-        name: details.name,
-        url: details.url,
-        method: details.method,
-        headers: headers_map,
-        body: details.body,
-        auth,
-    };
-    print!("{}", formatter.format(&view));
+    match args.output.output {
+        crate::core::formatter::OutputFormat::Json => {
+            let view = RequestDetailsJsonView {
+                name: details.name,
+                url: details.url,
+                method: details.method,
+                headers: headers_map,
+                body: details.body,
+                auth,
+                file: details.file,
+                line: details.line,
+                character: details.character,
+            };
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&view).unwrap_or_default()
+            );
+        }
+        crate::core::formatter::OutputFormat::Text => {
+            let formatter = crate::core::formatter::get_formatter(&args.output.output);
+            let view = RequestDetailsView {
+                name: details.name,
+                url: details.url,
+                method: details.method,
+                headers: headers_map,
+                body: details.body,
+                auth,
+            };
+            print!("{}", formatter.format(&view));
+        }
+    }
 
     Ok(())
 }

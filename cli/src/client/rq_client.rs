@@ -7,7 +7,14 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-type AuthDetails = (String, String, HashMap<String, String>);
+type AuthDetails = (
+    String,
+    String,
+    HashMap<String, String>,
+    String,
+    usize,
+    usize,
+);
 
 pub struct RqClient {
     config: RqConfig,
@@ -206,10 +213,27 @@ impl RqClient {
         let mut requests = Vec::new();
         for rq_file in rq_files {
             for req_with_vars in &rq_file.requests {
+                let (endpoint_file, endpoint_line, endpoint_character) =
+                    if let Some(ep_name) = &req_with_vars.request.endpoint {
+                        if let Some(ep) = rq_file.endpoints.get(ep_name) {
+                            let ep_file = ep
+                                .source_path
+                                .clone()
+                                .unwrap_or_else(|| crate::core::paths::clean_path(&rq_file.path));
+                            (Some(ep_file), Some(ep.line), Some(ep.character))
+                        } else {
+                            (None, None, None)
+                        }
+                    } else {
+                        (None, None, None)
+                    };
                 requests.push(RequestInfo {
                     name: req_with_vars.request.name.clone(),
                     endpoint: req_with_vars.request.endpoint.clone(),
                     file: crate::core::paths::clean_path(&rq_file.path),
+                    endpoint_file,
+                    endpoint_line,
+                    endpoint_character,
                 });
             }
         }
@@ -231,11 +255,16 @@ impl RqClient {
             .next()
             .ok_or_else(|| RqError::RequestNotFound(request_name.to_string()))?;
 
+        let request_file = crate::core::paths::clean_path(&rq_file.path);
+
         let req_with_vars = rq_file
             .requests
             .into_iter()
             .find(|r| r.request.name == request_name)
             .ok_or_else(|| RqError::RequestNotFound(request_name.to_string()))?;
+
+        let request_line = req_with_vars.request.line;
+        let request_character = req_with_vars.request.character;
 
         // Context Setup
         // Check loaded variables and auth providers from imports
@@ -344,6 +373,9 @@ impl RqClient {
             headers: resolved.headers,
             method: resolved.method.as_str().to_string(),
             body: resolved.body,
+            file: request_file,
+            line: request_line,
+            character: request_character,
         })
     }
 
@@ -365,7 +397,9 @@ impl RqClient {
 
         let mut auth_list: Vec<super::rq_client_models::AuthListEntry> = auth_map
             .into_iter()
-            .map(|(name, auth_type)| super::rq_client_models::AuthListEntry { name, auth_type })
+            .map(|(name, (auth_type, _file, _line, _character))| {
+                super::rq_client_models::AuthListEntry { name, auth_type }
+            })
             .collect();
         auth_list.sort();
 
@@ -391,6 +425,10 @@ impl RqClient {
             .ok_or_else(|| {
                 RqError::Validation(format!("Auth configuration '{auth_name}' not found"))
             })?;
+
+        let auth_file = auth_provider.file_path.to_string_lossy().to_string();
+        let auth_line = auth_provider.line;
+        let auth_character = auth_provider.character;
 
         auth_provider.apply_defaults();
 
@@ -426,6 +464,9 @@ impl RqClient {
                 .iter()
                 .map(|(k, v)| (k.clone(), v.value.clone()))
                 .collect(),
+            auth_file,
+            auth_line,
+            auth_character,
         ))
     }
 
@@ -454,6 +495,57 @@ impl RqClient {
         env_list.sort();
 
         Ok(env_list)
+    }
+
+    pub fn list_environments_with_locations(
+        source_path: &Path,
+    ) -> Result<Vec<super::rq_client_models::EnvironmentEntry>, RqError> {
+        if !source_path.exists() {
+            return Err(RqError::DirectoryNotFound(
+                source_path.display().to_string(),
+            ));
+        }
+
+        let mut seen = HashSet::new();
+        let mut entries: Vec<super::rq_client_models::EnvironmentEntry> = Vec::new();
+
+        let mut paths = Vec::new();
+        if source_path.is_file() {
+            paths.push(source_path.to_path_buf());
+        } else if source_path.is_dir() {
+            Self::collect_rq_paths(source_path, &mut paths)?;
+        } else {
+            return Err(RqError::NotADirectory(source_path.display().to_string()));
+        }
+
+        for path in paths {
+            if let Ok(rq_file) = RqFile::from_path(&path) {
+                for (name, (file, line, character)) in &rq_file.environment_locations {
+                    if seen.insert(name.clone()) {
+                        entries.push(super::rq_client_models::EnvironmentEntry {
+                            name: name.clone(),
+                            file: file.clone(),
+                            line: *line,
+                            character: *character,
+                        });
+                    }
+                }
+            }
+        }
+
+        entries.sort_by(|a, b| a.name.cmp(&b.name));
+        Ok(entries)
+    }
+
+    pub fn get_environment(
+        source_path: &Path,
+        name: &str,
+    ) -> Result<super::rq_client_models::EnvironmentEntry, RqError> {
+        let entries = Self::list_environments_with_locations(source_path)?;
+        entries
+            .into_iter()
+            .find(|e| e.name == name)
+            .ok_or_else(|| RqError::Validation(format!("Environment '{name}' not found")))
     }
 
     fn get_rq_files_to_process(
@@ -690,14 +782,22 @@ impl RqClient {
 
     fn collect_auth_entries(
         dir: &Path,
-        auth_map: &mut HashMap<String, String>,
+        auth_map: &mut HashMap<String, (String, String, usize, usize)>,
     ) -> Result<(), RqError> {
         let mut paths = Vec::new();
         Self::collect_rq_paths(dir, &mut paths)?;
         for path in paths {
             if let Ok(rq_file) = RqFile::from_path(&path) {
                 for (auth_name, provider) in rq_file.auth_providers.iter() {
-                    auth_map.insert(auth_name.clone(), provider.auth_type.as_str().to_string());
+                    auth_map.insert(
+                        auth_name.clone(),
+                        (
+                            provider.auth_type.as_str().to_string(),
+                            provider.file_path.to_string_lossy().to_string(),
+                            provider.line,
+                            provider.character,
+                        ),
+                    );
                 }
             }
         }

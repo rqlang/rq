@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as cliService from '../../src/cliService';
 import { registerOpenConfigurationFileCommand } from '../../src/commands/openConfigurationFile';
-import { ConfigurationExplorerProvider } from '../../src/configurationExplorer';
+import { ConfigurationExplorerProvider, ConfigurationTreeItem } from '../../src/configurationExplorer';
 
 jest.mock('../../src/cliService');
 jest.mock('../../src/configurationExplorer');
@@ -113,5 +113,44 @@ describe('openConfigurationFile Command', () => {
         await commandCallback('env', 'dev');
 
         expect(vscode.window.showErrorMessage).toHaveBeenCalledWith('File not found');
+    });
+
+    test('sets and clears loading state when item is provided', async () => {
+        (cliService.showEnvironment as jest.Mock).mockResolvedValue({
+            name: 'dev',
+            file: '/path/to/env.rq',
+            line: 0,
+            character: 0
+        });
+        const item = new ConfigurationTreeItem('dev', 'environment', vscode.TreeItemCollapsibleState.None);
+
+        await commandCallback('env', 'dev', item);
+
+        expect(mockProvider.setItemLoading).toHaveBeenCalledWith(item, true);
+        expect(mockProvider.setItemLoading).toHaveBeenCalledWith(item, false);
+        expect(mockProvider.setItemLoading).toHaveBeenCalledTimes(2);
+    });
+
+    test('clears loading state even when lookup fails', async () => {
+        (cliService.showEnvironment as jest.Mock).mockRejectedValue(new Error('Environment not found'));
+        const item = new ConfigurationTreeItem('missing', 'environment', vscode.TreeItemCollapsibleState.None);
+
+        await commandCallback('env', 'missing', item);
+
+        expect(mockProvider.setItemLoading).toHaveBeenCalledWith(item, true);
+        expect(mockProvider.setItemLoading).toHaveBeenCalledWith(item, false);
+    });
+
+    test('does not call setItemLoading when no item is provided', async () => {
+        (cliService.showEnvironment as jest.Mock).mockResolvedValue({
+            name: 'dev',
+            file: '/path/to/env.rq',
+            line: 0,
+            character: 0
+        });
+
+        await commandCallback('env', 'dev');
+
+        expect(mockProvider.setItemLoading).not.toHaveBeenCalled();
     });
 });

@@ -69,6 +69,8 @@ export function activate(context: vscode.ExtensionContext) {
                 const position = new vscode.Position(line, character);
                 editor.selection = new vscode.Selection(position, position);
                 editor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.InCenter);
+            } catch (error) {
+                vscode.window.showErrorMessage(`Failed to open file: ${error instanceof Error ? error.message : 'Unknown error'}`);
             } finally {
                 if (item) { requestExplorerProvider.setItemLoading(item, false); }
             }

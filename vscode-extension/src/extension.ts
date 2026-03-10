@@ -1,18 +1,18 @@
 import * as vscode from 'vscode';
 import * as cliService from './cliService';
-import { RequestExplorerProvider, RequestTreeItem } from './requestExplorer';
+import { RequestExplorerProvider } from './requestExplorer';
 import { ConfigurationExplorerProvider } from './configurationExplorer';
 import { completionProvider } from './language/completionProvider';
 import { hoverProvider } from './language/hoverProvider';
 import { registerRefreshRequestsCommand } from './commands/refreshRequests';
 import { registerOpenRequestFileCommand } from './commands/openRequestFile';
 import { registerOpenConfigurationFileCommand } from './commands/openConfigurationFile';
+import { registerOpenEndpointCommand } from './commands/openEndpoint';
 import { registerSelectEnvironmentCommand } from './commands/selectEnvironment';
 import { RequestRunner } from './commands/runRequest';
 import { registerGetTokenCommand } from './commands/getToken';
 import { registerClearOAuthCacheCommand } from './commands/clearOAuthCache';
 import { registerAuthUriHandler } from './auth/authUriHandler';
-import { normalizePath } from './utils';
 
 export function activate(context: vscode.ExtensionContext) {
     console.log('RQ Language Extension is now active');
@@ -60,22 +60,7 @@ export function activate(context: vscode.ExtensionContext) {
     registerRefreshRequestsCommand(context, requestExplorerProvider);
     registerOpenRequestFileCommand(context, requestExplorerProvider);
     registerOpenConfigurationFileCommand(context, configurationExplorerProvider);
-    context.subscriptions.push(
-        vscode.commands.registerCommand('rq.openEndpoint', async (file: string, line: number, character: number, item?: RequestTreeItem) => {
-            if (item) { requestExplorerProvider.setItemLoading(item, true); }
-            try {
-                const document = await vscode.workspace.openTextDocument(normalizePath(file));
-                const editor = await vscode.window.showTextDocument(document);
-                const position = new vscode.Position(line, character);
-                editor.selection = new vscode.Selection(position, position);
-                editor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.InCenter);
-            } catch (error) {
-                vscode.window.showErrorMessage(`Failed to open file: ${error instanceof Error ? error.message : 'Unknown error'}`);
-            } finally {
-                if (item) { requestExplorerProvider.setItemLoading(item, false); }
-            }
-        })
-    );
+    registerOpenEndpointCommand(context, requestExplorerProvider);
     context.subscriptions.push(
         vscode.commands.registerCommand('rq.refreshConfiguration', () => configurationExplorerProvider.refresh())
     );

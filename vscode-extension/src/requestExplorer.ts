@@ -318,6 +318,11 @@ export class RequestExplorerProvider implements vscode.TreeDataProvider<RequestT
                 children
             );
             endpointItem.iconPath = new vscode.ThemeIcon('globe');
+            endpointItem.command = {
+                command: 'rq.openConfigurationFile',
+                title: 'Go to Endpoint',
+                arguments: [endpointRequests[0].file, 'ep', endpointName]
+            };
             items.push(endpointItem);
         }
 

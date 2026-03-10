@@ -1,10 +1,12 @@
 import * as vscode from 'vscode';
 import * as cliService from './cliService';
 import { RequestExplorerProvider } from './requestExplorer';
+import { ConfigurationExplorerProvider } from './configurationExplorer';
 import { completionProvider } from './language/completionProvider';
 import { hoverProvider } from './language/hoverProvider';
 import { registerRefreshRequestsCommand } from './commands/refreshRequests';
 import { registerOpenRequestFileCommand } from './commands/openRequestFile';
+import { registerOpenConfigurationFileCommand } from './commands/openConfigurationFile';
 import { registerSelectEnvironmentCommand } from './commands/selectEnvironment';
 import { RequestRunner } from './commands/runRequest';
 import { registerGetTokenCommand } from './commands/getToken';
@@ -36,17 +38,30 @@ export function activate(context: vscode.ExtensionContext) {
     });
     context.subscriptions.push(requestExplorerView);
 
+    const configurationExplorerProvider = new ConfigurationExplorerProvider(workspaceRoot);
+    const configurationExplorerView = vscode.window.createTreeView('rqConfigurationExplorer', {
+        treeDataProvider: configurationExplorerProvider,
+        showCollapseAll: true
+    });
+    context.subscriptions.push(configurationExplorerView);
+
     cliService.checkCliVersion('rq-lang.rq-language').then(() => {
         requestExplorerProvider.refresh();
+        configurationExplorerProvider.refresh();
     });
 
     cliService.onInstallFinished(() => {
         requestExplorerProvider.refresh();
+        configurationExplorerProvider.refresh();
     });
 
     // Register commands
     registerRefreshRequestsCommand(context, requestExplorerProvider);
     registerOpenRequestFileCommand(context);
+    registerOpenConfigurationFileCommand(context);
+    context.subscriptions.push(
+        vscode.commands.registerCommand('rq.refreshConfiguration', () => configurationExplorerProvider.refresh())
+    );
     registerSelectEnvironmentCommand(context, requestExplorerProvider);
     
     const requestRunner = new RequestRunner(context, rqOutputChannel);

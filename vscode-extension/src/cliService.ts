@@ -216,6 +216,16 @@ export interface Environment {
 
 export type EnvironmentListOutput = string[];
 
+export interface EnvironmentEntry {
+    name: string;
+    file: string;
+}
+
+export interface EndpointEntry {
+    name: string;
+    file: string;
+}
+
 export interface AuthConfig {
     name: string;
 }
@@ -223,6 +233,10 @@ export interface AuthConfig {
 export interface AuthListEntry {
     name: string;
     auth_type: string;
+}
+
+export interface AuthListEntryWithFile extends AuthListEntry {
+    file: string;
 }
 
 export type AuthListOutput = AuthListEntry[];
@@ -614,9 +628,30 @@ export async function listAuthConfigs(sourceDirectory?: string): Promise<AuthLis
     }
 }
 
+export async function listEnvironmentsWithFiles(sourceDirectory?: string): Promise<EnvironmentEntry[]> {
+    const entries = await listEnvironments(sourceDirectory);
+    return entries.map(name => ({ name, file: '' }));
+}
+
+export async function listAuthConfigsWithFiles(sourceDirectory?: string): Promise<AuthListEntryWithFile[]> {
+    const entries = await listAuthConfigs(sourceDirectory);
+    return entries.map(entry => ({ ...entry, file: '' }));
+}
+
+export async function listEndpoints(sourceDirectory?: string): Promise<EndpointEntry[]> {
+    const result = await listRequests(sourceDirectory);
+    const seen = new Map<string, string>();
+    for (const req of result.requests) {
+        if (req.endpoint && !seen.has(req.endpoint)) {
+            seen.set(req.endpoint, req.file);
+        }
+    }
+    return Array.from(seen.entries()).map(([name, file]) => ({ name, file }));
+}
+
 export async function showAuthConfig(
-    name: string, 
-    sourceDirectory?: string, 
+    name: string,
+    sourceDirectory?: string,
     environment?: string
 ): Promise<AuthShowOutput> {
     try {

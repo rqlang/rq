@@ -31,7 +31,7 @@ export function registerOpenConfigurationFileCommand(context: vscode.ExtensionCo
             editor.selection = new vscode.Selection(position, position);
             editor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.InCenter);
         } catch (error) {
-            vscode.window.showErrorMessage(`Failed to open file: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            vscode.window.showErrorMessage(error instanceof Error ? error.message : 'Unknown error');
         } finally {
             if (item) { provider.setItemLoading(item, false); }
         }

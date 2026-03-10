@@ -88,7 +88,7 @@ describe('openConfigurationFile Command', () => {
 
         await commandCallback('env', 'missing');
 
-        expect(vscode.window.showErrorMessage).toHaveBeenCalledWith('Failed to open file: Environment not found');
+        expect(vscode.window.showErrorMessage).toHaveBeenCalledWith('Environment not found');
         expect(vscode.workspace.openTextDocument).not.toHaveBeenCalled();
     });
 
@@ -97,7 +97,7 @@ describe('openConfigurationFile Command', () => {
 
         await commandCallback('auth', 'missing');
 
-        expect(vscode.window.showErrorMessage).toHaveBeenCalledWith('Failed to open file: Auth not found');
+        expect(vscode.window.showErrorMessage).toHaveBeenCalledWith('Auth not found');
         expect(vscode.workspace.openTextDocument).not.toHaveBeenCalled();
     });
 
@@ -112,6 +112,6 @@ describe('openConfigurationFile Command', () => {
 
         await commandCallback('env', 'dev');
 
-        expect(vscode.window.showErrorMessage).toHaveBeenCalledWith('Failed to open file: File not found');
+        expect(vscode.window.showErrorMessage).toHaveBeenCalledWith('File not found');
     });
 });

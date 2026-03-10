@@ -73,7 +73,7 @@ describe('openRequestFile Command', () => {
 
         await commandCallback('myRequest');
 
-        expect(vscode.window.showErrorMessage).toHaveBeenCalledWith('Failed to open file: File not found');
+        expect(vscode.window.showErrorMessage).toHaveBeenCalledWith('File not found');
     });
 
     test('does not highlight if showRequest fails', async () => {
@@ -81,7 +81,7 @@ describe('openRequestFile Command', () => {
 
         await commandCallback('myRequest');
 
-        expect(vscode.window.showErrorMessage).toHaveBeenCalledWith('Failed to open file: Request not found');
+        expect(vscode.window.showErrorMessage).toHaveBeenCalledWith('Request not found');
         expect(vscode.workspace.openTextDocument).not.toHaveBeenCalled();
     });
 });

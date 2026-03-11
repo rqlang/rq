@@ -118,7 +118,7 @@ export const hoverProvider = vscode.languages.registerHoverProvider('rq', {
                     contents.appendCodeblock(result.value, 'rq');
                     return new vscode.Hover(contents);
                 } catch {
-                    return undefined;
+                    // fall through to local variable hover
                 }
             }
 

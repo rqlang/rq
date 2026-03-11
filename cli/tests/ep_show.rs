@@ -107,6 +107,43 @@ fn test_ep_show_directory_search() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
+fn test_ep_show_no_var_interpolation() -> Result<(), Box<dyn std::error::Error>> {
+    let output = rq_cmd()
+        .args([
+            "ep",
+            "show",
+            "-s",
+            "tests/request/run/input/endpoint.rq",
+            "-n",
+            "api",
+            "--no-var-interpolation",
+            "-o",
+            "json",
+        ])
+        .output()?;
+
+    if !output.status.success() {
+        return Err(format!(
+            "Command failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: Value = serde_json::from_str(&stdout)?;
+
+    if json.get("name").and_then(|v| v.as_str()) != Some("api") {
+        return Err(format!("Expected name 'api', got: {json}").into());
+    }
+    if json.get("file").and_then(|v| v.as_str()).is_none() {
+        return Err("Missing 'file' field".into());
+    }
+
+    Ok(())
+}
+
+#[test]
 fn test_ep_show_not_found() -> Result<(), Box<dyn std::error::Error>> {
     let output = rq_cmd()
         .args([

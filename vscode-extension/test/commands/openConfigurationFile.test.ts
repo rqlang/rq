@@ -66,7 +66,7 @@ describe('openConfigurationFile Command', () => {
     });
 
     test('opens file at correct position for auth artifact', async () => {
-        (cliService.showAuthConfig as jest.Mock).mockResolvedValue({
+        (cliService.showAuthLocation as jest.Mock).mockResolvedValue({
             name: 'my_auth',
             auth_type: 'bearer',
             fields: {},
@@ -77,7 +77,7 @@ describe('openConfigurationFile Command', () => {
 
         await commandCallback('auth', 'my_auth');
 
-        expect(cliService.showAuthConfig).toHaveBeenCalledWith('my_auth', undefined);
+        expect(cliService.showAuthLocation).toHaveBeenCalledWith('my_auth', undefined);
         expect(vscode.workspace.openTextDocument).toHaveBeenCalledWith('/path/to/auth.rq');
         expect(vscode.window.showTextDocument).toHaveBeenCalledWith(mockDocument);
         expect(mockEditor.revealRange).toHaveBeenCalled();
@@ -93,7 +93,7 @@ describe('openConfigurationFile Command', () => {
     });
 
     test('shows error message when auth lookup fails', async () => {
-        (cliService.showAuthConfig as jest.Mock).mockRejectedValue(new Error('Auth not found'));
+        (cliService.showAuthLocation as jest.Mock).mockRejectedValue(new Error('Auth not found'));
 
         await commandCallback('auth', 'missing');
 

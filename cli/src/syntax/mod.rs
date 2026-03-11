@@ -17,7 +17,7 @@ pub mod variables;
 pub use analyze::analyze;
 
 pub use parse_result::Request;
-pub use resolve::{resolve_auth_provider, resolve_variables};
+pub use resolve::{resolve_auth_provider, resolve_string, resolve_variables};
 pub use rq_file::RqFile;
 pub use tokenize::tokenize;
 pub use variable_context::{Variable, VariableValue};

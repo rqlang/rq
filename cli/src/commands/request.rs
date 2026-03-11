@@ -102,6 +102,9 @@ pub struct ShowArgs {
     #[command(flatten)]
     pub env_args: EnvArgs,
 
+    #[arg(long = "no-var-interpolation", help = "Skip variable interpolation")]
+    pub no_var_interpolation: bool,
+
     #[command(flatten)]
     pub output: OutputArgs,
 }
@@ -151,8 +154,13 @@ pub fn execute_show(args: &ShowArgs) -> Result<(), Box<dyn std::error::Error>> {
         .as_deref()
         .ok_or("Request name is required")?
         .replace('.', "/");
-    let details =
-        RqClient::get_request_details(source_path, &name, args.env_args.environment.as_deref())?;
+
+    let details = RqClient::get_request_details(
+        source_path,
+        &name,
+        args.env_args.environment.as_deref(),
+        !args.no_var_interpolation,
+    )?;
 
     let auth = if let (Some(auth_name), Some(auth_type)) = (&details.auth_name, &details.auth_type)
     {

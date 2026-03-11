@@ -35,6 +35,9 @@ pub struct ShowArgs {
     #[arg(short = 'n', long = "name", help = "Name of the environment to show")]
     pub name: String,
 
+    #[arg(long = "no-var-interpolation", help = "Skip variable interpolation")]
+    pub no_var_interpolation: bool,
+
     #[command(flatten)]
     pub output: OutputArgs,
 }

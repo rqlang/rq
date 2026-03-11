@@ -40,8 +40,8 @@ fn test_var_show_let_json() -> Result<(), Box<dyn std::error::Error>> {
     if json.get("source").and_then(|v| v.as_str()) != Some("let") {
         return Err(format!("Expected source 'let', got: {json}").into());
     }
-    if json.get("value").and_then(|v| v.as_str()) != Some("\"https://api.example.com\"") {
-        return Err(format!("Expected value '\"https://api.example.com\"', got: {json}").into());
+    if json.get("value").and_then(|v| v.as_str()) != Some("https://api.example.com") {
+        return Err(format!("Expected value 'https://api.example.com', got: {json}").into());
     }
 
     Ok(())
@@ -169,8 +169,100 @@ env dev {
     if json.get("source").and_then(|v| v.as_str()) != Some("env:dev") {
         return Err(format!("Expected env var to take precedence, got: {json}").into());
     }
-    if json.get("value").and_then(|v| v.as_str()) != Some("\"env-level\"") {
+    if json.get("value").and_then(|v| v.as_str()) != Some("env-level") {
         return Err(format!("Expected env value, got: {json}").into());
+    }
+
+    Ok(())
+}
+
+#[test]
+fn test_var_show_unresolved_reference_fails() -> Result<(), Box<dyn std::error::Error>> {
+    let temp_dir = std::env::temp_dir().join(format!("rq_test_var_unres_{}", std::process::id()));
+    std::fs::create_dir_all(&temp_dir)?;
+
+    std::fs::write(
+        temp_dir.join("test.rq"),
+        r#"let api_url = "{{base_url}}/v1";
+"#,
+    )?;
+
+    let output = rq_cmd()
+        .args([
+            "var",
+            "show",
+            "-s",
+            temp_dir.to_str().unwrap(),
+            "-n",
+            "api_url",
+            "-o",
+            "json",
+        ])
+        .output()?;
+
+    std::fs::remove_dir_all(&temp_dir).ok();
+
+    if output.status.success() {
+        return Err("Expected command to fail with unresolved variable".into());
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if !stderr.contains("Unresolved variable") || !stderr.contains("base_url") {
+        return Err(
+            format!("Expected 'Unresolved variable: base_url' error, got: {stderr}").into(),
+        );
+    }
+
+    Ok(())
+}
+
+#[test]
+fn test_var_show_unresolved_reference_no_var_interpolation(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let temp_dir =
+        std::env::temp_dir().join(format!("rq_test_var_unres_nv_{}", std::process::id()));
+    std::fs::create_dir_all(&temp_dir)?;
+
+    std::fs::write(
+        temp_dir.join("test.rq"),
+        r#"let api_url = "{{base_url}}/v1";
+"#,
+    )?;
+
+    let output = rq_cmd()
+        .args([
+            "var",
+            "show",
+            "-s",
+            temp_dir.to_str().unwrap(),
+            "-n",
+            "api_url",
+            "--no-var-interpolation",
+            "-o",
+            "json",
+        ])
+        .output()?;
+
+    std::fs::remove_dir_all(&temp_dir).ok();
+
+    if !output.status.success() {
+        return Err(format!(
+            "Command failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: Value = serde_json::from_str(&stdout)?;
+
+    let value = json
+        .get("value")
+        .and_then(|v| v.as_str())
+        .ok_or("Missing 'value' field")?;
+
+    if !value.contains("{{base_url}}") {
+        return Err(format!("Expected raw template with {{{{base_url}}}}, got: {value}").into());
     }
 
     Ok(())

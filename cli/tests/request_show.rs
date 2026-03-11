@@ -327,6 +327,100 @@ fn test_request_show_ep_dot_notation() -> Result<(), Box<dyn std::error::Error>>
 }
 
 #[test]
+fn test_request_show_unresolved_fails() -> Result<(), Box<dyn std::error::Error>> {
+    let temp_dir = std::env::temp_dir().join(format!("rq_test_req_unres_{}", std::process::id()));
+    std::fs::create_dir_all(&temp_dir)?;
+
+    std::fs::write(
+        temp_dir.join("test.rq"),
+        r#"rq my_request("{{undefined_base_url}}/resource");
+"#,
+    )?;
+
+    let output = rq_cmd()
+        .args([
+            "request",
+            "show",
+            "-s",
+            temp_dir.to_str().unwrap(),
+            "-n",
+            "my_request",
+            "-o",
+            "json",
+        ])
+        .output()?;
+
+    std::fs::remove_dir_all(&temp_dir).ok();
+
+    if output.status.success() {
+        return Err("Expected command to fail with unresolved variable".into());
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if !stderr.contains("Unresolved variable") || !stderr.contains("undefined_base_url") {
+        return Err(format!(
+            "Expected 'Unresolved variable: undefined_base_url' error, got: {stderr}"
+        )
+        .into());
+    }
+
+    Ok(())
+}
+
+#[test]
+fn test_request_show_unresolved_no_var_interpolation() -> Result<(), Box<dyn std::error::Error>> {
+    let temp_dir =
+        std::env::temp_dir().join(format!("rq_test_req_unres_nv_{}", std::process::id()));
+    std::fs::create_dir_all(&temp_dir)?;
+
+    std::fs::write(
+        temp_dir.join("test.rq"),
+        r#"rq my_request("{{undefined_base_url}}/resource");
+"#,
+    )?;
+
+    let output = rq_cmd()
+        .args([
+            "request",
+            "show",
+            "-s",
+            temp_dir.to_str().unwrap(),
+            "-n",
+            "my_request",
+            "--no-var-interpolation",
+            "-o",
+            "json",
+        ])
+        .output()?;
+
+    std::fs::remove_dir_all(&temp_dir).ok();
+
+    if !output.status.success() {
+        return Err(format!(
+            "Command failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: Value = serde_json::from_str(&stdout)?;
+
+    let url = json
+        .get("URL")
+        .and_then(|v| v.as_str())
+        .ok_or("Missing 'URL' field")?;
+
+    if !url.contains("{{undefined_base_url}}") {
+        return Err(
+            format!("Expected raw template with {{{{undefined_base_url}}}}, got: {url}").into(),
+        );
+    }
+
+    Ok(())
+}
+
+#[test]
 fn test_request_show_resolved_variables_json() -> Result<(), Box<dyn std::error::Error>> {
     let output = rq_cmd()
         .args([

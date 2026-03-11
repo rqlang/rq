@@ -30,6 +30,9 @@ pub struct ShowArgs {
     )]
     pub name: String,
 
+    #[arg(long = "no-var-interpolation", help = "Skip variable interpolation")]
+    pub no_var_interpolation: bool,
+
     #[command(flatten)]
     pub output: OutputArgs,
 }

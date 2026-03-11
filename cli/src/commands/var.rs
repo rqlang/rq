@@ -47,6 +47,9 @@ pub struct ShowArgs {
     #[command(flatten)]
     pub env: EnvArgs,
 
+    #[arg(long = "no-var-interpolation", help = "Skip variable interpolation")]
+    pub no_var_interpolation: bool,
+
     #[command(flatten)]
     pub output: OutputArgs,
 }
@@ -81,8 +84,12 @@ pub fn execute_list(args: &ListArgs) -> Result<(), Box<dyn std::error::Error>> {
 
 pub fn execute_show(args: &ShowArgs) -> Result<(), Box<dyn std::error::Error>> {
     let path = std::path::Path::new(&args.source.source);
-    let entry =
-        crate::client::RqClient::get_variable(path, &args.name, args.env.environment.as_deref())?;
+    let entry = crate::client::RqClient::get_variable(
+        path,
+        &args.name,
+        args.env.environment.as_deref(),
+        !args.no_var_interpolation,
+    )?;
     match args.output.output {
         OutputFormat::Json => {
             println!(

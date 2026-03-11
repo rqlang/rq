@@ -31,7 +31,7 @@ describe('openRequestFile Command', () => {
             revealRange: jest.fn()
         };
 
-        (cliService.showRequest as jest.Mock).mockResolvedValue({
+        (cliService.showRequestLocation as jest.Mock).mockResolvedValue({
             file: '/path/to/file.rq',
             line: 1,
             character: 0
@@ -58,7 +58,7 @@ describe('openRequestFile Command', () => {
     test('opens file and highlights request', async () => {
         await commandCallback('myRequest');
 
-        expect(cliService.showRequest).toHaveBeenCalledWith('myRequest', undefined);
+        expect(cliService.showRequestLocation).toHaveBeenCalledWith('myRequest', undefined);
         expect(vscode.workspace.openTextDocument).toHaveBeenCalledWith('/path/to/file.rq');
         expect(vscode.window.showTextDocument).toHaveBeenCalledWith(mockDocument);
         expect(mockEditor.revealRange).toHaveBeenCalled();
@@ -74,7 +74,7 @@ describe('openRequestFile Command', () => {
     });
 
     test('does not highlight if showRequest fails', async () => {
-        (cliService.showRequest as jest.Mock).mockRejectedValue(new Error('Request not found'));
+        (cliService.showRequestLocation as jest.Mock).mockRejectedValue(new Error('Request not found'));
 
         await commandCallback('myRequest');
 
@@ -93,7 +93,7 @@ describe('openRequestFile Command', () => {
     });
 
     test('clears loading state even when request fails', async () => {
-        (cliService.showRequest as jest.Mock).mockRejectedValue(new Error('Request not found'));
+        (cliService.showRequestLocation as jest.Mock).mockRejectedValue(new Error('Request not found'));
         const item = new RequestTreeItem('myRequest', null, vscode.TreeItemCollapsibleState.None);
 
         await commandCallback('myRequest', item);

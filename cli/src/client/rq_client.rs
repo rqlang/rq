@@ -334,10 +334,24 @@ impl RqClient {
         let mut working = req_with_vars.request;
 
         if !interpolate_variables {
+            let (auth_name, auth_type) = if let Some(auth_name) = working.auth.as_deref() {
+                if auth_name.trim().is_empty() {
+                    (None, None)
+                } else if let Some(auth_provider) = loaded_auth_providers.get(auth_name) {
+                    (
+                        Some(auth_name.to_string()),
+                        Some(auth_provider.auth_type.as_str().to_string()),
+                    )
+                } else {
+                    (Some(auth_name.to_string()), None)
+                }
+            } else {
+                (None, None)
+            };
             return Ok(RequestDetails {
                 name: working.name,
-                auth_name: None,
-                auth_type: None,
+                auth_name,
+                auth_type,
                 url: working.url,
                 headers: working.headers,
                 method: working.method.as_str().to_string(),

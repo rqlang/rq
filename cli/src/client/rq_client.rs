@@ -569,6 +569,7 @@ impl RqClient {
             return Err(RqError::NotADirectory(source_path.display().to_string()));
         }
 
+        paths.sort();
         for path in &paths {
             if let Ok(rq_file) = RqFile::from_path(path) {
                 if let Some(ep) = rq_file.endpoints.get(name) {

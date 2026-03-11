@@ -611,6 +611,7 @@ impl RqClient {
             return Err(RqError::NotADirectory(source_path.display().to_string()));
         }
 
+        paths.sort();
         let mut seen = HashSet::new();
         let mut entries: Vec<super::rq_client_models::VariableEntry> = Vec::new();
 

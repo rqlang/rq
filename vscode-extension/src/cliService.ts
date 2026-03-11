@@ -944,10 +944,20 @@ export async function showAuthLocation(name: string, sourceDirectory?: string): 
         if (sourceDirectory) {
             args.push('-s', sourceDirectory);
         }
-        const { stdout } = await spawnAsync(executable, args, { cwd });
+        logCliExecution(`${executable} ${args.join(' ')}`, cwd);
+        const { stdout, stderr } = await spawnAsync(executable, args, { cwd });
+        if (stderr) {
+            parseAndReportErrors(stderr, cwd);
+        } else if (diagnosticCollection) {
+            diagnosticCollection.clear();
+        }
         const raw: LocationOutput = JSON.parse(stdout);
         return { file: normalizePath(raw.file), line: raw.line, character: raw.character };
     } catch (error) {
+        logCliError('Failed to locate auth config', error);
+        if (error instanceof Error && 'stderr' in error) {
+            parseAndReportErrors((error as ExecError).stderr || '', getCliCommand().cwd);
+        }
         throw new Error(`Failed to locate auth config: ${getErrorMessage(error)}`);
     }
 }
@@ -959,10 +969,20 @@ export async function showRequestLocation(requestName: string, sourceDirectory?:
         if (sourceDirectory) {
             args.push('-s', sourceDirectory);
         }
-        const { stdout } = await spawnAsync(executable, args, { cwd });
+        logCliExecution(`${executable} ${args.join(' ')}`, cwd);
+        const { stdout, stderr } = await spawnAsync(executable, args, { cwd });
+        if (stderr) {
+            parseAndReportErrors(stderr, cwd);
+        } else if (diagnosticCollection) {
+            diagnosticCollection.clear();
+        }
         const raw: LocationOutput = JSON.parse(stdout);
         return { file: normalizePath(raw.file), line: raw.line, character: raw.character };
     } catch (error) {
+        logCliError('Failed to locate request', error);
+        if (error instanceof Error && 'stderr' in error) {
+            parseAndReportErrors((error as ExecError).stderr || '', getCliCommand().cwd);
+        }
         throw new Error(`Failed to locate request: ${getErrorMessage(error)}`);
     }
 }

@@ -249,7 +249,7 @@ impl RqClient {
         source_path: &Path,
         request_name: &str,
         environment: Option<&str>,
-        validate: bool,
+        interpolate_variables: bool,
     ) -> Result<RequestDetails, RqError> {
         let rq_files = Self::get_rq_files_to_process(source_path, Some(request_name))?;
 
@@ -333,7 +333,7 @@ impl RqClient {
 
         let mut working = req_with_vars.request;
 
-        if !validate {
+        if !interpolate_variables {
             return Ok(RequestDetails {
                 name: working.name,
                 auth_name: None,
@@ -428,7 +428,7 @@ impl RqClient {
         source_path: &Path,
         auth_name: &str,
         environment: Option<&str>,
-        validate: bool,
+        interpolate_variables: bool,
     ) -> Result<AuthDetails, RqError> {
         if !source_path.exists() {
             return Err(RqError::DirectoryNotFound(
@@ -451,7 +451,7 @@ impl RqClient {
 
         auth_provider.apply_defaults();
 
-        if !validate {
+        if !interpolate_variables {
             let auth_type_str = auth_provider.auth_type.as_str().to_string();
             let fields: HashMap<String, String> = auth_provider
                 .fields
@@ -710,7 +710,7 @@ impl RqClient {
         source_path: &Path,
         name: &str,
         environment: Option<&str>,
-        validate: bool,
+        interpolate_variables: bool,
     ) -> Result<super::rq_client_models::VariableEntry, RqError> {
         let entries = Self::list_variables(source_path, environment)?;
         let entry = entries
@@ -718,7 +718,7 @@ impl RqClient {
             .find(|e| e.name == name)
             .ok_or_else(|| RqError::Validation(format!("Variable '{name}' not found")))?;
 
-        if !validate {
+        if !interpolate_variables {
             return Ok(entry);
         }
 

@@ -52,7 +52,7 @@ describe('when no environment is selected', () => {
 
         expect(result).toBeInstanceOf(vscode.Location);
         expect((result as vscode.Location).uri).toBe(doc.uri);
-        expect((result as vscode.Location).range).toEqual(new vscode.Position(2, 0));
+        expect((result as vscode.Location).range.start).toEqual(new vscode.Position(2, 0));
         expect(cliService.showVariable).not.toHaveBeenCalled();
     });
 
@@ -75,7 +75,7 @@ describe('when no environment is selected', () => {
 
         expect(cliService.showVariable).toHaveBeenCalledWith('remote_var', '/test', undefined);
         expect(result).toBeInstanceOf(vscode.Location);
-        expect((result as vscode.Location).range).toEqual(new vscode.Position(5, 4));
+        expect((result as vscode.Location).range.start).toEqual(new vscode.Position(5, 4));
     });
 
     test('returns null when variable not found anywhere', async () => {
@@ -136,7 +136,7 @@ describe('when environment is selected', () => {
 
         expect(cliService.showVariable).toHaveBeenCalledWith('api_url', '/test', 'local');
         expect(result).toBeInstanceOf(vscode.Location);
-        expect((result as vscode.Location).range).toEqual(new vscode.Position(1, 4));
+        expect((result as vscode.Location).range.start).toEqual(new vscode.Position(1, 4));
     });
 
     test('returns null when CLI fails', async () => {

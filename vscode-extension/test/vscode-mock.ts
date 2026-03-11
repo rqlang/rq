@@ -82,7 +82,12 @@ export enum ViewColumn {
 }
 
 export class Location {
-    constructor(public uri: any, public range: any) {}
+    public range: Range;
+    constructor(public uri: any, rangeOrPosition: Range | Position) {
+        this.range = rangeOrPosition instanceof Position
+            ? new Range(rangeOrPosition, rangeOrPosition)
+            : rangeOrPosition;
+    }
 }
 
 export class MarkdownString {

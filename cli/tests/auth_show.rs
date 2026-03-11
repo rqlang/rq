@@ -517,6 +517,61 @@ auth test_bearer(auth_type.bearer) {
 }
 
 #[test]
+fn test_auth_show_unresolved_no_var_interpolation() -> Result<(), Box<dyn std::error::Error>> {
+    let temp_dir = std::env::temp_dir().join(format!("rq_test_auth_nv_{}", std::process::id()));
+    fs::create_dir_all(&temp_dir)?;
+
+    fs::write(
+        temp_dir.join("test.rq"),
+        r#"auth test_bearer(auth_type.bearer) {
+    token: "{{undefined_token}}"
+}
+"#,
+    )?;
+
+    let output = rq_cmd()
+        .args([
+            "auth",
+            "show",
+            "-n",
+            "test_bearer",
+            "-s",
+            temp_dir.to_str().unwrap(),
+            "--no-var-interpolation",
+            "-o",
+            "json",
+        ])
+        .output()?;
+
+    fs::remove_dir_all(&temp_dir).ok();
+
+    if !output.status.success() {
+        return Err(format!(
+            "Command failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: Value = serde_json::from_str(&stdout)?;
+
+    let token = json
+        .get("Fields")
+        .and_then(|f| f.get("token"))
+        .and_then(|t| t.as_str())
+        .ok_or("Missing token field")?;
+
+    if !token.contains("{{undefined_token}}") {
+        return Err(
+            format!("Expected raw template with {{{{undefined_token}}}}, got: {token}").into(),
+        );
+    }
+
+    Ok(())
+}
+
+#[test]
 fn test_auth_show_variable_interpolation_no_env() -> Result<(), Box<dyn std::error::Error>> {
     let temp_dir = std::env::temp_dir().join(format!("rq_test_var_noenv_{}", std::process::id()));
     fs::create_dir_all(&temp_dir)?;

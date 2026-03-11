@@ -653,7 +653,7 @@ export async function listAuthConfigs(sourceDirectory?: string): Promise<AuthLis
 export async function showEnvironment(name: string, sourceDirectory?: string): Promise<EnvironmentShowOutput> {
     try {
         const { executable, args: baseArgs, cwd } = getCliCommand();
-        const args = [...baseArgs, 'env', 'show', '-n', name];
+        const args = [...baseArgs, 'env', 'show', '-n', name, '--no-var-interpolation'];
         if (sourceDirectory) {
             args.push('-s', sourceDirectory);
         }
@@ -684,7 +684,7 @@ export async function showEnvironment(name: string, sourceDirectory?: string): P
 export async function showEndpoint(name: string, sourceDirectory?: string): Promise<EndpointShowOutput> {
     try {
         const { executable, args: baseArgs, cwd } = getCliCommand();
-        const args = [...baseArgs, 'ep', 'show', '-n', name];
+        const args = [...baseArgs, 'ep', 'show', '-n', name, '--no-var-interpolation'];
         if (sourceDirectory) {
             args.push('-s', sourceDirectory);
         }
@@ -719,7 +719,7 @@ export async function showVariable(
 ): Promise<VariableShowOutput> {
     try {
         const { executable, args: baseArgs, cwd } = getCliCommand();
-        const args = [...baseArgs, 'var', 'show', '-n', name];
+        const args = [...baseArgs, 'var', 'show', '-n', name, '--no-var-interpolation'];
         if (sourceDirectory) {
             args.push('-s', sourceDirectory);
         }
@@ -924,6 +924,42 @@ export async function showRequest(
         }
 
         throw new Error(`Failed to show request: ${getErrorMessage(error)}`);
+    }
+}
+
+export interface LocationOutput {
+    file: string;
+    line: number;
+    character: number;
+}
+
+export async function showAuthLocation(name: string, sourceDirectory?: string): Promise<LocationOutput> {
+    try {
+        const { executable, args: baseArgs, cwd } = getCliCommand();
+        const args = [...baseArgs, 'auth', 'show', '-n', name, '--no-var-interpolation', '-o', 'json'];
+        if (sourceDirectory) {
+            args.push('-s', sourceDirectory);
+        }
+        const { stdout } = await spawnAsync(executable, args, { cwd });
+        const raw: LocationOutput = JSON.parse(stdout);
+        return { file: normalizePath(raw.file), line: raw.line, character: raw.character };
+    } catch (error) {
+        throw new Error(`Failed to locate auth config: ${getErrorMessage(error)}`);
+    }
+}
+
+export async function showRequestLocation(requestName: string, sourceDirectory?: string): Promise<LocationOutput> {
+    try {
+        const { executable, args: baseArgs, cwd } = getCliCommand();
+        const args = [...baseArgs, 'request', 'show', '-n', requestName, '--no-var-interpolation', '-o', 'json'];
+        if (sourceDirectory) {
+            args.push('-s', sourceDirectory);
+        }
+        const { stdout } = await spawnAsync(executable, args, { cwd });
+        const raw: LocationOutput = JSON.parse(stdout);
+        return { file: normalizePath(raw.file), line: raw.line, character: raw.character };
+    } catch (error) {
+        throw new Error(`Failed to locate request: ${getErrorMessage(error)}`);
     }
 }
 

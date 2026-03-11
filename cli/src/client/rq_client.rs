@@ -249,6 +249,7 @@ impl RqClient {
         source_path: &Path,
         request_name: &str,
         environment: Option<&str>,
+        validate: bool,
     ) -> Result<RequestDetails, RqError> {
         let rq_files = Self::get_rq_files_to_process(source_path, Some(request_name))?;
 
@@ -332,6 +333,21 @@ impl RqClient {
 
         let mut working = req_with_vars.request;
 
+        if !validate {
+            return Ok(RequestDetails {
+                name: working.name,
+                auth_name: None,
+                auth_type: None,
+                url: working.url,
+                headers: working.headers,
+                method: working.method.as_str().to_string(),
+                body: working.body,
+                file: request_file,
+                line: request_line,
+                character: request_character,
+            });
+        }
+
         let search_paths = Self::build_search_paths(
             &working,
             &rq_file.path,
@@ -412,6 +428,7 @@ impl RqClient {
         source_path: &Path,
         auth_name: &str,
         environment: Option<&str>,
+        validate: bool,
     ) -> Result<AuthDetails, RqError> {
         if !source_path.exists() {
             return Err(RqError::DirectoryNotFound(
@@ -433,6 +450,23 @@ impl RqClient {
         let auth_character = auth_provider.character;
 
         auth_provider.apply_defaults();
+
+        if !validate {
+            let auth_type_str = auth_provider.auth_type.as_str().to_string();
+            let fields: HashMap<String, String> = auth_provider
+                .fields
+                .iter()
+                .map(|(k, v)| (k.clone(), v.value.clone()))
+                .collect();
+            return Ok((
+                auth_name.to_string(),
+                auth_type_str,
+                fields,
+                auth_file,
+                auth_line,
+                auth_character,
+            ));
+        }
 
         let (all_variables, imported_files) =
             crate::syntax::load_all_variables(&file_path, source_path, environment)
@@ -676,12 +710,77 @@ impl RqClient {
         source_path: &Path,
         name: &str,
         environment: Option<&str>,
+        validate: bool,
     ) -> Result<super::rq_client_models::VariableEntry, RqError> {
         let entries = Self::list_variables(source_path, environment)?;
-        entries
+        let entry = entries
             .into_iter()
             .find(|e| e.name == name)
-            .ok_or_else(|| RqError::Validation(format!("Variable '{name}' not found")))
+            .ok_or_else(|| RqError::Validation(format!("Variable '{name}' not found")))?;
+
+        if !validate {
+            return Ok(entry);
+        }
+
+        let mut paths = Vec::new();
+        if source_path.is_file() {
+            paths.push(source_path.to_path_buf());
+        } else if source_path.is_dir() {
+            Self::collect_rq_paths(source_path, &mut paths)?;
+        }
+        paths.sort();
+
+        let mut all_vars: Vec<crate::syntax::Variable> = Vec::new();
+        let mut target_raw: Option<VariableValue> = None;
+
+        for path in &paths {
+            if let Ok(rq_file) = RqFile::from_path(path) {
+                for var in &rq_file.file_variables {
+                    if target_raw.is_none() && var.name == name {
+                        target_raw = Some(var.value.clone());
+                    }
+                    all_vars.push(var.clone());
+                }
+                if let Some(env_name) = environment {
+                    if let Some(env_vars) = rq_file.environments.get(env_name) {
+                        for var in env_vars {
+                            if var.name == name {
+                                target_raw = Some(var.value.clone());
+                            }
+                            all_vars.push(var.clone());
+                        }
+                    }
+                }
+            }
+        }
+
+        let secret_vars = crate::syntax::variables::load_secrets(source_path, environment)
+            .map_err(|e| RqError::Generic(e.to_string()))?;
+
+        let context = crate::syntax::variable_context::VariableContext::builder()
+            .file_variables(all_vars)
+            .secret_variables(secret_vars)
+            .build();
+
+        let raw_value = match target_raw {
+            Some(VariableValue::String(s)) => s,
+            Some(VariableValue::Reference(r)) => format!("{{{{{r}}}}}"),
+            _ => return Ok(entry),
+        };
+
+        let mut source_files = paths;
+        let env_path = source_path.join(".env");
+        if env_path.exists() {
+            source_files.push(env_path);
+        }
+
+        let resolved = crate::syntax::resolve_string(&raw_value, &context, &source_files)
+            .map_err(|e| RqError::Generic(e.to_string()))?;
+
+        Ok(super::rq_client_models::VariableEntry {
+            value: resolved,
+            ..entry
+        })
     }
 
     fn get_rq_files_to_process(

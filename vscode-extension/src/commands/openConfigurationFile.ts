@@ -18,7 +18,7 @@ export function registerOpenConfigurationFileCommand(context: vscode.ExtensionCo
                 line = result.line;
                 character = result.character;
             } else {
-                const result = await cliService.showAuthConfig(name, sourceDirectory);
+                const result = await cliService.showAuthLocation(name, sourceDirectory);
                 file = result.file;
                 line = result.line;
                 character = result.character;

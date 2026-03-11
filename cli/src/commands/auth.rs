@@ -71,6 +71,9 @@ pub struct ShowArgs {
     #[command(flatten)]
     pub env_args: EnvArgs,
 
+    #[arg(long = "no-var-interpolation", help = "Skip variable interpolation")]
+    pub no_var_interpolation: bool,
+
     #[command(flatten)]
     pub output: OutputArgs,
 }
@@ -103,11 +106,13 @@ pub fn execute_list(args: &ListArgs) -> Result<(), Box<dyn std::error::Error>> {
 
 pub fn execute_show(args: &ShowArgs) -> Result<(), Box<dyn std::error::Error>> {
     let source_path = Path::new(&args.source.source);
+
     let (auth_name, auth_type_str, fields, file, line, character) =
         crate::client::RqClient::get_auth_details(
             source_path,
             &args.name,
             args.env_args.environment.as_deref(),
+            !args.no_var_interpolation,
         )?;
 
     match args.output.output {

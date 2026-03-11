@@ -715,11 +715,15 @@ export async function showEndpoint(name: string, sourceDirectory?: string): Prom
 export async function showVariable(
     name: string,
     sourceDirectory?: string,
-    environment?: string
+    environment?: string,
+    interpolateVariables: boolean = true
 ): Promise<VariableShowOutput> {
     try {
         const { executable, args: baseArgs, cwd } = getCliCommand();
-        const args = [...baseArgs, 'var', 'show', '-n', name, '--no-var-interpolation'];
+        const args = [...baseArgs, 'var', 'show', '-n', name];
+        if (!interpolateVariables) {
+            args.push('--no-var-interpolation');
+        }
         if (sourceDirectory) {
             args.push('-s', sourceDirectory);
         }

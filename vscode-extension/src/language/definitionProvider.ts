@@ -57,7 +57,7 @@ export const definitionProvider = vscode.languages.registerDefinitionProvider('r
         }
 
         try {
-            const result = await cliService.showVariable(word, sourceDirectory, environment);
+            const result = await cliService.showVariable(word, sourceDirectory, environment, false);
             return new vscode.Location(
                 vscode.Uri.file(result.file),
                 new vscode.Position(result.line, result.character)

@@ -55,7 +55,14 @@ export const languages = {
     registerDefinitionProvider: jest.fn(),
     registerHoverProvider: jest.fn(),
     registerCompletionItemProvider: jest.fn(),
-    createDiagnosticCollection: jest.fn().mockReturnValue({ dispose: jest.fn() })
+    createDiagnosticCollection: jest.fn().mockReturnValue({
+        clear: jest.fn(),
+        set: jest.fn(),
+        delete: jest.fn(),
+        has: jest.fn(),
+        forEach: jest.fn(),
+        dispose: jest.fn()
+    })
 };
 
 // Mock env

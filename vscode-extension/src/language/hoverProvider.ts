@@ -1,14 +1,21 @@
 import * as vscode from 'vscode';
-import { 
-    SYSTEM_FUNCTIONS, 
+import * as cliService from '../cliService';
+import {
+    SYSTEM_FUNCTIONS,
     IO_FUNCTIONS,
-    REQUEST_PROPERTIES, 
-    ENDPOINT_PROPERTIES, 
-    parseVariables 
+    REQUEST_PROPERTIES,
+    ENDPOINT_PROPERTIES,
+    parseVariables
 } from './definitions';
 
+let environmentProvider: { getSelectedEnvironment(): string | undefined } | undefined;
+
+export function setEnvironmentProvider(provider: { getSelectedEnvironment(): string | undefined }) {
+    environmentProvider = provider;
+}
+
 export const hoverProvider = vscode.languages.registerHoverProvider('rq', {
-    provideHover(document: vscode.TextDocument, position: vscode.Position) {
+    async provideHover(document: vscode.TextDocument, position: vscode.Position) {
         // Check for endpoint properties (url, headers, qs)
         const epPropRange = document.getWordRangeAtPosition(position, /\b(url|headers|qs)\b/);
         if (epPropRange) {
@@ -99,9 +106,24 @@ export const hoverProvider = vscode.languages.registerHoverProvider('rq', {
         const varRange = document.getWordRangeAtPosition(position, /[a-zA-Z_][a-zA-Z0-9_]*/);
         if (varRange) {
             const word = document.getText(varRange);
+            const environment = environmentProvider?.getSelectedEnvironment();
+
+            if (environment) {
+                try {
+                    const sourceDirectory = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+                    const result = await cliService.showVariable(word, sourceDirectory, environment);
+                    const contents = new vscode.MarkdownString();
+                    contents.appendMarkdown(`**Variable: \`${result.name}\`** *(${result.source})*\n\n`);
+                    contents.appendMarkdown('**Value:**\n');
+                    contents.appendCodeblock(result.value, 'rq');
+                    return new vscode.Hover(contents);
+                } catch {
+                    // fall through to local variable hover
+                }
+            }
+
             const variables = parseVariables(document);
             const variable = variables.find(v => v.name === word);
-            
             if (variable) {
                 const contents = new vscode.MarkdownString();
                 contents.appendMarkdown(`**Variable: \`${variable.name}\`**\n\n`);
@@ -111,7 +133,7 @@ export const hoverProvider = vscode.languages.registerHoverProvider('rq', {
                 return new vscode.Hover(contents);
             }
         }
-        
+
         return undefined;
     }
 });

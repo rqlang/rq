@@ -38,6 +38,24 @@ pub struct EnvironmentEntry {
     pub character: usize,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct EndpointEntry {
+    pub name: String,
+    pub file: String,
+    pub line: usize,
+    pub character: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct VariableEntry {
+    pub name: String,
+    pub value: String,
+    pub file: String,
+    pub line: usize,
+    pub character: usize,
+    pub source: String,
+}
+
 #[derive(Debug, Serialize, Clone)]
 pub struct RequestExecutionResult {
     pub request_name: String,

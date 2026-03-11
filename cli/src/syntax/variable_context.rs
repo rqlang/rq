@@ -77,6 +77,44 @@ impl VariableContextBuilder {
     }
 }
 
+impl VariableValue {
+    pub fn display(&self) -> String {
+        match self {
+            VariableValue::String(s) => format!("\"{s}\""),
+            VariableValue::Reference(s) => s.clone(),
+            VariableValue::Json(s) => format!("${{{s}}}"),
+            VariableValue::Array(items) => {
+                let inner = items
+                    .iter()
+                    .map(|s| format!("\"{s}\""))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("[{inner}]")
+            }
+            VariableValue::Headers(pairs) => {
+                let inner = pairs
+                    .iter()
+                    .map(|(k, v)| format!("\"{k}\": \"{v}\""))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("[{inner}]")
+            }
+            VariableValue::SystemFunction { name, args } => {
+                if args.is_empty() {
+                    format!("{name}()")
+                } else {
+                    let inner = args
+                        .iter()
+                        .map(|a| format!("\"{a}\""))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    format!("{name}({inner})")
+                }
+            }
+        }
+    }
+}
+
 impl VariableContext {
     pub fn builder() -> VariableContextBuilder {
         VariableContextBuilder::default()

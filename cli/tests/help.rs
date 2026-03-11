@@ -76,6 +76,17 @@ fn test_auth_show_help() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
+fn test_ep_help() -> Result<(), Box<dyn std::error::Error>> {
+    verify_help(&["ep", "--help"], "ep.txt")?;
+    verify_help(&["ep", "help"], "ep.txt")
+}
+
+#[test]
+fn test_ep_show_help() -> Result<(), Box<dyn std::error::Error>> {
+    verify_help(&["ep", "show", "--help"], "ep_show.txt")
+}
+
+#[test]
 fn test_request_help() -> Result<(), Box<dyn std::error::Error>> {
     verify_help(&["request", "--help"], "request.txt")
 }
@@ -93,6 +104,22 @@ fn test_request_show_help() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_request_run_help() -> Result<(), Box<dyn std::error::Error>> {
     verify_help(&["request", "run", "--help"], "request_run.txt")
+}
+
+#[test]
+fn test_var_help() -> Result<(), Box<dyn std::error::Error>> {
+    verify_help(&["var", "--help"], "var.txt")?;
+    verify_help(&["var", "help"], "var.txt")
+}
+
+#[test]
+fn test_var_list_help() -> Result<(), Box<dyn std::error::Error>> {
+    verify_help(&["var", "list", "--help"], "var_list.txt")
+}
+
+#[test]
+fn test_var_show_help() -> Result<(), Box<dyn std::error::Error>> {
+    verify_help(&["var", "show", "--help"], "var_show.txt")
 }
 
 #[test]

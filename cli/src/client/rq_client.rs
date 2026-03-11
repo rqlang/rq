@@ -550,6 +550,140 @@ impl RqClient {
             .ok_or_else(|| RqError::Validation(format!("Environment '{name}' not found")))
     }
 
+    pub fn get_endpoint(
+        source_path: &Path,
+        name: &str,
+    ) -> Result<super::rq_client_models::EndpointEntry, RqError> {
+        if !source_path.exists() {
+            return Err(RqError::DirectoryNotFound(
+                source_path.display().to_string(),
+            ));
+        }
+
+        let mut paths = Vec::new();
+        if source_path.is_file() {
+            paths.push(source_path.to_path_buf());
+        } else if source_path.is_dir() {
+            Self::collect_rq_paths(source_path, &mut paths)?;
+        } else {
+            return Err(RqError::NotADirectory(source_path.display().to_string()));
+        }
+
+        paths.sort();
+        for path in &paths {
+            if let Ok(rq_file) = RqFile::from_path(path) {
+                if let Some(ep) = rq_file.endpoints.get(name) {
+                    let file = ep
+                        .source_path
+                        .as_deref()
+                        .map(crate::core::paths::clean_path_str)
+                        .map(str::to_string)
+                        .unwrap_or_else(|| crate::core::paths::clean_path(&rq_file.path));
+                    return Ok(super::rq_client_models::EndpointEntry {
+                        name: name.to_string(),
+                        file,
+                        line: ep.line,
+                        character: ep.character,
+                    });
+                }
+            }
+        }
+
+        Err(RqError::Validation(format!("Endpoint '{name}' not found")))
+    }
+
+    pub fn list_variables(
+        source_path: &Path,
+        environment: Option<&str>,
+    ) -> Result<Vec<super::rq_client_models::VariableEntry>, RqError> {
+        if !source_path.exists() {
+            return Err(RqError::DirectoryNotFound(
+                source_path.display().to_string(),
+            ));
+        }
+
+        let mut paths = Vec::new();
+        if source_path.is_file() {
+            paths.push(source_path.to_path_buf());
+        } else if source_path.is_dir() {
+            Self::collect_rq_paths(source_path, &mut paths)?;
+        } else {
+            return Err(RqError::NotADirectory(source_path.display().to_string()));
+        }
+
+        paths.sort();
+        let mut seen = HashSet::new();
+        let mut entries: Vec<super::rq_client_models::VariableEntry> = Vec::new();
+
+        for path in &paths {
+            if let Ok(rq_file) = RqFile::from_path(path) {
+                let let_values: HashMap<&str, &VariableValue> = rq_file
+                    .file_variables
+                    .iter()
+                    .map(|v| (v.name.as_str(), &v.value))
+                    .collect();
+
+                if let Some(env_name) = environment {
+                    if let Some(key_map) = rq_file.env_variable_locations.get(env_name) {
+                        let env_values: HashMap<&str, &VariableValue> = rq_file
+                            .environments
+                            .get(env_name)
+                            .map(|vars| vars.iter().map(|v| (v.name.as_str(), &v.value)).collect())
+                            .unwrap_or_default();
+
+                        for (var_name, (file, line, character)) in key_map {
+                            if seen.insert(var_name.clone()) {
+                                let value = env_values
+                                    .get(var_name.as_str())
+                                    .map(|v| v.display())
+                                    .unwrap_or_default();
+                                entries.push(super::rq_client_models::VariableEntry {
+                                    name: var_name.clone(),
+                                    value,
+                                    file: crate::core::paths::clean_path_str(file).to_string(),
+                                    line: *line,
+                                    character: *character,
+                                    source: format!("env:{env_name}"),
+                                });
+                            }
+                        }
+                    }
+                }
+                for (var_name, (file, line, character)) in &rq_file.let_variable_locations {
+                    if seen.insert(var_name.clone()) {
+                        let value = let_values
+                            .get(var_name.as_str())
+                            .map(|v| v.display())
+                            .unwrap_or_default();
+                        entries.push(super::rq_client_models::VariableEntry {
+                            name: var_name.clone(),
+                            value,
+                            file: crate::core::paths::clean_path_str(file).to_string(),
+                            line: *line,
+                            character: *character,
+                            source: "let".to_string(),
+                        });
+                    }
+                }
+            }
+        }
+
+        entries.sort_by(|a, b| a.name.cmp(&b.name));
+        Ok(entries)
+    }
+
+    pub fn get_variable(
+        source_path: &Path,
+        name: &str,
+        environment: Option<&str>,
+    ) -> Result<super::rq_client_models::VariableEntry, RqError> {
+        let entries = Self::list_variables(source_path, environment)?;
+        entries
+            .into_iter()
+            .find(|e| e.name == name)
+            .ok_or_else(|| RqError::Validation(format!("Variable '{name}' not found")))
+    }
+
     fn get_rq_files_to_process(
         source_path: &Path,
         request_name: Option<&str>,

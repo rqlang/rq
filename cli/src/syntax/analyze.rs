@@ -23,6 +23,8 @@ pub fn analyze(
         endpoints: std::collections::HashMap::new(),
         file_variables: Vec::new(),
         imported_files: Vec::new(),
+        let_variable_locations: std::collections::HashMap::new(),
+        env_variable_locations: std::collections::HashMap::new(),
     };
 
     let parsers: Vec<Box<dyn Parse>> = vec![

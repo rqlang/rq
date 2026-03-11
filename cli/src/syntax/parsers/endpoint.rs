@@ -412,7 +412,7 @@ pub(crate) fn parse_endpoint_with_context(
             }
         }
         if r.is_keyword(KW_LET) {
-            let var = parse_variable_declaration(r)?;
+            let (var, _, _) = parse_variable_declaration(r)?;
             endpoint_variables.push(var);
             continue;
         }

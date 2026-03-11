@@ -96,6 +96,16 @@ impl Parse for ImportParser {
             .extend(imported_result.environment_locations);
         result.auth_providers.extend(imported_result.auth_providers);
         result.endpoints.extend(imported_result.endpoints);
+        result
+            .let_variable_locations
+            .extend(imported_result.let_variable_locations);
+        for (env_name, key_map) in imported_result.env_variable_locations {
+            result
+                .env_variable_locations
+                .entry(env_name)
+                .or_default()
+                .extend(key_map);
+        }
 
         Ok(())
     }

@@ -221,6 +221,22 @@ export interface EnvironmentShowOutput {
     character: number;
 }
 
+export interface EndpointShowOutput {
+    name: string;
+    file: string;
+    line: number;
+    character: number;
+}
+
+export interface VariableShowOutput {
+    name: string;
+    value: string;
+    file: string;
+    line: number;
+    character: number;
+    source: string;
+}
+
 export interface AuthConfig {
     name: string;
 }
@@ -662,6 +678,74 @@ export async function showEnvironment(name: string, sourceDirectory?: string): P
             parseAndReportErrors((error as ExecError).stderr || '', getCliCommand().cwd);
         }
         throw new Error(`Failed to show environment: ${getErrorMessage(error)}`);
+    }
+}
+
+export async function showEndpoint(name: string, sourceDirectory?: string): Promise<EndpointShowOutput> {
+    try {
+        const { executable, args: baseArgs, cwd } = getCliCommand();
+        const args = [...baseArgs, 'ep', 'show', '-n', name];
+        if (sourceDirectory) {
+            args.push('-s', sourceDirectory);
+        }
+        args.push('-o', 'json');
+
+        const fullCommand = `${executable} ${args.join(' ')}`;
+        logCliExecution(fullCommand, cwd);
+
+        const { stdout, stderr } = await spawnAsync(executable, args, { cwd });
+
+        if (stderr) {
+            parseAndReportErrors(stderr, cwd);
+        } else if (diagnosticCollection) {
+            diagnosticCollection.clear();
+        }
+
+        const raw: EndpointShowOutput = JSON.parse(stdout);
+        return { ...raw, file: normalizePath(raw.file) };
+    } catch (error) {
+        logCliError('Failed to show endpoint', error);
+        if (error instanceof Error && 'stderr' in error) {
+            parseAndReportErrors((error as ExecError).stderr || '', getCliCommand().cwd);
+        }
+        throw new Error(`Failed to show endpoint: ${getErrorMessage(error)}`);
+    }
+}
+
+export async function showVariable(
+    name: string,
+    sourceDirectory?: string,
+    environment?: string
+): Promise<VariableShowOutput> {
+    try {
+        const { executable, args: baseArgs, cwd } = getCliCommand();
+        const args = [...baseArgs, 'var', 'show', '-n', name];
+        if (sourceDirectory) {
+            args.push('-s', sourceDirectory);
+        }
+        if (environment) {
+            args.push('-e', environment);
+        }
+        args.push('-o', 'json');
+
+        logCliExecution(`${executable} ${args.join(' ')}`, cwd);
+
+        const { stdout, stderr } = await spawnAsync(executable, args, { cwd });
+
+        if (stderr) {
+            parseAndReportErrors(stderr, cwd);
+        } else if (diagnosticCollection) {
+            diagnosticCollection.clear();
+        }
+
+        const raw: VariableShowOutput = JSON.parse(stdout);
+        return { ...raw, file: normalizePath(raw.file) };
+    } catch (error) {
+        logCliError('Failed to show variable', error);
+        if (error instanceof Error && 'stderr' in error) {
+            parseAndReportErrors((error as ExecError).stderr || '', getCliCommand().cwd);
+        }
+        throw new Error(`Failed to show variable: ${getErrorMessage(error)}`);
     }
 }
 

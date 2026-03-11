@@ -98,24 +98,19 @@ export interface Variable {
  */
 export function parseVariables(document: vscode.TextDocument): Variable[] {
     const variables: Variable[] = [];
-    const text = document.getText();
-    
-    // Match variable declarations: let varname = value
-    // Supports string values, object values, and function calls
-    const varPattern = /^\s*let\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*(.+)$/gm;
-    
-    let match;
-    while ((match = varPattern.exec(text)) !== null) {
-        const varName = match[1];
-        const varValue = match[2].trim();
-        const position = document.positionAt(match.index);
-        
-        variables.push({
-            name: varName,
-            value: varValue,
-            line: position.line
-        });
+    const varPattern = /^\s*let\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*(.+)$/;
+
+    for (let i = 0; i < document.lineCount; i++) {
+        const lineText = document.lineAt(i).text;
+        const match = varPattern.exec(lineText);
+        if (match) {
+            variables.push({
+                name: match[1],
+                value: match[2].trim(),
+                line: i
+            });
+        }
     }
-    
+
     return variables;
 }

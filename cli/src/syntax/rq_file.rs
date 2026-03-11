@@ -16,6 +16,8 @@ pub struct RqFile {
     pub endpoints: HashMap<String, EndpointDefinition>,
     pub file_variables: Vec<Variable>,
     pub imported_files: Vec<PathBuf>,
+    pub let_variable_locations: HashMap<String, (String, usize, usize)>,
+    pub env_variable_locations: HashMap<String, HashMap<String, (String, usize, usize)>>,
 }
 
 impl RqFile {
@@ -42,6 +44,8 @@ impl RqFile {
             endpoints: parse_result.endpoints,
             file_variables: parse_result.file_variables,
             imported_files: parse_result.imported_files,
+            let_variable_locations: parse_result.let_variable_locations,
+            env_variable_locations: parse_result.env_variable_locations,
         })
     }
 }

@@ -73,7 +73,7 @@ describe('when no environment is selected', () => {
 
         const result = await provideDefinition(doc, position);
 
-        expect(cliService.showVariable).toHaveBeenCalledWith('remote_var', '/test', undefined);
+        expect(cliService.showVariable).toHaveBeenCalledWith('remote_var', '/test', undefined, false);
         expect(result).toBeInstanceOf(vscode.Location);
         expect((result as vscode.Location).range.start).toEqual(new vscode.Position(5, 4));
     });
@@ -134,7 +134,7 @@ describe('when environment is selected', () => {
 
         const result = await provideDefinition(doc, position);
 
-        expect(cliService.showVariable).toHaveBeenCalledWith('api_url', '/test', 'local');
+        expect(cliService.showVariable).toHaveBeenCalledWith('api_url', '/test', 'local', false);
         expect(result).toBeInstanceOf(vscode.Location);
         expect((result as vscode.Location).range.start).toEqual(new vscode.Position(1, 4));
     });

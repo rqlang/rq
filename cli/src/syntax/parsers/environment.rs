@@ -10,18 +10,33 @@ use crate::syntax::{
 
 use std::collections::HashMap;
 
+type EnvDefinition = (
+    String,
+    Vec<Variable>,
+    usize,
+    usize,
+    Vec<(String, usize, usize)>,
+);
+
 pub struct EnvironmentParser;
 impl Parse for EnvironmentParser {
     fn can_parse(&self, r: &TokenReader) -> bool {
         r.is_keyword(KW_ENV)
     }
     fn parse(&self, r: &mut TokenReader, result: &mut ParseResult) -> Result<(), SyntaxError> {
-        let (env_name, vars, line, character) =
+        let (env_name, vars, line, character, key_locs) =
             parse_environment_definition(r, &result.environments)?;
         let file = r.file_path.to_string_lossy().to_string();
         result
             .environment_locations
-            .insert(env_name.clone(), (file, line, character));
+            .insert(env_name.clone(), (file.clone(), line, character));
+        let env_var_map = result
+            .env_variable_locations
+            .entry(env_name.clone())
+            .or_default();
+        for (key_name, key_line, key_char) in key_locs {
+            env_var_map.insert(key_name, (file.clone(), key_line, key_char));
+        }
         result.environments.insert(env_name, vars);
         Ok(())
     }
@@ -30,7 +45,7 @@ impl Parse for EnvironmentParser {
 pub(crate) fn parse_environment_definition(
     r: &mut TokenReader,
     existing_environments: &HashMap<String, Vec<Variable>>,
-) -> Result<(String, Vec<Variable>, usize, usize), SyntaxError> {
+) -> Result<EnvDefinition, SyntaxError> {
     expect(
         r,
         |t| t.token_type == TokenType::Keyword && t.value == KW_ENV,
@@ -64,6 +79,7 @@ pub(crate) fn parse_environment_definition(
     )?;
     r.advance();
     let mut vars = Vec::new();
+    let mut key_locs: Vec<(String, usize, usize)> = Vec::new();
     loop {
         r.skip_ignorable();
         if let Some(ct) = r.cur() {
@@ -72,7 +88,6 @@ pub(crate) fn parse_environment_definition(
                 break;
             }
         } else {
-            // Use expect to generate the error with proper backtracking
             expect(
                 r,
                 |t| t.token_type == TokenType::Punctuation && t.value == PUNC_RBRACE,
@@ -85,6 +100,9 @@ pub(crate) fn parse_environment_definition(
             "Expected identifier",
         )?;
         let key = key_tok.value.clone();
+        let (key_line_1, key_col_1) = r.get_line_col(key_tok.span.start);
+        let key_line = key_line_1.saturating_sub(1);
+        let key_char = key_col_1.saturating_sub(1);
         r.advance();
         r.skip_ignorable();
         expect(
@@ -113,10 +131,11 @@ pub(crate) fn parse_environment_definition(
                 r.advance();
             }
         }
+        key_locs.push((key.clone(), key_line, key_char));
         vars.push(Variable {
             name: key,
             value: VariableValue::String(value),
         });
     }
-    Ok((env_name, vars, line, character))
+    Ok((env_name, vars, line, character, key_locs))
 }

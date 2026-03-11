@@ -1,0 +1,10 @@
+List variables
+
+Usage: rq var list [OPTIONS]
+
+Options:
+  -d, --debug              Enable debug logging
+  -s, --source <SOURCE>    Path to the .rq file or directory [default: .]
+  -e, --env <ENVIRONMENT>  Environment name
+  -o, --output <OUTPUT>    Output format: text or json [default: text] [possible values: text, json]
+  -h, --help               Print help

@@ -50,6 +50,14 @@ export const commands = {
     registerCommand: jest.fn()
 };
 
+// Mock languages
+export const languages = {
+    registerDefinitionProvider: jest.fn(),
+    registerHoverProvider: jest.fn(),
+    registerCompletionItemProvider: jest.fn(),
+    createDiagnosticCollection: jest.fn().mockReturnValue({ dispose: jest.fn() })
+};
+
 // Mock env
 export const env = {
     clipboard: {
@@ -71,6 +79,20 @@ export const workspace = {
 export enum ViewColumn {
     One = 1,
     Two = 2
+}
+
+export class Location {
+    constructor(public uri: any, public range: any) {}
+}
+
+export class MarkdownString {
+    value = '';
+    appendMarkdown(s: string) { this.value += s; return this; }
+    appendCodeblock(s: string, _lang?: string) { this.value += s; return this; }
+}
+
+export class Hover {
+    constructor(public contents: any) {}
 }
 
 export class Position {

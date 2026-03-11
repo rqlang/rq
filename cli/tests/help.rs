@@ -107,6 +107,22 @@ fn test_request_run_help() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
+fn test_var_help() -> Result<(), Box<dyn std::error::Error>> {
+    verify_help(&["var", "--help"], "var.txt")?;
+    verify_help(&["var", "help"], "var.txt")
+}
+
+#[test]
+fn test_var_list_help() -> Result<(), Box<dyn std::error::Error>> {
+    verify_help(&["var", "list", "--help"], "var_list.txt")
+}
+
+#[test]
+fn test_var_show_help() -> Result<(), Box<dyn std::error::Error>> {
+    verify_help(&["var", "show", "--help"], "var_show.txt")
+}
+
+#[test]
 fn test_no_args_no_rq_files_shows_help() -> Result<(), Box<dyn std::error::Error>> {
     let temp_dir = std::env::temp_dir().join(format!("rq_test_no_args_{}", std::process::id()));
     fs::create_dir_all(&temp_dir)?;

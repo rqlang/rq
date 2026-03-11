@@ -48,6 +48,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             || args[1] == "auth"
             || args[1] == "ep"
             || args[1] == "request"
+            || args[1] == "var"
             || args[1] == "help");
 
     if is_subcommand {
@@ -73,6 +74,14 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             Some(Commands::Ep(ep_command)) => match ep_command.command {
                 commands::ep::EpSubcommand::Show(show_args) => {
                     commands::ep::execute_show(&show_args)
+                }
+            },
+            Some(Commands::Var(var_command)) => match var_command.command {
+                commands::var::VarSubcommand::List(list_args) => {
+                    commands::var::execute_list(&list_args)
+                }
+                commands::var::VarSubcommand::Show(show_args) => {
+                    commands::var::execute_show(&show_args)
                 }
             },
             Some(Commands::Request(request_command)) => match request_command.command {

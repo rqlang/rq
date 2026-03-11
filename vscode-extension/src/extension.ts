@@ -3,8 +3,8 @@ import * as cliService from './cliService';
 import { RequestExplorerProvider } from './requestExplorer';
 import { ConfigurationExplorerProvider } from './configurationExplorer';
 import { completionProvider } from './language/completionProvider';
-import { hoverProvider } from './language/hoverProvider';
-import { definitionProvider } from './language/definitionProvider';
+import { hoverProvider, setEnvironmentProvider as setHoverEnvironmentProvider } from './language/hoverProvider';
+import { definitionProvider, setEnvironmentProvider } from './language/definitionProvider';
 import { registerRefreshRequestsCommand } from './commands/refreshRequests';
 import { registerOpenRequestFileCommand } from './commands/openRequestFile';
 import { registerOpenConfigurationFileCommand } from './commands/openConfigurationFile';
@@ -69,6 +69,9 @@ export function activate(context: vscode.ExtensionContext) {
     
     const requestRunner = new RequestRunner(context, rqOutputChannel);
     requestRunner.registerCommands(requestExplorerProvider);
+
+    setEnvironmentProvider(requestExplorerProvider);
+    setHoverEnvironmentProvider(requestExplorerProvider);
 
     registerGetTokenCommand(context, rqOutputChannel);
     registerClearOAuthCacheCommand(context);

@@ -53,4 +53,9 @@ pub struct ParseResult {
     pub endpoints: std::collections::HashMap<String, EndpointDefinition>,
     pub file_variables: Vec<Variable>,
     pub imported_files: Vec<std::path::PathBuf>,
+    pub let_variable_locations: std::collections::HashMap<String, (String, usize, usize)>,
+    pub env_variable_locations: std::collections::HashMap<
+        String,
+        std::collections::HashMap<String, (String, usize, usize)>,
+    >,
 }

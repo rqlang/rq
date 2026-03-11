@@ -20,13 +20,19 @@ impl Parse for VariableParser {
         r.is_keyword(KW_LET)
     }
     fn parse(&self, r: &mut TokenReader, result: &mut ParseResult) -> Result<(), SyntaxError> {
-        let var = parse_variable_declaration(r)?;
+        let (var, line, character) = parse_variable_declaration(r)?;
+        let file = r.file_path.to_string_lossy().to_string();
+        result
+            .let_variable_locations
+            .insert(var.name.clone(), (file, line, character));
         result.file_variables.push(var);
         Ok(())
     }
 }
 
-pub fn parse_variable_declaration(r: &mut TokenReader) -> Result<Variable, SyntaxError> {
+pub fn parse_variable_declaration(
+    r: &mut TokenReader,
+) -> Result<(Variable, usize, usize), SyntaxError> {
     expect(
         r,
         |t| t.token_type == TokenType::Keyword && t.value == KW_LET,
@@ -40,6 +46,9 @@ pub fn parse_variable_declaration(r: &mut TokenReader) -> Result<Variable, Synta
         "Expected identifier",
     )?;
     let name = name_tok.value.clone();
+    let (line_1, col_1) = r.get_line_col(name_tok.span.start);
+    let line = line_1.saturating_sub(1);
+    let character = col_1.saturating_sub(1);
     r.advance();
     r.skip_ignorable();
     expect(
@@ -59,7 +68,7 @@ pub fn parse_variable_declaration(r: &mut TokenReader) -> Result<Variable, Synta
     )?;
     r.advance();
 
-    Ok(Variable { name, value })
+    Ok((Variable { name, value }, line, character))
 }
 
 fn parse_variable_value(r: &mut TokenReader) -> Result<VariableValue, SyntaxError> {

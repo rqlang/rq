@@ -46,6 +46,16 @@ pub struct EndpointEntry {
     pub character: usize,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct VariableEntry {
+    pub name: String,
+    pub value: String,
+    pub file: String,
+    pub line: usize,
+    pub character: usize,
+    pub source: String,
+}
+
 #[derive(Debug, Serialize, Clone)]
 pub struct RequestExecutionResult {
     pub request_name: String,

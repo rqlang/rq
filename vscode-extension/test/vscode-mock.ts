@@ -55,6 +55,7 @@ export const languages = {
     registerDefinitionProvider: jest.fn(),
     registerHoverProvider: jest.fn(),
     registerCompletionItemProvider: jest.fn(),
+    registerReferenceProvider: jest.fn(),
     createDiagnosticCollection: jest.fn().mockReturnValue({
         clear: jest.fn(),
         set: jest.fn(),

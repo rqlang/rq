@@ -17,6 +17,8 @@ pub enum VarSubcommand {
     List(ListArgs),
     #[command(about = "Show variable location")]
     Show(ShowArgs),
+    #[command(about = "Find all references to a variable")]
+    Refs(RefsArgs),
 }
 
 #[derive(Args)]
@@ -82,6 +84,23 @@ pub fn execute_list(args: &ListArgs) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+#[derive(Args)]
+pub struct RefsArgs {
+    #[command(flatten)]
+    pub source: SourceArgs,
+
+    #[arg(
+        short = 'n',
+        long = "name",
+        help = "Name of the variable to find references for",
+        value_parser = validators::validate_name
+    )]
+    pub name: String,
+
+    #[command(flatten)]
+    pub output: OutputArgs,
+}
+
 pub fn execute_show(args: &ShowArgs) -> Result<(), Box<dyn std::error::Error>> {
     let path = std::path::Path::new(&args.source.source);
     let entry = crate::client::RqClient::get_variable(
@@ -102,5 +121,16 @@ pub fn execute_show(args: &ShowArgs) -> Result<(), Box<dyn std::error::Error>> {
             print!("{}", formatter.format(&entry));
         }
     }
+    Ok(())
+}
+
+pub fn execute_refs(args: &RefsArgs) -> Result<(), Box<dyn std::error::Error>> {
+    let path = std::path::Path::new(&args.source.source);
+    let refs = crate::client::RqClient::list_variable_references(path, &args.name)?;
+    let formatter = crate::core::formatter::get_formatter(&args.output.output);
+    print!(
+        "{}",
+        formatter.format_list(&refs, "References found:", "No references found")
+    );
     Ok(())
 }

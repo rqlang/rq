@@ -237,6 +237,12 @@ export interface VariableShowOutput {
     source: string;
 }
 
+export interface ReferenceLocation {
+    file: string;
+    line: number;
+    character: number;
+}
+
 export interface AuthConfig {
     name: string;
 }
@@ -750,6 +756,72 @@ export async function showVariable(
             parseAndReportErrors((error as ExecError).stderr || '', getCliCommand().cwd);
         }
         throw new Error(`Failed to show variable: ${getErrorMessage(error)}`);
+    }
+}
+
+export async function varRefs(
+    name: string,
+    sourceDirectory?: string
+): Promise<ReferenceLocation[]> {
+    try {
+        const { executable, args: baseArgs, cwd } = getCliCommand();
+        const args = [...baseArgs, 'var', 'refs', '-n', name];
+        if (sourceDirectory) {
+            args.push('-s', sourceDirectory);
+        }
+        args.push('-o', 'json');
+
+        logCliExecution(`${executable} ${args.join(' ')}`, cwd);
+
+        const { stdout, stderr } = await spawnAsync(executable, args, { cwd });
+
+        if (stderr) {
+            parseAndReportErrors(stderr, cwd);
+        } else if (diagnosticCollection) {
+            diagnosticCollection.clear();
+        }
+
+        const raw: ReferenceLocation[] = JSON.parse(stdout);
+        return raw.map(r => ({ ...r, file: normalizePath(r.file) }));
+    } catch (error) {
+        logCliError('Failed to find variable references', error);
+        if (error instanceof Error && 'stderr' in error) {
+            parseAndReportErrors((error as ExecError).stderr || '', getCliCommand().cwd);
+        }
+        throw new Error(`Failed to find variable references: ${getErrorMessage(error)}`);
+    }
+}
+
+export async function epRefs(
+    name: string,
+    sourceDirectory?: string
+): Promise<ReferenceLocation[]> {
+    try {
+        const { executable, args: baseArgs, cwd } = getCliCommand();
+        const args = [...baseArgs, 'ep', 'refs', '-n', name];
+        if (sourceDirectory) {
+            args.push('-s', sourceDirectory);
+        }
+        args.push('-o', 'json');
+
+        logCliExecution(`${executable} ${args.join(' ')}`, cwd);
+
+        const { stdout, stderr } = await spawnAsync(executable, args, { cwd });
+
+        if (stderr) {
+            parseAndReportErrors(stderr, cwd);
+        } else if (diagnosticCollection) {
+            diagnosticCollection.clear();
+        }
+
+        const raw: ReferenceLocation[] = JSON.parse(stdout);
+        return raw.map(r => ({ ...r, file: normalizePath(r.file) }));
+    } catch (error) {
+        logCliError('Failed to find endpoint references', error);
+        if (error instanceof Error && 'stderr' in error) {
+            parseAndReportErrors((error as ExecError).stderr || '', getCliCommand().cwd);
+        }
+        throw new Error(`Failed to find endpoint references: ${getErrorMessage(error)}`);
     }
 }
 

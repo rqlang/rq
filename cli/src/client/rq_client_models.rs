@@ -68,6 +68,13 @@ pub struct RequestExecutionResult {
     pub body: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct ReferenceLocation {
+    pub file: String,
+    pub line: usize,
+    pub character: usize,
+}
+
 pub struct RqConfig {
     pub source_path: String,
     pub request_name: Option<String>,

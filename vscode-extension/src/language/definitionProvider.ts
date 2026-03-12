@@ -3,7 +3,7 @@ import * as cliService from '../cliService';
 import { parseVariables } from './definitions';
 
 const EP_TEMPLATE_PATTERN = /^\s*ep\s+[a-zA-Z_][a-zA-Z0-9_-]*\s*<\s*([a-zA-Z_][a-zA-Z0-9_-]*)\s*>/;
-const VAR_NAME_PATTERN = /[a-zA-Z_][a-zA-Z0-9_]*/;
+const VAR_NAME_PATTERN = /[a-zA-Z_][a-zA-Z0-9_-]*/;
 
 let environmentProvider: { getSelectedEnvironment(): string | undefined } | undefined;
 

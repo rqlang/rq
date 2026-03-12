@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as cliService from '../cliService';
 
 const EP_TEMPLATE_PATTERN = /^\s*ep\s+[a-zA-Z_][a-zA-Z0-9_-]*\s*<\s*([a-zA-Z_][a-zA-Z0-9_-]*)\s*>/;
-const VAR_NAME_PATTERN = /[a-zA-Z_][a-zA-Z0-9_]*/;
+const VAR_NAME_PATTERN = /[a-zA-Z_][a-zA-Z0-9_-]*/;
 
 export const referenceProvider = vscode.languages.registerReferenceProvider('rq', {
     async provideReferences(document: vscode.TextDocument, position: vscode.Position) {

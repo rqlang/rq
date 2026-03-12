@@ -227,6 +227,7 @@ fn find_all_var_refs_in_file(path: &Path, var_name: &str) -> Vec<(usize, usize)>
         }
     }
 
+    results.sort_unstable();
     results
 }
 
@@ -259,6 +260,7 @@ fn find_all_ep_refs_in_file(path: &Path, ep_name: &str) -> Vec<(usize, usize)> {
         }
     }
 
+    results.sort_unstable();
     results
 }
 

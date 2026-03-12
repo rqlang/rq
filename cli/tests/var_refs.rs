@@ -199,10 +199,9 @@ fn test_var_refs_env_declaration_included() -> Result<(), Box<dyn std::error::Er
 
     let has_env_decl = items.iter().any(|r| r["line"].as_u64() == Some(1));
     if !has_env_decl {
-        return Err(format!(
-            "Expected env block declaration (line 1) in refs, got: {items:?}"
-        )
-        .into());
+        return Err(
+            format!("Expected env block declaration (line 1) in refs, got: {items:?}").into(),
+        );
     }
 
     let has_usage = items.iter().any(|r| r["line"].as_u64() == Some(4));

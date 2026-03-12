@@ -127,6 +127,21 @@ describe('variable rename', () => {
         expect(result).toBeUndefined();
     });
 
+    test('returns undefined when varRefs returns empty array', async () => {
+        const doc = makeDocument(['rq get("{{base_url}}/v1");']);
+        const position = new vscode.Position(0, 10);
+
+        (doc.getWordRangeAtPosition as jest.Mock).mockReturnValue(
+            new vscode.Range(new vscode.Position(0, 8), new vscode.Position(0, 16))
+        );
+        (doc.getText as jest.Mock).mockReturnValue('base_url');
+        (cliService.varRefs as jest.Mock).mockResolvedValue([]);
+
+        const result = await provideRenameEdits(doc, position, 'new_url');
+
+        expect(result).toBeUndefined();
+    });
+
     test('throws for invalid new name', async () => {
         const doc = makeDocument(['let base_url = "http://example.com";']);
         const position = new vscode.Position(0, 6);
@@ -190,6 +205,19 @@ describe('endpoint rename', () => {
         const position = new vscode.Position(0, parentStart + 1);
 
         (cliService.epRefs as jest.Mock).mockRejectedValue(new Error('not found'));
+
+        const result = await provideRenameEdits(doc, position, 'new_base');
+
+        expect(result).toBeUndefined();
+    });
+
+    test('returns undefined when epRefs returns empty array', async () => {
+        const line = 'ep child<base>(url: "http://localhost");';
+        const doc = makeDocument([line]);
+        const parentStart = line.indexOf('base');
+        const position = new vscode.Position(0, parentStart + 1);
+
+        (cliService.epRefs as jest.Mock).mockResolvedValue([]);
 
         const result = await provideRenameEdits(doc, position, 'new_base');
 

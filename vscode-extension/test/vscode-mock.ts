@@ -56,6 +56,7 @@ export const languages = {
     registerHoverProvider: jest.fn(),
     registerCompletionItemProvider: jest.fn(),
     registerReferenceProvider: jest.fn(),
+    registerRenameProvider: jest.fn(),
     createDiagnosticCollection: jest.fn().mockReturnValue({
         clear: jest.fn(),
         set: jest.fn(),
@@ -87,6 +88,18 @@ export const workspace = {
 export enum ViewColumn {
     One = 1,
     Two = 2
+}
+
+export class WorkspaceEdit {
+    readonly edits: Array<{ uri: any; range: Range; newText: string }> = [];
+
+    replace(uri: any, range: Range, newText: string): void {
+        this.edits.push({ uri, range, newText });
+    }
+
+    get size(): number {
+        return this.edits.length;
+    }
 }
 
 export class Location {

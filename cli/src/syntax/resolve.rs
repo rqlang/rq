@@ -244,18 +244,17 @@ fn find_all_ep_refs_in_file(path: &Path, ep_name: &str) -> Vec<(usize, usize)> {
         if token.token_type != TokenType::Identifier || token.value != ep_name {
             continue;
         }
-        let preceded_by_lt = tokens[..i]
-            .iter()
-            .rev()
-            .find(|t| {
-                !matches!(
-                    t.token_type,
-                    TokenType::Whitespace | TokenType::Newline | TokenType::Comment
-                )
-            })
-            .map(|t| t.value == "<")
+        let prev = tokens[..i].iter().rev().find(|t| {
+            !matches!(
+                t.token_type,
+                TokenType::Whitespace | TokenType::Newline | TokenType::Comment
+            )
+        });
+        let is_ref = prev.map(|t| t.value == "<").unwrap_or(false);
+        let is_def = prev
+            .map(|t| t.token_type == TokenType::Keyword && t.value == "ep")
             .unwrap_or(false);
-        if preceded_by_lt {
+        if is_ref || is_def {
             results.push(zero_based_line_col(&content, token.span.start));
         }
     }

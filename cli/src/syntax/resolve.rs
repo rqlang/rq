@@ -131,6 +131,51 @@ fn zero_based_line_col(content: &str, pos: usize) -> (usize, usize) {
     (line, column)
 }
 
+fn is_in_env_block(tokens: &[super::token::Token], idx: usize) -> bool {
+    use super::token::TokenType as TT;
+    let mut depth = 0i32;
+    let mut i = idx;
+    loop {
+        if i == 0 {
+            return false;
+        }
+        i -= 1;
+        match (&tokens[i].token_type, tokens[i].value.as_str()) {
+            (TT::Punctuation, "}") => depth += 1,
+            (TT::Punctuation, "{") => {
+                if depth > 0 {
+                    depth -= 1;
+                } else {
+                    let mut k = i;
+                    loop {
+                        if k == 0 {
+                            return false;
+                        }
+                        k -= 1;
+                        match tokens[k].token_type {
+                            TT::Whitespace | TT::Newline | TT::Comment => {}
+                            TT::Identifier => break,
+                            _ => return false,
+                        }
+                    }
+                    loop {
+                        if k == 0 {
+                            return false;
+                        }
+                        k -= 1;
+                        match tokens[k].token_type {
+                            TT::Whitespace | TT::Newline | TT::Comment => {}
+                            TT::Keyword => return tokens[k].value == "env",
+                            _ => return false,
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
 fn find_all_var_refs_in_file(path: &Path, var_name: &str) -> Vec<(usize, usize)> {
     let mut results = Vec::new();
     let Ok(content) = std::fs::read_to_string(path) else {
@@ -176,7 +221,7 @@ fn find_all_var_refs_in_file(path: &Path, var_name: &str) -> Vec<(usize, usize)>
                     _ => break,
                 }
             }
-            if !is_key {
+            if !is_key || is_in_env_block(&tokens, i) {
                 results.push(zero_based_line_col(&content, token.span.start));
             }
         }

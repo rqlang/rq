@@ -160,6 +160,60 @@ fn test_var_refs_no_results() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
+fn test_var_refs_env_declaration_included() -> Result<(), Box<dyn std::error::Error>> {
+    let temp_dir =
+        std::env::temp_dir().join(format!("rq_test_var_refs_env_{}", std::process::id()));
+    std::fs::create_dir_all(&temp_dir)?;
+
+    std::fs::write(
+        temp_dir.join("test.rq"),
+        "env local {\n    host: \"localhost\"\n}\n\nrq get(\"{{host}}/path\");\n",
+    )?;
+
+    let output = rq_cmd()
+        .args([
+            "var",
+            "refs",
+            "-s",
+            temp_dir.to_str().unwrap(),
+            "-n",
+            "host",
+            "-o",
+            "json",
+        ])
+        .output()?;
+
+    std::fs::remove_dir_all(&temp_dir).ok();
+
+    if !output.status.success() {
+        return Err(format!(
+            "Command failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout)?;
+    let items = json.as_array().ok_or("Expected JSON array")?;
+
+    let has_env_decl = items.iter().any(|r| r["line"].as_u64() == Some(1));
+    if !has_env_decl {
+        return Err(format!(
+            "Expected env block declaration (line 1) in refs, got: {items:?}"
+        )
+        .into());
+    }
+
+    let has_usage = items.iter().any(|r| r["line"].as_u64() == Some(4));
+    if !has_usage {
+        return Err(format!("Expected usage (line 4) in refs, got: {items:?}").into());
+    }
+
+    Ok(())
+}
+
+#[test]
 fn test_var_refs_file_not_found() {
     let output = rq_cmd()
         .args(["var", "refs", "-s", "non_existent_file", "-n", "myvar"])

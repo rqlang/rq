@@ -797,6 +797,60 @@ impl RqClient {
         })
     }
 
+    pub fn list_variable_references(
+        source_path: &Path,
+        name: &str,
+    ) -> Result<Vec<super::rq_client_models::ReferenceLocation>, RqError> {
+        let paths = Self::collect_paths(source_path)?;
+        let refs = crate::syntax::find_all_variable_references(&paths, name);
+        Ok(refs
+            .into_iter()
+            .map(
+                |(line, character, path)| super::rq_client_models::ReferenceLocation {
+                    file: crate::core::paths::clean_path(&path),
+                    line,
+                    character,
+                },
+            )
+            .collect())
+    }
+
+    pub fn list_endpoint_references(
+        source_path: &Path,
+        name: &str,
+    ) -> Result<Vec<super::rq_client_models::ReferenceLocation>, RqError> {
+        let paths = Self::collect_paths(source_path)?;
+        let refs = crate::syntax::find_all_endpoint_references(&paths, name);
+        Ok(refs
+            .into_iter()
+            .map(
+                |(line, character, path)| super::rq_client_models::ReferenceLocation {
+                    file: crate::core::paths::clean_path(&path),
+                    line,
+                    character,
+                },
+            )
+            .collect())
+    }
+
+    fn collect_paths(source_path: &Path) -> Result<Vec<PathBuf>, RqError> {
+        if !source_path.exists() {
+            return Err(RqError::DirectoryNotFound(
+                source_path.display().to_string(),
+            ));
+        }
+        let mut paths = Vec::new();
+        if source_path.is_file() {
+            paths.push(source_path.to_path_buf());
+        } else if source_path.is_dir() {
+            Self::collect_rq_paths(source_path, &mut paths)?;
+        } else {
+            return Err(RqError::NotADirectory(source_path.display().to_string()));
+        }
+        paths.sort();
+        Ok(paths)
+    }
+
     fn get_rq_files_to_process(
         source_path: &Path,
         request_name: Option<&str>,

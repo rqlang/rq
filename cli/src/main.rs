@@ -75,6 +75,9 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 commands::ep::EpSubcommand::Show(show_args) => {
                     commands::ep::execute_show(&show_args)
                 }
+                commands::ep::EpSubcommand::Refs(refs_args) => {
+                    commands::ep::execute_refs(&refs_args)
+                }
             },
             Some(Commands::Var(var_command)) => match var_command.command {
                 commands::var::VarSubcommand::List(list_args) => {
@@ -82,6 +85,9 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 commands::var::VarSubcommand::Show(show_args) => {
                     commands::var::execute_show(&show_args)
+                }
+                commands::var::VarSubcommand::Refs(refs_args) => {
+                    commands::var::execute_refs(&refs_args)
                 }
             },
             Some(Commands::Request(request_command)) => match request_command.command {

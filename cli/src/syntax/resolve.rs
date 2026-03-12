@@ -96,6 +96,174 @@ pub fn find_variable_location(paths: &[PathBuf], var_name: &str) -> (usize, usiz
     (0, 0, paths.first().cloned().unwrap_or_default())
 }
 
+pub fn find_all_variable_references(
+    paths: &[PathBuf],
+    var_name: &str,
+) -> Vec<(usize, usize, PathBuf)> {
+    let mut results = Vec::new();
+    for path in paths {
+        for (line, col) in find_all_var_refs_in_file(path, var_name) {
+            results.push((line, col, path.clone()));
+        }
+    }
+    results
+}
+
+pub fn find_all_endpoint_references(
+    paths: &[PathBuf],
+    ep_name: &str,
+) -> Vec<(usize, usize, PathBuf)> {
+    let mut results = Vec::new();
+    for path in paths {
+        for (line, col) in find_all_ep_refs_in_file(path, ep_name) {
+            results.push((line, col, path.clone()));
+        }
+    }
+    results
+}
+
+fn zero_based_line_col(content: &str, pos: usize) -> (usize, usize) {
+    let pos = pos.min(content.len());
+    let prefix = &content[..pos];
+    let line = prefix.matches('\n').count();
+    let last_line_start = prefix.rfind('\n').map(|i| i + 1).unwrap_or(0);
+    let column = prefix[last_line_start..].chars().count();
+    (line, column)
+}
+
+fn is_in_env_block(tokens: &[super::token::Token], idx: usize) -> bool {
+    use super::token::TokenType as TT;
+    let mut depth = 0i32;
+    let mut i = idx;
+    loop {
+        if i == 0 {
+            return false;
+        }
+        i -= 1;
+        match (&tokens[i].token_type, tokens[i].value.as_str()) {
+            (TT::Punctuation, "}") => depth += 1,
+            (TT::Punctuation, "{") => {
+                if depth > 0 {
+                    depth -= 1;
+                } else {
+                    let mut k = i;
+                    loop {
+                        if k == 0 {
+                            return false;
+                        }
+                        k -= 1;
+                        match tokens[k].token_type {
+                            TT::Whitespace | TT::Newline | TT::Comment => {}
+                            TT::Identifier => break,
+                            _ => return false,
+                        }
+                    }
+                    loop {
+                        if k == 0 {
+                            return false;
+                        }
+                        k -= 1;
+                        match tokens[k].token_type {
+                            TT::Whitespace | TT::Newline | TT::Comment => {}
+                            TT::Keyword => return tokens[k].value == "env",
+                            _ => return false,
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+fn find_all_var_refs_in_file(path: &Path, var_name: &str) -> Vec<(usize, usize)> {
+    let mut results = Vec::new();
+    let Ok(content) = std::fs::read_to_string(path) else {
+        return results;
+    };
+    let Ok(tokens) = tokenize(&content) else {
+        return results;
+    };
+
+    let escaped = regex::escape(var_name);
+    let pattern_interp = format!(r"\{{\{{\s*{escaped}\s*\}}\}}");
+    if let Ok(re) = regex::Regex::new(&pattern_interp) {
+        for token in &tokens {
+            if token.token_type == TokenType::String {
+                let mut search_start = 0usize;
+                while search_start < token.value.len() {
+                    let Some(mat) = re.find(&token.value[search_start..]) else {
+                        break;
+                    };
+                    let abs_start = token.span.start + search_start + mat.start();
+                    results.push(zero_based_line_col(&content, abs_start));
+                    search_start += mat.start() + mat.len().max(1);
+                }
+            }
+        }
+    }
+
+    for (i, token) in tokens.iter().enumerate() {
+        if token.token_type == TokenType::Comment {
+            continue;
+        }
+        if token.token_type == TokenType::Identifier && token.value == var_name {
+            let mut is_key = false;
+            for next in tokens.iter().skip(i + 1) {
+                match next.token_type {
+                    TokenType::Whitespace | TokenType::Newline | TokenType::Comment => continue,
+                    TokenType::Punctuation => {
+                        if next.value == ":" {
+                            is_key = true;
+                        }
+                        break;
+                    }
+                    _ => break,
+                }
+            }
+            if !is_key || is_in_env_block(&tokens, i) {
+                results.push(zero_based_line_col(&content, token.span.start));
+            }
+        }
+    }
+
+    results.sort_unstable();
+    results
+}
+
+fn find_all_ep_refs_in_file(path: &Path, ep_name: &str) -> Vec<(usize, usize)> {
+    let mut results = Vec::new();
+    let Ok(content) = std::fs::read_to_string(path) else {
+        return results;
+    };
+    let Ok(tokens) = tokenize(&content) else {
+        return results;
+    };
+
+    for (i, token) in tokens.iter().enumerate() {
+        if token.token_type != TokenType::Identifier || token.value != ep_name {
+            continue;
+        }
+        let preceded_by_lt = tokens[..i]
+            .iter()
+            .rev()
+            .find(|t| {
+                !matches!(
+                    t.token_type,
+                    TokenType::Whitespace | TokenType::Newline | TokenType::Comment
+                )
+            })
+            .map(|t| t.value == "<")
+            .unwrap_or(false);
+        if preceded_by_lt {
+            results.push(zero_based_line_col(&content, token.span.start));
+        }
+    }
+
+    results.sort_unstable();
+    results
+}
+
 fn find_sys_call_location(paths: &[PathBuf], full_func_name: &str) -> (usize, usize, PathBuf) {
     for path in paths {
         if let Ok(file) = std::fs::File::open(path) {

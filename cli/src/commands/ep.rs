@@ -15,6 +15,8 @@ pub struct EpCommand {
 pub enum EpSubcommand {
     #[command(about = "Show endpoint location")]
     Show(ShowArgs),
+    #[command(about = "Find all references to an endpoint")]
+    Refs(RefsArgs),
 }
 
 #[derive(Args)]
@@ -37,6 +39,23 @@ pub struct ShowArgs {
     pub output: OutputArgs,
 }
 
+#[derive(Args)]
+pub struct RefsArgs {
+    #[command(flatten)]
+    pub source: SourceArgs,
+
+    #[arg(
+        short = 'n',
+        long = "name",
+        help = "Name of the endpoint to find references for",
+        value_parser = validators::validate_name
+    )]
+    pub name: String,
+
+    #[command(flatten)]
+    pub output: OutputArgs,
+}
+
 pub fn execute_show(args: &ShowArgs) -> Result<(), Box<dyn std::error::Error>> {
     let path = std::path::Path::new(&args.source.source);
     let entry = crate::client::RqClient::get_endpoint(path, &args.name)?;
@@ -52,5 +71,16 @@ pub fn execute_show(args: &ShowArgs) -> Result<(), Box<dyn std::error::Error>> {
             print!("{}", formatter.format(&entry));
         }
     }
+    Ok(())
+}
+
+pub fn execute_refs(args: &RefsArgs) -> Result<(), Box<dyn std::error::Error>> {
+    let path = std::path::Path::new(&args.source.source);
+    let refs = crate::client::RqClient::list_endpoint_references(path, &args.name)?;
+    let formatter = crate::core::formatter::get_formatter(&args.output.output);
+    print!(
+        "{}",
+        formatter.format_list(&refs, "References found:", "No references found")
+    );
     Ok(())
 }

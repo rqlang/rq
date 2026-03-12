@@ -141,23 +141,21 @@ describe('variable rename', () => {
 });
 
 describe('endpoint rename', () => {
-    test('from parent reference: renames definition + all refs', async () => {
+    test('from parent reference: renames definition + all refs via epRefs', async () => {
         const line = 'ep child<base>(url: "http://localhost");';
         const doc = makeDocument([line]);
         const parentStart = line.indexOf('base');
         const position = new vscode.Position(0, parentStart + 1);
 
         (cliService.epRefs as jest.Mock).mockResolvedValue([
+            { file: '/workspace/base.rq', line: 0, character: 3 },
             { file: '/workspace/child.rq', line: 0, character: 9 }
         ]);
-        (cliService.showEndpoint as jest.Mock).mockResolvedValue({
-            name: 'base', file: '/workspace/base.rq', line: 0, character: 3
-        });
 
         const result = await provideRenameEdits(doc, position, 'new_base');
 
         expect(cliService.epRefs).toHaveBeenCalledWith('base', '/workspace');
-        expect(cliService.showEndpoint).toHaveBeenCalledWith('base', '/workspace');
+        expect(cliService.showEndpoint).not.toHaveBeenCalled();
         expect(cliService.varRefs).not.toHaveBeenCalled();
         expect(result).toBeInstanceOf(vscode.WorkspaceEdit);
         expect((result as any).edits).toHaveLength(2);
@@ -167,23 +165,21 @@ describe('endpoint rename', () => {
         expect((result as any).edits[1].newText).toBe('new_base');
     });
 
-    test('from definition line: renames definition + all refs', async () => {
+    test('from definition line: renames definition + all refs via epRefs', async () => {
         const line = 'ep base(url: "http://localhost");';
         const doc = makeDocument([line]);
         const nameStart = line.indexOf('base');
         const position = new vscode.Position(0, nameStart + 1);
 
         (cliService.epRefs as jest.Mock).mockResolvedValue([
+            { file: '/workspace/base.rq', line: 0, character: 3 },
             { file: '/workspace/child.rq', line: 0, character: 9 }
         ]);
-        (cliService.showEndpoint as jest.Mock).mockResolvedValue({
-            name: 'base', file: '/workspace/base.rq', line: 0, character: 3
-        });
 
         const result = await provideRenameEdits(doc, position, 'new_base');
 
         expect(cliService.epRefs).toHaveBeenCalledWith('base', '/workspace');
-        expect(cliService.showEndpoint).toHaveBeenCalledWith('base', '/workspace');
+        expect(cliService.showEndpoint).not.toHaveBeenCalled();
         expect((result as any).edits).toHaveLength(2);
     });
 

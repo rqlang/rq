@@ -111,18 +111,7 @@ export const renameProvider = vscode.languages.registerRenameProvider('rq', {
 
         if (symbol.kind === 'ep') {
             try {
-                const [refs, def] = await Promise.all([
-                    cliService.epRefs(symbol.name, sourceDirectory),
-                    cliService.showEndpoint(symbol.name, sourceDirectory)
-                ]);
-                edit.replace(
-                    vscode.Uri.file(def.file),
-                    new vscode.Range(
-                        new vscode.Position(def.line, def.character),
-                        new vscode.Position(def.line, def.character + symbol.name.length)
-                    ),
-                    newName
-                );
+                const refs = await cliService.epRefs(symbol.name, sourceDirectory);
                 for (const r of refs) {
                     edit.replace(
                         vscode.Uri.file(r.file),

@@ -1,12 +1,13 @@
 import * as vscode from 'vscode';
-import { 
-    SYSTEM_FUNCTIONS, 
+import * as path from 'path';
+import {
+    SYSTEM_FUNCTIONS,
     IO_FUNCTIONS,
     RANDOM_FUNCTIONS,
     DATETIME_FUNCTIONS,
-    REQUEST_PROPERTIES, 
-    ENDPOINT_PROPERTIES, 
-    parseVariables 
+    REQUEST_PROPERTIES,
+    ENDPOINT_PROPERTIES,
+    parseVariables
 } from './definitions';
 
 // Helper: collect named properties already present in an rq(...) block text
@@ -44,23 +45,24 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
             const importFullMatch = /^\s*import$/; // exact 'import'
             const importSpaceMatch = /^\s*import\s+$/; // 'import ' with trailing space(s)
             if (importFullMatch.test(linePrefix) || importSpaceMatch.test(linePrefix)) {
-                // Avoid offering inside rq(...) or ep(...)
                 const prevText = document.getText(new vscode.Range(new vscode.Position(0, 0), position));
                 const inRqOrEp = /\b(rq|ep)\s+\w+\s*\(/.test(prevText);
                 if (!inRqOrEp) {
-                    const importItem = new vscode.CompletionItem('import file', vscode.CompletionItemKind.Snippet);
-                    importItem.detail = 'Import another .rq file';
-                    importItem.documentation = new vscode.MarkdownString('Inline another RQ file at the top of this file.');
-                    // Decide snippet variant based on whether keyword already typed followed by space
-                    if (importSpaceMatch.test(linePrefix)) {
-                        // User already typed 'import ' so just add the quoted path & semicolon
-                        importItem.insertText = new vscode.SnippetString('"${1:path.rq}";');
-                    } else {
-                        // No trailing space yet; provide full directive
-                        importItem.insertText = new vscode.SnippetString(' import "${1:path.rq}";');
-                    }
-                    importItem.commitCharacters = [';'];
-                    return [importItem];
+                    const hasTrailingSpace = importSpaceMatch.test(linePrefix);
+                    const currentDir = path.dirname(document.uri.fsPath);
+                    const allFiles = await vscode.workspace.findFiles('**/*.rq');
+                    const otherFiles = allFiles.filter(u => u.fsPath !== document.uri.fsPath);
+
+                    return otherFiles.map(fileUri => {
+                        const relativePath = path.relative(currentDir, fileUri.fsPath).replace(/\.rq$/, '').replace(/\\/g, '/');
+                        const item = new vscode.CompletionItem(relativePath, vscode.CompletionItemKind.File);
+                        item.detail = 'Import .rq file';
+                        item.insertText = hasTrailingSpace
+                            ? `"${relativePath}";`
+                            : ` "${relativePath}";`;
+                        item.commitCharacters = [';'];
+                        return item;
+                    });
                 }
             }
 

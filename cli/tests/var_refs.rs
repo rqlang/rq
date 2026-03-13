@@ -213,6 +213,62 @@ fn test_var_refs_env_declaration_included() -> Result<(), Box<dyn std::error::Er
 }
 
 #[test]
+fn test_var_refs_interpolation_character_position() -> Result<(), Box<dyn std::error::Error>> {
+    let temp_dir =
+        std::env::temp_dir().join(format!("rq_test_var_refs_charpos_{}", std::process::id()));
+    std::fs::create_dir_all(&temp_dir)?;
+
+    std::fs::write(temp_dir.join("test.rq"), "rq get(\"{{base_url}}/v1\");\n")?;
+
+    let output = rq_cmd()
+        .args([
+            "var",
+            "refs",
+            "-s",
+            temp_dir.to_str().unwrap(),
+            "-n",
+            "base_url",
+            "-o",
+            "json",
+        ])
+        .output()?;
+
+    std::fs::remove_dir_all(&temp_dir).ok();
+
+    if !output.status.success() {
+        return Err(format!(
+            "Command failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: Value = serde_json::from_str(&stdout)?;
+    let items = json.as_array().ok_or("Expected JSON array")?;
+
+    if items.is_empty() {
+        return Err("Expected at least one reference".into());
+    }
+
+    // rq get("{{base_url}}/v1");
+    // 0123456789...
+    // position 8 = first '{', position 10 = 'b' of base_url
+    let character = items[0]["character"]
+        .as_u64()
+        .ok_or("Missing character field")?;
+    if character != 10 {
+        return Err(format!(
+            "Expected character=10 (start of 'base_url'), got character={character}. \
+             Hint: character points to '{{{{' instead of the variable name."
+        )
+        .into());
+    }
+
+    Ok(())
+}
+
+#[test]
 fn test_var_refs_file_not_found() {
     let output = rq_cmd()
         .args(["var", "refs", "-s", "non_existent_file", "-n", "myvar"])

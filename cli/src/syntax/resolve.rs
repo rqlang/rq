@@ -195,7 +195,8 @@ fn find_all_var_refs_in_file(path: &Path, var_name: &str) -> Vec<(usize, usize)>
                     let Some(mat) = re.find(&token.value[search_start..]) else {
                         break;
                     };
-                    let abs_start = token.span.start + search_start + mat.start();
+                    let name_offset = mat.as_str().find(var_name).unwrap_or(0);
+                    let abs_start = token.span.start + search_start + mat.start() + name_offset;
                     results.push(zero_based_line_col(&content, abs_start));
                     search_start += mat.start() + mat.len().max(1);
                 }

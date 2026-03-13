@@ -54,7 +54,7 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
                     const otherFiles = allFiles.filter(u => u.fsPath !== document.uri.fsPath);
 
                     return otherFiles.map(fileUri => {
-                        const relativePath = path.relative(currentDir, fileUri.fsPath).replace(/\.rq$/, '');
+                        const relativePath = path.relative(currentDir, fileUri.fsPath).replace(/\.rq$/, '').replace(/\\/g, '/');
                         const item = new vscode.CompletionItem(relativePath, vscode.CompletionItemKind.File);
                         item.detail = 'Import .rq file';
                         item.insertText = hasTrailingSpace

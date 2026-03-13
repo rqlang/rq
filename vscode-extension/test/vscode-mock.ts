@@ -81,7 +81,8 @@ export const workspace = {
         get: jest.fn().mockReturnValue(false)
     }),
     workspaceFolders: [],
-    openTextDocument: jest.fn()
+    openTextDocument: jest.fn(),
+    findFiles: jest.fn().mockResolvedValue([])
 };
 
 // Mock ViewColumn
@@ -100,6 +101,44 @@ export class WorkspaceEdit {
     get size(): number {
         return this.edits.length;
     }
+}
+
+export enum CompletionItemKind {
+    Text = 0,
+    Method = 1,
+    Function = 2,
+    Constructor = 3,
+    Field = 4,
+    Variable = 5,
+    Class = 6,
+    Interface = 7,
+    Module = 8,
+    Property = 9,
+    Unit = 10,
+    Value = 11,
+    Enum = 12,
+    Keyword = 13,
+    Snippet = 14,
+    Color = 15,
+    File = 16,
+    Reference = 17,
+    Folder = 18,
+    EnumMember = 19
+}
+
+export class SnippetString {
+    constructor(public value: string) {}
+}
+
+export class CompletionItem {
+    detail?: string;
+    documentation?: any;
+    insertText?: string | SnippetString;
+    commitCharacters?: string[];
+    range?: Range;
+    command?: any;
+    sortText?: string;
+    constructor(public label: string, public kind?: CompletionItemKind) {}
 }
 
 export class Location {

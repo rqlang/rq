@@ -54,13 +54,6 @@
     ],
     "description": "Create a variables block"
   },
-  "Import Statement": {
-    "prefix": "import",
-    "body": [
-      "import \"${1:./path/to/file.rq}\";"
-    ],
-    "description": "Import another RQ file"
-  },
   "Auth Bearer": {
     "prefix": "auth-bearer",
     "body": [

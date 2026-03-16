@@ -85,7 +85,7 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
             }
 
             // Variable reference completion: let name = <cursor> -> suggest existing variables
-            if (/^\s*let\s+[a-zA-Z_][a-zA-Z0-9_]*\s*=\s*$/.test(linePrefix)) {
+            if (/^\s*let\s+[a-zA-Z_][a-zA-Z0-9_-]*\s*=\s*$/.test(linePrefix)) {
                 try {
                     const variables = await cliService.listVariables(document.uri.fsPath);
                     if (variables.length === 0) {

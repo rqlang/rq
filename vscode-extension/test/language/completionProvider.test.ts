@@ -246,6 +246,20 @@ describe('variable reference completion', () => {
         expect(items).toBeUndefined();
     });
 
+    test('triggers for hyphenated variable names', async () => {
+        (cliService.listVariables as jest.Mock).mockResolvedValue([
+            { name: 'base_url', value: 'http://localhost', file: '/workspace/shared.rq', line: 0, character: 0, source: 'let' }
+        ]);
+
+        const doc = makeDocument(['let my-var = ']);
+        const position = new vscode.Position(0, 13);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(cliService.listVariables).toHaveBeenCalled();
+        expect(items).toHaveLength(1);
+    });
+
     test('does not trigger when not a let assignment', async () => {
         const doc = makeDocument(['let a']);
         const position = new vscode.Position(0, 5);

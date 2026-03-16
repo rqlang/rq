@@ -790,6 +790,39 @@ export async function showVariable(
     }
 }
 
+export async function listVariables(sourceFile?: string, environment?: string): Promise<VariableShowOutput[]> {
+    try {
+        const { executable, args: baseArgs, cwd } = getCliCommand();
+        const args = [...baseArgs, 'var', 'list'];
+        if (sourceFile) {
+            args.push('-s', sourceFile);
+        }
+        if (environment) {
+            args.push('-e', environment);
+        }
+        args.push('-o', 'json');
+
+        logCliExecution(`${executable} ${args.join(' ')}`, cwd);
+
+        const { stdout, stderr } = await spawnAsync(executable, args, { cwd });
+
+        if (stderr) {
+            parseAndReportErrors(stderr, cwd);
+        } else if (diagnosticCollection) {
+            diagnosticCollection.clear();
+        }
+
+        const raw: VariableShowOutput[] = JSON.parse(stdout);
+        return raw.map(v => ({ ...v, file: normalizePath(v.file) }));
+    } catch (error) {
+        logCliError('Failed to list variables', error);
+        if (error instanceof Error && 'stderr' in error) {
+            parseAndReportErrors((error as ExecError).stderr || '', getCliCommand().cwd);
+        }
+        throw new Error(`Failed to list variables: ${getErrorMessage(error)}`);
+    }
+}
+
 export async function varRefs(
     name: string,
     sourceDirectory?: string

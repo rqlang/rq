@@ -14,7 +14,7 @@ pub mod tokenize;
 pub mod variable_context;
 pub mod variables;
 
-pub use analyze::analyze;
+pub use analyze::{analyze, analyze_lenient};
 
 pub use parse_result::Request;
 pub use resolve::{

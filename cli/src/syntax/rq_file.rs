@@ -1,5 +1,5 @@
 use super::{
-    parse_result::{EndpointDefinition, RequestWithVariables},
+    parse_result::{EndpointDefinition, ParseResult, RequestWithVariables},
     variable_context::Variable,
 };
 use crate::syntax::auth::Config as AuthConfig;
@@ -35,8 +35,20 @@ impl RqFile {
         })?;
         let parse_result = crate::syntax::analyze(&tokens, canonical.clone(), &content)?;
 
-        Ok(Self {
-            path: canonical,
+        Ok(Self::from_parse_result(canonical, parse_result))
+    }
+
+    pub fn from_path_lenient(path: &Path) -> Option<Self> {
+        let canonical = path.canonicalize().ok()?;
+        let content = fs::read_to_string(&canonical).ok()?;
+        let tokens = crate::syntax::tokenize(&content).ok()?;
+        let parse_result = crate::syntax::analyze_lenient(&tokens, canonical.clone(), &content);
+        Some(Self::from_parse_result(canonical, parse_result))
+    }
+
+    fn from_parse_result(path: PathBuf, parse_result: ParseResult) -> Self {
+        Self {
+            path,
             requests: parse_result.requests,
             environments: parse_result.environments,
             environment_locations: parse_result.environment_locations,
@@ -46,6 +58,6 @@ impl RqFile {
             imported_files: parse_result.imported_files,
             let_variable_locations: parse_result.let_variable_locations,
             env_variable_locations: parse_result.env_variable_locations,
-        })
+        }
     }
 }

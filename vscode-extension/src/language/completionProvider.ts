@@ -84,6 +84,42 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
                 }
             }
 
+            // Variable reference completion: let name = <cursor> -> suggest existing variables
+            if (/^\s*let\s+[a-zA-Z_][a-zA-Z0-9_]*\s*=\s*$/.test(linePrefix)) {
+                try {
+                    const variables = await cliService.listVariables(document.uri.fsPath);
+                    if (variables.length === 0) {
+                        return undefined;
+                    }
+                    return variables.map(v => {
+                        const item = new vscode.CompletionItem(v.name, vscode.CompletionItemKind.Variable);
+                        item.detail = v.value ? `= ${v.value}` : v.source;
+                        item.insertText = `${v.name};`;
+                        return item;
+                    });
+                } catch {
+                    return undefined;
+                }
+            }
+
+            // Variable interpolation completion: "{{<cursor> -> suggest variables for interpolation
+            if (/\{\{$/.test(linePrefix)) {
+                try {
+                    const variables = await cliService.listVariables(document.uri.fsPath);
+                    if (variables.length === 0) {
+                        return undefined;
+                    }
+                    return variables.map(v => {
+                        const item = new vscode.CompletionItem(v.name, vscode.CompletionItemKind.Variable);
+                        item.detail = v.value ? `= ${v.value}` : v.source;
+                        item.insertText = v.name;
+                        return item;
+                    });
+                } catch {
+                    return undefined;
+                }
+            }
+
             // Variable declaration templates
             // Cases:
             // 1) 'let' alone -> offer all variants (insert leading space before name).
@@ -643,5 +679,6 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
     'p', // Trigger completion while typing 'ep'
     'q', // Trigger completion while typing 'rq'
     ')', // Trigger completion after closing parenthesis for rq semicolon suggestion
-    '<'  // Trigger completion after < for ep template
+    '<', // Trigger completion after < for ep template
+    '='  // Trigger completion after = for let variable assignment
 );

@@ -2,6 +2,7 @@ use super::rq_client_models::{RequestDetails, RequestExecutionResult, RequestInf
 use crate::core::error::RqError;
 use crate::core::logger::Logger;
 use crate::syntax::{RqFile, Variable, VariableValue};
+
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -706,21 +707,40 @@ impl RqClient {
             ));
         }
 
-        let mut paths = Vec::new();
-        if source_path.is_file() {
-            paths.push(source_path.to_path_buf());
+        let mut paths: Vec<PathBuf> = if source_path.is_file() {
+            let mut processed: HashSet<PathBuf> = HashSet::new();
+            let mut to_process = vec![source_path.to_path_buf()];
+            let mut file_paths = Vec::new();
+            while let Some(path) = to_process.pop() {
+                if processed.contains(&path) {
+                    continue;
+                }
+                processed.insert(path.clone());
+                let imports = RqFile::from_path_lenient(&path)
+                    .map(|f| f.imported_files)
+                    .unwrap_or_default();
+                file_paths.push(path);
+                for import in imports {
+                    if !processed.contains(&import) {
+                        to_process.push(import);
+                    }
+                }
+            }
+            file_paths
         } else if source_path.is_dir() {
-            Self::collect_rq_paths(source_path, &mut paths)?;
+            let mut ps = Vec::new();
+            Self::collect_rq_paths(source_path, &mut ps)?;
+            ps
         } else {
             return Err(RqError::NotADirectory(source_path.display().to_string()));
-        }
+        };
 
         paths.sort();
         let mut seen = HashSet::new();
         let mut entries: Vec<super::rq_client_models::VariableEntry> = Vec::new();
 
         for path in &paths {
-            if let Ok(rq_file) = RqFile::from_path(path) {
+            if let Some(rq_file) = RqFile::from_path_lenient(path) {
                 let let_values: HashMap<&str, &VariableValue> = rq_file
                     .file_variables
                     .iter()

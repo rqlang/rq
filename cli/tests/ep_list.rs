@@ -115,7 +115,11 @@ fn test_ep_list_is_template_false_for_body_ep() -> Result<(), Box<dyn std::error
     }
 
     if items[0].get("is_template").and_then(|v| v.as_bool()) != Some(false) {
-        return Err(format!("Expected is_template=false for body endpoint, got: {}", items[0]).into());
+        return Err(format!(
+            "Expected is_template=false for body endpoint, got: {}",
+            items[0]
+        )
+        .into());
     }
 
     Ok(())
@@ -149,6 +153,104 @@ fn test_ep_list_empty() -> Result<(), Box<dyn std::error::Error>> {
 
     if !items.is_empty() {
         return Err(format!("Expected empty array, got {} items", items.len()).into());
+    }
+
+    Ok(())
+}
+
+#[test]
+fn test_ep_list_file_includes_imports() -> Result<(), Box<dyn std::error::Error>> {
+    let temp_dir =
+        std::env::temp_dir().join(format!("rq_test_ep_list_imports_{}", std::process::id()));
+    std::fs::create_dir_all(&temp_dir)?;
+
+    std::fs::write(
+        temp_dir.join("base.rq"),
+        "ep base(url: \"http://localhost\");\n",
+    )?;
+    std::fs::write(temp_dir.join("main.rq"), "import \"base\";\n")?;
+
+    let output = rq_cmd()
+        .args([
+            "ep",
+            "list",
+            "-s",
+            temp_dir.join("main.rq").to_str().unwrap(),
+            "-o",
+            "json",
+        ])
+        .output()?;
+
+    std::fs::remove_dir_all(&temp_dir).ok();
+
+    if !output.status.success() {
+        return Err(format!(
+            "Command failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout)?;
+    let items = json.as_array().ok_or("Expected JSON array")?;
+
+    if items.is_empty() {
+        return Err("Expected endpoint from imported file".into());
+    }
+    if items[0].get("name").and_then(|v| v.as_str()) != Some("base") {
+        return Err(format!("Expected name 'base', got: {}", items[0]).into());
+    }
+
+    Ok(())
+}
+
+#[test]
+fn test_ep_list_file_excludes_unimported() -> Result<(), Box<dyn std::error::Error>> {
+    let temp_dir =
+        std::env::temp_dir().join(format!("rq_test_ep_list_scope_{}", std::process::id()));
+    std::fs::create_dir_all(&temp_dir)?;
+
+    std::fs::write(
+        temp_dir.join("imported.rq"),
+        "ep imported_ep(url: \"http://localhost\");\n",
+    )?;
+    std::fs::write(
+        temp_dir.join("unrelated.rq"),
+        "ep unrelated_ep(url: \"http://other.localhost\");\n",
+    )?;
+    std::fs::write(temp_dir.join("main.rq"), "import \"imported\";\n")?;
+
+    let output = rq_cmd()
+        .args([
+            "ep",
+            "list",
+            "-s",
+            temp_dir.join("main.rq").to_str().unwrap(),
+            "-o",
+            "json",
+        ])
+        .output()?;
+
+    std::fs::remove_dir_all(&temp_dir).ok();
+
+    if !output.status.success() {
+        return Err(format!(
+            "Command failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout)?;
+    let items = json.as_array().ok_or("Expected JSON array")?;
+
+    if items.len() != 1 {
+        return Err(format!("Expected 1 endpoint, got {}: {stdout}", items.len()).into());
+    }
+    if items[0].get("name").and_then(|v| v.as_str()) != Some("imported_ep") {
+        return Err(format!("Expected 'imported_ep', got: {}", items[0]).into());
     }
 
     Ok(())

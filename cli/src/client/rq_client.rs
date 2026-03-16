@@ -601,9 +601,31 @@ impl RqClient {
     pub fn list_endpoints(
         source_path: &Path,
     ) -> Result<Vec<super::rq_client_models::EndpointEntry>, RqError> {
-        let paths = Self::collect_paths(source_path)?;
         let mut seen = HashSet::new();
         let mut entries: Vec<super::rq_client_models::EndpointEntry> = Vec::new();
+
+        let paths: Vec<PathBuf> = if source_path.is_file() {
+            let mut processed: HashSet<PathBuf> = HashSet::new();
+            let mut to_process = vec![source_path.to_path_buf()];
+            let mut file_paths = Vec::new();
+            while let Some(path) = to_process.pop() {
+                if processed.contains(&path) {
+                    continue;
+                }
+                processed.insert(path.clone());
+                if let Ok(rq_file) = RqFile::from_path(&path) {
+                    for import in &rq_file.imported_files {
+                        if !processed.contains(import) {
+                            to_process.push(import.clone());
+                        }
+                    }
+                    file_paths.push(path);
+                }
+            }
+            file_paths
+        } else {
+            Self::collect_paths(source_path)?
+        };
 
         for path in &paths {
             if let Ok(rq_file) = RqFile::from_path(path) {

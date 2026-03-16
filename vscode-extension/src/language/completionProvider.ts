@@ -42,7 +42,7 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
             // Endpoint template completion: ep name< -> list existing endpoints
             const epTemplateMatch = linePrefix.match(/^\s*ep\s+[a-zA-Z_][a-zA-Z0-9_-]*\s*<$/);
             if (epTemplateMatch) {
-                const sourceDirectory = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+                const sourceDirectory = document.uri.fsPath;
                 try {
                     const endpoints = await cliService.listEndpoints(sourceDirectory);
                     return endpoints.filter(ep => ep.is_template).map(ep => {

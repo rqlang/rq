@@ -129,6 +129,7 @@ describe('ep template completion', () => {
 
         const items = await provideCompletionItems(doc, position);
 
+        expect(cliService.listEndpoints).toHaveBeenCalledWith('/workspace/current.rq');
         expect(items).toHaveLength(2);
         expect(items[0].label).toBe('api');
         expect(items[0].insertText).toBe('api');

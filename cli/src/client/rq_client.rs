@@ -2,6 +2,7 @@ use super::rq_client_models::{RequestDetails, RequestExecutionResult, RequestInf
 use crate::core::error::RqError;
 use crate::core::logger::Logger;
 use crate::syntax::{RqFile, Variable, VariableValue};
+
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -598,6 +599,62 @@ impl RqClient {
             .ok_or_else(|| RqError::Validation(format!("Environment '{name}' not found")))
     }
 
+    pub fn list_endpoints(
+        source_path: &Path,
+    ) -> Result<Vec<super::rq_client_models::EndpointEntry>, RqError> {
+        let mut seen = HashSet::new();
+        let mut entries: Vec<super::rq_client_models::EndpointEntry> = Vec::new();
+
+        let paths: Vec<PathBuf> = if source_path.is_file() {
+            let mut processed: HashSet<PathBuf> = HashSet::new();
+            let mut to_process = vec![source_path.to_path_buf()];
+            let mut file_paths = Vec::new();
+            while let Some(path) = to_process.pop() {
+                if processed.contains(&path) {
+                    continue;
+                }
+                processed.insert(path.clone());
+                let imports = RqFile::from_path_lenient(&path)
+                    .map(|f| f.imported_files)
+                    .unwrap_or_default();
+                for import in imports {
+                    if !processed.contains(&import) {
+                        to_process.push(import);
+                    }
+                }
+                file_paths.push(path);
+            }
+            file_paths
+        } else {
+            Self::collect_paths(source_path)?
+        };
+
+        for path in &paths {
+            if let Some(rq_file) = RqFile::from_path_lenient(path) {
+                for (name, ep) in &rq_file.endpoints {
+                    if seen.insert(name.clone()) {
+                        let file = ep
+                            .source_path
+                            .as_deref()
+                            .map(crate::core::paths::clean_path_str)
+                            .map(str::to_string)
+                            .unwrap_or_else(|| crate::core::paths::clean_path(&rq_file.path));
+                        entries.push(super::rq_client_models::EndpointEntry {
+                            name: name.clone(),
+                            file,
+                            line: ep.line,
+                            character: ep.character,
+                            is_template: ep.is_template,
+                        });
+                    }
+                }
+            }
+        }
+
+        entries.sort_by(|a, b| a.name.cmp(&b.name));
+        Ok(entries)
+    }
+
     pub fn get_endpoint(
         source_path: &Path,
         name: &str,
@@ -632,6 +689,7 @@ impl RqClient {
                         file,
                         line: ep.line,
                         character: ep.character,
+                        is_template: ep.is_template,
                     });
                 }
             }
@@ -650,21 +708,40 @@ impl RqClient {
             ));
         }
 
-        let mut paths = Vec::new();
-        if source_path.is_file() {
-            paths.push(source_path.to_path_buf());
+        let mut paths: Vec<PathBuf> = if source_path.is_file() {
+            let mut processed: HashSet<PathBuf> = HashSet::new();
+            let mut to_process = vec![source_path.to_path_buf()];
+            let mut file_paths = Vec::new();
+            while let Some(path) = to_process.pop() {
+                if processed.contains(&path) {
+                    continue;
+                }
+                processed.insert(path.clone());
+                let imports = RqFile::from_path_lenient(&path)
+                    .map(|f| f.imported_files)
+                    .unwrap_or_default();
+                file_paths.push(path);
+                for import in imports {
+                    if !processed.contains(&import) {
+                        to_process.push(import);
+                    }
+                }
+            }
+            file_paths
         } else if source_path.is_dir() {
-            Self::collect_rq_paths(source_path, &mut paths)?;
+            let mut ps = Vec::new();
+            Self::collect_rq_paths(source_path, &mut ps)?;
+            ps
         } else {
             return Err(RqError::NotADirectory(source_path.display().to_string()));
-        }
+        };
 
         paths.sort();
         let mut seen = HashSet::new();
         let mut entries: Vec<super::rq_client_models::VariableEntry> = Vec::new();
 
         for path in &paths {
-            if let Ok(rq_file) = RqFile::from_path(path) {
+            if let Some(rq_file) = RqFile::from_path_lenient(path) {
                 let let_values: HashMap<&str, &VariableValue> = rq_file
                     .file_variables
                     .iter()

@@ -13,10 +13,21 @@ pub struct EpCommand {
 
 #[derive(Subcommand)]
 pub enum EpSubcommand {
+    #[command(about = "List endpoints")]
+    List(ListArgs),
     #[command(about = "Show endpoint location")]
     Show(ShowArgs),
     #[command(about = "Find all references to an endpoint")]
     Refs(RefsArgs),
+}
+
+#[derive(Args)]
+pub struct ListArgs {
+    #[command(flatten)]
+    pub source: SourceArgs,
+
+    #[command(flatten)]
+    pub output: OutputArgs,
 }
 
 #[derive(Args)]
@@ -54,6 +65,34 @@ pub struct RefsArgs {
 
     #[command(flatten)]
     pub output: OutputArgs,
+}
+
+pub fn execute_list(args: &ListArgs) -> Result<(), Box<dyn std::error::Error>> {
+    let path = std::path::Path::new(&args.source.source);
+    let entries = crate::client::RqClient::list_endpoints(path)?;
+
+    match args.output.output {
+        OutputFormat::Json => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&entries).unwrap_or_else(|_| "[]".to_string())
+            );
+        }
+        OutputFormat::Text => {
+            let formatter = crate::core::formatter::get_formatter(&args.output.output);
+            let names: Vec<String> = entries.into_iter().map(|e| e.name).collect();
+            print!(
+                "{}",
+                formatter.format_list(
+                    &names,
+                    "Endpoints found:",
+                    "No endpoints found in .rq files"
+                )
+            );
+        }
+    }
+
+    Ok(())
 }
 
 pub fn execute_show(args: &ShowArgs) -> Result<(), Box<dyn std::error::Error>> {

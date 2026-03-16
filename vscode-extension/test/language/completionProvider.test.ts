@@ -1,4 +1,7 @@
+jest.mock('../../src/cliService');
+
 import * as vscode from 'vscode';
+import * as cliService from '../../src/cliService';
 import '../../src/language/completionProvider';
 
 function makeDocument(lines: string[], uri: any = { fsPath: '/workspace/current.rq' }) {
@@ -23,6 +26,8 @@ beforeAll(() => {
 beforeEach(() => {
     jest.clearAllMocks();
     (vscode.workspace.findFiles as jest.Mock).mockResolvedValue([]);
+    (cliService.listEndpoints as jest.Mock).mockResolvedValue([]);
+    (cliService.listVariables as jest.Mock).mockResolvedValue([]);
 });
 
 describe('import completion', () => {
@@ -110,5 +115,213 @@ describe('import completion', () => {
         const items = await provideCompletionItems(doc, position);
 
         expect(items).toHaveLength(0);
+    });
+});
+
+describe('ep template completion', () => {
+    test('suggests template endpoints when typing "ep name<"', async () => {
+        (cliService.listEndpoints as jest.Mock).mockResolvedValue([
+            { name: 'api', file: '/workspace/api.rq', line: 0, character: 0, is_template: true },
+            { name: 'base', file: '/workspace/base.rq', line: 0, character: 0, is_template: true }
+        ]);
+
+        const doc = makeDocument(['ep my_ep<']);
+        const position = new vscode.Position(0, 9);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(cliService.listEndpoints).toHaveBeenCalledWith('/workspace/current.rq');
+        expect(items).toHaveLength(2);
+        expect(items[0].label).toBe('api');
+        expect(items[0].insertText).toBe('api');
+        expect(items[1].label).toBe('base');
+    });
+
+    test('excludes non-template endpoints', async () => {
+        (cliService.listEndpoints as jest.Mock).mockResolvedValue([
+            { name: 'api', file: '/workspace/api.rq', line: 0, character: 0, is_template: true },
+            { name: 'full', file: '/workspace/full.rq', line: 0, character: 0, is_template: false }
+        ]);
+
+        const doc = makeDocument(['ep my_ep<']);
+        const position = new vscode.Position(0, 9);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items).toHaveLength(1);
+        expect(items[0].label).toBe('api');
+    });
+
+    test('returns empty list when no template endpoints exist', async () => {
+        (cliService.listEndpoints as jest.Mock).mockResolvedValue([
+            { name: 'full', file: '/workspace/full.rq', line: 0, character: 0, is_template: false }
+        ]);
+
+        const doc = makeDocument(['ep my_ep<']);
+        const position = new vscode.Position(0, 9);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items).toHaveLength(0);
+    });
+
+    test('returns undefined when listEndpoints throws', async () => {
+        (cliService.listEndpoints as jest.Mock).mockRejectedValue(new Error('CLI error'));
+
+        const doc = makeDocument(['ep my_ep<']);
+        const position = new vscode.Position(0, 9);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items).toBeUndefined();
+    });
+
+    test('does not trigger when < is not after ep name', async () => {
+        (cliService.listEndpoints as jest.Mock).mockResolvedValue([
+            { name: 'api', file: '/workspace/api.rq', line: 0, character: 0, is_template: true }
+        ]);
+
+        const doc = makeDocument(['let x = "<"']);
+        const position = new vscode.Position(0, 11);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(cliService.listEndpoints).not.toHaveBeenCalled();
+    });
+});
+
+describe('variable reference completion', () => {
+    test('suggests variables when typing "let name = "', async () => {
+        (cliService.listVariables as jest.Mock).mockResolvedValue([
+            { name: 'base_url', value: 'http://localhost', file: '/workspace/shared.rq', line: 0, character: 0, source: 'let' },
+            { name: 'token', value: 'abc123', file: '/workspace/shared.rq', line: 1, character: 0, source: 'let' }
+        ]);
+
+        const doc = makeDocument(['let my_var = ']);
+        const position = new vscode.Position(0, 13);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(cliService.listVariables).toHaveBeenCalledWith('/workspace/current.rq');
+        expect(items).toHaveLength(2);
+        expect(items[0].label).toBe('base_url');
+        expect(items[0].insertText).toBe('base_url;');
+        expect(items[0].detail).toBe('= http://localhost');
+        expect(items[1].label).toBe('token');
+    });
+
+    test('uses source as detail when value is empty', async () => {
+        (cliService.listVariables as jest.Mock).mockResolvedValue([
+            { name: 'my_var', value: '', file: '/workspace/shared.rq', line: 0, character: 0, source: 'let' }
+        ]);
+
+        const doc = makeDocument(['let result = ']);
+        const position = new vscode.Position(0, 13);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items).toHaveLength(1);
+        expect(items[0].detail).toBe('let');
+    });
+
+    test('returns undefined when no variables exist', async () => {
+        (cliService.listVariables as jest.Mock).mockResolvedValue([]);
+
+        const doc = makeDocument(['let a = ']);
+        const position = new vscode.Position(0, 8);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items).toBeUndefined();
+    });
+
+    test('returns undefined when listVariables throws', async () => {
+        (cliService.listVariables as jest.Mock).mockRejectedValue(new Error('CLI error'));
+
+        const doc = makeDocument(['let a = ']);
+        const position = new vscode.Position(0, 8);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items).toBeUndefined();
+    });
+
+    test('triggers for hyphenated variable names', async () => {
+        (cliService.listVariables as jest.Mock).mockResolvedValue([
+            { name: 'base_url', value: 'http://localhost', file: '/workspace/shared.rq', line: 0, character: 0, source: 'let' }
+        ]);
+
+        const doc = makeDocument(['let my-var = ']);
+        const position = new vscode.Position(0, 13);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(cliService.listVariables).toHaveBeenCalled();
+        expect(items).toHaveLength(1);
+    });
+
+    test('does not trigger when not a let assignment', async () => {
+        const doc = makeDocument(['let a']);
+        const position = new vscode.Position(0, 5);
+
+        await provideCompletionItems(doc, position);
+
+        expect(cliService.listVariables).not.toHaveBeenCalled();
+    });
+});
+
+describe('variable interpolation completion', () => {
+    test('suggests variables with closing braces when typing "{{"', async () => {
+        (cliService.listVariables as jest.Mock).mockResolvedValue([
+            { name: 'base_url', value: 'http://localhost', file: '/workspace/shared.rq', line: 0, character: 0, source: 'let' },
+            { name: 'token', value: 'abc123', file: '/workspace/shared.rq', line: 1, character: 0, source: 'let' }
+        ]);
+
+        const doc = makeDocument(['let b = "{{']);
+        const position = new vscode.Position(0, 11);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(cliService.listVariables).toHaveBeenCalledWith('/workspace/current.rq');
+        expect(items).toHaveLength(2);
+        expect(items[0].label).toBe('base_url');
+        expect(items[0].insertText).toBe('base_url');
+        expect(items[0].detail).toBe('= http://localhost');
+    });
+
+    test('returns undefined when no variables exist', async () => {
+        (cliService.listVariables as jest.Mock).mockResolvedValue([]);
+
+        const doc = makeDocument(['let b = "{{']);
+        const position = new vscode.Position(0, 11);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items).toBeUndefined();
+    });
+
+    test('returns undefined when listVariables throws', async () => {
+        (cliService.listVariables as jest.Mock).mockRejectedValue(new Error('CLI error'));
+
+        const doc = makeDocument(['let b = "{{']);
+        const position = new vscode.Position(0, 11);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items).toBeUndefined();
+    });
+
+    test('also triggers inside rq property values', async () => {
+        (cliService.listVariables as jest.Mock).mockResolvedValue([
+            { name: 'token', value: 'abc123', file: '/workspace/shared.rq', line: 0, character: 0, source: 'let' }
+        ]);
+
+        const doc = makeDocument(['  headers: ["Authorization": "Bearer {{']);
+        const position = new vscode.Position(0, 39);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items).toHaveLength(1);
+        expect(items[0].insertText).toBe('token');
     });
 });

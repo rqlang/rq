@@ -44,6 +44,7 @@ pub struct EndpointEntry {
     pub file: String,
     pub line: usize,
     pub character: usize,
+    pub is_template: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]

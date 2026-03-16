@@ -13,6 +13,7 @@ pub struct EndpointDefinition {
     pub timeout: Option<String>,
     pub variables: Vec<Variable>,
     pub has_requests: bool,
+    pub is_template: bool,
     pub source_path: Option<String>,
     pub related_files: Vec<String>,
     pub line: usize,

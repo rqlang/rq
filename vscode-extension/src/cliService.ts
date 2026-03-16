@@ -226,6 +226,7 @@ export interface EndpointShowOutput {
     file: string;
     line: number;
     character: number;
+    is_template?: boolean;
 }
 
 export interface VariableShowOutput {
@@ -684,6 +685,36 @@ export async function showEnvironment(name: string, sourceDirectory?: string): P
             parseAndReportErrors((error as ExecError).stderr || '', getCliCommand().cwd);
         }
         throw new Error(`Failed to show environment: ${getErrorMessage(error)}`);
+    }
+}
+
+export async function listEndpoints(sourceDirectory?: string): Promise<EndpointShowOutput[]> {
+    try {
+        const { executable, args: baseArgs, cwd } = getCliCommand();
+        const args = [...baseArgs, 'ep', 'list'];
+        if (sourceDirectory) {
+            args.push('-s', sourceDirectory);
+        }
+        args.push('-o', 'json');
+
+        logCliExecution(`${executable} ${args.join(' ')}`, cwd);
+
+        const { stdout, stderr } = await spawnAsync(executable, args, { cwd });
+
+        if (stderr) {
+            parseAndReportErrors(stderr, cwd);
+        } else if (diagnosticCollection) {
+            diagnosticCollection.clear();
+        }
+
+        const raw: EndpointShowOutput[] = JSON.parse(stdout);
+        return raw.map(e => ({ ...e, file: normalizePath(e.file) }));
+    } catch (error) {
+        logCliError('Failed to list endpoints', error);
+        if (error instanceof Error && 'stderr' in error) {
+            parseAndReportErrors((error as ExecError).stderr || '', getCliCommand().cwd);
+        }
+        throw new Error(`Failed to list endpoints: ${getErrorMessage(error)}`);
     }
 }
 

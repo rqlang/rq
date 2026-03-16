@@ -3,6 +3,7 @@ Manage endpoints
 Usage: rq ep [OPTIONS] <COMMAND>
 
 Commands:
+  list  List endpoints
   show  Show endpoint location
   refs  Find all references to an endpoint
   help  Print this message or the help of the given subcommand(s)

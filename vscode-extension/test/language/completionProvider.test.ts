@@ -1,4 +1,7 @@
+jest.mock('../../src/cliService');
+
 import * as vscode from 'vscode';
+import * as cliService from '../../src/cliService';
 import '../../src/language/completionProvider';
 
 function makeDocument(lines: string[], uri: any = { fsPath: '/workspace/current.rq' }) {
@@ -23,6 +26,7 @@ beforeAll(() => {
 beforeEach(() => {
     jest.clearAllMocks();
     (vscode.workspace.findFiles as jest.Mock).mockResolvedValue([]);
+    (cliService.listEndpoints as jest.Mock).mockResolvedValue([]);
 });
 
 describe('import completion', () => {
@@ -110,5 +114,76 @@ describe('import completion', () => {
         const items = await provideCompletionItems(doc, position);
 
         expect(items).toHaveLength(0);
+    });
+});
+
+describe('ep template completion', () => {
+    test('suggests template endpoints when typing "ep name<"', async () => {
+        (cliService.listEndpoints as jest.Mock).mockResolvedValue([
+            { name: 'api', file: '/workspace/api.rq', line: 0, character: 0, is_template: true },
+            { name: 'base', file: '/workspace/base.rq', line: 0, character: 0, is_template: true }
+        ]);
+
+        const doc = makeDocument(['ep my_ep<']);
+        const position = new vscode.Position(0, 9);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items).toHaveLength(2);
+        expect(items[0].label).toBe('api');
+        expect(items[0].insertText).toBe('api');
+        expect(items[1].label).toBe('base');
+    });
+
+    test('excludes non-template endpoints', async () => {
+        (cliService.listEndpoints as jest.Mock).mockResolvedValue([
+            { name: 'api', file: '/workspace/api.rq', line: 0, character: 0, is_template: true },
+            { name: 'full', file: '/workspace/full.rq', line: 0, character: 0, is_template: false }
+        ]);
+
+        const doc = makeDocument(['ep my_ep<']);
+        const position = new vscode.Position(0, 9);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items).toHaveLength(1);
+        expect(items[0].label).toBe('api');
+    });
+
+    test('returns empty list when no template endpoints exist', async () => {
+        (cliService.listEndpoints as jest.Mock).mockResolvedValue([
+            { name: 'full', file: '/workspace/full.rq', line: 0, character: 0, is_template: false }
+        ]);
+
+        const doc = makeDocument(['ep my_ep<']);
+        const position = new vscode.Position(0, 9);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items).toHaveLength(0);
+    });
+
+    test('returns undefined when listEndpoints throws', async () => {
+        (cliService.listEndpoints as jest.Mock).mockRejectedValue(new Error('CLI error'));
+
+        const doc = makeDocument(['ep my_ep<']);
+        const position = new vscode.Position(0, 9);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items).toBeUndefined();
+    });
+
+    test('does not trigger when < is not after ep name', async () => {
+        (cliService.listEndpoints as jest.Mock).mockResolvedValue([
+            { name: 'api', file: '/workspace/api.rq', line: 0, character: 0, is_template: true }
+        ]);
+
+        const doc = makeDocument(['let x = "<"']);
+        const position = new vscode.Position(0, 11);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(cliService.listEndpoints).not.toHaveBeenCalled();
     });
 });

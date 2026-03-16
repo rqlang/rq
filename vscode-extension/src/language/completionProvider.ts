@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import * as cliService from '../cliService';
 import {
     SYSTEM_FUNCTIONS,
     IO_FUNCTIONS,
@@ -37,6 +38,23 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
     {
         async provideCompletionItems(document: vscode.TextDocument, position: vscode.Position) {
             const linePrefix = document.lineAt(position).text.substr(0, position.character);
+
+            // Endpoint template completion: ep name< -> list existing endpoints
+            const epTemplateMatch = linePrefix.match(/^\s*ep\s+[a-zA-Z_][a-zA-Z0-9_-]*\s*<$/);
+            if (epTemplateMatch) {
+                const sourceDirectory = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+                try {
+                    const endpoints = await cliService.listEndpoints(sourceDirectory);
+                    return endpoints.filter(ep => ep.is_template).map(ep => {
+                        const item = new vscode.CompletionItem(ep.name, vscode.CompletionItemKind.Reference);
+                        item.detail = 'Endpoint template';
+                        item.insertText = ep.name;
+                        return item;
+                    });
+                } catch {
+                    return undefined;
+                }
+            }
 
             // Import directive completion without duplicating the keyword
             // Cases:
@@ -623,6 +641,7 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
     'v', // Trigger completion after final letter of 'env'
     'e', // Trigger completion after starting 'env'
     'p', // Trigger completion while typing 'ep'
-    'q'  // Trigger completion while typing 'rq'
-    ,')' // Trigger completion after closing parenthesis for rq semicolon suggestion
+    'q', // Trigger completion while typing 'rq'
+    ')', // Trigger completion after closing parenthesis for rq semicolon suggestion
+    '<'  // Trigger completion after < for ep template
 );

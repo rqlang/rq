@@ -598,6 +598,39 @@ impl RqClient {
             .ok_or_else(|| RqError::Validation(format!("Environment '{name}' not found")))
     }
 
+    pub fn list_endpoints(
+        source_path: &Path,
+    ) -> Result<Vec<super::rq_client_models::EndpointEntry>, RqError> {
+        let paths = Self::collect_paths(source_path)?;
+        let mut seen = HashSet::new();
+        let mut entries: Vec<super::rq_client_models::EndpointEntry> = Vec::new();
+
+        for path in &paths {
+            if let Ok(rq_file) = RqFile::from_path(path) {
+                for (name, ep) in &rq_file.endpoints {
+                    if seen.insert(name.clone()) {
+                        let file = ep
+                            .source_path
+                            .as_deref()
+                            .map(crate::core::paths::clean_path_str)
+                            .map(str::to_string)
+                            .unwrap_or_else(|| crate::core::paths::clean_path(&rq_file.path));
+                        entries.push(super::rq_client_models::EndpointEntry {
+                            name: name.clone(),
+                            file,
+                            line: ep.line,
+                            character: ep.character,
+                            is_template: ep.is_template,
+                        });
+                    }
+                }
+            }
+        }
+
+        entries.sort_by(|a, b| a.name.cmp(&b.name));
+        Ok(entries)
+    }
+
     pub fn get_endpoint(
         source_path: &Path,
         name: &str,
@@ -632,6 +665,7 @@ impl RqClient {
                         file,
                         line: ep.line,
                         character: ep.character,
+                        is_template: ep.is_template,
                     });
                 }
             }

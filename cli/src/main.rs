@@ -72,6 +72,9 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 }
             },
             Some(Commands::Ep(ep_command)) => match ep_command.command {
+                commands::ep::EpSubcommand::List(list_args) => {
+                    commands::ep::execute_list(&list_args)
+                }
                 commands::ep::EpSubcommand::Show(show_args) => {
                     commands::ep::execute_show(&show_args)
                 }

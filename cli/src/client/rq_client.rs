@@ -614,14 +614,15 @@ impl RqClient {
                     continue;
                 }
                 processed.insert(path.clone());
-                if let Ok(rq_file) = RqFile::from_path(&path) {
-                    for import in &rq_file.imported_files {
-                        if !processed.contains(import) {
-                            to_process.push(import.clone());
-                        }
+                let imports = RqFile::from_path_lenient(&path)
+                    .map(|f| f.imported_files)
+                    .unwrap_or_default();
+                for import in imports {
+                    if !processed.contains(&import) {
+                        to_process.push(import);
                     }
-                    file_paths.push(path);
                 }
+                file_paths.push(path);
             }
             file_paths
         } else {
@@ -629,7 +630,7 @@ impl RqClient {
         };
 
         for path in &paths {
-            if let Ok(rq_file) = RqFile::from_path(path) {
+            if let Some(rq_file) = RqFile::from_path_lenient(path) {
                 for (name, ep) in &rq_file.endpoints {
                     if seen.insert(name.clone()) {
                         let file = ep

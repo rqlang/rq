@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as cliService from './cliService';
 import { RequestExplorerProvider } from './requestExplorer';
 import { ConfigurationExplorerProvider } from './configurationExplorer';
-import { completionProvider, insideArrayLiteral } from './language/completionProvider';
+import { completionProvider, insideArrayLiteral, setEnvironmentProvider as setCompletionEnvironmentProvider } from './language/completionProvider';
 import { hoverProvider, setEnvironmentProvider as setHoverEnvironmentProvider } from './language/hoverProvider';
 import { definitionProvider, setEnvironmentProvider } from './language/definitionProvider';
 import { referenceProvider } from './language/referenceProvider';
@@ -75,6 +75,7 @@ export function activate(context: vscode.ExtensionContext) {
 
     setEnvironmentProvider(requestExplorerProvider);
     setHoverEnvironmentProvider(requestExplorerProvider);
+    setCompletionEnvironmentProvider(requestExplorerProvider);
 
     registerGetTokenCommand(context, rqOutputChannel);
     registerClearOAuthCacheCommand(context);

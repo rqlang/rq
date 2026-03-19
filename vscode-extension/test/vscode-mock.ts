@@ -55,6 +55,7 @@ export const languages = {
     registerDefinitionProvider: jest.fn(),
     registerHoverProvider: jest.fn(),
     registerCompletionItemProvider: jest.fn(),
+    registerSignatureHelpProvider: jest.fn(),
     registerReferenceProvider: jest.fn(),
     registerRenameProvider: jest.fn(),
     createDiagnosticCollection: jest.fn().mockReturnValue({
@@ -158,6 +159,23 @@ export class MarkdownString {
 
 export class Hover {
     constructor(public contents: any) {}
+}
+
+export class SignatureHelp {
+    signatures: SignatureInformation[] = [];
+    activeSignature = 0;
+    activeParameter = 0;
+}
+
+export class SignatureInformation {
+    parameters: ParameterInformation[] = [];
+    documentation?: any;
+    constructor(public label: string) {}
+}
+
+export class ParameterInformation {
+    documentation?: any;
+    constructor(public label: string | [number, number]) {}
 }
 
 export class Position {

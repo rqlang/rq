@@ -11,6 +11,14 @@ import {
     parseVariables
 } from './definitions';
 
+const COMMON_HEADERS = [
+    'Accept', 'Accept-Encoding', 'Accept-Language', 'Authorization',
+    'Cache-Control', 'Content-Length', 'Content-Type', 'Cookie',
+    'Host', 'If-Modified-Since', 'If-None-Match', 'Origin',
+    'Referer', 'User-Agent', 'X-Api-Key', 'X-Auth-Token',
+    'X-Correlation-Id', 'X-Forwarded-For', 'X-Request-Id',
+];
+
 // Helper: collect named properties already present in an rq(...) block text
 const collectRqNamed = (text: string): Set<string> => {
     const names = new Set<string>();
@@ -20,6 +28,41 @@ const collectRqNamed = (text: string): Set<string> => {
         names.add(m[1]);
     }
     return names;
+};
+
+export const insideArrayLiteral = (text: string): boolean => {
+    let depth = 0;
+    let inString = false;
+    let stringChar = '';
+    for (const ch of text) {
+        if (inString) {
+            if (ch === stringChar) { inString = false; }
+        } else {
+            if (ch === '"' || ch === "'") { inString = true; stringChar = ch; }
+            else if (ch === '[') { depth++; }
+            else if (ch === ']') { depth--; }
+        }
+    }
+    return depth > 0;
+};
+
+const insideEnvOrAuthBlock = (text: string): boolean => {
+    const re = /\b(env|auth)\s+\w+[^{]*\{/g;
+    let lastMatchEnd = -1;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text)) !== null) {
+        lastMatchEnd = m.index + m[0].length;
+    }
+    if (lastMatchEnd === -1) { return false; }
+    let depth = 1;
+    for (const ch of text.slice(lastMatchEnd)) {
+        if (ch === '{') { depth++; }
+        else if (ch === '}') {
+            depth--;
+            if (depth === 0) { return false; }
+        }
+    }
+    return depth > 0;
 };
 
 // Helper: collect named properties already present in an ep(...) block text
@@ -33,11 +76,65 @@ const collectEpNamed = (text: string): Set<string> => {
     return names;
 };
 
+const countPositionalArgs = (matchedText: string): number => {
+    const parenIdx = matchedText.indexOf('(');
+    if (parenIdx === -1) { return 0; }
+    const argsText = matchedText.slice(parenIdx + 1);
+    let depth = 0;
+    let inString = false;
+    let stringChar = '';
+    let positional = 0;
+    let segHasContent = false;
+    let segIsNamed = false;
+    for (const ch of argsText) {
+        if (inString) {
+            if (ch === stringChar) { inString = false; }
+            segHasContent = true;
+        } else if (ch === '"' || ch === "'") {
+            inString = true; stringChar = ch; segHasContent = true;
+        } else if (ch === '(' || ch === '[' || ch === '{') {
+            depth++; segHasContent = true;
+        } else if (ch === ')' || ch === ']' || ch === '}') {
+            if (depth > 0) { depth--; }
+        } else if (ch === ':' && depth === 0) {
+            segIsNamed = true;
+        } else if (ch === ',' && depth === 0) {
+            if (!segIsNamed && segHasContent) { positional++; }
+            segHasContent = false;
+            segIsNamed = false;
+        } else if (!/\s/.test(ch)) {
+            segHasContent = true;
+        }
+    }
+    return positional;
+};
+
+const builtinFunctionItems = (): vscode.CompletionItem[] => [
+    (() => {
+        const i = new vscode.CompletionItem('random.guid()', vscode.CompletionItemKind.Function);
+        i.detail = 'random.guid() → string';
+        i.insertText = 'random.guid()';
+        return i;
+    })(),
+    (() => {
+        const i = new vscode.CompletionItem('datetime.now()', vscode.CompletionItemKind.Function);
+        i.detail = 'datetime.now(format?: string) → string';
+        i.insertText = new vscode.SnippetString('datetime.now(${1:})');
+        return i;
+    })(),
+    (() => {
+        const i = new vscode.CompletionItem('io.read_file()', vscode.CompletionItemKind.Function);
+        i.detail = 'io.read_file(path: string) → string';
+        i.insertText = new vscode.SnippetString('io.read_file("${1:path}")');
+        return i;
+    })(),
+];
+
 export const completionProvider = vscode.languages.registerCompletionItemProvider(
     'rq',
     {
         async provideCompletionItems(document: vscode.TextDocument, position: vscode.Position) {
-            const linePrefix = document.lineAt(position).text.substr(0, position.character);
+            const linePrefix = document.lineAt(position).text.substring(0, position.character);
 
             // Endpoint template completion: ep name< -> list existing endpoints
             const epTemplateMatch = linePrefix.match(/^\s*ep\s+[a-zA-Z_][a-zA-Z0-9_-]*\s*<$/);
@@ -84,39 +181,89 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
                 }
             }
 
-            // Variable reference completion: let name = <cursor> -> suggest existing variables
+            // Variable reference completion: let name = <cursor> -> suggest existing variables + functions
             if (/^\s*let\s+[a-zA-Z_][a-zA-Z0-9_-]*\s*=\s*$/.test(linePrefix)) {
+                const suggestions: vscode.CompletionItem[] = [...builtinFunctionItems()];
                 try {
                     const variables = await cliService.listVariables(document.uri.fsPath);
-                    if (variables.length === 0) {
-                        return undefined;
-                    }
-                    return variables.map(v => {
+                    variables.forEach(v => {
                         const item = new vscode.CompletionItem(v.name, vscode.CompletionItemKind.Variable);
                         item.detail = v.value ? `= ${v.value}` : v.source;
                         item.insertText = `${v.name};`;
-                        return item;
+                        suggestions.push(item);
                     });
-                } catch {
-                    return undefined;
-                }
+                } catch { /* ignore */ }
+                return suggestions;
             }
 
-            // Variable interpolation completion: "{{<cursor> -> suggest variables for interpolation
-            if (/\{\{$/.test(linePrefix)) {
+            // Variable interpolation completion: inside {{ (with optional partial name already typed)
+            const interpolationMatch = linePrefix.match(/\{\{([a-zA-Z0-9_-]*)$/);
+            if (interpolationMatch) {
+                const partial = interpolationMatch[1];
+                let replaceRange: vscode.Range | undefined;
+                if (partial.length > 0) {
+                    const afterCursor = document.lineAt(position.line).text.substring(position.character);
+                    const trailingName = afterCursor.match(/^([a-zA-Z0-9_-]*)/)?.[1] ?? '';
+                    replaceRange = new vscode.Range(
+                        position.line, position.character - partial.length,
+                        position.line, position.character + trailingName.length
+                    );
+                }
                 try {
                     const variables = await cliService.listVariables(document.uri.fsPath);
-                    if (variables.length === 0) {
-                        return undefined;
+                    if (variables.length > 0) {
+                        return variables.map(v => {
+                            const item = new vscode.CompletionItem(v.name, vscode.CompletionItemKind.Variable);
+                            item.detail = v.value ? `= ${v.value}` : v.source;
+                            item.insertText = v.name;
+                            if (replaceRange) { item.range = replaceRange; }
+                            return item;
+                        });
                     }
-                    return variables.map(v => {
-                        const item = new vscode.CompletionItem(v.name, vscode.CompletionItemKind.Variable);
-                        item.detail = v.value ? `= ${v.value}` : v.source;
-                        item.insertText = v.name;
-                        return item;
-                    });
-                } catch {
-                    return undefined;
+                } catch { /* fall through to local variables */ }
+                const localVars = parseVariables(document);
+                return localVars.length > 0 ? localVars.map(v => {
+                    const item = new vscode.CompletionItem(v.name, vscode.CompletionItemKind.Variable);
+                    item.detail = `Variable (line ${v.line + 1})`;
+                    item.documentation = new vscode.MarkdownString(`Value: \`${v.value}\``);
+                    item.insertText = v.name;
+                    if (replaceRange) { item.range = replaceRange; }
+                    return item;
+                }) : undefined;
+            }
+
+            // Property value completion inside env/auth blocks
+            // Triggers when cursor is at the start of a value: `prop: ` or `prop: "`
+            if (/^\s*"?[a-zA-Z_][a-zA-Z0-9_-]*"?\s*:\s*"?$/.test(linePrefix)) {
+                const blockText = document.getText(new vscode.Range(
+                    new vscode.Position(Math.max(0, position.line - 30), 0),
+                    position
+                ));
+                if (insideEnvOrAuthBlock(blockText) || insideArrayLiteral(blockText)) {
+                    const suggestions: vscode.CompletionItem[] = [...builtinFunctionItems()];
+                    let gotRemoteVars = false;
+                    try {
+                        const variables = await cliService.listVariables(document.uri.fsPath);
+                        if (variables.length > 0) {
+                            gotRemoteVars = true;
+                            variables.forEach(v => {
+                                const item = new vscode.CompletionItem(v.name, vscode.CompletionItemKind.Variable);
+                                item.detail = v.value ? `= ${v.value}` : v.source;
+                                item.insertText = v.name;
+                                suggestions.push(item);
+                            });
+                        }
+                    } catch { /* fall through to local variables */ }
+                    if (!gotRemoteVars) {
+                        parseVariables(document).forEach(v => {
+                            const item = new vscode.CompletionItem(v.name, vscode.CompletionItemKind.Variable);
+                            item.detail = `Variable (line ${v.line + 1})`;
+                            item.documentation = new vscode.MarkdownString(`Value: \`${v.value}\``);
+                            item.insertText = v.name;
+                            suggestions.push(item);
+                        });
+                    }
+                    return suggestions;
                 }
             }
 
@@ -161,7 +308,7 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
                     }
 
                     // 1. String variable
-                    const strItem = new vscode.CompletionItem('let string', vscode.CompletionItemKind.Snippet);
+                    const strItem = new vscode.CompletionItem('let string', vscode.CompletionItemKind.Keyword);
                     strItem.detail = 'String variable';
                     strItem.documentation = new vscode.MarkdownString('Declare a string variable');
                     strItem.insertText = new vscode.SnippetString(`${prefixForNewDecl}\${1:name} = "\${2:value}"`);
@@ -169,7 +316,7 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
                     variants.push(strItem);
 
                     // 2. JSON object variable
-                    const jsonItem = new vscode.CompletionItem('let json', vscode.CompletionItemKind.Snippet);
+                    const jsonItem = new vscode.CompletionItem('let json', vscode.CompletionItemKind.Keyword);
                     jsonItem.detail = 'JSON object variable';
                     jsonItem.documentation = new vscode.MarkdownString('Declare a JSON object variable');
                     jsonItem.insertText = new vscode.SnippetString(`${prefixForNewDecl}\${1:name} = {\n    "\${2:key}": "\${3:value}"\n}`);
@@ -177,7 +324,7 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
                     variants.push(jsonItem);
 
                     // 3. Request URL variable
-                    const urlItem = new vscode.CompletionItem('let url', vscode.CompletionItemKind.Snippet);
+                    const urlItem = new vscode.CompletionItem('let url', vscode.CompletionItemKind.Keyword);
                     urlItem.detail = 'URL variable';
                     urlItem.documentation = new vscode.MarkdownString('Declare a URL variable');
                     urlItem.insertText = new vscode.SnippetString(`${prefixForNewDecl}\${1:base_url} = "https://api.example.com"`);
@@ -237,55 +384,43 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
             const rqMatch = textBeforeCursor.match(/\brq\s+\w+\s*\([^;]*$/s);
             if (rqMatch) {
                 const matchedText = rqMatch[0];
-                
-                // Determine if we're using named or unnamed parameters
-                // Named parameters have "property:" pattern
                 const hasNamedParams = /\b(url|headers|body|method)\s*:/.test(matchedText);
-                
-                // Count commas in the matched text to determine position
-                // More reliable: just count all commas not inside nested structures
-                let commaCount = 0;
-                let depth = 0;
-                let inString = false;
-                let stringChar = '';
-                
-                for (let i = 0; i < matchedText.length; i++) {
-                    const char = matchedText[i];
-                    const prevChar = i > 0 ? matchedText[i - 1] : '';
-                    
-                    // Track string boundaries
-                    if ((char === '"' || char === "'") && prevChar !== '\\') {
-                        if (!inString) {
-                            inString = true;
-                            stringChar = char;
-                        } else if (char === stringChar) {
-                            inString = false;
-                        }
-                    }
-                    
-                    // Track bracket/brace/paren depth
-                    if (!inString) {
-                        if (char === '(' || char === '[' || char === '{') {
-                            depth++;
-                        } else if (char === ')' || char === ']' || char === '}') {
-                            depth--;
-                        } else if (char === ',' && depth === 1) {
-                            // depth === 1 means we're inside the rq(...) but not in nested structures
-                            commaCount++;
-                        }
-                    }
-                }
-                
-                const unnamedParamCount = commaCount;
-                
-                // Check if we should suggest properties
                 const atStartOfParams = /\brq\s+\w+\s*\(\s*$/.test(linePrefix);
                 const afterComma = /,\s*$/.test(linePrefix);
-                const onNewLine = /^\s*$/.test(linePrefix) && rqMatch;
-                
-                if (atStartOfParams || afterComma || onNewLine) {
+                const onNewLine = /^\s*$/.test(linePrefix) && !!rqMatch;
+                const atNamedValue = /\b(url|headers|body|method)\s*:\s*$/.test(linePrefix);
+
+                if (atStartOfParams || afterComma || onNewLine || atNamedValue) {
+                    if (atNamedValue) {
+                        const suggestions: vscode.CompletionItem[] = [...builtinFunctionItems()];
+                        let gotRemoteVars = false;
+                        try {
+                            const variables = await cliService.listVariables(document.uri.fsPath);
+                            if (variables.length > 0) {
+                                gotRemoteVars = true;
+                                variables.forEach(v => {
+                                    const item = new vscode.CompletionItem(v.name, vscode.CompletionItemKind.Variable);
+                                    item.detail = v.value ? `= ${v.value}` : v.source;
+                                    item.insertText = v.name;
+                                    suggestions.push(item);
+                                });
+                            }
+                        } catch { /* ignore */ }
+                        if (!gotRemoteVars) {
+                            parseVariables(document).forEach(v => {
+                                const item = new vscode.CompletionItem(v.name, vscode.CompletionItemKind.Variable);
+                                item.detail = `Variable (line ${v.line + 1})`;
+                                item.insertText = v.name;
+                                suggestions.push(item);
+                            });
+                        }
+                        return suggestions;
+                    }
+
                     const existingNamed = collectRqNamed(matchedText);
-                    // If we have named parameters already, only suggest those not yet used
+                    const positionalCount = countPositionalArgs(matchedText);
+                    ['url', 'headers', 'body'].slice(0, positionalCount).forEach(p => existingNamed.add(p));
+
                     if (hasNamedParams) {
                         return REQUEST_PROPERTIES
                             .filter(p => !existingNamed.has(p.name))
@@ -295,160 +430,76 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
                                 item.documentation = new vscode.MarkdownString(
                                     `${prop.description}\n\n**Example:**\n\`\`\`rq\n${prop.example}\n\`\`\``
                                 );
-                                if (prop.name === 'headers') {
-                                    item.insertText = new vscode.SnippetString('headers: ["${1:key}": "${2:value}"]');
-                                } else if (prop.name === 'body') {
-                                    item.insertText = new vscode.SnippetString('body: \\${${1:}}');
-                                } else {
-                                    item.insertText = new vscode.SnippetString(prop.name + ': "${1:value}"');
-                                }
+                                item.insertText = prop.name + ': ';
                                 return item;
                             });
                     }
-                    
-                    // If we're at the start with no named params, suggest both styles
-                    if (atStartOfParams && !hasNamedParams) {
-                        const suggestions: vscode.CompletionItem[] = [];
-                        
-                        // Suggest unnamed URL parameter (first parameter)
-                        const urlUnnamed = new vscode.CompletionItem('"url"', vscode.CompletionItemKind.Value);
-                        urlUnnamed.detail = 'Unnamed URL parameter (position 1)';
-                        urlUnnamed.documentation = new vscode.MarkdownString(
-                            'First unnamed parameter is the URL\n\n**Example:**\n```rq\nrq name("https://api.example.com")\n```'
+
+                    const suggestions: vscode.CompletionItem[] = [...builtinFunctionItems()];
+                    try {
+                        const variables = await cliService.listVariables(document.uri.fsPath);
+                        variables.forEach(v => {
+                            const item = new vscode.CompletionItem(v.name, vscode.CompletionItemKind.Variable);
+                            item.detail = v.value ? `= ${v.value}` : v.source;
+                            item.insertText = v.name;
+                            suggestions.push(item);
+                        });
+                    } catch { /* ignore */ }
+                    REQUEST_PROPERTIES.forEach(prop => {
+                        if (existingNamed.has(prop.name)) { return; }
+                        const item = new vscode.CompletionItem(prop.name, vscode.CompletionItemKind.Property);
+                        item.detail = prop.signature + ' (named)';
+                        item.documentation = new vscode.MarkdownString(
+                            `${prop.description}\n\n**Example:**\n\`\`\`rq\n${prop.example}\n\`\`\``
                         );
-                        urlUnnamed.insertText = new vscode.SnippetString('"\${1:https://api.example.com}"');
-                        suggestions.push(urlUnnamed);
-                        
-                        // Also suggest named properties
-                        REQUEST_PROPERTIES.forEach(prop => {
-                            if (existingNamed.has(prop.name)) {return;} // skip duplicates
-                            const item = new vscode.CompletionItem(prop.name, vscode.CompletionItemKind.Property);
-                            item.detail = prop.signature + ' (named)';
-                            item.documentation = new vscode.MarkdownString(
-                                `${prop.description}\n\n**Example:**\n\`\`\`rq\n${prop.example}\n\`\`\``
-                            );
-                            if (prop.name === 'headers') {
-                                item.insertText = new vscode.SnippetString('headers: ["${1:key}": "${2:value}"]');
-                            } else if (prop.name === 'body') {
-                                item.insertText = new vscode.SnippetString('body: \\${${1:}}');
-                            } else {
-                                item.insertText = new vscode.SnippetString(prop.name + ': "${1:value}"');
-                            }
-                            suggestions.push(item);
-                        });
-                        
-                        return suggestions;
-                    }
-                    
-                    // After comma without named params - suggest what comes next
-                    if (afterComma && !hasNamedParams) {
-                        const suggestions: vscode.CompletionItem[] = [];
-                        
-                        // After first comma: suggest headers array (position 2)
-                        if (unnamedParamCount === 1) {
-                            const headersUnnamed = new vscode.CompletionItem('[ ]', vscode.CompletionItemKind.Value);
-                            headersUnnamed.detail = 'Unnamed headers array (position 2)';
-                            headersUnnamed.documentation = new vscode.MarkdownString(
-                                'Second unnamed parameter is the headers array\n\n**Example:**\n```rq\nrq name("url", ["Content-Type": "application/json"])\n```'
-                            );
-                            headersUnnamed.insertText = new vscode.SnippetString('["\${1:key}": "\${2:value}"]');
-                            headersUnnamed.sortText = '0'; // Make it appear first
-                            suggestions.push(headersUnnamed);
-                        }
-                        
-                        // After second comma: suggest body (position 3)
-                        if (unnamedParamCount === 2) {
-                            const bodyUnnamed = new vscode.CompletionItem('${ }', vscode.CompletionItemKind.Value);
-                            bodyUnnamed.detail = 'Unnamed body JSON object (position 3)';
-                            bodyUnnamed.documentation = new vscode.MarkdownString(
-                                'Third unnamed parameter is the request body as JSON (must start with $)\n\n**Examples:**\n```rq\nrq name("url", headers, ${"key": "value"})\nrq name("url", headers, "string body")\n```'
-                            );
-                            bodyUnnamed.insertText = new vscode.SnippetString('\\${\${1:}}');
-                            bodyUnnamed.sortText = '0';
-                            suggestions.push(bodyUnnamed);
-                            
-                            const bodyStringUnnamed = new vscode.CompletionItem('"string"', vscode.CompletionItemKind.Value);
-                            bodyStringUnnamed.detail = 'Unnamed body string (position 3)';
-                            bodyStringUnnamed.documentation = new vscode.MarkdownString(
-                                'Third unnamed parameter as a string\n\n**Example:**\n```rq\nrq name("url", headers, "body content")\n```'
-                            );
-                            bodyStringUnnamed.insertText = new vscode.SnippetString('"\${1:body}"');
-                            bodyStringUnnamed.sortText = '1';
-                            suggestions.push(bodyStringUnnamed);
-                        }
-                        
-                        // Can switch to named parameters at any point
-                        REQUEST_PROPERTIES.forEach(prop => {
-                            if (existingNamed.has(prop.name)) {return;}
-                            const item = new vscode.CompletionItem(prop.name, vscode.CompletionItemKind.Property);
-                            item.detail = prop.signature + ' (named)';
-                            item.documentation = new vscode.MarkdownString(
-                                `Switch to named parameters\n\n${prop.description}\n\n**Example:**\n\`\`\`rq\n${prop.example}\n\`\`\``
-                            );
-                            if (prop.name === 'headers') {
-                                item.insertText = new vscode.SnippetString('headers: ["${1:key}": "${2:value}"]');
-                            } else if (prop.name === 'body') {
-                                item.insertText = new vscode.SnippetString('body: \\${${1:}}');
-                            } else {
-                                item.insertText = new vscode.SnippetString(prop.name + ': "${1:value}"');
-                            }
-                            suggestions.push(item);
-                        });
-                        
-                        return suggestions;
-                    }
+                        item.insertText = prop.name + ': ';
+                        suggestions.push(item);
+                    });
+                    return suggestions;
                 }
             }
             
             // Check if we're inside an ep (endpoint) declaration
-            const epMatch = textBeforeCursor.match(/\bep\s+\w+\s*\([^{]*$/s);
+            const epMatch = textBeforeCursor.match(/\bep\s+\w+\s*\([^{;]*$/s);
             if (epMatch) {
                 const matchedText = epMatch[0];
-                
-                // Determine if we're using named or unnamed parameters
                 const hasNamedParams = /\b(url|headers|qs)\s*:/.test(matchedText);
-                
-                // Count commas to determine position
-                let commaCount = 0;
-                let depth = 0;
-                let inString = false;
-                let stringChar = '';
-                
-                for (let i = 0; i < matchedText.length; i++) {
-                    const char = matchedText[i];
-                    const prevChar = i > 0 ? matchedText[i - 1] : '';
-                    
-                    // Track string boundaries
-                    if ((char === '"' || char === "'") && prevChar !== '\\') {
-                        if (!inString) {
-                            inString = true;
-                            stringChar = char;
-                        } else if (char === stringChar) {
-                            inString = false;
-                        }
-                    }
-                    
-                    // Track bracket/brace/paren depth
-                    if (!inString) {
-                        if (char === '(' || char === '[' || char === '{') {
-                            depth++;
-                        } else if (char === ')' || char === ']' || char === '}') {
-                            depth--;
-                        } else if (char === ',' && depth === 1) {
-                            commaCount++;
-                        }
-                    }
-                }
-                
-                const unnamedParamCount = commaCount;
-                
-                // Check if we should suggest properties
                 const atStartOfParams = /\bep\s+\w+\s*\(\s*$/.test(linePrefix);
                 const afterComma = /,\s*$/.test(linePrefix);
-                const onNewLine = /^\s*$/.test(linePrefix) && epMatch;
-                
-                if (atStartOfParams || afterComma || onNewLine) {
+                const onNewLine = /^\s*$/.test(linePrefix) && !!epMatch;
+                const atNamedValue = /\b(url|headers|qs)\s*:\s*$/.test(linePrefix);
+
+                if (atStartOfParams || afterComma || onNewLine || atNamedValue) {
+                    if (atNamedValue) {
+                        const suggestions: vscode.CompletionItem[] = [...builtinFunctionItems()];
+                        let gotRemoteVars = false;
+                        try {
+                            const variables = await cliService.listVariables(document.uri.fsPath);
+                            if (variables.length > 0) {
+                                gotRemoteVars = true;
+                                variables.forEach(v => {
+                                    const item = new vscode.CompletionItem(v.name, vscode.CompletionItemKind.Variable);
+                                    item.detail = v.value ? `= ${v.value}` : v.source;
+                                    item.insertText = v.name;
+                                    suggestions.push(item);
+                                });
+                            }
+                        } catch { /* ignore */ }
+                        if (!gotRemoteVars) {
+                            parseVariables(document).forEach(v => {
+                                const item = new vscode.CompletionItem(v.name, vscode.CompletionItemKind.Variable);
+                                item.detail = `Variable (line ${v.line + 1})`;
+                                item.insertText = v.name;
+                                suggestions.push(item);
+                            });
+                        }
+                        return suggestions;
+                    }
+
                     const existingNamedEp = collectEpNamed(matchedText);
+                    const positionalCount = countPositionalArgs(matchedText);
+                    ['url', 'headers', 'qs'].slice(0, positionalCount).forEach(p => existingNamedEp.add(p));
+
                     if (hasNamedParams) {
                         return ENDPOINT_PROPERTIES
                             .filter(p => !existingNamedEp.has(p.name))
@@ -458,125 +509,62 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
                                 item.documentation = new vscode.MarkdownString(
                                     `${prop.description}\n\n**Example:**\n\`\`\`rq\n${prop.example}\n\`\`\``
                                 );
-                                if (prop.name === 'headers') {
-                                    item.insertText = new vscode.SnippetString('headers: ["${1:key}": "${2:value}"]');
-                                } else if (prop.name === 'qs') {
-                                    item.insertText = new vscode.SnippetString('qs: "${1:param}=${2:value}"');
-                                } else {
-                                    item.insertText = new vscode.SnippetString(prop.name + ': "${1:value}"');
-                                }
+                                item.insertText = prop.name + ': ';
                                 return item;
                             });
                     }
-                    
-                    // If we're at the start with no named params, suggest both styles
-                    if (atStartOfParams && !hasNamedParams) {
-                        const suggestions: vscode.CompletionItem[] = [];
-                        
-                        // Suggest unnamed URL parameter (first parameter)
-                        const urlUnnamed = new vscode.CompletionItem('"url"', vscode.CompletionItemKind.Value);
-                        urlUnnamed.detail = 'Unnamed URL parameter (position 1)';
-                        urlUnnamed.documentation = new vscode.MarkdownString(
-                            'First unnamed parameter is the base URL\n\n**Example:**\n```rq\nep api("https://api.example.com") { }\n```'
+
+                    const suggestions: vscode.CompletionItem[] = [...builtinFunctionItems()];
+                    try {
+                        const variables = await cliService.listVariables(document.uri.fsPath);
+                        variables.forEach(v => {
+                            const item = new vscode.CompletionItem(v.name, vscode.CompletionItemKind.Variable);
+                            item.detail = v.value ? `= ${v.value}` : v.source;
+                            item.insertText = v.name;
+                            suggestions.push(item);
+                        });
+                    } catch { /* ignore */ }
+                    ENDPOINT_PROPERTIES.forEach(prop => {
+                        if (existingNamedEp.has(prop.name)) { return; }
+                        const item = new vscode.CompletionItem(prop.name, vscode.CompletionItemKind.Property);
+                        item.detail = prop.signature + ' (named)';
+                        item.documentation = new vscode.MarkdownString(
+                            `${prop.description}\n\n**Example:**\n\`\`\`rq\n${prop.example}\n\`\`\``
                         );
-                        urlUnnamed.insertText = new vscode.SnippetString('"\${1:https://api.example.com}"');
-                        suggestions.push(urlUnnamed);
-                        
-                        // Also suggest named properties
-                        ENDPOINT_PROPERTIES.forEach(prop => {
-                            if (existingNamedEp.has(prop.name)) {return;}
-                            const item = new vscode.CompletionItem(prop.name, vscode.CompletionItemKind.Property);
-                            item.detail = prop.signature + ' (named)';
-                            item.documentation = new vscode.MarkdownString(
-                                `${prop.description}\n\n**Example:**\n\`\`\`rq\n${prop.example}\n\`\`\``
-                            );
-                            if (prop.name === 'headers') {
-                                item.insertText = new vscode.SnippetString('headers: ["${1:key}": "${2:value}"]');
-                            } else if (prop.name === 'qs') {
-                                item.insertText = new vscode.SnippetString('qs: "${1:param}=${2:value}"');
-                            } else {
-                                item.insertText = new vscode.SnippetString(prop.name + ': "${1:value}"');
-                            }
-                            suggestions.push(item);
-                        });
-                        
-                        return suggestions;
-                    }
-                    
-                    // After comma without named params - suggest what comes next
-                    if (afterComma && !hasNamedParams) {
-                        const suggestions: vscode.CompletionItem[] = [];
-                        
-                        // After first comma: suggest headers array (position 2)
-                        if (unnamedParamCount === 1) {
-                            const headersUnnamed = new vscode.CompletionItem('[ ]', vscode.CompletionItemKind.Value);
-                            headersUnnamed.detail = 'Unnamed headers array (position 2)';
-                            headersUnnamed.documentation = new vscode.MarkdownString(
-                                'Second unnamed parameter is the headers array\n\n**Example:**\n```rq\nep api("url", ["Authorization": "Bearer token"]) { }\n```'
-                            );
-                            headersUnnamed.insertText = new vscode.SnippetString('["\${1:key}": "\${2:value}"]');
-                            headersUnnamed.sortText = '0';
-                            suggestions.push(headersUnnamed);
-                        }
-                        
-                        // After second comma: suggest query string (position 3)
-                        if (unnamedParamCount === 2) {
-                            const qsUnnamed = new vscode.CompletionItem('"..."', vscode.CompletionItemKind.Value);
-                            qsUnnamed.detail = 'Unnamed query string (position 3)';
-                            qsUnnamed.documentation = new vscode.MarkdownString(
-                                'Third unnamed parameter is the query string\n\n**Example:**\n```rq\nep api("url", headers, "version=1") { }\n```'
-                            );
-                            qsUnnamed.insertText = new vscode.SnippetString('"\${1:param}=\${2:value}"');
-                            qsUnnamed.sortText = '0';
-                            suggestions.push(qsUnnamed);
-                        }
-                        
-                        // Can switch to named parameters at any point
-                        ENDPOINT_PROPERTIES.forEach(prop => {
-                            if (existingNamedEp.has(prop.name)) {return;}
-                            const item = new vscode.CompletionItem(prop.name, vscode.CompletionItemKind.Property);
-                            item.detail = prop.signature + ' (named)';
-                            item.documentation = new vscode.MarkdownString(
-                                `Switch to named parameters\n\n${prop.description}\n\n**Example:**\n\`\`\`rq\n${prop.example}\n\`\`\``
-                            );
-                            if (prop.name === 'headers') {
-                                item.insertText = new vscode.SnippetString('headers: ["${1:key}": "${2:value}"]');
-                            } else if (prop.name === 'qs') {
-                                item.insertText = new vscode.SnippetString('qs: "${1:param}=${2:value}"');
-                            } else {
-                                item.insertText = new vscode.SnippetString(prop.name + ': "${1:value}"');
-                            }
-                            suggestions.push(item);
-                        });
-                        
-                        return suggestions;
-                    }
+                        item.insertText = prop.name + ': ';
+                        suggestions.push(item);
+                    });
+                    return suggestions;
                 }
             }
             
-            // Check if we're inside {{ }} for variable interpolation
-            const line = document.lineAt(position).text;
-            const beforeCursor = line.substring(0, position.character);
-            const afterCursor = line.substring(position.character);
-            
-            // Check if we're between {{ and }}
-            const lastOpenBrace = beforeCursor.lastIndexOf('{{');
-            const lastCloseBrace = beforeCursor.lastIndexOf('}}');
-            const nextCloseBrace = afterCursor.indexOf('}}');
-            
-            if (lastOpenBrace > lastCloseBrace && nextCloseBrace !== -1) {
-                // We're inside {{ }}, suggest variables
-                const variables = parseVariables(document);
-                
-                return variables.map(variable => {
-                    const item = new vscode.CompletionItem(variable.name, vscode.CompletionItemKind.Variable);
-                    item.detail = `Variable (line ${variable.line + 1})`;
-                    item.documentation = new vscode.MarkdownString(`Value: \`${variable.value}\``);
-                    item.insertText = variable.name;
-                    return item;
-                });
+            // Header key completion inside array literals
+            const headerKeyMatch = linePrefix.match(/^\s*"?([a-zA-Z0-9_-]*)$/);
+            if (headerKeyMatch) {
+                const blockText = document.getText(new vscode.Range(
+                    new vscode.Position(Math.max(0, position.line - 30), 0),
+                    position
+                ));
+                if (insideArrayLiteral(blockText)) {
+                    const partial = headerKeyMatch[1];
+                    const hasOpenQuote = /["'][a-zA-Z0-9_-]*$/.test(linePrefix);
+                    const afterLine = document.lineAt(position.line).text.substring(position.character);
+                    const trailingKey = afterLine.match(/^([a-zA-Z0-9_-]*)/)?.[1] ?? '';
+                    const trailingQuote = hasOpenQuote && afterLine.charAt(trailingKey.length) === '"' ? 1 : 0;
+                    const replaceRange = new vscode.Range(
+                        position.line, position.character - partial.length - (hasOpenQuote ? 1 : 0),
+                        position.line, position.character + trailingKey.length + trailingQuote
+                    );
+                    return COMMON_HEADERS.map(header => {
+                        const item = new vscode.CompletionItem(header, vscode.CompletionItemKind.Value);
+                        item.detail = 'HTTP header';
+                        item.insertText = new vscode.SnippetString(`"${header}": "\${1:}"`);
+                        item.range = replaceRange;
+                        return item;
+                    });
+                }
             }
-            
+
             // Check if we're after "io."
             if (linePrefix.endsWith('io.')) {
                 return IO_FUNCTIONS.map(func => {
@@ -667,18 +655,54 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
                 return [sysItem, randomItem, datetimeItem];
             }
 
+            // Top-level keyword snippets — only on an empty/keyword-only line outside any block
+            if (/^\s*(rq|ep|env|auth|import|let)?$/.test(linePrefix)) {
+                const prevText = document.getText(new vscode.Range(new vscode.Position(0, 0), position));
+                const insideBlock = !!rqMatch || !!epMatch || insideEnvOrAuthBlock(prevText);
+                if (!insideBlock) {
+                    const snippets: vscode.CompletionItem[] = [
+                        (() => {
+                            const i = new vscode.CompletionItem('rq', vscode.CompletionItemKind.Keyword);
+                            i.detail = 'HTTP request';
+                            i.insertText = new vscode.SnippetString('rq ${1:request_name}("${2:https://api.example.com/endpoint}");');
+                            i.sortText = '0rq';
+                            return i;
+                        })(),
+                        (() => {
+                            const i = new vscode.CompletionItem('ep', vscode.CompletionItemKind.Keyword);
+                            i.detail = 'Endpoint block';
+                            i.insertText = new vscode.SnippetString('ep ${1:name}("${2:https://api.example.com}") {\n\trq ${3:request_name}("${4:path}");\n}');
+                            i.sortText = '0ep';
+                            return i;
+                        })(),
+                        (() => {
+                            const i = new vscode.CompletionItem('env', vscode.CompletionItemKind.Keyword);
+                            i.detail = 'Environment block';
+                            i.insertText = new vscode.SnippetString('env ${1:local} {\n\t${2:api_url}: "${3:http://localhost:8080}"\n}');
+                            i.sortText = '0env';
+                            return i;
+                        })(),
+                        (() => {
+                            const i = new vscode.CompletionItem('auth', vscode.CompletionItemKind.Keyword);
+                            i.detail = 'Auth block';
+                            i.insertText = new vscode.SnippetString('auth ${1:my_auth}(auth_type.bearer) {\n\ttoken: "${2:your-token}"\n}');
+                            i.sortText = '0auth';
+                            return i;
+                        })(),
+                        (() => {
+                            const i = new vscode.CompletionItem('import', vscode.CompletionItemKind.Keyword);
+                            i.detail = 'Import file';
+                            i.insertText = new vscode.SnippetString('import "${1:file}";');
+                            i.sortText = '0import';
+                            return i;
+                        })(),
+                    ];
+                    return snippets;
+                }
+            }
+
             return undefined;
         }
     },
-    '.', // Trigger completion after dot
-    '{', // Trigger completion after opening brace
-    ',', // Trigger completion after comma (for rq properties)
-    ' ', // Trigger completion after space (for rq/env/ep properties)
-    'v', // Trigger completion after final letter of 'env'
-    'e', // Trigger completion after starting 'env'
-    'p', // Trigger completion while typing 'ep'
-    'q', // Trigger completion while typing 'rq'
-    ')', // Trigger completion after closing parenthesis for rq semicolon suggestion
-    '<', // Trigger completion after < for ep template
-    '='  // Trigger completion after = for let variable assignment
+    '.', '{', '[', ',', ' ', 'v', 'e', 'p', 'q', ')', '<', '=', '"', ':', '('
 );

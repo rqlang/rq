@@ -203,7 +203,7 @@ describe('variable reference completion', () => {
 
         const items = await provideCompletionItems(doc, position);
 
-        expect(cliService.listVariables).toHaveBeenCalledWith('/workspace/current.rq');
+        expect(cliService.listVariables).toHaveBeenCalledWith('/workspace/current.rq', undefined);
         expect(items.find((i: any) => i.label === 'base_url')?.insertText).toBe('base_url;');
         expect(items.find((i: any) => i.label === 'base_url')?.detail).toBe('= http://localhost');
         expect(items.find((i: any) => i.label === 'token')).toBeDefined();
@@ -280,7 +280,7 @@ describe('variable interpolation completion', () => {
 
         const items = await provideCompletionItems(doc, position);
 
-        expect(cliService.listVariables).toHaveBeenCalledWith('/workspace/current.rq');
+        expect(cliService.listVariables).toHaveBeenCalledWith('/workspace/current.rq', undefined);
         expect(items).toHaveLength(2);
         expect(items[0].label).toBe('base_url');
         expect(items[0].insertText).toBe('base_url');

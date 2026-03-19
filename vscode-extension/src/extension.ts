@@ -92,7 +92,7 @@ export function activate(context: vscode.ExtensionContext) {
 
         const insertedLines = newlineChange.text.split('\n');
         const endsWithNewline = newlineChange.text.endsWith('\n');
-        const cursorLineOffset = endsWithNewline ? insertedLines.length - 2 : insertedLines.length - 1;
+        const cursorLineOffset = (endsWithNewline && insertedLines.length > 2) ? insertedLines.length - 2 : insertedLines.length - 1;
         const cursorLine = newlineChange.range.start.line + cursorLineOffset;
         if (cursorLine === 0) { return; }
 

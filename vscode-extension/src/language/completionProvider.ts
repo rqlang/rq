@@ -193,7 +193,7 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
                         suggestions.push(item);
                     });
                 } catch { /* ignore */ }
-                return suggestions.length > 0 ? suggestions : undefined;
+                return suggestions;
             }
 
             // Variable interpolation completion: inside {{ (with optional partial name already typed)

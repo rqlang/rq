@@ -67,7 +67,7 @@ export const signatureHelpProvider = vscode.languages.registerSignatureHelpProvi
                 position
             ));
 
-            const rqMatch = textBeforeCursor.match(/\brq\s+(\w+)\s*\(([^;]*)$/s);
+            const rqMatch = textBeforeCursor.match(/\brq\s+([a-zA-Z_][a-zA-Z0-9_-]*)\s*\(([^;]*)$/s);
             if (rqMatch) {
                 const sig = buildSignature('rq', rqMatch[1], ['url', 'headers?', 'body?']);
                 const help = new vscode.SignatureHelp();
@@ -77,7 +77,7 @@ export const signatureHelpProvider = vscode.languages.registerSignatureHelpProvi
                 return help;
             }
 
-            const epMatch = textBeforeCursor.match(/\bep\s+(\w+)\s*\(([^{;]*)$/s);
+            const epMatch = textBeforeCursor.match(/\bep\s+([a-zA-Z_][a-zA-Z0-9_-]*)\s*\(([^{;]*)$/s);
             if (epMatch) {
                 const sig = buildSignature('ep', epMatch[1], ['url', 'headers?', 'qs?']);
                 const help = new vscode.SignatureHelp();

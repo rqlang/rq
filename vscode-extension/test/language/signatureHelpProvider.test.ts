@@ -161,6 +161,15 @@ describe('signatureHelpProvider', () => {
             const result = provideSignatureHelp(doc, pos);
             expect(result).toBeUndefined();
         });
+
+        test('triggers for hyphenated rq name', () => {
+            const text = 'rq get-users(';
+            const doc = makeDocument(text);
+            const pos = makePosition(text);
+            const result = provideSignatureHelp(doc, pos);
+            expect(result).toBeDefined();
+            expect(result.signatures[0].label).toBe('rq get-users(url, headers?, body?)');
+        });
     });
 
     describe('ep statements', () => {
@@ -204,6 +213,15 @@ describe('signatureHelpProvider', () => {
             const pos = makePosition(text);
             const result = provideSignatureHelp(doc, pos);
             expect(result?.signatures[0].label).toMatch(/^rq get/);
+        });
+
+        test('triggers for hyphenated ep name', () => {
+            const text = 'ep my-api(';
+            const doc = makeDocument(text);
+            const pos = makePosition(text);
+            const result = provideSignatureHelp(doc, pos);
+            expect(result).toBeDefined();
+            expect(result.signatures[0].label).toBe('ep my-api(url, headers?, qs?)');
         });
     });
 

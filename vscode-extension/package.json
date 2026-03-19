@@ -119,6 +119,12 @@
         "icon": "$(run-with-deps)"
       }
     ],
+    "configurationDefaults": {
+      "[rq]": {
+        "editor.snippetSuggestions": "none",
+        "editor.wordBasedSuggestions": "off"
+      }
+    },
     "configuration": {
       "title": "RQ",
       "properties": {}

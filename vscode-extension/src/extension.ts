@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as cliService from './cliService';
 import { RequestExplorerProvider } from './requestExplorer';
 import { ConfigurationExplorerProvider } from './configurationExplorer';
-import { completionProvider } from './language/completionProvider';
+import { completionProvider, insideArrayLiteral } from './language/completionProvider';
 import { hoverProvider, setEnvironmentProvider as setHoverEnvironmentProvider } from './language/hoverProvider';
 import { definitionProvider, setEnvironmentProvider } from './language/definitionProvider';
 import { referenceProvider } from './language/referenceProvider';
@@ -82,7 +82,34 @@ export function activate(context: vscode.ExtensionContext) {
     // Note: OAuth sessions are not cached in VS Code's authentication API
     // Each "Get Token" command executes a fresh OAuth flow using CLI configuration
 
-    context.subscriptions.push(completionProvider, hoverProvider, definitionProvider, referenceProvider, renameProvider, signatureHelpProvider);
+    const headerArrayNewlineTrigger = vscode.workspace.onDidChangeTextDocument(event => {
+        if (event.document.languageId !== 'rq') { return; }
+        const editor = vscode.window.activeTextEditor;
+        if (!editor || editor.document !== event.document) { return; }
+
+        const newlineChange = event.contentChanges.find(c => c.text.includes('\n'));
+        if (!newlineChange) { return; }
+
+        const insertedLines = newlineChange.text.split('\n');
+        const endsWithNewline = newlineChange.text.endsWith('\n');
+        const cursorLineOffset = endsWithNewline ? insertedLines.length - 2 : insertedLines.length - 1;
+        const cursorLine = newlineChange.range.start.line + cursorLineOffset;
+        if (cursorLine === 0) { return; }
+
+        const cursorLineText = event.document.lineAt(cursorLine).text;
+        if (cursorLineText.trim() !== '') { return; }
+
+        const cursorPosition = new vscode.Position(cursorLine, cursorLineText.length);
+        const blockText = event.document.getText(new vscode.Range(
+            new vscode.Position(Math.max(0, cursorLine - 30), 0),
+            cursorPosition
+        ));
+        if (insideArrayLiteral(blockText)) {
+            setTimeout(() => vscode.commands.executeCommand('editor.action.triggerSuggest'), 50);
+        }
+    });
+
+    context.subscriptions.push(completionProvider, hoverProvider, definitionProvider, referenceProvider, renameProvider, signatureHelpProvider, headerArrayNewlineTrigger);
 }
 
 

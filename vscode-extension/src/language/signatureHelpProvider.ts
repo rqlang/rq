@@ -77,7 +77,7 @@ export const signatureHelpProvider = vscode.languages.registerSignatureHelpProvi
                 return help;
             }
 
-            const epMatch = textBeforeCursor.match(/\bep\s+(\w+)\s*\(([^{]*)$/s);
+            const epMatch = textBeforeCursor.match(/\bep\s+(\w+)\s*\(([^{;]*)$/s);
             if (epMatch) {
                 const sig = buildSignature('ep', epMatch[1], ['url', 'headers?', 'qs?']);
                 const help = new vscode.SignatureHelp();

@@ -197,6 +197,14 @@ describe('signatureHelpProvider', () => {
             const result = provideSignatureHelp(doc, pos);
             expect(result?.signatures[0].label).toMatch(/^rq req/);
         });
+
+        test('returns undefined after semicolon-terminated ep declaration', () => {
+            const text = 'ep base("http://localhost:8080");\nrq get(';
+            const doc = makeDocument(text);
+            const pos = makePosition(text);
+            const result = provideSignatureHelp(doc, pos);
+            expect(result?.signatures[0].label).toMatch(/^rq get/);
+        });
     });
 
     describe('parameter label offsets', () => {

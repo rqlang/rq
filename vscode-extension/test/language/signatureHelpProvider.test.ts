@@ -1,6 +1,5 @@
 import * as vscode from 'vscode';
 import { getActiveParam } from '../../src/language/signatureHelpProvider';
-import '../../src/language/signatureHelpProvider';
 
 function makeDocument(text: string) {
     const lines = text.split('\n');

@@ -204,11 +204,9 @@ describe('variable reference completion', () => {
         const items = await provideCompletionItems(doc, position);
 
         expect(cliService.listVariables).toHaveBeenCalledWith('/workspace/current.rq');
-        expect(items).toHaveLength(2);
-        expect(items[0].label).toBe('base_url');
-        expect(items[0].insertText).toBe('base_url;');
-        expect(items[0].detail).toBe('= http://localhost');
-        expect(items[1].label).toBe('token');
+        expect(items.find((i: any) => i.label === 'base_url')?.insertText).toBe('base_url;');
+        expect(items.find((i: any) => i.label === 'base_url')?.detail).toBe('= http://localhost');
+        expect(items.find((i: any) => i.label === 'token')).toBeDefined();
     });
 
     test('uses source as detail when value is empty', async () => {
@@ -221,11 +219,10 @@ describe('variable reference completion', () => {
 
         const items = await provideCompletionItems(doc, position);
 
-        expect(items).toHaveLength(1);
-        expect(items[0].detail).toBe('let');
+        expect(items.find((i: any) => i.label === 'my_var')?.detail).toBe('let');
     });
 
-    test('returns undefined when no variables exist', async () => {
+    test('returns builtin functions even when no variables exist', async () => {
         (cliService.listVariables as jest.Mock).mockResolvedValue([]);
 
         const doc = makeDocument(['let a = ']);
@@ -233,10 +230,10 @@ describe('variable reference completion', () => {
 
         const items = await provideCompletionItems(doc, position);
 
-        expect(items).toBeUndefined();
+        expect(items.some((i: any) => i.label === 'random.guid()')).toBe(true);
     });
 
-    test('returns undefined when listVariables throws', async () => {
+    test('returns builtin functions when listVariables throws', async () => {
         (cliService.listVariables as jest.Mock).mockRejectedValue(new Error('CLI error'));
 
         const doc = makeDocument(['let a = ']);
@@ -244,7 +241,7 @@ describe('variable reference completion', () => {
 
         const items = await provideCompletionItems(doc, position);
 
-        expect(items).toBeUndefined();
+        expect(items.some((i: any) => i.label === 'random.guid()')).toBe(true);
     });
 
     test('triggers for hyphenated variable names', async () => {
@@ -258,7 +255,7 @@ describe('variable reference completion', () => {
         const items = await provideCompletionItems(doc, position);
 
         expect(cliService.listVariables).toHaveBeenCalled();
-        expect(items).toHaveLength(1);
+        expect(items.find((i: any) => i.label === 'base_url')).toBeDefined();
     });
 
     test('does not trigger when not a let assignment', async () => {
@@ -342,10 +339,8 @@ describe('env/auth block property value completion', () => {
 
         const items = await provideCompletionItems(doc, position);
 
-        expect(items).toHaveLength(2);
-        expect(items[0].label).toBe('base_url');
-        expect(items[0].insertText).toBe('base_url');
-        expect(items[1].insertText).toBe('token');
+        expect(items.find((i: any) => i.label === 'base_url')?.insertText).toBe('base_url');
+        expect(items.find((i: any) => i.label === 'token')?.insertText).toBe('token');
     });
 
     test('suggests variables in env block after prop: (space, no quote)', async () => {
@@ -357,8 +352,7 @@ describe('env/auth block property value completion', () => {
 
         const items = await provideCompletionItems(doc, position);
 
-        expect(items).toHaveLength(2);
-        expect(items[0].insertText).toBe('base_url');
+        expect(items.find((i: any) => i.label === 'base_url')?.insertText).toBe('base_url');
     });
 
     test('suggests variables in auth block after prop: "', async () => {
@@ -370,8 +364,7 @@ describe('env/auth block property value completion', () => {
 
         const items = await provideCompletionItems(doc, position);
 
-        expect(items).toHaveLength(2);
-        expect(items[0].insertText).toBe('base_url');
+        expect(items.find((i: any) => i.label === 'base_url')?.insertText).toBe('base_url');
     });
 
     test('uses detail from value field', async () => {
@@ -383,8 +376,8 @@ describe('env/auth block property value completion', () => {
 
         const items = await provideCompletionItems(doc, position);
 
-        expect(items[0].detail).toBe('= http://localhost');
-        expect(items[1].detail).toBe('= abc123');
+        expect(items.find((i: any) => i.label === 'base_url')?.detail).toBe('= http://localhost');
+        expect(items.find((i: any) => i.label === 'token')?.detail).toBe('= abc123');
     });
 
     test('does not trigger when value already has content', async () => {
@@ -420,8 +413,7 @@ describe('env/auth block property value completion', () => {
 
         const items = await provideCompletionItems(doc, position);
 
-        expect(items).toHaveLength(2);
-        expect(items[0].insertText).toBe('base_url');
+        expect(items.find((i: any) => i.label === 'base_url')?.insertText).toBe('base_url');
     });
 
     test('suggests variables inside array literal key-value', async () => {
@@ -433,33 +425,29 @@ describe('env/auth block property value completion', () => {
 
         const items = await provideCompletionItems(doc, position);
 
-        expect(items).toHaveLength(2);
-        expect(items[0].insertText).toBe('base_url');
+        expect(items.find((i: any) => i.label === 'base_url')?.insertText).toBe('base_url');
     });
 });
 
 describe('header key completion', () => {
-    test('suggests common HTTP headers after [ opening', async () => {
+    test('does not suggest headers on same line immediately after [', async () => {
         const lines = ['let my_h = ['];
         const doc = makeDocument(lines);
         const position = new vscode.Position(0, lines[0].length);
 
         const items = await provideCompletionItems(doc, position);
 
-        expect(items).not.toBeUndefined();
-        expect(items.some((i: any) => i.label === 'Content-Type')).toBe(true);
-        expect(items.find((i: any) => i.label === 'Content-Type').insertText.value).toBe('"Content-Type": "${1:}"');
+        expect(items === undefined || !items.some((i: any) => i.label === 'Content-Type')).toBe(true);
     });
 
-    test('suggests headers after opening quote in array', async () => {
+    test('does not suggest headers on same line after opening quote in [', async () => {
         const lines = ['let my_h = ["'];
         const doc = makeDocument(lines);
         const position = new vscode.Position(0, lines[0].length);
 
         const items = await provideCompletionItems(doc, position);
 
-        expect(items).not.toBeUndefined();
-        expect(items.find((i: any) => i.label === 'Authorization').insertText.value).toBe('"Authorization": "${1:}"');
+        expect(items === undefined || !items.some((i: any) => i.label === 'Authorization')).toBe(true);
     });
 
     test('suggests headers on blank new line inside array (after pressing Enter)', async () => {
@@ -495,8 +483,6 @@ describe('header key completion', () => {
 
         const items = await provideCompletionItems(doc, position);
 
-        expect(items).toHaveLength(1);
-        expect(items[0].label).toBe('base_url');
-        expect(items[0].insertText).toBe('base_url');
+        expect(items.find((i: any) => i.label === 'base_url')?.insertText).toBe('base_url');
     });
 });

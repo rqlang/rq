@@ -486,3 +486,163 @@ describe('header key completion', () => {
         expect(items.find((i: any) => i.label === 'base_url')?.insertText).toBe('base_url');
     });
 });
+
+describe('auth keyword snippets', () => {
+    test('suggests bearer auth snippet on empty line', async () => {
+        const doc = makeDocument(['']);
+        const position = new vscode.Position(0, 0);
+
+        const items = await provideCompletionItems(doc, position);
+
+        const bearer = items.find((i: any) => i.label === 'auth bearer');
+        expect(bearer).toBeDefined();
+        expect(bearer.detail).toBe('Auth block — Bearer Token');
+        expect(bearer.insertText.value).toContain('auth_type.bearer');
+        expect(bearer.insertText.value).toContain('token:');
+    });
+
+    test('suggests oauth2_client_credentials client_secret snippet on empty line', async () => {
+        const doc = makeDocument(['']);
+        const position = new vscode.Position(0, 0);
+
+        const items = await provideCompletionItems(doc, position);
+
+        const target = items.find((i: any) => i.label === 'auth oauth2_client_credentials (client_secret)');
+        expect(target).toBeDefined();
+        expect(target.detail).toBe('Auth block — OAuth2 Client Credentials (client secret)');
+        expect(target.insertText.value).toContain('auth_type.oauth2_client_credentials');
+        expect(target.insertText.value).toContain('client_secret:');
+        expect(target.insertText.value).toContain('token_url:');
+    });
+
+    test('suggests oauth2_client_credentials cert_file snippet on empty line', async () => {
+        const doc = makeDocument(['']);
+        const position = new vscode.Position(0, 0);
+
+        const items = await provideCompletionItems(doc, position);
+
+        const target = items.find((i: any) => i.label === 'auth oauth2_client_credentials (cert_file)');
+        expect(target).toBeDefined();
+        expect(target.detail).toBe('Auth block — OAuth2 Client Credentials (certificate)');
+        expect(target.insertText.value).toContain('auth_type.oauth2_client_credentials');
+        expect(target.insertText.value).toContain('cert_file:');
+        expect(target.insertText.value).toContain('token_url:');
+    });
+
+    test('suggests oauth2_authorization_code auth snippet on empty line', async () => {
+        const doc = makeDocument(['']);
+        const position = new vscode.Position(0, 0);
+
+        const items = await provideCompletionItems(doc, position);
+
+        const target = items.find((i: any) => i.label === 'auth oauth2_authorization_code');
+        expect(target).toBeDefined();
+        expect(target.detail).toBe('Auth block — OAuth2 Authorization Code with PKCE');
+        expect(target.insertText.value).toContain('auth_type.oauth2_authorization_code');
+        expect(target.insertText.value).toContain('client_id:');
+        expect(target.insertText.value).toContain('authorization_url:');
+        expect(target.insertText.value).toContain('token_url:');
+    });
+
+    test('suggests oauth2_implicit auth snippet on empty line', async () => {
+        const doc = makeDocument(['']);
+        const position = new vscode.Position(0, 0);
+
+        const items = await provideCompletionItems(doc, position);
+
+        const target = items.find((i: any) => i.label === 'auth oauth2_implicit');
+        expect(target).toBeDefined();
+        expect(target.detail).toBe('Auth block — OAuth2 Implicit Flow');
+        expect(target.insertText.value).toContain('auth_type.oauth2_implicit');
+        expect(target.insertText.value).toContain('client_id:');
+        expect(target.insertText.value).toContain('authorization_url:');
+        expect(target.insertText.value).toContain('scope:');
+    });
+});
+
+describe('auth block property name completion', () => {
+    test('suggests all bearer properties on empty line inside bearer block', async () => {
+        const lines = ['auth my_auth(auth_type.bearer) {', '    '];
+        const doc = makeDocument(lines);
+        const position = new vscode.Position(1, lines[1].length);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items.find((i: any) => i.label === 'token')).toBeDefined();
+    });
+
+    test('suggests required oauth2_client_credentials properties', async () => {
+        const lines = ['auth my_auth(auth_type.oauth2_client_credentials) {', '    '];
+        const doc = makeDocument(lines);
+        const position = new vscode.Position(1, lines[1].length);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items.find((i: any) => i.label === 'client_id')?.detail).toBe('required');
+        expect(items.find((i: any) => i.label === 'token_url')?.detail).toBe('required');
+        expect(items.find((i: any) => i.label === 'client_secret')?.detail).toBe('optional');
+        expect(items.find((i: any) => i.label === 'scope')?.detail).toBe('optional');
+    });
+
+    test('excludes already defined properties', async () => {
+        const lines = [
+            'auth my_auth(auth_type.oauth2_client_credentials) {',
+            '    client_id: "my-id",',
+            '    '
+        ];
+        const doc = makeDocument(lines);
+        const position = new vscode.Position(2, lines[2].length);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items.find((i: any) => i.label === 'client_id')).toBeUndefined();
+        expect(items.find((i: any) => i.label === 'token_url')).toBeDefined();
+    });
+
+    test('suggests oauth2_authorization_code properties', async () => {
+        const lines = ['auth my_auth(auth_type.oauth2_authorization_code) {', '    '];
+        const doc = makeDocument(lines);
+        const position = new vscode.Position(1, lines[1].length);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items.find((i: any) => i.label === 'client_id')).toBeDefined();
+        expect(items.find((i: any) => i.label === 'authorization_url')).toBeDefined();
+        expect(items.find((i: any) => i.label === 'token_url')).toBeDefined();
+        expect(items.find((i: any) => i.label === 'scope')).toBeDefined();
+        expect(items.find((i: any) => i.label === 'code_challenge_method')).toBeDefined();
+    });
+
+    test('suggests oauth2_implicit properties', async () => {
+        const lines = ['auth my_auth(auth_type.oauth2_implicit) {', '    '];
+        const doc = makeDocument(lines);
+        const position = new vscode.Position(1, lines[1].length);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items.find((i: any) => i.label === 'client_id')).toBeDefined();
+        expect(items.find((i: any) => i.label === 'authorization_url')).toBeDefined();
+        expect(items.find((i: any) => i.label === 'scope')).toBeDefined();
+    });
+
+    test('does not trigger outside an auth block', async () => {
+        const lines = ['env dev {', '    '];
+        const doc = makeDocument(lines);
+        const position = new vscode.Position(1, lines[1].length);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items?.find((i: any) => i.label === 'token')).toBeUndefined();
+    });
+
+    test('triggers on blank new line after enter (newline trigger)', async () => {
+        const lines = ['auth my_auth(auth_type.oauth2_client_credentials) {', '    client_id: "my-id",', '    '];
+        const doc = makeDocument(lines);
+        const position = new vscode.Position(2, lines[2].length);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items.find((i: any) => i.label === 'token_url')).toBeDefined();
+        expect(items.find((i: any) => i.label === 'client_id')).toBeUndefined();
+    });
+});

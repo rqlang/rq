@@ -52,6 +52,58 @@ export const insideArrayLiteral = (text: string): boolean => {
     return depth > 0;
 };
 
+const AUTH_PROPERTIES: Record<string, { name: string; required: boolean }[]> = {
+    bearer: [
+        { name: 'token', required: true },
+    ],
+    oauth2_client_credentials: [
+        { name: 'client_id', required: true },
+        { name: 'token_url', required: true },
+        { name: 'client_secret', required: false },
+        { name: 'cert_file', required: false },
+        { name: 'cert_password', required: false },
+        { name: 'scope', required: false },
+    ],
+    oauth2_authorization_code: [
+        { name: 'client_id', required: true },
+        { name: 'authorization_url', required: true },
+        { name: 'token_url', required: true },
+        { name: 'scope', required: false },
+        { name: 'code_challenge_method', required: false },
+    ],
+    oauth2_implicit: [
+        { name: 'client_id', required: true },
+        { name: 'authorization_url', required: true },
+        { name: 'scope', required: false },
+    ],
+};
+
+const getActiveAuthBlock = (text: string): { authType: string; definedProps: Set<string> } | null => {
+    const headerRe = /\bauth\s+\w+\s*\(\s*auth_type\.(\w+)\s*\)\s*\{/g;
+    let lastMatch: { authType: string; contentStart: number } | null = null;
+    let m: RegExpExecArray | null;
+    while ((m = headerRe.exec(text)) !== null) {
+        lastMatch = { authType: m[1], contentStart: m.index + m[0].length };
+    }
+    if (!lastMatch) { return null; }
+    const blockContent = text.slice(lastMatch.contentStart);
+    let depth = 1;
+    for (const ch of blockContent) {
+        if (ch === '{') { depth++; }
+        else if (ch === '}') {
+            depth--;
+            if (depth === 0) { return null; }
+        }
+    }
+    const definedProps = new Set<string>();
+    const propRe = /^\s*(\w+)\s*:/gm;
+    let pm: RegExpExecArray | null;
+    while ((pm = propRe.exec(blockContent)) !== null) {
+        definedProps.add(pm[1]);
+    }
+    return { authType: lastMatch.authType, definedProps };
+};
+
 const insideEnvOrAuthBlock = (text: string): boolean => {
     const re = /\b(env|auth)\s+\w+[^{]*\{/g;
     let lastMatchEnd = -1;
@@ -270,6 +322,29 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
                         });
                     }
                     return suggestions;
+                }
+            }
+
+            // Auth property name completion inside auth blocks
+            if (/^\s*\w*$/.test(linePrefix)) {
+                const blockText = document.getText(new vscode.Range(
+                    new vscode.Position(Math.max(0, position.line - 50), 0),
+                    position
+                ));
+                const authBlock = getActiveAuthBlock(blockText);
+                if (authBlock) {
+                    const props = AUTH_PROPERTIES[authBlock.authType];
+                    if (props) {
+                        return props
+                            .filter(p => !authBlock.definedProps.has(p.name))
+                            .map(p => {
+                                const item = new vscode.CompletionItem(p.name, vscode.CompletionItemKind.Property);
+                                item.detail = p.required ? 'required' : 'optional';
+                                item.insertText = new vscode.SnippetString(`${p.name}: "\${1:}"`);
+                                item.sortText = p.required ? `0${p.name}` : `1${p.name}`;
+                                return item;
+                            });
+                    }
                 }
             }
 
@@ -691,8 +766,43 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
                         (() => {
                             const i = new vscode.CompletionItem('auth', vscode.CompletionItemKind.Keyword);
                             i.detail = 'Auth block';
-                            i.insertText = new vscode.SnippetString('auth ${1:my_auth}(auth_type.bearer) {\n\ttoken: "${2:your-token}"\n}');
+                            i.insertText = new vscode.SnippetString('auth ${1:my_auth}(auth_type.${2}) {\n\t${3}\n}');
                             i.sortText = '0auth';
+                            return i;
+                        })(),
+                        (() => {
+                            const i = new vscode.CompletionItem('auth bearer', vscode.CompletionItemKind.Keyword);
+                            i.detail = 'Auth block — Bearer Token';
+                            i.insertText = new vscode.SnippetString('auth ${1:my_auth}(auth_type.bearer) {\n\ttoken: "${2:}"\n}');
+                            i.sortText = '0auth_bearer';
+                            return i;
+                        })(),
+                        (() => {
+                            const i = new vscode.CompletionItem('auth oauth2_client_credentials (client_secret)', vscode.CompletionItemKind.Keyword);
+                            i.detail = 'Auth block — OAuth2 Client Credentials (client secret)';
+                            i.insertText = new vscode.SnippetString('auth ${1:my_auth}(auth_type.oauth2_client_credentials) {\n\tclient_id: "${2:}",\n\tclient_secret: "${3:}",\n\ttoken_url: "${4:}",\n\tscope: "${5:}"\n}');
+                            i.sortText = '0auth_client_credentials_secret';
+                            return i;
+                        })(),
+                        (() => {
+                            const i = new vscode.CompletionItem('auth oauth2_client_credentials (cert_file)', vscode.CompletionItemKind.Keyword);
+                            i.detail = 'Auth block — OAuth2 Client Credentials (certificate)';
+                            i.insertText = new vscode.SnippetString('auth ${1:my_auth}(auth_type.oauth2_client_credentials) {\n\tclient_id: "${2:}",\n\tcert_file: "${3:}",\n\tcert_password: "${4:}",\n\ttoken_url: "${5:}",\n\tscope: "${6:}"\n}');
+                            i.sortText = '0auth_client_credentials_cert';
+                            return i;
+                        })(),
+                        (() => {
+                            const i = new vscode.CompletionItem('auth oauth2_authorization_code', vscode.CompletionItemKind.Keyword);
+                            i.detail = 'Auth block — OAuth2 Authorization Code with PKCE';
+                            i.insertText = new vscode.SnippetString('auth ${1:my_auth}(auth_type.oauth2_authorization_code) {\n\tclient_id: "${2:}",\n\tauthorization_url: "${3:}",\n\ttoken_url: "${4:}",\n\tscope: "${5:}"\n}');
+                            i.sortText = '0auth_authorization_code';
+                            return i;
+                        })(),
+                        (() => {
+                            const i = new vscode.CompletionItem('auth oauth2_implicit', vscode.CompletionItemKind.Keyword);
+                            i.detail = 'Auth block — OAuth2 Implicit Flow';
+                            i.insertText = new vscode.SnippetString('auth ${1:my_auth}(auth_type.oauth2_implicit) {\n\tclient_id: "${2:}",\n\tauthorization_url: "${3:}",\n\tscope: "${4:}"\n}');
+                            i.sortText = '0auth_implicit';
                             return i;
                         })(),
                         (() => {
@@ -710,5 +820,5 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
             return undefined;
         }
     },
-    '.', '{', '[', ',', ' ', 'v', 'e', 'p', 'q', ')', '<', '=', '"', ':', '('
+    '.', '{', '[', ',', ' ', 'v', 'e', 'p', 'q', ')', '<', '=', '"', ':', '(', '\n'
 );

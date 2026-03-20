@@ -725,7 +725,7 @@ This flow always performs a `client_credentials` grant against `token_url` and t
 	- `client_secret`: Client secret, when required by the authorization server.
 	- `redirect_uri`: Redirect URI registered for the client. If omitted, rq will default to `vscode://rq-lang.rq-language/oauth-callback` to integrate with the VS Code extension flow (see the explanation in [VSCODE_EXTENSION.md](VSCODE_EXTENSION.md#default-redirect-uri)).
 	- `scope`: Space-separated list of scopes to request.
-	- `code_challenge_method`: PKCE code challenge method. If omitted, rq defaults to `S256`.
+	- `code_challenge_method`: PKCE code challenge method. Accepted values: `S256` (SHA-256, recommended) or `plain`. If omitted, rq defaults to `S256`.
 	- `use_state`: Whether to use the `state` parameter for CSRF protection.
 
 This flow is designed to work with interactive authorization (via the VS Code extension). For non-interactive scenarios (for example, running the same `.rq` file from the CLI), you can provide a precomputed bearer token at runtime using the reserved variable `auth_token`; when present, rq will use this token directly instead of performing the interactive flow.

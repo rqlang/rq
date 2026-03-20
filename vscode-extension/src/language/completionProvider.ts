@@ -68,12 +68,16 @@ const AUTH_PROPERTIES: Record<string, { name: string; required: boolean }[]> = {
         { name: 'client_id', required: true },
         { name: 'authorization_url', required: true },
         { name: 'token_url', required: true },
+        { name: 'redirect_uri', required: false },
+        { name: 'client_secret', required: false },
         { name: 'scope', required: false },
         { name: 'code_challenge_method', required: false },
+        { name: 'use_state', required: false },
     ],
     oauth2_implicit: [
         { name: 'client_id', required: true },
         { name: 'authorization_url', required: true },
+        { name: 'redirect_uri', required: false },
         { name: 'scope', required: false },
     ],
 };
@@ -290,6 +294,16 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
                 }) : undefined;
             }
 
+            // code_challenge_method value completions
+            if (/code_challenge_method\s*:\s*"?[^"]*$/.test(linePrefix)) {
+                const hasOpenQuote = /code_challenge_method\s*:\s*"/.test(linePrefix);
+                return ['S256', 'plain'].map(val => {
+                    const item = new vscode.CompletionItem(val, vscode.CompletionItemKind.EnumMember);
+                    item.insertText = hasOpenQuote ? `${val}"` : `"${val}"`;
+                    return item;
+                });
+            }
+
             // Property value completion inside env/auth blocks
             // Triggers when cursor is at the start of a value: `prop: ` or `prop: "`
             if (/^\s*"?[a-zA-Z_][a-zA-Z0-9_-]*"?\s*:\s*"?$/.test(linePrefix)) {
@@ -340,7 +354,9 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
                             .map(p => {
                                 const item = new vscode.CompletionItem(p.name, vscode.CompletionItemKind.Property);
                                 item.detail = p.required ? 'required' : 'optional';
-                                item.insertText = new vscode.SnippetString(`${p.name}: "\${1:}"`);
+                                item.insertText = p.name === 'code_challenge_method'
+                                    ? new vscode.SnippetString('code_challenge_method: "${1|S256,plain|}"')
+                                    : new vscode.SnippetString(`${p.name}: "\${1:}"`);
                                 item.sortText = p.required ? `0${p.name}` : `1${p.name}`;
                                 return item;
                             });
@@ -794,7 +810,7 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
                         (() => {
                             const i = new vscode.CompletionItem('auth oauth2_authorization_code', vscode.CompletionItemKind.Keyword);
                             i.detail = 'Auth block — OAuth2 Authorization Code with PKCE';
-                            i.insertText = new vscode.SnippetString('auth ${1:my_auth}(auth_type.oauth2_authorization_code) {\n\tclient_id: "${2:}",\n\tauthorization_url: "${3:}",\n\ttoken_url: "${4:}",\n\tscope: "${5:}"\n}');
+                            i.insertText = new vscode.SnippetString('auth ${1:my_auth}(auth_type.oauth2_authorization_code) {\n\tclient_id: "${2:}",\n\tauthorization_url: "${3:}",\n\ttoken_url: "${4:}",\n\tredirect_uri: "${5:}",\n\tscope: "${6:}"\n}');
                             i.sortText = '0auth_authorization_code';
                             return i;
                         })(),

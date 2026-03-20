@@ -542,6 +542,8 @@ describe('auth keyword snippets', () => {
         expect(target.insertText.value).toContain('client_id:');
         expect(target.insertText.value).toContain('authorization_url:');
         expect(target.insertText.value).toContain('token_url:');
+        expect(target.insertText.value).toContain('redirect_uri:');
+        expect(target.insertText.value).not.toContain('code_challenge_method:');
     });
 
     test('suggests oauth2_implicit auth snippet on empty line', async () => {
@@ -609,6 +611,7 @@ describe('auth block property name completion', () => {
         expect(items.find((i: any) => i.label === 'client_id')).toBeDefined();
         expect(items.find((i: any) => i.label === 'authorization_url')).toBeDefined();
         expect(items.find((i: any) => i.label === 'token_url')).toBeDefined();
+        expect(items.find((i: any) => i.label === 'redirect_uri')).toBeDefined();
         expect(items.find((i: any) => i.label === 'scope')).toBeDefined();
         expect(items.find((i: any) => i.label === 'code_challenge_method')).toBeDefined();
     });
@@ -622,6 +625,7 @@ describe('auth block property name completion', () => {
 
         expect(items.find((i: any) => i.label === 'client_id')).toBeDefined();
         expect(items.find((i: any) => i.label === 'authorization_url')).toBeDefined();
+        expect(items.find((i: any) => i.label === 'redirect_uri')).toBeDefined();
         expect(items.find((i: any) => i.label === 'scope')).toBeDefined();
     });
 
@@ -633,6 +637,48 @@ describe('auth block property name completion', () => {
         const items = await provideCompletionItems(doc, position);
 
         expect(items?.find((i: any) => i.label === 'token')).toBeUndefined();
+    });
+
+    test('suggests S256 and plain for code_challenge_method value with opening quote, closes the string', async () => {
+        const lines = ['auth my_auth(auth_type.oauth2_authorization_code) {', '    code_challenge_method: "'];
+        const doc = makeDocument(lines);
+        const position = new vscode.Position(1, lines[1].length);
+
+        const items = await provideCompletionItems(doc, position);
+
+        const s256 = items.find((i: any) => i.label === 'S256');
+        const plain = items.find((i: any) => i.label === 'plain');
+        expect(s256).toBeDefined();
+        expect(s256.insertText).toBe('S256"');
+        expect(plain).toBeDefined();
+        expect(plain.insertText).toBe('plain"');
+    });
+
+    test('suggests S256 and plain for code_challenge_method value without opening quote, wraps in quotes', async () => {
+        const lines = ['auth my_auth(auth_type.oauth2_authorization_code) {', '    code_challenge_method: '];
+        const doc = makeDocument(lines);
+        const position = new vscode.Position(1, lines[1].length);
+
+        const items = await provideCompletionItems(doc, position);
+
+        const s256 = items.find((i: any) => i.label === 'S256');
+        const plain = items.find((i: any) => i.label === 'plain');
+        expect(s256).toBeDefined();
+        expect(s256.insertText).toBe('"S256"');
+        expect(plain).toBeDefined();
+        expect(plain.insertText).toBe('"plain"');
+    });
+
+    test('code_challenge_method property completion uses choice snippet', async () => {
+        const lines = ['auth my_auth(auth_type.oauth2_authorization_code) {', '    '];
+        const doc = makeDocument(lines);
+        const position = new vscode.Position(1, lines[1].length);
+
+        const items = await provideCompletionItems(doc, position);
+
+        const target = items.find((i: any) => i.label === 'code_challenge_method');
+        expect(target).toBeDefined();
+        expect(target.insertText.value).toContain('${1|S256,plain|}');
     });
 
     test('triggers on blank new line after enter (newline trigger)', async () => {

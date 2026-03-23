@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 
 const RQ_PARAM_NAMES = ['url', 'headers', 'body'];
 const EP_PARAM_NAMES = ['url', 'headers', 'qs'];
+const AUTH_PARAM_NAMES = ['auth_type'];
 
 export function getActiveParam(innerText: string, paramNames: string[]): number {
     let lastCommaPos = -1;
@@ -84,6 +85,16 @@ export const signatureHelpProvider = vscode.languages.registerSignatureHelpProvi
                 help.signatures = [sig];
                 help.activeSignature = 0;
                 help.activeParameter = getActiveParam(epMatch[2], EP_PARAM_NAMES);
+                return help;
+            }
+
+            const authMatch = textBeforeCursor.match(/\bauth\s+([a-zA-Z_][a-zA-Z0-9_-]*)\s*\(([^{;]*)$/s);
+            if (authMatch) {
+                const sig = buildSignature('auth', authMatch[1], ['auth_type']);
+                const help = new vscode.SignatureHelp();
+                help.signatures = [sig];
+                help.activeSignature = 0;
+                help.activeParameter = getActiveParam(authMatch[2], AUTH_PARAM_NAMES);
                 return help;
             }
 

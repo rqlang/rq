@@ -104,6 +104,12 @@ export class WorkspaceEdit {
     }
 }
 
+export enum CompletionTriggerKind {
+    Invoke = 0,
+    TriggerCharacter = 1,
+    TriggerForIncompleteCompletions = 2
+}
+
 export enum CompletionItemKind {
     Text = 0,
     Method = 1,

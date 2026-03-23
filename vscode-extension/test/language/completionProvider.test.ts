@@ -488,9 +488,48 @@ describe('header key completion', () => {
 });
 
 describe('auth keyword snippets', () => {
-    test('suggests bearer auth snippet on empty line', async () => {
+    test('does not auto-suggest snippets on a blank line when triggered by Enter key', async () => {
         const doc = makeDocument(['']);
         const position = new vscode.Position(0, 0);
+        const context = { triggerKind: vscode.CompletionTriggerKind.TriggerCharacter };
+
+        const items = await provideCompletionItems(doc, position, undefined, context);
+
+        expect(items).toBeUndefined();
+    });
+
+    test('suggests all top-level snippets on blank line with manual invoke (Ctrl+Space)', async () => {
+        const doc = makeDocument(['']);
+        const position = new vscode.Position(0, 0);
+        const context = { triggerKind: vscode.CompletionTriggerKind.Invoke };
+
+        const items = await provideCompletionItems(doc, position, undefined, context);
+
+        expect(items?.find((i: any) => i.label === 'rq')).toBeDefined();
+        expect(items?.find((i: any) => i.label === 'rq …')).toBeDefined();
+        expect(items?.find((i: any) => i.label === 'ep')).toBeDefined();
+        expect(items?.find((i: any) => i.label === 'ep …')).toBeDefined();
+        expect(items?.find((i: any) => i.label === 'env')).toBeDefined();
+        expect(items?.find((i: any) => i.label === 'env …')).toBeDefined();
+        expect(items?.find((i: any) => i.label === 'auth bearer')).toBeDefined();
+        expect(items?.find((i: any) => i.label === 'auth …')).toBeUndefined();
+    });
+
+    test('suggests top-level snippets when typing a partial keyword', async () => {
+        const doc = makeDocument(['r']);
+        const position = new vscode.Position(0, 1);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items?.find((i: any) => i.label === 'rq')).toBeDefined();
+        expect(items?.find((i: any) => i.label === 'rq …')).toBeDefined();
+        expect(items?.find((i: any) => i.label === 'ep')).toBeDefined();
+        expect(items?.find((i: any) => i.label === 'auth bearer')).toBeDefined();
+    });
+
+    test('suggests bearer auth snippet when typing auth keyword', async () => {
+        const doc = makeDocument(['auth']);
+        const position = new vscode.Position(0, 4);
 
         const items = await provideCompletionItems(doc, position);
 
@@ -501,9 +540,9 @@ describe('auth keyword snippets', () => {
         expect(bearer.insertText.value).toContain('token:');
     });
 
-    test('suggests oauth2_client_credentials client_secret snippet on empty line', async () => {
-        const doc = makeDocument(['']);
-        const position = new vscode.Position(0, 0);
+    test('suggests oauth2_client_credentials client_secret snippet when typing auth keyword', async () => {
+        const doc = makeDocument(['auth']);
+        const position = new vscode.Position(0, 4);
 
         const items = await provideCompletionItems(doc, position);
 
@@ -515,9 +554,9 @@ describe('auth keyword snippets', () => {
         expect(target.insertText.value).toContain('token_url:');
     });
 
-    test('suggests oauth2_client_credentials cert_file snippet on empty line', async () => {
-        const doc = makeDocument(['']);
-        const position = new vscode.Position(0, 0);
+    test('suggests oauth2_client_credentials cert_file snippet when typing auth keyword', async () => {
+        const doc = makeDocument(['auth']);
+        const position = new vscode.Position(0, 4);
 
         const items = await provideCompletionItems(doc, position);
 
@@ -529,9 +568,9 @@ describe('auth keyword snippets', () => {
         expect(target.insertText.value).toContain('token_url:');
     });
 
-    test('suggests oauth2_authorization_code auth snippet on empty line', async () => {
-        const doc = makeDocument(['']);
-        const position = new vscode.Position(0, 0);
+    test('suggests oauth2_authorization_code auth snippet when typing auth keyword', async () => {
+        const doc = makeDocument(['auth']);
+        const position = new vscode.Position(0, 4);
 
         const items = await provideCompletionItems(doc, position);
 
@@ -546,9 +585,9 @@ describe('auth keyword snippets', () => {
         expect(target.insertText.value).not.toContain('code_challenge_method:');
     });
 
-    test('suggests oauth2_implicit auth snippet on empty line', async () => {
-        const doc = makeDocument(['']);
-        const position = new vscode.Position(0, 0);
+    test('suggests oauth2_implicit auth snippet when typing auth keyword', async () => {
+        const doc = makeDocument(['auth']);
+        const position = new vscode.Position(0, 4);
 
         const items = await provideCompletionItems(doc, position);
 
@@ -559,6 +598,257 @@ describe('auth keyword snippets', () => {
         expect(target.insertText.value).toContain('client_id:');
         expect(target.insertText.value).toContain('authorization_url:');
         expect(target.insertText.value).toContain('scope:');
+    });
+
+    test('suggests rq keyword item with Keyword kind when typing rq', async () => {
+        const doc = makeDocument(['rq']);
+        const position = new vscode.Position(0, 2);
+
+        const items = await provideCompletionItems(doc, position);
+
+        const kwItems = items.filter((i: any) => i.label === 'rq');
+        const kw = kwItems.find((i: any) => i.kind === vscode.CompletionItemKind.Keyword);
+        expect(kw).toBeDefined();
+        expect(kw.insertText).toBe('rq');
+    });
+
+    test('suggests rq snippet item with Module kind when typing rq', async () => {
+        const doc = makeDocument(['rq']);
+        const position = new vscode.Position(0, 2);
+
+        const items = await provideCompletionItems(doc, position);
+
+        const snip = items.find((i: any) => i.label === 'rq …');
+        expect(snip).toBeDefined();
+        expect(snip.kind).toBe(vscode.CompletionItemKind.Module);
+        expect(snip.insertText.value).toContain('rq_name');
+    });
+
+    test('suggests ep crud snippet with linked widget placeholder', async () => {
+        const doc = makeDocument(['ep']);
+        const position = new vscode.Position(0, 2);
+
+        const items = await provideCompletionItems(doc, position);
+
+        const snip = items.find((i: any) => i.label === 'ep crud');
+        expect(snip).toBeDefined();
+        expect(snip.kind).toBe(vscode.CompletionItemKind.Module);
+        const val = snip.insertText.value;
+        expect(val).toContain('${1:endpoint}_id');
+        expect(val).toContain('ep ${1:endpoint}s(');
+        expect(val).toContain('${1:endpoint}-post.json');
+        expect(val).toContain('${1:endpoint}-patch.json');
+        expect(val).toContain('${1:endpoint}_id');
+        expect(val).toContain('rq list()');
+        expect(val).toContain('rq get()');
+        expect(val).toContain('rq post(');
+        expect(val).toContain('rq patch(');
+        expect(val).toContain('rq delete()');
+    });
+
+    test('suggests ep keyword item with Keyword kind when typing ep', async () => {
+        const doc = makeDocument(['ep']);
+        const position = new vscode.Position(0, 2);
+
+        const items = await provideCompletionItems(doc, position);
+
+        const kw = items.filter((i: any) => i.label === 'ep').find((i: any) => i.kind === vscode.CompletionItemKind.Keyword);
+        expect(kw).toBeDefined();
+    });
+
+    test('suggests env keyword item with Keyword kind when typing env', async () => {
+        const doc = makeDocument(['env']);
+        const position = new vscode.Position(0, 3);
+
+        const items = await provideCompletionItems(doc, position);
+
+        const kw = items.filter((i: any) => i.label === 'env').find((i: any) => i.kind === vscode.CompletionItemKind.Keyword);
+        expect(kw).toBeDefined();
+    });
+
+    test('suggests auth keyword item with Keyword kind when typing auth', async () => {
+        const doc = makeDocument(['auth']);
+        const position = new vscode.Position(0, 4);
+
+        const items = await provideCompletionItems(doc, position);
+
+        const kw = items.filter((i: any) => i.label === 'auth').find((i: any) => i.kind === vscode.CompletionItemKind.Keyword);
+        expect(kw).toBeDefined();
+        expect(kw.insertText).toBe('auth');
+    });
+
+    test('suggests let keyword item with Keyword kind in top-level section', async () => {
+        const doc = makeDocument(['l']);
+        const position = new vscode.Position(0, 1);
+
+        const items = await provideCompletionItems(doc, position);
+
+        const kw = items.find((i: any) => i.label === 'let' && i.kind === vscode.CompletionItemKind.Keyword);
+        expect(kw).toBeDefined();
+    });
+
+    test('suggests let string snippet with Module kind', async () => {
+        const doc = makeDocument(['let']);
+        const position = new vscode.Position(0, 3);
+
+        const items = await provideCompletionItems(doc, position);
+
+        const snip = items.find((i: any) => i.label === 'let string');
+        expect(snip).toBeDefined();
+        expect(snip.kind).toBe(vscode.CompletionItemKind.Module);
+    });
+
+    test('suggests import keyword item with Keyword kind in top-level section', async () => {
+        const doc = makeDocument(['im']);
+        const position = new vscode.Position(0, 2);
+
+        const items = await provideCompletionItems(doc, position);
+
+        const kw = items.find((i: any) => i.label === 'import' && i.kind === vscode.CompletionItemKind.Keyword);
+        expect(kw).toBeDefined();
+    });
+
+    test('all auth snippet variants have Module kind', async () => {
+        const doc = makeDocument(['auth']);
+        const position = new vscode.Position(0, 4);
+
+        const items = await provideCompletionItems(doc, position);
+
+        const snippetLabels = ['auth bearer', 'auth oauth2_client_credentials (client_secret)', 'auth oauth2_client_credentials (cert_file)', 'auth oauth2_authorization_code', 'auth oauth2_implicit'];
+        snippetLabels.forEach(label => {
+            const item = items.find((i: any) => i.label === label);
+            expect(item).toBeDefined();
+            expect(item.kind).toBe(vscode.CompletionItemKind.Module);
+        });
+    });
+
+    test('suggests import keyword at start of file', async () => {
+        const doc = makeDocument(['']);
+        const position = new vscode.Position(0, 0);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items?.find((i: any) => i.label === 'import')).toBeDefined();
+    });
+
+    test('suggests import keyword after another import', async () => {
+        const lines = ['import "shared";', ''];
+        const doc = makeDocument(lines);
+        const position = new vscode.Position(1, 0);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items?.find((i: any) => i.label === 'import')).toBeDefined();
+    });
+
+    test('hides import keyword after let declaration', async () => {
+        const lines = ['let base = "http://localhost";', ''];
+        const doc = makeDocument(lines);
+        const position = new vscode.Position(1, 0);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items?.find((i: any) => i.label === 'import')).toBeUndefined();
+    });
+
+    test('hides import keyword after rq statement', async () => {
+        const lines = ['rq get("http://localhost");', ''];
+        const doc = makeDocument(lines);
+        const position = new vscode.Position(1, 0);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items?.find((i: any) => i.label === 'import')).toBeUndefined();
+    });
+
+    test('hides import file completions when typing "import" after let', async () => {
+        (vscode.workspace.findFiles as jest.Mock).mockResolvedValue([
+            { fsPath: '/workspace/shared.rq' }
+        ]);
+        const lines = ['let base = "http://localhost";', 'import '];
+        const doc = makeDocument(lines, { fsPath: '/workspace/current.rq' });
+        const position = new vscode.Position(1, 7);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items).toBeUndefined();
+    });
+
+    test('inside ep body suggests only rq keyword and snippet', async () => {
+        const lines = ['ep api("http://localhost") {', '    '];
+        const doc = makeDocument(lines);
+        const position = new vscode.Position(1, lines[1].length);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items?.find((i: any) => i.label === 'rq')).toBeDefined();
+        expect(items?.find((i: any) => i.label === 'rq …')).toBeDefined();
+        expect(items?.find((i: any) => i.label === 'env')).toBeUndefined();
+        expect(items?.find((i: any) => i.label === 'auth')).toBeUndefined();
+        expect(items?.find((i: any) => i.label === 'ep')).toBeUndefined();
+        expect(items?.find((i: any) => i.label === 'let')).toBeUndefined();
+        expect(items?.find((i: any) => i.label === 'import')).toBeUndefined();
+    });
+
+    test('after ep body closes suggests all root-level keywords again', async () => {
+        const lines = ['ep api("http://localhost") {', '  rq list();', '}', ''];
+        const doc = makeDocument(lines);
+        const position = new vscode.Position(3, 0);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items?.find((i: any) => i.label === 'env')).toBeDefined();
+        expect(items?.find((i: any) => i.label === 'auth')).toBeDefined();
+        expect(items?.find((i: any) => i.label === 'ep')).toBeDefined();
+    });
+
+});
+
+describe('auth declaration parameter completion', () => {
+    test('suggests auth_type when opening paren is typed', async () => {
+        const lines = ['auth my_auth('];
+        const doc = makeDocument(lines);
+        const position = new vscode.Position(0, lines[0].length);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items).toHaveLength(1);
+        expect(items[0].label).toBe('auth_type');
+        expect(items[0].kind).toBe(vscode.CompletionItemKind.EnumMember);
+        expect(items[0].insertText.value).toBe('auth_type.');
+        expect(items[0].command?.command).toBe('editor.action.triggerSuggest');
+    });
+
+    test('suggests auth_type on blank inner text', async () => {
+        const lines = ['auth my_auth( '];
+        const doc = makeDocument(lines);
+        const position = new vscode.Position(0, lines[0].length);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items).toHaveLength(1);
+        expect(items[0].label).toBe('auth_type');
+    });
+
+    test('does not suggest auth_type when auth_type. already typed', async () => {
+        const lines = ['auth my_auth(auth_type.'];
+        const doc = makeDocument(lines);
+        const position = new vscode.Position(0, lines[0].length);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items?.find((i: any) => i.label === 'auth_type')).toBeUndefined();
+        expect(items?.some((i: any) => ['bearer', 'oauth2_client_credentials', 'oauth2_authorization_code', 'oauth2_implicit'].includes(i.label))).toBe(true);
+    });
+
+    test('does not suggest auth_type inside auth body block', async () => {
+        const lines = ['auth my_auth(auth_type.bearer) {', '    '];
+        const doc = makeDocument(lines);
+        const position = new vscode.Position(1, lines[1].length);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items?.find((i: any) => i.label === 'auth_type')).toBeUndefined();
     });
 });
 

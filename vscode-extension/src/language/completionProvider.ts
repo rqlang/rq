@@ -127,6 +127,25 @@ const insideEnvOrAuthBlock = (text: string): boolean => {
     return depth > 0;
 };
 
+const insideEpBody = (text: string): boolean => {
+    const re = /\bep\s+\w+[^{;]*\{/g;
+    let lastMatchEnd = -1;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text)) !== null) {
+        lastMatchEnd = m.index + m[0].length;
+    }
+    if (lastMatchEnd === -1) { return false; }
+    let depth = 1;
+    for (const ch of text.slice(lastMatchEnd)) {
+        if (ch === '{') { depth++; }
+        else if (ch === '}') {
+            depth--;
+            if (depth === 0) { return false; }
+        }
+    }
+    return depth > 0;
+};
+
 // Helper: collect named properties already present in an ep(...) block text
 const collectEpNamed = (text: string): Set<string> => {
     const names = new Set<string>();
@@ -195,7 +214,7 @@ const builtinFunctionItems = (): vscode.CompletionItem[] => [
 export const completionProvider = vscode.languages.registerCompletionItemProvider(
     'rq',
     {
-        async provideCompletionItems(document: vscode.TextDocument, position: vscode.Position) {
+        async provideCompletionItems(document: vscode.TextDocument, position: vscode.Position, _token?: vscode.CancellationToken, context?: vscode.CompletionContext) {
             const linePrefix = document.lineAt(position).text.substring(0, position.character);
 
             // Endpoint template completion: ep name< -> list existing endpoints
@@ -223,8 +242,9 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
             const importSpaceMatch = /^\s*import\s+$/; // 'import ' with trailing space(s)
             if (importFullMatch.test(linePrefix) || importSpaceMatch.test(linePrefix)) {
                 const prevText = document.getText(new vscode.Range(new vscode.Position(0, 0), position));
+                const hasNonImportContentBefore = /^\s*(let|rq|ep|env|auth)\b/m.test(prevText);
                 const inRqOrEp = /\b(rq|ep)\s+\w+\s*\(/.test(prevText);
-                if (!inRqOrEp) {
+                if (!inRqOrEp && !hasNonImportContentBefore) {
                     const hasTrailingSpace = importSpaceMatch.test(linePrefix);
                     const currentDir = path.dirname(document.uri.fsPath);
                     const allFiles = await vscode.workspace.findFiles('**/*.rq');
@@ -405,7 +425,7 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
                     }
 
                     // 1. String variable
-                    const strItem = new vscode.CompletionItem('let string', vscode.CompletionItemKind.Keyword);
+                    const strItem = new vscode.CompletionItem('let string', vscode.CompletionItemKind.Module);
                     strItem.detail = 'String variable';
                     strItem.documentation = new vscode.MarkdownString('Declare a string variable');
                     strItem.insertText = new vscode.SnippetString(`${prefixForNewDecl}\${1:name} = "\${2:value}"`);
@@ -413,7 +433,7 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
                     variants.push(strItem);
 
                     // 2. JSON object variable
-                    const jsonItem = new vscode.CompletionItem('let json', vscode.CompletionItemKind.Keyword);
+                    const jsonItem = new vscode.CompletionItem('let json', vscode.CompletionItemKind.Module);
                     jsonItem.detail = 'JSON object variable';
                     jsonItem.documentation = new vscode.MarkdownString('Declare a JSON object variable');
                     jsonItem.insertText = new vscode.SnippetString(`${prefixForNewDecl}\${1:name} = {\n    "\${2:key}": "\${3:value}"\n}`);
@@ -421,7 +441,7 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
                     variants.push(jsonItem);
 
                     // 3. Request URL variable
-                    const urlItem = new vscode.CompletionItem('let url', vscode.CompletionItemKind.Keyword);
+                    const urlItem = new vscode.CompletionItem('let url', vscode.CompletionItemKind.Module);
                     urlItem.detail = 'URL variable';
                     urlItem.documentation = new vscode.MarkdownString('Declare a URL variable');
                     urlItem.insertText = new vscode.SnippetString(`${prefixForNewDecl}\${1:base_url} = "https://api.example.com"`);
@@ -476,7 +496,16 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
                 new vscode.Position(Math.max(0, position.line - 10), 0),
                 position
             ));
-            
+
+            const authDeclarationMatch = textBeforeCursor.match(/\bauth\s+\w+\s*\(([^{;]*)$/s);
+            if (authDeclarationMatch && !/auth_type\./.test(authDeclarationMatch[1])) {
+                const item = new vscode.CompletionItem('auth_type', vscode.CompletionItemKind.EnumMember);
+                item.detail = 'Auth type parameter';
+                item.insertText = new vscode.SnippetString('auth_type.');
+                item.command = { command: 'editor.action.triggerSuggest', title: 'Re-trigger completions' };
+                return [item];
+            }
+
             // Check if we're inside an rq declaration
             const rqMatch = textBeforeCursor.match(/\brq\s+\w+\s*\([^;]*$/s);
             if (rqMatch) {
@@ -752,84 +781,110 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
                 return [sysItem, randomItem, datetimeItem];
             }
 
-            // Top-level keyword snippets — only on an empty/keyword-only line outside any block
-            if (/^\s*(rq|ep|env|auth|import|let)?$/.test(linePrefix)) {
+            // Top-level keywords and code snippets — shown on manual invoke (Ctrl+Space) on blank
+            // lines, or whenever the user is typing a top-level keyword prefix.
+            if (/^\s*\w*$/.test(linePrefix)) {
+                if (/^\s*$/.test(linePrefix) && context?.triggerKind === vscode.CompletionTriggerKind.TriggerCharacter) {
+                    return undefined;
+                }
                 const prevText = document.getText(new vscode.Range(new vscode.Position(0, 0), position));
                 const insideBlock = !!rqMatch || !!epMatch || insideEnvOrAuthBlock(prevText);
                 if (!insideBlock) {
-                    const snippets: vscode.CompletionItem[] = [
+                    const kw = (label: string, detail: string, sort: string) => {
+                        const i = new vscode.CompletionItem(label, vscode.CompletionItemKind.Keyword);
+                        i.detail = detail;
+                        i.insertText = label;
+                        i.sortText = sort;
+                        return i;
+                    };
+
+                    if (insideEpBody(prevText)) {
+                        return [
+                            kw('rq', 'HTTP request keyword', 'rq_0kw'),
+                            (() => {
+                                const i = new vscode.CompletionItem('rq …', vscode.CompletionItemKind.Module);
+                                i.detail = 'HTTP request snippet';
+                                i.insertText = new vscode.SnippetString('rq ${1:rq_name}($0);');
+                                i.sortText = 'rq_1sn';
+                                return i;
+                            })(),
+                        ];
+                    }
+
+                    const hasNonImportContent = /^\s*(let|rq|ep|env|auth)\b/m.test(prevText);
+                    return [
+                        kw('auth', 'Auth block keyword', 'auth_0kw'),
                         (() => {
-                            const i = new vscode.CompletionItem('rq', vscode.CompletionItemKind.Keyword);
-                            i.detail = 'HTTP request';
-                            i.insertText = new vscode.SnippetString('rq ${1:request_name}("${2:https://api.example.com/endpoint}");');
-                            i.sortText = '0rq';
-                            return i;
-                        })(),
-                        (() => {
-                            const i = new vscode.CompletionItem('ep', vscode.CompletionItemKind.Keyword);
-                            i.detail = 'Endpoint block';
-                            i.insertText = new vscode.SnippetString('ep ${1:name}("${2:https://api.example.com}") {\n\trq ${3:request_name}("${4:path}");\n}');
-                            i.sortText = '0ep';
-                            return i;
-                        })(),
-                        (() => {
-                            const i = new vscode.CompletionItem('env', vscode.CompletionItemKind.Keyword);
-                            i.detail = 'Environment block';
-                            i.insertText = new vscode.SnippetString('env ${1:local} {\n\t${2:api_url}: "${3:http://localhost:8080}"\n}');
-                            i.sortText = '0env';
-                            return i;
-                        })(),
-                        (() => {
-                            const i = new vscode.CompletionItem('auth', vscode.CompletionItemKind.Keyword);
-                            i.detail = 'Auth block';
-                            i.insertText = new vscode.SnippetString('auth ${1:my_auth}(auth_type.${2}) {\n\t${3}\n}');
-                            i.sortText = '0auth';
-                            return i;
-                        })(),
-                        (() => {
-                            const i = new vscode.CompletionItem('auth bearer', vscode.CompletionItemKind.Keyword);
+                            const i = new vscode.CompletionItem('auth bearer', vscode.CompletionItemKind.Module);
                             i.detail = 'Auth block — Bearer Token';
                             i.insertText = new vscode.SnippetString('auth ${1:my_auth}(auth_type.bearer) {\n\ttoken: "${2:}"\n}');
-                            i.sortText = '0auth_bearer';
+                            i.sortText = 'auth_2bearer';
                             return i;
                         })(),
                         (() => {
-                            const i = new vscode.CompletionItem('auth oauth2_client_credentials (client_secret)', vscode.CompletionItemKind.Keyword);
-                            i.detail = 'Auth block — OAuth2 Client Credentials (client secret)';
-                            i.insertText = new vscode.SnippetString('auth ${1:my_auth}(auth_type.oauth2_client_credentials) {\n\tclient_id: "${2:}",\n\tclient_secret: "${3:}",\n\ttoken_url: "${4:}",\n\tscope: "${5:}"\n}');
-                            i.sortText = '0auth_client_credentials_secret';
-                            return i;
-                        })(),
-                        (() => {
-                            const i = new vscode.CompletionItem('auth oauth2_client_credentials (cert_file)', vscode.CompletionItemKind.Keyword);
-                            i.detail = 'Auth block — OAuth2 Client Credentials (certificate)';
-                            i.insertText = new vscode.SnippetString('auth ${1:my_auth}(auth_type.oauth2_client_credentials) {\n\tclient_id: "${2:}",\n\tcert_file: "${3:}",\n\tcert_password: "${4:}",\n\ttoken_url: "${5:}",\n\tscope: "${6:}"\n}');
-                            i.sortText = '0auth_client_credentials_cert';
-                            return i;
-                        })(),
-                        (() => {
-                            const i = new vscode.CompletionItem('auth oauth2_authorization_code', vscode.CompletionItemKind.Keyword);
+                            const i = new vscode.CompletionItem('auth oauth2_authorization_code', vscode.CompletionItemKind.Module);
                             i.detail = 'Auth block — OAuth2 Authorization Code with PKCE';
                             i.insertText = new vscode.SnippetString('auth ${1:my_auth}(auth_type.oauth2_authorization_code) {\n\tclient_id: "${2:}",\n\tauthorization_url: "${3:}",\n\ttoken_url: "${4:}",\n\tredirect_uri: "${5:}",\n\tscope: "${6:}"\n}');
-                            i.sortText = '0auth_authorization_code';
+                            i.sortText = 'auth_2oauth_ac';
                             return i;
                         })(),
                         (() => {
-                            const i = new vscode.CompletionItem('auth oauth2_implicit', vscode.CompletionItemKind.Keyword);
+                            const i = new vscode.CompletionItem('auth oauth2_client_credentials (cert_file)', vscode.CompletionItemKind.Module);
+                            i.detail = 'Auth block — OAuth2 Client Credentials (certificate)';
+                            i.insertText = new vscode.SnippetString('auth ${1:my_auth}(auth_type.oauth2_client_credentials) {\n\tclient_id: "${2:}",\n\tcert_file: "${3:}",\n\tcert_password: "${4:}",\n\ttoken_url: "${5:}",\n\tscope: "${6:}"\n}');
+                            i.sortText = 'auth_2oauth_cc_cert';
+                            return i;
+                        })(),
+                        (() => {
+                            const i = new vscode.CompletionItem('auth oauth2_client_credentials (client_secret)', vscode.CompletionItemKind.Module);
+                            i.detail = 'Auth block — OAuth2 Client Credentials (client secret)';
+                            i.insertText = new vscode.SnippetString('auth ${1:my_auth}(auth_type.oauth2_client_credentials) {\n\tclient_id: "${2:}",\n\tclient_secret: "${3:}",\n\ttoken_url: "${4:}",\n\tscope: "${5:}"\n}');
+                            i.sortText = 'auth_2oauth_cc_secret';
+                            return i;
+                        })(),
+                        (() => {
+                            const i = new vscode.CompletionItem('auth oauth2_implicit', vscode.CompletionItemKind.Module);
                             i.detail = 'Auth block — OAuth2 Implicit Flow';
                             i.insertText = new vscode.SnippetString('auth ${1:my_auth}(auth_type.oauth2_implicit) {\n\tclient_id: "${2:}",\n\tauthorization_url: "${3:}",\n\tscope: "${4:}"\n}');
-                            i.sortText = '0auth_implicit';
+                            i.sortText = 'auth_2oauth_impl';
+                            return i;
+                        })(),
+                        kw('ep', 'Endpoint block keyword', 'ep_0kw'),
+                        (() => {
+                            const i = new vscode.CompletionItem('ep …', vscode.CompletionItemKind.Module);
+                            i.detail = 'Endpoint block snippet';
+                            i.insertText = new vscode.SnippetString('ep ${1:ep_name}($0) {\n}');
+                            i.sortText = 'ep_1sn';
                             return i;
                         })(),
                         (() => {
-                            const i = new vscode.CompletionItem('import', vscode.CompletionItemKind.Keyword);
-                            i.detail = 'Import file';
-                            i.insertText = new vscode.SnippetString('import "${1:file}";');
-                            i.sortText = '0import';
+                            const i = new vscode.CompletionItem('ep crud', vscode.CompletionItemKind.Module);
+                            i.detail = 'CRUD endpoint snippet';
+                            i.insertText = new vscode.SnippetString(
+                                'let ${1:endpoint}_id = "";\n\nep ${1:endpoint}s($0) {\n\trq list();\n\trq get();\n\trq post(io.read_file("${1:endpoint}-post.json"));\n\trq patch(url: ${1:endpoint}_id, body: io.read_file("${1:endpoint}-patch.json"));\n\trq delete();\n}'
+                            );
+                            i.sortText = 'ep_2crud';
+                            return i;
+                        })(),
+                        kw('env', 'Environment block keyword', 'env_0kw'),
+                        (() => {
+                            const i = new vscode.CompletionItem('env …', vscode.CompletionItemKind.Module);
+                            i.detail = 'Environment block snippet';
+                            i.insertText = new vscode.SnippetString('env ${1:local} {\n\t${2:api_url}: "${3:http://localhost:8080}"\n}');
+                            i.sortText = 'env_1sn';
+                            return i;
+                        })(),
+                        ...(!hasNonImportContent ? [kw('import', 'Import directive keyword', 'import_0kw')] : []),
+                        kw('let', 'Variable declaration keyword', 'let_0kw'),
+                        kw('rq', 'HTTP request keyword', 'rq_0kw'),
+                        (() => {
+                            const i = new vscode.CompletionItem('rq …', vscode.CompletionItemKind.Module);
+                            i.detail = 'HTTP request snippet';
+                            i.insertText = new vscode.SnippetString('rq ${1:rq_name}($0);');
+                            i.sortText = 'rq_1sn';
                             return i;
                         })(),
                     ];
-                    return snippets;
                 }
             }
 

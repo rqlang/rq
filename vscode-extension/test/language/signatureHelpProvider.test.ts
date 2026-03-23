@@ -225,6 +225,53 @@ describe('signatureHelpProvider', () => {
         });
     });
 
+    describe('auth statements', () => {
+        test('shows signature immediately after opening paren', () => {
+            const text = 'auth my_auth(';
+            const doc = makeDocument(text);
+            const pos = makePosition(text);
+            const result = provideSignatureHelp(doc, pos);
+            expect(result).toBeDefined();
+            expect(result.signatures[0].label).toBe('auth my_auth(auth_type)');
+            expect(result.activeParameter).toBe(0);
+        });
+
+        test('highlights auth_type while typing', () => {
+            const text = 'auth my_auth(auth_type.';
+            const doc = makeDocument(text);
+            const pos = makePosition(text);
+            const result = provideSignatureHelp(doc, pos);
+            expect(result).toBeDefined();
+            expect(result.activeParameter).toBe(0);
+        });
+
+        test('returns undefined after opening brace', () => {
+            const text = 'auth my_auth(auth_type.bearer) {\n    token: ';
+            const doc = makeDocument(text);
+            const pos = makePosition(text);
+            const result = provideSignatureHelp(doc, pos);
+            expect(result).toBeUndefined();
+        });
+
+        test('returns undefined after semicolon', () => {
+            const text = 'auth my_auth(auth_type.bearer);\nrq get(';
+            const doc = makeDocument(text);
+            const pos = makePosition(text);
+            const result = provideSignatureHelp(doc, pos);
+            expect(result?.signatures[0].label).toMatch(/^rq get/);
+        });
+
+        test('parameter offset points to auth_type in label', () => {
+            const text = 'auth my_auth(';
+            const doc = makeDocument(text);
+            const pos = makePosition(text);
+            const result = provideSignatureHelp(doc, pos);
+            const label = result.signatures[0].label;
+            const param = result.signatures[0].parameters[0];
+            expect(label.slice((param.label as [number,number])[0], (param.label as [number,number])[1])).toBe('auth_type');
+        });
+    });
+
     describe('parameter label offsets', () => {
         test('parameter offsets point to correct positions in label', () => {
             const text = 'rq req(';

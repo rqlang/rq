@@ -106,6 +106,23 @@ pub fn error_to_json(error: &(dyn std::error::Error + 'static)) -> String {
     })
 }
 
+#[derive(Serialize)]
+struct JsonWarning {
+    warning: JsonErrorDetail,
+}
+
+pub fn warning_to_json(message: &str) -> String {
+    let detail = JsonErrorDetail {
+        error_type: "parse".to_string(),
+        message: message.to_string(),
+        file: None,
+        line: None,
+        column: None,
+    };
+    serde_json::to_string(&JsonWarning { warning: detail })
+        .unwrap_or_else(|_| format!(r#"{{"warning":{{"type":"parse","message":{message:?}}}}}"#))
+}
+
 #[derive(Debug)]
 pub enum RqError {
     Io(io::Error),

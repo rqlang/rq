@@ -1,5 +1,5 @@
 use super::rq_client_models::{RequestDetails, RequestExecutionResult, RequestInfo, RqConfig};
-use crate::core::error::RqError;
+use crate::core::error::{warning_to_json, RqError};
 use crate::core::logger::Logger;
 use crate::syntax::{RqFile, Variable, VariableValue};
 
@@ -29,8 +29,15 @@ impl RqClient {
     pub async fn run(&self) -> Result<Vec<RequestExecutionResult>, RqError> {
         let source_path = Path::new(&self.config.source_path);
 
-        let rq_files =
+        let (rq_files, parse_warnings) =
             Self::get_rq_files_to_process(source_path, self.config.request_name.as_deref())?;
+        for w in parse_warnings {
+            if self.config.output_format == "json" {
+                eprintln!("{}", warning_to_json(&format!("Failed to parse: {w}")));
+            } else {
+                eprintln!("Warning: Failed to parse: {w}");
+            }
+        }
 
         if rq_files.is_empty() {
             return Err(RqError::RequestNotFound(format!(
@@ -265,7 +272,7 @@ impl RqClient {
         environment: Option<&str>,
         interpolate_variables: bool,
     ) -> Result<RequestDetails, RqError> {
-        let rq_files = Self::get_rq_files_to_process(source_path, Some(request_name))?;
+        let (rq_files, _) = Self::get_rq_files_to_process(source_path, Some(request_name))?;
 
         let rq_file = rq_files
             .into_iter()
@@ -944,15 +951,16 @@ impl RqClient {
     fn get_rq_files_to_process(
         source_path: &Path,
         request_name: Option<&str>,
-    ) -> Result<Vec<RqFile>, RqError> {
+    ) -> Result<(Vec<RqFile>, Vec<RqError>), RqError> {
         if source_path.is_file() {
-            return Ok(vec![RqFile::from_path(source_path).map_err(|e| {
+            let rq_file = RqFile::from_path(source_path).map_err(|e| {
                 if let Some(syntax_err) = e.downcast_ref::<crate::syntax::error::SyntaxError>() {
                     RqError::Syntax(syntax_err.clone())
                 } else {
                     RqError::Generic(e.to_string())
                 }
-            })?]);
+            })?;
+            return Ok((vec![rq_file], Vec::new()));
         }
 
         if !source_path.is_dir() {
@@ -963,7 +971,7 @@ impl RqClient {
 
         if let Some(request_name) = request_name {
             match Self::find_rq_file_with_request(source_path, request_name)? {
-                Some(rq_file) => Ok(vec![rq_file]),
+                Some(rq_file) => Ok((vec![rq_file], Vec::new())),
                 None => Err(RqError::RequestNotFound(format!(
                     "Request '{}' not found in directory: {}",
                     request_name,
@@ -973,10 +981,7 @@ impl RqClient {
         } else {
             let mut rq_files = Vec::new();
             let parse_errors = Self::collect_rq_files_parsed(source_path, &mut rq_files)?;
-            for e in parse_errors {
-                eprintln!("Warning: Failed to parse: {e}");
-            }
-            Ok(rq_files)
+            Ok((rq_files, parse_errors))
         }
     }
 

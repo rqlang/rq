@@ -159,6 +159,7 @@ pub fn parse_string_value(r: &mut TokenReader, separator: &str) -> Result<String
             TokenType::Identifier => {
                 let ident = t.value.clone();
                 if crate::syntax::functions::is_known_namespace(&ident) {
+                    let saved = r.idx;
                     r.advance();
                     r.skip_ignorable();
                     if let Some(dot) = r.cur() {
@@ -188,6 +189,7 @@ pub fn parse_string_value(r: &mut TokenReader, separator: &str) -> Result<String
                             }
                         }
                     }
+                    r.idx = saved;
                 }
                 r.advance();
                 Ok(format!("{{{{{ident}}}}}"))

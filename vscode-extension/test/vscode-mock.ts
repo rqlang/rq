@@ -56,6 +56,7 @@ export const languages = {
     registerHoverProvider: jest.fn(),
     registerCompletionItemProvider: jest.fn(),
     registerSignatureHelpProvider: jest.fn(),
+    registerDocumentFormattingEditProvider: jest.fn(),
     registerReferenceProvider: jest.fn(),
     registerRenameProvider: jest.fn(),
     createDiagnosticCollection: jest.fn().mockReturnValue({
@@ -182,6 +183,18 @@ export class SignatureInformation {
 export class ParameterInformation {
     documentation?: any;
     constructor(public label: string | [number, number]) {}
+}
+
+export class TextEdit {
+    constructor(public range: Range, public newText: string) {}
+    static replace(range: Range, newText: string): TextEdit {
+        return new TextEdit(range, newText);
+    }
+}
+
+export interface FormattingOptions {
+    tabSize: number;
+    insertSpaces: boolean;
 }
 
 export class Position {

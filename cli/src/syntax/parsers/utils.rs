@@ -129,7 +129,7 @@ pub fn normalize_multiline_string(s: &str, separator: &str) -> String {
     result
 }
 
-pub fn parse_string_or_identifier(r: &mut TokenReader) -> Result<String, SyntaxError> {
+pub fn parse_string_value(r: &mut TokenReader) -> Result<String, SyntaxError> {
     if let Some(t) = r.cur() {
         match t.token_type {
             TokenType::String => {
@@ -140,6 +140,40 @@ pub fn parse_string_or_identifier(r: &mut TokenReader) -> Result<String, SyntaxE
             }
             TokenType::Identifier => {
                 let ident = t.value.clone();
+                if crate::syntax::functions::is_known_namespace(&ident) {
+                    r.advance();
+                    r.skip_ignorable();
+                    if let Some(dot) = r.cur() {
+                        if dot.token_type == TokenType::Punctuation && dot.value == "." {
+                            r.advance();
+                            r.skip_ignorable();
+                            let func_span = r
+                                .cur()
+                                .map(|t| t.span.clone())
+                                .unwrap_or(r.source.len()..r.source.len());
+                            let sys_func = parse_system_function(r, &ident)?;
+                            if let VariableValue::SystemFunction { name, args } = sys_func {
+                                let dot_pos = name
+                                    .find('.')
+                                    .expect("system function name always contains namespace");
+                                let func = crate::syntax::functions::get_function(
+                                    &name[..dot_pos],
+                                    &name[dot_pos + 1..],
+                                );
+                                if func.map(|f| f.return_type())
+                                    != Some(crate::syntax::functions::traits::FunctionReturnType::String)
+                                {
+                                    return Err(r.create_error_no_file(
+                                        format!("{name}() cannot be used here: expected a string-returning function"),
+                                        func_span,
+                                    ));
+                                }
+                                let args_str = args.join("\x1F");
+                                return Ok(format!("{{{{${name}\x1E{args_str}}}}}"));
+                            }
+                        }
+                    }
+                }
                 r.advance();
                 Ok(format!("{{{{{ident}}}}}"))
             }
@@ -180,18 +214,7 @@ pub fn parse_headers_array(r: &mut TokenReader) -> Result<Vec<(String, String)>,
                 )?;
                 r.advance();
                 r.skip_ignorable();
-                let val_tok = expect(
-                    r,
-                    |t| matches!(t.token_type, TokenType::String | TokenType::Identifier),
-                    "Expected string literal or identifier",
-                )?;
-                let val = if val_tok.token_type == TokenType::String {
-                    let v_raw = val_tok.value.trim_matches('"').trim_matches('\'');
-                    normalize_multiline_string(v_raw, " ")
-                } else {
-                    format!("{{{{{}}}}}", val_tok.value)
-                };
-                r.advance();
+                let val = parse_string_value(r)?;
                 headers.push((key, val));
                 r.skip_ignorable();
                 if let Some(com) = r.cur() {

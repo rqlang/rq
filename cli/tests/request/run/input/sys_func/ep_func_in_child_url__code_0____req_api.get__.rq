@@ -1,0 +1,3 @@
+ep api("http://localhost:8080") {
+    rq get(io.read_file("url_path.txt"));
+}

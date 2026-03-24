@@ -7,7 +7,7 @@ use super::{
     request::parse_request_with_context,
     utils::{
         can_parse_attributed, check_variable_type, is_headers_like, is_string_like,
-        parse_headers_array, parse_string_or_identifier,
+        parse_headers_array, parse_string_value,
     },
     variable::parse_variable_declaration,
 };
@@ -114,7 +114,7 @@ pub fn parse_endpoint_constructor_params(
                             check_variable_type(&t.value, &[is_string_like], file_vars, t, r)?;
                         }
                     }
-                    url = parse_string_or_identifier(r)?;
+                    url = parse_string_value(r)?;
                 }
                 "headers" => {
                     if let Some(tk) = r.cur() {
@@ -138,7 +138,7 @@ pub fn parse_endpoint_constructor_params(
                             check_variable_type(&t.value, &[is_string_like], file_vars, t, r)?;
                         }
                     }
-                    let raw_qs = parse_string_or_identifier(r)?;
+                    let raw_qs = parse_string_value(r)?;
                     let cleaned = raw_qs.strip_prefix('?').unwrap_or(&raw_qs).to_string();
                     qs = Some(cleaned);
                 }
@@ -157,7 +157,7 @@ pub fn parse_endpoint_constructor_params(
                             check_variable_type(&t.value, &[is_string_like], file_vars, t, r)?;
                         }
                     }
-                    url = parse_string_or_identifier(r)?;
+                    url = parse_string_value(r)?;
                 }
                 1 => {
                     if let Some(tk) = r.cur() {
@@ -181,7 +181,7 @@ pub fn parse_endpoint_constructor_params(
                             check_variable_type(&t.value, &[is_string_like], file_vars, t, r)?;
                         }
                     }
-                    let raw_qs = parse_string_or_identifier(r)?;
+                    let raw_qs = parse_string_value(r)?;
                     let cleaned = raw_qs.strip_prefix('?').unwrap_or(&raw_qs).to_string();
                     qs = Some(cleaned);
                 }

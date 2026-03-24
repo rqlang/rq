@@ -6,8 +6,7 @@ use super::{
     parse_trait::Parse,
     utils::{
         can_parse_attributed, check_variable_type, is_headers_like, is_string_like,
-        normalize_multiline_string, parse_headers_array, parse_string_or_identifier,
-        parse_system_function,
+        parse_headers_array, parse_string_value,
     },
 };
 use crate::syntax::{
@@ -20,7 +19,7 @@ use crate::syntax::{
     parse_result::{ParseResult, Request},
     reader::{expect, TokenReader},
     token::TokenType,
-    variable_context::{Variable, VariableValue},
+    variable_context::Variable,
 };
 
 pub struct RequestParser;
@@ -50,32 +49,7 @@ impl Parse for RequestParser {
 pub fn parse_body_value(r: &mut TokenReader) -> Result<String, SyntaxError> {
     if let Some(val) = r.cur() {
         match val.token_type {
-            TokenType::String => {
-                let raw = val.value.trim_matches('"').trim_matches('\'');
-                let b = normalize_multiline_string(raw, " ");
-                r.advance();
-                Ok(b)
-            }
-            TokenType::Identifier => {
-                let ident = val.value.clone();
-                if crate::syntax::functions::is_known_namespace(&ident) {
-                    r.advance();
-                    r.skip_ignorable();
-                    if let Some(dot) = r.cur() {
-                        if dot.token_type == TokenType::Punctuation && dot.value == "." {
-                            r.advance();
-                            r.skip_ignorable();
-                            let sys_func = parse_system_function(r, &ident)?;
-                            if let VariableValue::SystemFunction { name, args } = sys_func {
-                                let args_str = args.join("\x1F"); // Use unit separator as delimiter
-                                return Ok(format!("{{{{${name}\x1E{args_str}}}}}"));
-                            }
-                        }
-                    }
-                }
-                r.advance();
-                Ok(format!("{{{{{ident}}}}}"))
-            }
+            TokenType::String | TokenType::Identifier => parse_string_value(r),
             TokenType::Punctuation if val.value == PUNC_DOLLAR => {
                 r.advance();
                 r.skip_ignorable();
@@ -194,7 +168,7 @@ pub fn parse_constructor_params(
                             check_variable_type(&t.value, &[is_string_like], file_vars, t, r)?;
                         }
                     }
-                    url = parse_string_or_identifier(r)?;
+                    url = parse_string_value(r)?;
                 }
                 "headers" => {
                     if let Some(tk) = r.cur() {
@@ -230,7 +204,7 @@ pub fn parse_constructor_params(
                             check_variable_type(&t.value, &[is_string_like], file_vars, t, r)?;
                         }
                     }
-                    url = parse_string_or_identifier(r)?;
+                    url = parse_string_value(r)?;
                 }
                 1 => {
                     if let Some(tk) = r.cur() {

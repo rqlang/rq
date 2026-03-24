@@ -10,16 +10,19 @@ fn resolve_reference_type<'a>(
     value: &'a VariableValue,
     vars: &'a [Variable],
     depth: usize,
-) -> Option<&'a VariableValue> {
+) -> Result<&'a VariableValue, String> {
     if depth > 10 {
-        return None;
+        return Err("possible circular reference in variable chain".into());
     }
     match value {
-        VariableValue::Reference(ref_name) => vars
-            .iter()
-            .find(|v| v.name == *ref_name)
-            .and_then(|v| resolve_reference_type(&v.value, vars, depth + 1)),
-        other => Some(other),
+        VariableValue::Reference(ref_name) => {
+            if let Some(v) = vars.iter().find(|v| v.name == *ref_name) {
+                resolve_reference_type(&v.value, vars, depth + 1)
+            } else {
+                Err(format!("unresolved reference to variable '{ref_name}'"))
+            }
+        }
+        other => Ok(other),
     }
 }
 
@@ -31,12 +34,19 @@ pub fn check_variable_type(
     r: &TokenReader,
 ) -> Result<(), SyntaxError> {
     if let Some(var) = file_vars.iter().find(|v| v.name == name) {
-        let effective = resolve_reference_type(&var.value, file_vars, 0);
-        if let Some(resolved) = effective {
-            let is_valid = expected_types.iter().any(|check| check(resolved));
-            if !is_valid {
+        match resolve_reference_type(&var.value, file_vars, 0) {
+            Ok(resolved) => {
+                let is_valid = expected_types.iter().any(|check| check(resolved));
+                if !is_valid {
+                    return Err(r.create_error(
+                        format!("Variable '{name}' has invalid type for this parameter"),
+                        token.span.clone(),
+                    ));
+                }
+            }
+            Err(reason) => {
                 return Err(r.create_error(
-                    format!("Variable '{name}' has invalid type for this parameter"),
+                    format!("Cannot resolve variable '{name}': {reason}"),
                     token.span.clone(),
                 ));
             }

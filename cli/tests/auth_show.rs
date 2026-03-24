@@ -1031,12 +1031,12 @@ fn test_error_line_number_bare_variable() -> Result<(), Box<dyn std::error::Erro
     // Line 2:     client_id: client_id,
 
     // We expect the error to point to line 2 where client_id is used as a value.
-    if !stderr.contains("line 2") {
+    if !stderr.contains("\"line\":2") {
         return Err(format!("Expected error at line 2, got: {stderr}").into());
     }
 
     // We expect column 16 (value), not column 5 (key)
-    if !stderr.contains("column 16") {
+    if !stderr.contains("\"column\":16") {
         return Err(format!("Expected error at column 16, got: {stderr}").into());
     }
 

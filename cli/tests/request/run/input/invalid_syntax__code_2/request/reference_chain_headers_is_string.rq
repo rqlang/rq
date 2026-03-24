@@ -1,0 +1,3 @@
+let base_url = "http://localhost:8080";
+let u = base_url;
+rq get("http://localhost:8080", u);

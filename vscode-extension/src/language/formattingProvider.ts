@@ -4,7 +4,7 @@ export function formatRqDocument(text: string, tabSize: number): string {
     const indent = ' '.repeat(tabSize);
     const rawLines: string[] = [];
     for (const raw of text.split('\n'))
-        for (const part of splitOnSemicolons(raw)) rawLines.push(...splitOnBraces(part));
+        {for (const part of splitOnSemicolons(raw)) {rawLines.push(...splitOnBraces(part));}}
     const lines = joinArrayClosers(splitArrayEntries(rawLines));
     const output: string[] = [];
     let depth = 0;
@@ -35,32 +35,32 @@ export function formatRqDocument(text: string, tabSize: number): string {
         if (inBlockComment) {
             if (output.length > 0) {
                 const blanks = computeBlanks(blankCount, depth, prevTrimmed, trimmed);
-                for (let i = 0; i < blanks; i++) output.push('');
+                for (let i = 0; i < blanks; i++) {output.push('');}
             }
             blankCount = 0;
             output.push(indent.repeat(depth) + trimmed);
             prevTrimmed = trimmed;
-            if (trimmed.includes('*/')) inBlockComment = false;
+            if (trimmed.includes('*/')) {inBlockComment = false;}
             continue;
         }
 
-        if (trimmed.startsWith('/*') && !trimmed.includes('*/')) inBlockComment = true;
+        if (trimmed.startsWith('/*') && !trimmed.includes('*/')) {inBlockComment = true;}
 
-        if (trimmed.startsWith('}') || trimmed.startsWith(']')) depth = Math.max(0, depth - 1);
+        if (trimmed.startsWith('}') || trimmed.startsWith(']')) {depth = Math.max(0, depth - 1);}
 
         if (output.length > 0) {
             const blanks = computeBlanks(blankCount, depth, prevTrimmed, trimmed);
-            for (let i = 0; i < blanks; i++) output.push('');
+            for (let i = 0; i < blanks; i++) {output.push('');}
         }
         blankCount = 0;
 
         output.push(depth > 0 ? indent.repeat(depth) + fixSpacing(trimmed) : fixSpacing(trimmed));
         prevTrimmed = trimmed;
 
-        if (isBlockOpener(trimmed)) depth++;
+        if (isBlockOpener(trimmed)) {depth++;}
     }
 
-    while (output.length > 0 && output[output.length - 1].trim() === '') output.pop();
+    while (output.length > 0 && output[output.length - 1].trim() === '') {output.pop();}
     return output.join('\n') + '\n';
 }
 
@@ -71,7 +71,7 @@ function joinArrayClosers(lines: string[]): string[] {
         const trimmed = lines[i].trim();
         if (trimmed === ']' || trimmed === '}') {
             let j = i + 1;
-            while (j < lines.length && lines[j].trim() === '') j++;
+            while (j < lines.length && lines[j].trim() === '') {j++;}
             if (j < lines.length && /^[);]/.test(lines[j].trim())) {
                 result.push(trimmed + lines[j].trim());
                 i = j + 1;
@@ -114,10 +114,10 @@ function splitLineOnCommas(line: string): string[] {
     let inString = false;
     let depth = 0;
     for (const ch of line) {
-        if (ch === '"') inString = !inString;
+        if (ch === '"') {inString = !inString;}
         if (!inString) {
-            if (ch === '(' || ch === '[' || ch === '{') depth++;
-            if (ch === ')' || ch === ']' || ch === '}') depth--;
+            if (ch === '(' || ch === '[' || ch === '{') {depth++;}
+            if (ch === ')' || ch === ']' || ch === '}') {depth--;}
         }
         if (ch === ',' && !inString && depth === 0) {
             parts.push(current + ',');
@@ -126,7 +126,7 @@ function splitLineOnCommas(line: string): string[] {
             current += ch;
         }
     }
-    if (current.trim()) parts.push(current);
+    if (current.trim()) {parts.push(current);}
     return parts.length > 1 ? parts : [line];
 }
 
@@ -138,7 +138,7 @@ function splitOnBraces(line: string): string[] {
     let bracketDepth = 0;
     for (let i = 0; i < line.length; i++) {
         const ch = line[i];
-        if (ch === '"') inString = !inString;
+        if (ch === '"') {inString = !inString;}
         if (!inString) {
             if (ch === '[') {
                 bracketDepth++;
@@ -147,7 +147,7 @@ function splitOnBraces(line: string): string[] {
             }
             if (ch === ']') {
                 if (bracketDepth > 0) { bracketDepth--; current += ch; continue; }
-                if (current.trim()) parts.push(current);
+                if (current.trim()) {parts.push(current);}
                 let closer = ']';
                 if (i + 1 < line.length && (line[i + 1] === ';' || line[i + 1] === ',')) { closer += line[i + 1]; i++; }
                 parts.push(closer);
@@ -167,7 +167,7 @@ function splitOnBraces(line: string): string[] {
             }
             if (ch === '}') {
                 if (jsonDepth > 0) { jsonDepth--; current += ch; continue; }
-                if (current.trim()) parts.push(current);
+                if (current.trim()) {parts.push(current);}
                 let closer = '}';
                 if (i + 1 < line.length && line[i + 1] === ';') { closer = '};'; i++; }
                 parts.push(closer);
@@ -177,7 +177,7 @@ function splitOnBraces(line: string): string[] {
         }
         current += ch;
     }
-    if (current.trim()) parts.push(current);
+    if (current.trim()) {parts.push(current);}
     return parts.length > 0 ? parts : [line];
 }
 
@@ -186,35 +186,35 @@ function splitOnSemicolons(line: string): string[] {
     let current = '';
     let inString = false;
     for (const ch of line) {
-        if (ch === '"') inString = !inString;
+        if (ch === '"') {inString = !inString;}
         current += ch;
         if (ch === ';' && !inString) {
             result.push(current);
             current = '';
         }
     }
-    if (current.trim()) result.push(current);
+    if (current.trim()) {result.push(current);}
     return result.length > 0 ? result : [line];
 }
 
 function computeBlanks(blankCount: number, depth: number, prev: string, curr: string): number {
-    if (curr.startsWith('}') || curr.startsWith(']')) return 0;
-    if (isStickyPair(prev, curr)) return 0;
-    if (depth === 0 && needsBlankSeparator(prev, curr)) return 1;
+    if (curr.startsWith('}') || curr.startsWith(']')) {return 0;}
+    if (isStickyPair(prev, curr)) {return 0;}
+    if (depth === 0 && needsBlankSeparator(prev, curr)) {return 1;}
     return Math.min(blankCount, 1);
 }
 
 function needsBlankSeparator(prev: string, curr: string): boolean {
-    if (prev.startsWith('}')) return true;
-    if (/^(ep|env|auth)\b/.test(curr)) return true;
-    if (/^(ep|env|auth)\b/.test(prev)) return true;
+    if (prev.startsWith('}')) {return true;}
+    if (/^(ep|env|auth)\b/.test(curr)) {return true;}
+    if (/^(ep|env|auth)\b/.test(prev)) {return true;}
     return false;
 }
 
 function isStickyPair(prev: string, curr: string): boolean {
-    if (/^\[(?:method|auth|timeout)\s*\(/.test(prev)) return true;
-    if (prev.startsWith('//') || prev.startsWith('/*')) return true;
-    if (prev.startsWith('import ') && curr.startsWith('import ')) return true;
+    if (/^\[(?:method|auth|timeout)\s*\(/.test(prev)) {return true;}
+    if (prev.startsWith('//') || prev.startsWith('/*')) {return true;}
+    if (prev.startsWith('import ') && curr.startsWith('import ')) {return true;}
     return false;
 }
 
@@ -233,7 +233,7 @@ function fixSpacing(trimmed: string): string {
 
     result = result.replace(/([a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*(?=[^\s/])/g, (match, name, offset) => {
         const before = result.slice(0, offset);
-        if ((before.match(/"/g) || []).length % 2 !== 0) return match;
+        if ((before.match(/"/g) || []).length % 2 !== 0) {return match;}
         return `${name}: `;
     });
 
@@ -246,7 +246,7 @@ export const formattingProvider = vscode.languages.registerDocumentFormattingEdi
         provideDocumentFormattingEdits(document: vscode.TextDocument, options: vscode.FormattingOptions): vscode.TextEdit[] {
             const text = document.getText();
             const formatted = formatRqDocument(text, options.tabSize);
-            if (formatted === text) return [];
+            if (formatted === text) {return [];}
             const lastLine = document.lineAt(document.lineCount - 1);
             const fullRange = new vscode.Range(
                 new vscode.Position(0, 0),

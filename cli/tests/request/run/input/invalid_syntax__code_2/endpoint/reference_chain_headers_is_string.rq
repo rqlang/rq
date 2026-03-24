@@ -1,0 +1,5 @@
+let base_url = "http://localhost:8080";
+let u = base_url;
+ep api("http://localhost:8080", u) {
+    rq get();
+}

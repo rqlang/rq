@@ -1,0 +1,7 @@
+{
+    "request": {
+        "headers": {
+            "x-custom": "hello from file"
+        }
+    }
+}

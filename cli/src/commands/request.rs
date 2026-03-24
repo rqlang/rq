@@ -135,7 +135,18 @@ pub struct RunArgs {
 
 pub fn execute_list(args: &ListArgs) -> Result<(), Box<dyn std::error::Error>> {
     let source_path = Path::new(&args.source.source);
-    let requests = RqClient::list_requests(source_path)?;
+    let (requests, parse_errors) = RqClient::list_requests(source_path)?;
+
+    for e in &parse_errors {
+        match args.output.output {
+            crate::core::formatter::OutputFormat::Json => {
+                eprintln!("{}", crate::core::error::error_to_json(e));
+            }
+            crate::core::formatter::OutputFormat::Text => {
+                eprintln!("Warning: Failed to parse: {e}");
+            }
+        }
+    }
 
     let formatter = crate::core::formatter::get_formatter(&args.output.output);
     print!(

@@ -1,0 +1,3 @@
+let my_headers = ["Content-Type": "application/json"];
+let h = my_headers;
+rq get(url: h);

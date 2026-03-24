@@ -25,8 +25,8 @@ export function getActiveParam(innerText: string, paramNames: string[]): number 
         }
 
         if (!inString) {
-            if (char === '(' || char === '[' || char === '{') depth++;
-            else if (char === ')' || char === ']' || char === '}') depth--;
+            if (char === '(' || char === '[' || char === '{') {depth++;}
+            else if (char === ')' || char === ']' || char === '}') {depth--;}
             else if (char === ',' && depth === 0) {
                 lastCommaPos = i;
                 commaCount++;

@@ -1,5 +1,5 @@
 use super::rq_client_models::{RequestDetails, RequestExecutionResult, RequestInfo, RqConfig};
-use crate::core::error::RqError;
+use crate::core::error::{warning_to_json, RqError};
 use crate::core::logger::Logger;
 use crate::syntax::{RqFile, Variable, VariableValue};
 
@@ -29,8 +29,15 @@ impl RqClient {
     pub async fn run(&self) -> Result<Vec<RequestExecutionResult>, RqError> {
         let source_path = Path::new(&self.config.source_path);
 
-        let rq_files =
+        let (rq_files, parse_warnings) =
             Self::get_rq_files_to_process(source_path, self.config.request_name.as_deref())?;
+        for w in parse_warnings {
+            if self.config.output_format == "json" {
+                eprintln!("{}", warning_to_json(&format!("Failed to parse: {w}")));
+            } else {
+                eprintln!("Warning: Failed to parse: {w}");
+            }
+        }
 
         if rq_files.is_empty() {
             return Err(RqError::RequestNotFound(format!(
@@ -202,14 +209,27 @@ impl RqClient {
         Ok(all_results)
     }
 
-    pub fn list_requests(source_path: &Path) -> Result<Vec<RequestInfo>, RqError> {
+    pub fn list_requests(source_path: &Path) -> Result<(Vec<RequestInfo>, Vec<RqError>), RqError> {
         if !source_path.exists() {
             return Err(RqError::DirectoryNotFound(
                 source_path.display().to_string(),
             ));
         }
 
-        let rq_files = Self::get_rq_files_to_process(source_path, None)?;
+        let (rq_files, parse_errors) = if source_path.is_file() {
+            let rq_file = RqFile::from_path(source_path).map_err(|e| {
+                if let Some(syntax_err) = e.downcast_ref::<crate::syntax::error::SyntaxError>() {
+                    RqError::Syntax(syntax_err.clone())
+                } else {
+                    RqError::Generic(e.to_string())
+                }
+            })?;
+            (vec![rq_file], vec![])
+        } else {
+            let mut rq_files = Vec::new();
+            let parse_errors = Self::collect_rq_files_parsed(source_path, &mut rq_files)?;
+            (rq_files, parse_errors)
+        };
 
         let mut requests = Vec::new();
         for rq_file in rq_files {
@@ -243,7 +263,7 @@ impl RqClient {
 
         requests.sort_by(|a, b| a.name.cmp(&b.name));
 
-        Ok(requests)
+        Ok((requests, parse_errors))
     }
 
     pub fn get_request_details(
@@ -252,7 +272,7 @@ impl RqClient {
         environment: Option<&str>,
         interpolate_variables: bool,
     ) -> Result<RequestDetails, RqError> {
-        let rq_files = Self::get_rq_files_to_process(source_path, Some(request_name))?;
+        let (rq_files, _) = Self::get_rq_files_to_process(source_path, Some(request_name))?;
 
         let rq_file = rq_files
             .into_iter()
@@ -931,15 +951,16 @@ impl RqClient {
     fn get_rq_files_to_process(
         source_path: &Path,
         request_name: Option<&str>,
-    ) -> Result<Vec<RqFile>, RqError> {
+    ) -> Result<(Vec<RqFile>, Vec<RqError>), RqError> {
         if source_path.is_file() {
-            return Ok(vec![RqFile::from_path(source_path).map_err(|e| {
+            let rq_file = RqFile::from_path(source_path).map_err(|e| {
                 if let Some(syntax_err) = e.downcast_ref::<crate::syntax::error::SyntaxError>() {
                     RqError::Syntax(syntax_err.clone())
                 } else {
                     RqError::Generic(e.to_string())
                 }
-            })?]);
+            })?;
+            return Ok((vec![rq_file], Vec::new()));
         }
 
         if !source_path.is_dir() {
@@ -950,7 +971,7 @@ impl RqClient {
 
         if let Some(request_name) = request_name {
             match Self::find_rq_file_with_request(source_path, request_name)? {
-                Some(rq_file) => Ok(vec![rq_file]),
+                Some(rq_file) => Ok((vec![rq_file], Vec::new())),
                 None => Err(RqError::RequestNotFound(format!(
                     "Request '{}' not found in directory: {}",
                     request_name,
@@ -959,8 +980,8 @@ impl RqClient {
             }
         } else {
             let mut rq_files = Vec::new();
-            Self::collect_rq_files_parsed(source_path, &mut rq_files)?;
-            Ok(rq_files)
+            let parse_errors = Self::collect_rq_files_parsed(source_path, &mut rq_files)?;
+            Ok((rq_files, parse_errors))
         }
     }
 
@@ -1008,20 +1029,29 @@ impl RqClient {
         Ok(None)
     }
 
-    fn collect_rq_files_parsed(dir: &Path, rq_files: &mut Vec<RqFile>) -> Result<(), RqError> {
+    fn collect_rq_files_parsed(
+        dir: &Path,
+        rq_files: &mut Vec<RqFile>,
+    ) -> Result<Vec<RqError>, RqError> {
         let mut paths = Vec::new();
         Self::collect_rq_paths(dir, &mut paths)?;
+        let mut parse_errors = Vec::new();
         for path in paths {
             match RqFile::from_path(&path) {
                 Ok(rq_file) => rq_files.push(rq_file),
-                Err(e) => eprintln!(
-                    "Warning: Failed to parse {}: {}",
-                    crate::core::paths::clean_path(&path),
-                    e
-                ),
+                Err(e) => {
+                    let rq_error = if let Some(syntax_err) =
+                        e.downcast_ref::<crate::syntax::error::SyntaxError>()
+                    {
+                        RqError::Syntax(syntax_err.clone())
+                    } else {
+                        RqError::Generic(e.to_string())
+                    };
+                    parse_errors.push(rq_error);
+                }
             }
         }
-        Ok(())
+        Ok(parse_errors)
     }
 
     fn build_search_paths(
@@ -1069,6 +1099,19 @@ impl RqClient {
         name: &str,
         ctx: &crate::syntax::variable_context::VariableContext,
     ) -> Result<Vec<(String, String)>, String> {
+        Self::expand_headers_var_inner(name, ctx, 0)
+    }
+
+    fn expand_headers_var_inner(
+        name: &str,
+        ctx: &crate::syntax::variable_context::VariableContext,
+        depth: usize,
+    ) -> Result<Vec<(String, String)>, String> {
+        if depth > 20 {
+            return Err(format!(
+                "Recursion limit exceeded resolving headers variable '{name}': check for circular references"
+            ));
+        }
         let mut all: Vec<&crate::syntax::variable_context::Variable> = Vec::new();
         all.extend(&ctx.file_variables);
         all.extend(&ctx.environment_variables);
@@ -1076,7 +1119,7 @@ impl RqClient {
         all.extend(&ctx.endpoint_variables);
         all.extend(&ctx.request_variables);
         all.extend(&ctx.cli_variables);
-        if let Some(var) = all.into_iter().find(|v| v.name == name) {
+        if let Some(var) = all.into_iter().rev().find(|v| v.name == name) {
             match &var.value {
                 VariableValue::Json(_) | VariableValue::String(_) => {
                     return Err(format!(
@@ -1098,14 +1141,14 @@ impl RqClient {
                 VariableValue::Headers(h) => {
                     return Ok(h.clone());
                 }
-                VariableValue::Reference(_) => {
-                    // Should we resolve reference?
-                    // For now, just ignore or error?
-                    // The original code did nothing for Reference.
-                    return Ok(Vec::new());
+                VariableValue::Reference(ref_name) => {
+                    let resolved_name = ref_name.clone();
+                    return Self::expand_headers_var_inner(&resolved_name, ctx, depth + 1);
                 }
                 VariableValue::SystemFunction { .. } => {
-                    return Ok(Vec::new());
+                    return Err(format!(
+                        "Variable '{name}' is a function call and cannot be used as headers"
+                    ));
                 }
             }
         }

@@ -6,6 +6,26 @@ use crate::syntax::{
     variable_context::{Variable, VariableValue},
 };
 
+fn resolve_reference_type<'a>(
+    value: &'a VariableValue,
+    vars: &'a [Variable],
+    depth: usize,
+) -> Result<&'a VariableValue, String> {
+    if depth > 10 {
+        return Err("possible circular reference in variable chain".into());
+    }
+    match value {
+        VariableValue::Reference(ref_name) => {
+            if let Some(v) = vars.iter().find(|v| v.name == *ref_name) {
+                resolve_reference_type(&v.value, vars, depth + 1)
+            } else {
+                Err(format!("unresolved reference to variable '{ref_name}'"))
+            }
+        }
+        other => Ok(other),
+    }
+}
+
 pub fn check_variable_type(
     name: &str,
     expected_types: &[fn(&VariableValue) -> bool],
@@ -14,12 +34,22 @@ pub fn check_variable_type(
     r: &TokenReader,
 ) -> Result<(), SyntaxError> {
     if let Some(var) = file_vars.iter().find(|v| v.name == name) {
-        let is_valid = expected_types.iter().any(|check| check(&var.value));
-        if !is_valid {
-            return Err(r.create_error(
-                format!("Variable '{name}' has invalid type for this parameter"),
-                token.span.clone(),
-            ));
+        match resolve_reference_type(&var.value, file_vars, 0) {
+            Ok(resolved) => {
+                let is_valid = expected_types.iter().any(|check| check(resolved));
+                if !is_valid {
+                    return Err(r.create_error(
+                        format!("Variable '{name}' has invalid type for this parameter"),
+                        token.span.clone(),
+                    ));
+                }
+            }
+            Err(reason) => {
+                return Err(r.create_error(
+                    format!("Cannot resolve variable '{name}': {reason}"),
+                    token.span.clone(),
+                ));
+            }
         }
     }
     Ok(())
@@ -28,14 +58,12 @@ pub fn check_variable_type(
 pub fn is_string_like(v: &VariableValue) -> bool {
     matches!(
         v,
-        VariableValue::String(_)
-            | VariableValue::Reference(_)
-            | VariableValue::SystemFunction { .. }
+        VariableValue::String(_) | VariableValue::SystemFunction { .. }
     )
 }
 
 pub fn is_headers_like(v: &VariableValue) -> bool {
-    matches!(v, VariableValue::Headers(_) | VariableValue::Reference(_))
+    matches!(v, VariableValue::Headers(_))
 }
 
 pub fn parse_system_function(
@@ -129,17 +157,50 @@ pub fn normalize_multiline_string(s: &str, separator: &str) -> String {
     result
 }
 
-pub fn parse_string_or_identifier(r: &mut TokenReader) -> Result<String, SyntaxError> {
+pub fn parse_string_value(r: &mut TokenReader, separator: &str) -> Result<String, SyntaxError> {
     if let Some(t) = r.cur() {
         match t.token_type {
             TokenType::String => {
                 let raw = t.value.trim_matches('"').trim_matches('\'');
-                let value = normalize_multiline_string(raw, "");
+                let value = normalize_multiline_string(raw, separator);
                 r.advance();
                 Ok(value)
             }
             TokenType::Identifier => {
                 let ident = t.value.clone();
+                if crate::syntax::functions::is_known_namespace(&ident) {
+                    let saved = r.idx;
+                    r.advance();
+                    r.skip_ignorable();
+                    if let Some(dot) = r.cur() {
+                        if dot.token_type == TokenType::Punctuation && dot.value == "." {
+                            r.advance();
+                            r.skip_ignorable();
+                            let func_span = r
+                                .cur()
+                                .map(|t| t.span.clone())
+                                .unwrap_or(r.source.len()..r.source.len());
+                            let sys_func = parse_system_function(r, &ident)?;
+                            if let VariableValue::SystemFunction { name, args } = sys_func {
+                                let func = crate::syntax::functions::get_function(
+                                    &ident,
+                                    &name[ident.len() + 1..],
+                                );
+                                if func.map(|f| f.return_type())
+                                    != Some(crate::syntax::functions::traits::FunctionReturnType::String)
+                                {
+                                    return Err(r.create_error_no_file(
+                                        format!("{name}() cannot be used here: expected a string-returning function"),
+                                        func_span,
+                                    ));
+                                }
+                                let args_str = args.join("\x1F");
+                                return Ok(format!("{{{{${name}\x1E{args_str}}}}}"));
+                            }
+                        }
+                    }
+                    r.idx = saved;
+                }
                 r.advance();
                 Ok(format!("{{{{{ident}}}}}"))
             }
@@ -180,18 +241,7 @@ pub fn parse_headers_array(r: &mut TokenReader) -> Result<Vec<(String, String)>,
                 )?;
                 r.advance();
                 r.skip_ignorable();
-                let val_tok = expect(
-                    r,
-                    |t| matches!(t.token_type, TokenType::String | TokenType::Identifier),
-                    "Expected string literal or identifier",
-                )?;
-                let val = if val_tok.token_type == TokenType::String {
-                    let v_raw = val_tok.value.trim_matches('"').trim_matches('\'');
-                    normalize_multiline_string(v_raw, " ")
-                } else {
-                    format!("{{{{{}}}}}", val_tok.value)
-                };
-                r.advance();
+                let val = parse_string_value(r, " ")?;
                 headers.push((key, val));
                 r.skip_ignorable();
                 if let Some(com) = r.cur() {

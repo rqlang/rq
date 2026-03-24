@@ -148,6 +148,7 @@ function parseAndReportErrors(stderr: string, cwd?: string): void {
                     vscode.window.showErrorMessage(`rq: ${detail.message}`);
                 }
             } catch {
+                continue;
             }
         }
 

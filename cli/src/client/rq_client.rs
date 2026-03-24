@@ -202,14 +202,27 @@ impl RqClient {
         Ok(all_results)
     }
 
-    pub fn list_requests(source_path: &Path) -> Result<Vec<RequestInfo>, RqError> {
+    pub fn list_requests(source_path: &Path) -> Result<(Vec<RequestInfo>, Vec<RqError>), RqError> {
         if !source_path.exists() {
             return Err(RqError::DirectoryNotFound(
                 source_path.display().to_string(),
             ));
         }
 
-        let rq_files = Self::get_rq_files_to_process(source_path, None)?;
+        let (rq_files, parse_errors) = if source_path.is_file() {
+            let rq_file = RqFile::from_path(source_path).map_err(|e| {
+                if let Some(syntax_err) = e.downcast_ref::<crate::syntax::error::SyntaxError>() {
+                    RqError::Syntax(syntax_err.clone())
+                } else {
+                    RqError::Generic(e.to_string())
+                }
+            })?;
+            (vec![rq_file], vec![])
+        } else {
+            let mut rq_files = Vec::new();
+            let parse_errors = Self::collect_rq_files_parsed(source_path, &mut rq_files)?;
+            (rq_files, parse_errors)
+        };
 
         let mut requests = Vec::new();
         for rq_file in rq_files {
@@ -243,7 +256,7 @@ impl RqClient {
 
         requests.sort_by(|a, b| a.name.cmp(&b.name));
 
-        Ok(requests)
+        Ok((requests, parse_errors))
     }
 
     pub fn get_request_details(
@@ -959,7 +972,10 @@ impl RqClient {
             }
         } else {
             let mut rq_files = Vec::new();
-            Self::collect_rq_files_parsed(source_path, &mut rq_files)?;
+            let parse_errors = Self::collect_rq_files_parsed(source_path, &mut rq_files)?;
+            for e in parse_errors {
+                eprintln!("Warning: Failed to parse: {e}");
+            }
             Ok(rq_files)
         }
     }
@@ -1008,20 +1024,29 @@ impl RqClient {
         Ok(None)
     }
 
-    fn collect_rq_files_parsed(dir: &Path, rq_files: &mut Vec<RqFile>) -> Result<(), RqError> {
+    fn collect_rq_files_parsed(
+        dir: &Path,
+        rq_files: &mut Vec<RqFile>,
+    ) -> Result<Vec<RqError>, RqError> {
         let mut paths = Vec::new();
         Self::collect_rq_paths(dir, &mut paths)?;
+        let mut parse_errors = Vec::new();
         for path in paths {
             match RqFile::from_path(&path) {
                 Ok(rq_file) => rq_files.push(rq_file),
-                Err(e) => eprintln!(
-                    "Warning: Failed to parse {}: {}",
-                    crate::core::paths::clean_path(&path),
-                    e
-                ),
+                Err(e) => {
+                    let rq_error = if let Some(syntax_err) =
+                        e.downcast_ref::<crate::syntax::error::SyntaxError>()
+                    {
+                        RqError::Syntax(syntax_err.clone())
+                    } else {
+                        RqError::Generic(e.to_string())
+                    };
+                    parse_errors.push(rq_error);
+                }
             }
         }
-        Ok(())
+        Ok(parse_errors)
     }
 
     fn build_search_paths(

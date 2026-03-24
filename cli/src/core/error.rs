@@ -1,6 +1,110 @@
 use crate::syntax::error::SyntaxError;
+use serde::Serialize;
 use std::fmt;
 use std::io;
+
+#[derive(Serialize)]
+struct JsonErrorDetail {
+    #[serde(rename = "type")]
+    error_type: String,
+    message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    file: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    line: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    column: Option<usize>,
+}
+
+#[derive(Serialize)]
+struct JsonError {
+    error: JsonErrorDetail,
+}
+
+pub fn error_to_json(error: &(dyn std::error::Error + 'static)) -> String {
+    let detail = if let Some(rq_error) = error.downcast_ref::<RqError>() {
+        match rq_error {
+            RqError::Syntax(e) => JsonErrorDetail {
+                error_type: "syntax".to_string(),
+                message: e.message.clone(),
+                file: e.file_path.clone(),
+                line: Some(e.line),
+                column: Some(e.column),
+            },
+            RqError::Auth(msg) => JsonErrorDetail {
+                error_type: "auth".to_string(),
+                message: msg.clone(),
+                file: None,
+                line: None,
+                column: None,
+            },
+            RqError::Validation(msg) => JsonErrorDetail {
+                error_type: "validation".to_string(),
+                message: msg.clone(),
+                file: None,
+                line: None,
+                column: None,
+            },
+            RqError::DirectoryNotFound(path) => JsonErrorDetail {
+                error_type: "file".to_string(),
+                message: format!("Directory not found: {path}"),
+                file: None,
+                line: None,
+                column: None,
+            },
+            RqError::NotADirectory(path) => JsonErrorDetail {
+                error_type: "file".to_string(),
+                message: format!("Not a directory: {path}"),
+                file: None,
+                line: None,
+                column: None,
+            },
+            RqError::RequestNotFound(name) => JsonErrorDetail {
+                error_type: "not_found".to_string(),
+                message: format!("Request not found: {name}"),
+                file: None,
+                line: None,
+                column: None,
+            },
+            RqError::EnvironmentNotFound(name) => JsonErrorDetail {
+                error_type: "not_found".to_string(),
+                message: format!("Environment not found: {name}"),
+                file: None,
+                line: None,
+                column: None,
+            },
+            RqError::Io(e) => JsonErrorDetail {
+                error_type: "io".to_string(),
+                message: e.to_string(),
+                file: None,
+                line: None,
+                column: None,
+            },
+            RqError::Generic(msg) => JsonErrorDetail {
+                error_type: "generic".to_string(),
+                message: msg.clone(),
+                file: None,
+                line: None,
+                column: None,
+            },
+        }
+    } else {
+        JsonErrorDetail {
+            error_type: "generic".to_string(),
+            message: error.to_string(),
+            file: None,
+            line: None,
+            column: None,
+        }
+    };
+
+    serde_json::to_string(&JsonError { error: detail }).unwrap_or_else(|_| {
+        format!(
+            r#"{{"error":{{"type":"generic","message":{:?}}}}}"#,
+            error.to_string()
+        )
+    })
+}
 
 #[derive(Debug)]
 pub enum RqError {

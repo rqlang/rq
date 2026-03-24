@@ -121,51 +121,70 @@ function parseAndReportErrors(stderr: string, cwd?: string): void {
 
     diagnosticCollection.clear();
 
+    const jsonLines = stderr.split('\n').filter(line => line.trimStart().startsWith('{'));
+    if (jsonLines.length > 0) {
+        const diagnosticsMap = new Map<string, vscode.Diagnostic[]>();
+        let hasJsonErrors = false;
+
+        for (const jsonLine of jsonLines) {
+            try {
+                const parsed = JSON.parse(jsonLine);
+                const detail = parsed?.error;
+                if (!detail) {
+                    continue;
+                }
+                hasJsonErrors = true;
+                if (detail.type === 'syntax' && detail.file && detail.line !== undefined && detail.column !== undefined) {
+                    const range = new vscode.Range(detail.line - 1, detail.column - 1, detail.line - 1, Number.MAX_VALUE);
+                    const diagnostic = new vscode.Diagnostic(range, detail.message, vscode.DiagnosticSeverity.Error);
+                    diagnostic.source = 'rq-cli';
+                    const uri = vscode.Uri.file(normalizePath(detail.file));
+                    const uriStr = uri.toString();
+                    if (!diagnosticsMap.has(uriStr)) {
+                        diagnosticsMap.set(uriStr, []);
+                    }
+                    diagnosticsMap.get(uriStr)?.push(diagnostic);
+                } else {
+                    vscode.window.showErrorMessage(`rq: ${detail.message}`);
+                }
+            } catch {
+            }
+        }
+
+        if (hasJsonErrors) {
+            for (const [uriStr, diagnostics] of diagnosticsMap) {
+                diagnosticCollection.set(vscode.Uri.parse(uriStr), diagnostics);
+            }
+            return;
+        }
+    }
+
     const errorRegex = /Syntax error in (.+) at line (\d+), column (\d+): (.+)/g;
     let match;
-    
     const diagnosticsMap = new Map<string, vscode.Diagnostic[]>();
 
     while ((match = errorRegex.exec(stderr)) !== null) {
         const rawFilePath = match[1].trim();
-        const line = parseInt(match[2], 10) - 1; 
+        const line = parseInt(match[2], 10) - 1;
         const column = parseInt(match[3], 10) - 1;
         const message = match[4];
 
-        if (outputChannel) {
-            outputChannel.appendLine(`[Error Parsing] Found error in: ${rawFilePath} (cwd: ${cwd})`);
-        }
-        console.log(`[Error Parsing] Found error in: ${rawFilePath} (cwd: ${cwd})`);
-
         let filePath = rawFilePath;
         const looksLikeAbsolute = rawFilePath.startsWith('/') || /^[a-zA-Z]:/.test(rawFilePath) || rawFilePath.startsWith('\\');
-
         if (!path.isAbsolute(rawFilePath) && !looksLikeAbsolute) {
             const basePath = cwd || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-             if (outputChannel) {
-                 outputChannel.appendLine(`[Error Parsing] Resolving relative path with base: ${basePath}`);
-             }
-             console.log(`[Error Parsing] Resolving relative path with base: ${basePath}`);
             if (basePath) {
                 filePath = path.resolve(basePath, rawFilePath);
             }
-        } else if (looksLikeAbsolute && !path.isAbsolute(rawFilePath)) {
-             filePath = rawFilePath;
         }
-        
-        filePath = normalizePath(filePath);
-        if (outputChannel) {
-            outputChannel.appendLine(`[Error Parsing] Normalized path: ${filePath}`);
-        }
-        console.log(`[Error Parsing] Normalized path: ${filePath}`);
 
+        filePath = normalizePath(filePath);
         const range = new vscode.Range(line, column, line, Number.MAX_VALUE);
         const diagnostic = new vscode.Diagnostic(range, message, vscode.DiagnosticSeverity.Error);
         diagnostic.source = 'rq-cli';
 
         const uri = vscode.Uri.file(filePath);
         const uriStr = uri.toString();
-        
         if (!diagnosticsMap.has(uriStr)) {
             diagnosticsMap.set(uriStr, []);
         }

@@ -7,7 +7,9 @@ mod core;
 mod syntax;
 
 use commands::Commands;
+use core::error::error_to_json;
 use core::exit_code::ExitCode;
+use core::formatter::OutputFormat;
 
 #[derive(Parser)]
 #[command(name = "rq")]
@@ -34,11 +36,30 @@ struct DefaultArgs {
 
 #[tokio::main]
 async fn main() {
+    let output_format = extract_output_format(&std::env::args().collect::<Vec<_>>());
     if let Err(e) = run().await {
-        eprintln!("Error: {e}");
+        match output_format {
+            OutputFormat::Json => eprintln!("{}", error_to_json(e.as_ref())),
+            OutputFormat::Text => eprintln!("Error: {e}"),
+        }
         let exit_code = ExitCode::from(&e);
         std::process::exit(exit_code.code());
     }
+}
+
+fn extract_output_format(args: &[String]) -> OutputFormat {
+    for i in 0..args.len() {
+        if (args[i] == "-o" || args[i] == "--output")
+            && i + 1 < args.len()
+            && args[i + 1].eq_ignore_ascii_case("json")
+        {
+            return OutputFormat::Json;
+        }
+        if args[i].eq_ignore_ascii_case("-ojson") || args[i].eq_ignore_ascii_case("--output=json") {
+            return OutputFormat::Json;
+        }
+    }
+    OutputFormat::Text
 }
 
 async fn run() -> Result<(), Box<dyn std::error::Error>> {

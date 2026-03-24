@@ -214,7 +214,6 @@ function needsBlankSeparator(prev: string, curr: string): boolean {
 function isStickyPair(prev: string, curr: string): boolean {
     if (/^\[(?:method|auth|timeout)\s*\(/.test(prev)) return true;
     if (prev.startsWith('//') || prev.startsWith('/*')) return true;
-    if (prev.startsWith('let ') && curr.startsWith('let ')) return true;
     if (prev.startsWith('import ') && curr.startsWith('import ')) return true;
     return false;
 }

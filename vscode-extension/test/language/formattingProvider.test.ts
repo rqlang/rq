@@ -89,8 +89,12 @@ describe('formatRqDocument', () => {
             expect(fmt('// comment\nrq get("url");')).toBe('// comment\nrq get("url");\n');
         });
 
-        test('does not insert blank between consecutive let statements', () => {
+        test('preserves no blank between consecutive let statements when user wrote none', () => {
             expect(fmt('let base_url = "http://localhost";\nlet headers = ["Accept": "application/json"];')).toBe('let base_url = "http://localhost";\nlet headers = ["Accept": "application/json"];\n');
+        });
+
+        test('preserves blank between consecutive let statements when user wrote one', () => {
+            expect(fmt('let base_url = "http://localhost";\n\nlet headers = ["Accept": "application/json"];')).toBe('let base_url = "http://localhost";\n\nlet headers = ["Accept": "application/json"];\n');
         });
 
         test('does not insert blank between consecutive import statements', () => {

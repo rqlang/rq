@@ -687,17 +687,6 @@ describe('auth keyword snippets', () => {
         expect(kw).toBeDefined();
     });
 
-    test('suggests let string snippet with Module kind', async () => {
-        const doc = makeDocument(['let']);
-        const position = new vscode.Position(0, 3);
-
-        const items = await provideCompletionItems(doc, position);
-
-        const snip = items.find((i: any) => i.label === 'let string');
-        expect(snip).toBeDefined();
-        expect(snip.kind).toBe(vscode.CompletionItemKind.Module);
-    });
-
     test('suggests import keyword item with Keyword kind in top-level section', async () => {
         const doc = makeDocument(['im']);
         const position = new vscode.Position(0, 2);

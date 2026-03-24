@@ -21,4 +21,8 @@
     { "open": "(", "close": ")" },
     { "open": "\"", "close": "\"", "notIn": ["string"] }
   ],
+  "indentationRules": {
+    "increaseIndentPattern": "^\\s*(?:ep|auth|env)\\s+[a-zA-Z_][a-zA-Z0-9_-]*[^{]*\\{\\s*$",
+    "decreaseIndentPattern": "^\\s*\\}"
+  }
 }

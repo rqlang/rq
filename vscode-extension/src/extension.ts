@@ -8,6 +8,7 @@ import { definitionProvider, setEnvironmentProvider } from './language/definitio
 import { referenceProvider } from './language/referenceProvider';
 import { renameProvider } from './language/renameProvider';
 import { signatureHelpProvider } from './language/signatureHelpProvider';
+import { formattingProvider } from './language/formattingProvider';
 import { registerRefreshRequestsCommand } from './commands/refreshRequests';
 import { registerOpenRequestFileCommand } from './commands/openRequestFile';
 import { registerOpenConfigurationFileCommand } from './commands/openConfigurationFile';
@@ -110,7 +111,7 @@ export function activate(context: vscode.ExtensionContext) {
         }
     });
 
-    context.subscriptions.push(completionProvider, hoverProvider, definitionProvider, referenceProvider, renameProvider, signatureHelpProvider, headerArrayNewlineTrigger);
+    context.subscriptions.push(completionProvider, hoverProvider, definitionProvider, referenceProvider, renameProvider, signatureHelpProvider, formattingProvider, headerArrayNewlineTrigger);
 }
 
 

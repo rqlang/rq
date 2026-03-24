@@ -794,7 +794,7 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
                             const i = new vscode.CompletionItem('ep crud', vscode.CompletionItemKind.Module);
                             i.detail = 'CRUD endpoint snippet';
                             i.insertText = new vscode.SnippetString(
-                                'let ${1:endpoint}_id = "";\n\nep ${1:endpoint}s($0) {\n\trq list();\n\trq get();\n\trq post(io.read_file("${1:endpoint}-post.json"));\n\trq patch(url: ${1:endpoint}_id, body: io.read_file("${1:endpoint}-patch.json"));\n\trq delete();\n}'
+                                'let ${1:endpoint}_id = "";\n\nep ${1:endpoint}s($0) {\n\trq list();\n\trq get();\n\trq post(body: io.read_file("${1:endpoint}-post.json"));\n\trq patch(url: ${1:endpoint}_id, body: io.read_file("${1:endpoint}-patch.json"));\n\trq delete();\n}'
                             );
                             i.sortText = 'ep_2crud';
                             return i;

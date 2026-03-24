@@ -6,6 +6,23 @@ use crate::syntax::{
     variable_context::{Variable, VariableValue},
 };
 
+fn resolve_reference_type<'a>(
+    value: &'a VariableValue,
+    vars: &'a [Variable],
+    depth: usize,
+) -> Option<&'a VariableValue> {
+    if depth > 10 {
+        return None;
+    }
+    match value {
+        VariableValue::Reference(ref_name) => vars
+            .iter()
+            .find(|v| v.name == *ref_name)
+            .and_then(|v| resolve_reference_type(&v.value, vars, depth + 1)),
+        other => Some(other),
+    }
+}
+
 pub fn check_variable_type(
     name: &str,
     expected_types: &[fn(&VariableValue) -> bool],
@@ -14,12 +31,15 @@ pub fn check_variable_type(
     r: &TokenReader,
 ) -> Result<(), SyntaxError> {
     if let Some(var) = file_vars.iter().find(|v| v.name == name) {
-        let is_valid = expected_types.iter().any(|check| check(&var.value));
-        if !is_valid {
-            return Err(r.create_error(
-                format!("Variable '{name}' has invalid type for this parameter"),
-                token.span.clone(),
-            ));
+        let effective = resolve_reference_type(&var.value, file_vars, 0);
+        if let Some(resolved) = effective {
+            let is_valid = expected_types.iter().any(|check| check(resolved));
+            if !is_valid {
+                return Err(r.create_error(
+                    format!("Variable '{name}' has invalid type for this parameter"),
+                    token.span.clone(),
+                ));
+            }
         }
     }
     Ok(())
@@ -28,14 +48,12 @@ pub fn check_variable_type(
 pub fn is_string_like(v: &VariableValue) -> bool {
     matches!(
         v,
-        VariableValue::String(_)
-            | VariableValue::Reference(_)
-            | VariableValue::SystemFunction { .. }
+        VariableValue::String(_) | VariableValue::SystemFunction { .. }
     )
 }
 
 pub fn is_headers_like(v: &VariableValue) -> bool {
-    matches!(v, VariableValue::Headers(_) | VariableValue::Reference(_))
+    matches!(v, VariableValue::Headers(_))
 }
 
 pub fn parse_system_function(
@@ -129,12 +147,12 @@ pub fn normalize_multiline_string(s: &str, separator: &str) -> String {
     result
 }
 
-pub fn parse_string_value(r: &mut TokenReader) -> Result<String, SyntaxError> {
+pub fn parse_string_value(r: &mut TokenReader, separator: &str) -> Result<String, SyntaxError> {
     if let Some(t) = r.cur() {
         match t.token_type {
             TokenType::String => {
                 let raw = t.value.trim_matches('"').trim_matches('\'');
-                let value = normalize_multiline_string(raw, "");
+                let value = normalize_multiline_string(raw, separator);
                 r.advance();
                 Ok(value)
             }
@@ -153,12 +171,9 @@ pub fn parse_string_value(r: &mut TokenReader) -> Result<String, SyntaxError> {
                                 .unwrap_or(r.source.len()..r.source.len());
                             let sys_func = parse_system_function(r, &ident)?;
                             if let VariableValue::SystemFunction { name, args } = sys_func {
-                                let dot_pos = name
-                                    .find('.')
-                                    .expect("system function name always contains namespace");
                                 let func = crate::syntax::functions::get_function(
-                                    &name[..dot_pos],
-                                    &name[dot_pos + 1..],
+                                    &ident,
+                                    &name[ident.len() + 1..],
                                 );
                                 if func.map(|f| f.return_type())
                                     != Some(crate::syntax::functions::traits::FunctionReturnType::String)
@@ -214,7 +229,7 @@ pub fn parse_headers_array(r: &mut TokenReader) -> Result<Vec<(String, String)>,
                 )?;
                 r.advance();
                 r.skip_ignorable();
-                let val = parse_string_value(r)?;
+                let val = parse_string_value(r, " ")?;
                 headers.push((key, val));
                 r.skip_ignorable();
                 if let Some(com) = r.cur() {

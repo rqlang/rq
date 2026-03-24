@@ -1094,6 +1094,19 @@ impl RqClient {
         name: &str,
         ctx: &crate::syntax::variable_context::VariableContext,
     ) -> Result<Vec<(String, String)>, String> {
+        Self::expand_headers_var_inner(name, ctx, 0)
+    }
+
+    fn expand_headers_var_inner(
+        name: &str,
+        ctx: &crate::syntax::variable_context::VariableContext,
+        depth: usize,
+    ) -> Result<Vec<(String, String)>, String> {
+        if depth > 20 {
+            return Err(format!(
+                "Recursion limit exceeded resolving headers variable '{name}': check for circular references"
+            ));
+        }
         let mut all: Vec<&crate::syntax::variable_context::Variable> = Vec::new();
         all.extend(&ctx.file_variables);
         all.extend(&ctx.environment_variables);
@@ -1101,7 +1114,7 @@ impl RqClient {
         all.extend(&ctx.endpoint_variables);
         all.extend(&ctx.request_variables);
         all.extend(&ctx.cli_variables);
-        if let Some(var) = all.into_iter().find(|v| v.name == name) {
+        if let Some(var) = all.into_iter().rev().find(|v| v.name == name) {
             match &var.value {
                 VariableValue::Json(_) | VariableValue::String(_) => {
                     return Err(format!(
@@ -1123,14 +1136,14 @@ impl RqClient {
                 VariableValue::Headers(h) => {
                     return Ok(h.clone());
                 }
-                VariableValue::Reference(_) => {
-                    // Should we resolve reference?
-                    // For now, just ignore or error?
-                    // The original code did nothing for Reference.
-                    return Ok(Vec::new());
+                VariableValue::Reference(ref_name) => {
+                    let resolved_name = ref_name.clone();
+                    return Self::expand_headers_var_inner(&resolved_name, ctx, depth + 1);
                 }
                 VariableValue::SystemFunction { .. } => {
-                    return Ok(Vec::new());
+                    return Err(format!(
+                        "Variable '{name}' is a function call and cannot be used as headers"
+                    ));
                 }
             }
         }

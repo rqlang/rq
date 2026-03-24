@@ -1,0 +1,1 @@
+Error: Syntax error in tests/request/run/input/invalid_syntax__code_2/endpoint/reference_chain_headers_is_string.rq at line 3, column 33: Variable 'u' has invalid type for this parameter

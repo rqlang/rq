@@ -49,7 +49,7 @@ impl Parse for RequestParser {
 pub fn parse_body_value(r: &mut TokenReader) -> Result<String, SyntaxError> {
     if let Some(val) = r.cur() {
         match val.token_type {
-            TokenType::String | TokenType::Identifier => parse_string_value(r),
+            TokenType::String | TokenType::Identifier => parse_string_value(r, " "),
             TokenType::Punctuation if val.value == PUNC_DOLLAR => {
                 r.advance();
                 r.skip_ignorable();
@@ -168,7 +168,7 @@ pub fn parse_constructor_params(
                             check_variable_type(&t.value, &[is_string_like], file_vars, t, r)?;
                         }
                     }
-                    url = parse_string_value(r)?;
+                    url = parse_string_value(r, "")?;
                 }
                 "headers" => {
                     if let Some(tk) = r.cur() {
@@ -204,7 +204,7 @@ pub fn parse_constructor_params(
                             check_variable_type(&t.value, &[is_string_like], file_vars, t, r)?;
                         }
                     }
-                    url = parse_string_value(r)?;
+                    url = parse_string_value(r, "")?;
                 }
                 1 => {
                     if let Some(tk) = r.cur() {

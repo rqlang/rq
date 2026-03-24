@@ -8,8 +8,18 @@ use super::{
     tokenize::tokenize,
     variable_context::{VariableContext, VariableValue},
 };
+use lazy_static::lazy_static;
 use std::io::BufRead;
 use std::path::{Path, PathBuf};
+
+lazy_static! {
+    static ref FUNC_PATTERN: regex::Regex =
+        regex::Regex::new(r"\{\{\$([a-zA-Z0-9_]+)\.([a-zA-Z0-9_]+)\x1E(.*?)\}\}").unwrap();
+    static ref USER_FUNC_PATTERN: regex::Regex =
+        regex::Regex::new(r"\{\{\s*([a-zA-Z0-9_]+)\.([a-zA-Z0-9_]+)\s*\((.*?)\)\s*\}\}").unwrap();
+    static ref UNRESOLVED_PATTERN: regex::Regex =
+        regex::Regex::new(r"\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}").unwrap();
+}
 
 enum ResolutionStatus {
     Resolved(String),
@@ -326,7 +336,10 @@ fn resolve_variable_value(
     if let Some(v) = map.get(var_name) {
         match v {
             VariableValue::String(s) => ResolutionStatus::Resolved(s.clone()),
-            VariableValue::Array(arr) => ResolutionStatus::Resolved(arr.join(",")),
+            VariableValue::Array(_) => ResolutionStatus::Error(
+                format!("Variable '{var_name}' is an array and cannot be used in a string context"),
+                None,
+            ),
             VariableValue::Json(j) => ResolutionStatus::Resolved(j.clone()),
             VariableValue::Reference(rn) => {
                 let status = resolve_variable_value(rn, map, visited, source_files);
@@ -342,7 +355,10 @@ fn resolve_variable_value(
                     status
                 }
             }
-            VariableValue::Headers(_hdrs) => ResolutionStatus::Resolved(String::new()),
+            VariableValue::Headers(_) => ResolutionStatus::Error(
+                format!("Variable '{var_name}' is a headers object and cannot be used in a string context"),
+                None,
+            ),
             VariableValue::SystemFunction { name, args } => {
                 match execute_system_function(name, args, source_files) {
                     Ok(res) => ResolutionStatus::Resolved(res),
@@ -534,30 +550,25 @@ pub fn resolve_string(
 ) -> Result<String, SyntaxError> {
     let map = context.as_map();
     let mut result = input.to_string();
-    let func_pattern =
-        regex::Regex::new(r"\{\{\$([a-zA-Z0-9_]+)\.([a-zA-Z0-9_]+)\x1E(.*?)\}\}").unwrap();
-    let user_func_pattern =
-        regex::Regex::new(r"\{\{\s*([a-zA-Z0-9_]+)\.([a-zA-Z0-9_]+)\s*\((.*?)\)\s*\}\}").unwrap();
 
     let mut iterations = 0;
     while iterations < 10 {
         iterations += 1;
         let mut changed = resolve_vars_in_string(&mut result, &map, source_files)?;
-        changed |= try_resolve_system_func(&mut result, context, source_files, &func_pattern)?;
+        changed |= try_resolve_system_func(&mut result, context, source_files, &FUNC_PATTERN)?;
         if !changed {
             changed =
-                try_resolve_user_func(&mut result, context, source_files, &user_func_pattern)?;
+                try_resolve_user_func(&mut result, context, source_files, &USER_FUNC_PATTERN)?;
         }
         if !changed {
             break;
         }
     }
 
-    let unresolved_pattern = regex::Regex::new(r"\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}").unwrap();
-    if let Some(caps) = unresolved_pattern.captures(&result) {
+    if let Some(caps) = UNRESOLVED_PATTERN.captures(&result) {
         let var_name = &caps[1];
         let msg = if iterations >= 10 {
-            format!("Circular reference or recursion limit exceeded for variable: '{var_name}'")
+            format!("Recursion limit exceeded resolving '{var_name}': check for deeply nested variable references")
         } else {
             format!("Unresolved variable: '{var_name}'")
         };
@@ -880,6 +891,57 @@ mod tests {
             "client-123"
         );
         assert_eq!(resolved.fields.get("token").unwrap().value, "secret-token");
+    }
+
+    fn var(name: &str, value: VariableValue) -> Variable {
+        Variable {
+            name: name.to_string(),
+            value,
+        }
+    }
+
+    #[test]
+    fn test_headers_variable_in_string_context_errors() {
+        let ctx = make_context(vec![var(
+            "my_headers",
+            VariableValue::Headers(vec![("X-Foo".to_string(), "bar".to_string())]),
+        )]);
+        let result = resolve_string("{{my_headers}}", &ctx, &[]);
+        assert!(result.is_err());
+        let msg = result.unwrap_err().message;
+        assert!(
+            msg.contains("headers object") && msg.contains("string context"),
+            "unexpected error: {msg}"
+        );
+    }
+
+    #[test]
+    fn test_reference_chain_resolves_string() {
+        let ctx = make_context(vec![
+            var("a", VariableValue::String("hello".to_string())),
+            var("b", VariableValue::Reference("a".to_string())),
+            var("c", VariableValue::Reference("b".to_string())),
+        ]);
+        let result = resolve_string("{{c}}", &ctx, &[]).unwrap();
+        assert_eq!(result, "hello");
+    }
+
+    #[test]
+    fn test_reference_to_headers_in_string_context_errors() {
+        let ctx = make_context(vec![
+            var(
+                "base",
+                VariableValue::Headers(vec![("X-H".to_string(), "v".to_string())]),
+            ),
+            var("h", VariableValue::Reference("base".to_string())),
+        ]);
+        let result = resolve_string("{{h}}", &ctx, &[]);
+        assert!(result.is_err());
+        let msg = result.unwrap_err().message;
+        assert!(
+            msg.contains("headers object") && msg.contains("string context"),
+            "unexpected error: {msg}"
+        );
     }
 
     #[test]

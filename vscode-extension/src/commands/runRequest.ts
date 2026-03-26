@@ -127,7 +127,6 @@ export class RequestRunner {
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
             this.outputChannel.appendLine(`Warning: Failed to check/apply auth for request: ${errorMessage}`);
-            throw error;
         }
         return undefined;
     }
@@ -229,16 +228,17 @@ export class RequestRunner {
         variables: Record<string, string> | undefined,
         result: cliService.ExecuteRequestResult
     ) {
-        let errorMsg = result.stderr || `No results returned for request: ${requestName}`;
-        if (result.stderr) {
-            errorMsg = this.cleanErrorMessage(result.stderr);
-        }
+        const fullError = result.stderr
+            ? this.cleanErrorMessage(result.stderr)
+            : `No results returned for request: ${requestName}`;
 
-        vscode.window.showErrorMessage(errorMsg);
+        this.logOutput(`Request Failed: ${requestName}`, fullError, variables);
 
-        if (result.stderr) {
-            this.logOutput(`Request Failed: ${requestName}`, result.stderr, variables);
-        }
+        vscode.window.showErrorMessage(`Request '${requestName}' failed. Check the output for details.`, 'Show Output').then(selection => {
+            if (selection === 'Show Output') {
+                this.outputChannel.show(true);
+            }
+        });
     }
 
     private createWebviewPanel(requestName: string) {
@@ -305,10 +305,16 @@ export class RequestRunner {
 
     private handleError(error: unknown) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        if (errorMessage !== 'Cancelled by user') {
-            vscode.window.showErrorMessage(`Failed to run request: ${errorMessage}`);
-            this.outputChannel.appendLine(`\nERROR: ${errorMessage}\n`);
+        if (errorMessage === 'Cancelled by user') {
+            return;
         }
+        this.outputChannel.appendLine(`\nERROR: ${errorMessage}\n`);
+        const shortMsg = errorMessage.length > 100 ? errorMessage.substring(0, 100) + '\u2026' : errorMessage;
+        vscode.window.showErrorMessage(shortMsg, 'Show Output').then(selection => {
+            if (selection === 'Show Output') {
+                this.outputChannel.show(true);
+            }
+        });
     }
 
     private cleanErrorMessage(stderr: string): string {

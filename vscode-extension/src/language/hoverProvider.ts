@@ -88,9 +88,10 @@ export const hoverProvider = vscode.languages.registerHoverProvider('rq', {
                 const url = urlMatch ? urlMatch[1] : undefined;
                 const contents = new vscode.MarkdownString();
                 contents.appendMarkdown(`**Request: \`${name}\`**\n\n`);
-                contents.appendCodeblock(`[${method}]\nrq ${name}(${url ? `"${url}"` : '...'})`, 'rq');
+                contents.appendCodeblock(`rq ${name}(${url ? `"${url}"` : '...'})`, 'rq');
+                contents.appendMarkdown(`\n**Method:** \`${method}\``);
                 if (url) {
-                    contents.appendMarkdown(`\n**URL:** \`${url}\``);
+                    contents.appendMarkdown(`\n\n**URL:** \`${url}\``);
                 }
                 return new vscode.Hover(contents);
             }

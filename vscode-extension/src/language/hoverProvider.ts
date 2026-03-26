@@ -246,7 +246,7 @@ export const hoverProvider = vscode.languages.registerHoverProvider('rq', {
         if (varRange) {
             const word = document.getText(varRange);
 
-            const artifactDeclMatch = /^\s*(?:rq|ep|auth|env)\s+(\w+)/.exec(lineText);
+            const artifactDeclMatch = /^\s*(?:rq|ep|auth|env)\s+([a-zA-Z_][a-zA-Z0-9_-]*)/.exec(lineText);
             if (artifactDeclMatch && artifactDeclMatch[1] === word) {
                 return undefined;
             }

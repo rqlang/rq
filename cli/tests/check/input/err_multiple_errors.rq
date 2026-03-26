@@ -1,0 +1,4 @@
+let a = undefined_one;
+let b = undefined_two;
+
+rq get("http://localhost:8080");

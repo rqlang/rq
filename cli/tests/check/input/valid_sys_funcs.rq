@@ -1,0 +1,4 @@
+let id = random.guid();
+let ts = datetime.now();
+
+rq post(url: "http://localhost:8080/items", body: ${"id": "{{id}}", "ts": "{{ts}}"});

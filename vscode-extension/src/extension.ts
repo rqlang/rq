@@ -9,6 +9,7 @@ import { referenceProvider } from './language/referenceProvider';
 import { renameProvider } from './language/renameProvider';
 import { signatureHelpProvider } from './language/signatureHelpProvider';
 import { formattingProvider } from './language/formattingProvider';
+import { DiagnosticsProvider } from './language/diagnosticsProvider';
 import { registerRefreshRequestsCommand } from './commands/refreshRequests';
 import { registerOpenRequestFileCommand } from './commands/openRequestFile';
 import { registerOpenConfigurationFileCommand } from './commands/openConfigurationFile';
@@ -34,10 +35,12 @@ export function activate(context: vscode.ExtensionContext) {
 
     const diagnosticCollection = vscode.languages.createDiagnosticCollection('rq');
     context.subscriptions.push(diagnosticCollection);
-    cliService.setDiagnosticCollection(diagnosticCollection);
 
     const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     const requestExplorerProvider = new RequestExplorerProvider(workspaceRoot);
+
+    const diagnosticsProvider = new DiagnosticsProvider(diagnosticCollection, requestExplorerProvider);
+    context.subscriptions.push({ dispose: () => diagnosticsProvider.dispose() });
     const requestExplorerView = vscode.window.createTreeView('rqRequestExplorer', {
         treeDataProvider: requestExplorerProvider,
         showCollapseAll: true
@@ -54,11 +57,13 @@ export function activate(context: vscode.ExtensionContext) {
     cliService.checkCliVersion('rq-lang.rq-language').then(() => {
         requestExplorerProvider.refresh();
         configurationExplorerProvider.refresh();
+        diagnosticsProvider.validateAllFolders();
     });
 
     cliService.onInstallFinished(() => {
         requestExplorerProvider.refresh();
         configurationExplorerProvider.refresh();
+        diagnosticsProvider.validateAllFolders();
     });
 
     // Register commands
@@ -70,6 +75,9 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.commands.registerCommand('rq.refreshConfiguration', () => configurationExplorerProvider.refresh())
     );
     registerSelectEnvironmentCommand(context, requestExplorerProvider);
+    context.subscriptions.push(
+        requestExplorerProvider.onDidChangeEnvironment(() => diagnosticsProvider.validateAllFolders())
+    );
     
     const requestRunner = new RequestRunner(context, rqOutputChannel);
     requestRunner.registerCommands(requestExplorerProvider);
@@ -83,6 +91,18 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Note: OAuth sessions are not cached in VS Code's authentication API
     // Each "Get Token" command executes a fresh OAuth flow using CLI configuration
+
+    const validationOnChange = vscode.workspace.onDidChangeTextDocument(event => {
+        diagnosticsProvider.scheduleValidation(event.document);
+    });
+
+    const validationOnSave = vscode.workspace.onDidSaveTextDocument(document => {
+        diagnosticsProvider.validateSaved(document);
+    });
+
+    const validationOnOpen = vscode.workspace.onDidOpenTextDocument(document => {
+        diagnosticsProvider.validateSaved(document);
+    });
 
     const headerArrayNewlineTrigger = vscode.workspace.onDidChangeTextDocument(event => {
         if (event.document.languageId !== 'rq') { return; }
@@ -111,7 +131,7 @@ export function activate(context: vscode.ExtensionContext) {
         }
     });
 
-    context.subscriptions.push(completionProvider, hoverProvider, definitionProvider, referenceProvider, renameProvider, signatureHelpProvider, formattingProvider, headerArrayNewlineTrigger);
+    context.subscriptions.push(completionProvider, hoverProvider, definitionProvider, referenceProvider, renameProvider, signatureHelpProvider, formattingProvider, headerArrayNewlineTrigger, validationOnChange, validationOnSave, validationOnOpen);
 }
 
 

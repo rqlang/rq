@@ -315,6 +315,18 @@ describe('formatRqDocument', () => {
             expect(fmt('rq get("url", ["Content-Type": "application/json"]);\n')).toBe('rq get("url", ["Content-Type": "application/json"]);\n');
         });
 
+        test('adds space after comma following identifier in ep named params', () => {
+            expect(fmt('ep my_ep1(url: local_url,headers: my_header, qs: qs) {\n}')).toBe('ep my_ep1(url: local_url, headers: my_header, qs: qs) {\n}\n');
+        });
+
+        test('adds space after comma following identifier in rq named params', () => {
+            expect(fmt('rq patch(url: widget_id,body: io.read_file("f.json"));')).toBe('rq patch(url: widget_id, body: io.read_file("f.json"));\n');
+        });
+
+        test('does not alter comma inside string when identifiers precede other commas', () => {
+            expect(fmt('ep my_ep(url: base_url,qs: "a,b") {\n}')).toBe('ep my_ep(url: base_url, qs: "a,b") {\n}\n');
+        });
+
         test('collapses multiple spaces after keyword to one', () => {
             expect(fmt('import    "_shared";')).toBe('import "_shared";\n');
         });

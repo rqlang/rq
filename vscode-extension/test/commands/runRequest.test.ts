@@ -151,7 +151,7 @@ describe('runRequest Commands', () => {
 
             await requestRunner.runRequest(item, provider);
 
-            expect(vscode.window.showErrorMessage).toHaveBeenCalledWith('Failed to run request: Execution failed');
+            expect(vscode.window.showErrorMessage).toHaveBeenCalledWith('Execution failed', 'Show Output');
             expect(provider.setItemLoading).toHaveBeenCalledTimes(2);
             expect(provider.setItemLoading).toHaveBeenNthCalledWith(1, item, true);
             expect(provider.setItemLoading).toHaveBeenNthCalledWith(2, item, false);
@@ -177,8 +177,7 @@ describe('runRequest Commands', () => {
 
             await requestRunner.runRequest(item, provider);
 
-            const expectedError = 'error: invalid value';
-            expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(expectedError);
+            expect(vscode.window.showErrorMessage).toHaveBeenCalledWith("Request 'fail-req' failed. Check the output for details.", 'Show Output');
             expect(provider.setItemLoading).toHaveBeenCalledTimes(2);
             expect(provider.setItemLoading).toHaveBeenNthCalledWith(1, item, true);
             expect(provider.setItemLoading).toHaveBeenNthCalledWith(2, item, false);
@@ -238,7 +237,7 @@ describe('runRequest Commands', () => {
 
             await requestRunner.runRequestWithVariables(item, provider);
 
-            expect(vscode.window.showErrorMessage).toHaveBeenCalledWith('Failed to run request: CLI crashed');
+            expect(vscode.window.showErrorMessage).toHaveBeenCalledWith('CLI crashed', 'Show Output');
             expect(provider.setItemLoading).toHaveBeenCalledTimes(2);
             expect(provider.setItemLoading).toHaveBeenNthCalledWith(1, item, true);
             expect(provider.setItemLoading).toHaveBeenNthCalledWith(2, item, false);

@@ -5,6 +5,7 @@ Usage: rq [OPTIONS] [COMMAND]
 Commands:
   env      Manage environments
   auth     Manage authentication
+  check    Validate .rq files without executing requests
   ep       Manage endpoints
   request  Manage requests
   var      Manage variables

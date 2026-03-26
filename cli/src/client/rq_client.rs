@@ -1029,6 +1029,178 @@ impl RqClient {
         Ok(None)
     }
 
+    pub fn check_path(path: &Path, env_name: Option<&str>) -> Result<Vec<RqError>, RqError> {
+        let source_path = if path.is_file() {
+            path.parent().unwrap_or(path)
+        } else {
+            path
+        };
+
+        if path.is_file() {
+            let mut errors = Vec::new();
+            match RqFile::from_path(path) {
+                Ok(rq_file) => {
+                    errors.extend(Self::check_variables(&rq_file, source_path, env_name));
+                }
+                Err(e) => {
+                    let rq_error = if let Some(syntax_err) =
+                        e.downcast_ref::<crate::syntax::error::SyntaxError>()
+                    {
+                        RqError::Syntax(syntax_err.clone())
+                    } else {
+                        RqError::Generic(e.to_string())
+                    };
+                    errors.push(rq_error);
+                }
+            }
+            return Ok(errors);
+        }
+        if !path.is_dir() {
+            return Err(RqError::DirectoryNotFound(path.display().to_string()));
+        }
+        let mut rq_files = Vec::new();
+        let mut errors = Self::collect_rq_files_parsed(path, &mut rq_files)?;
+        for rq_file in &rq_files {
+            errors.extend(Self::check_variables(rq_file, source_path, env_name));
+        }
+        Ok(errors)
+    }
+
+    fn check_variables(
+        rq_file: &RqFile,
+        source_path: &Path,
+        env_name: Option<&str>,
+    ) -> Vec<RqError> {
+        let mut errors = Vec::new();
+
+        let env_vars = if let Some(name) = env_name {
+            rq_file.environments.get(name).cloned().unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+
+        let secret_vars =
+            crate::syntax::variables::load_secrets(source_path, env_name).unwrap_or_default();
+
+        let mut checked_names: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+        let all_declared: Vec<_> = rq_file
+            .file_variables
+            .iter()
+            .chain(env_vars.iter())
+            .cloned()
+            .collect();
+        for v in &all_declared {
+            checked_names.insert(v.name.clone());
+        }
+        for e in crate::syntax::collect_declared_variable_errors(
+            &all_declared,
+            &secret_vars,
+            std::slice::from_ref(&rq_file.path),
+        ) {
+            errors.push(RqError::Syntax(e));
+        }
+
+        for req_with_vars in &rq_file.requests {
+            let scoped_vars: Vec<_> = req_with_vars
+                .endpoint_variables
+                .iter()
+                .chain(req_with_vars.request_variables.iter())
+                .filter(|v| checked_names.insert(v.name.clone()))
+                .cloned()
+                .collect();
+            let scoped_context: Vec<_> = all_declared
+                .iter()
+                .chain(secret_vars.iter())
+                .cloned()
+                .collect();
+            for e in crate::syntax::collect_declared_variable_errors(
+                &scoped_vars,
+                &scoped_context,
+                std::slice::from_ref(&rq_file.path),
+            ) {
+                errors.push(RqError::Syntax(e));
+            }
+            let context = crate::syntax::variable_context::VariableContext::builder()
+                .file_variables(rq_file.file_variables.clone())
+                .environment_variables(env_vars.clone())
+                .secret_variables(secret_vars.clone())
+                .endpoint_variables(req_with_vars.endpoint_variables.clone())
+                .request_variables(req_with_vars.request_variables.clone())
+                .build();
+
+            let search_paths = Self::build_search_paths(
+                &req_with_vars.request,
+                &rq_file.path,
+                &rq_file.imported_files,
+                source_path,
+            );
+
+            for e in crate::syntax::collect_variable_errors(
+                &req_with_vars.request,
+                &context,
+                &search_paths,
+            ) {
+                errors.push(RqError::Syntax(e));
+            }
+        }
+
+        let base_context = crate::syntax::variable_context::VariableContext::builder()
+            .file_variables(rq_file.file_variables.clone())
+            .environment_variables(env_vars.clone())
+            .secret_variables(secret_vars.clone())
+            .build();
+
+        for ep_def in rq_file.endpoints.values() {
+            if !ep_def.has_requests {
+                let ep_line_1 = ep_def.line + 1;
+                let ep_col_1 = ep_def.character + 1;
+                let source_path_arr = std::slice::from_ref(&rq_file.path);
+                let mut error_index = 0usize;
+                let mut check_ep = |s: &str| -> Option<RqError> {
+                    if let Err(mut e) =
+                        crate::syntax::check_string(s, &base_context, source_path_arr)
+                    {
+                        if e.line == 0 || e.line != ep_line_1 {
+                            e.line = ep_line_1;
+                            e.column = ep_col_1 + error_index;
+                            if let Some(ref path) = ep_def.source_path {
+                                e.file_path = Some(path.clone());
+                            }
+                        }
+                        error_index += 1;
+                        Some(RqError::Syntax(e))
+                    } else {
+                        None
+                    }
+                };
+                if !ep_def.url.is_empty() {
+                    if let Some(e) = check_ep(&ep_def.url) {
+                        errors.push(e);
+                    }
+                }
+                if let Some(ref var_name) = ep_def.headers_var {
+                    let is_defined_headers = matches!(
+                        base_context.as_map().get(var_name.as_str()),
+                        Some(VariableValue::Headers(_))
+                    );
+                    if !is_defined_headers {
+                        if let Some(e) = check_ep(&format!("{{{{{var_name}}}}}")) {
+                            errors.push(e);
+                        }
+                    }
+                }
+                if let Some(ref qs) = ep_def.qs {
+                    if let Some(e) = check_ep(qs) {
+                        errors.push(e);
+                    }
+                }
+            }
+        }
+
+        errors
+    }
+
     fn collect_rq_files_parsed(
         dir: &Path,
         rq_files: &mut Vec<RqFile>,

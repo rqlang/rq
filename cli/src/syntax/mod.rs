@@ -18,6 +18,7 @@ pub use analyze::{analyze, analyze_lenient};
 
 pub use parse_result::Request;
 pub use resolve::{
+    check_string, collect_declared_variable_errors, collect_variable_errors,
     find_all_endpoint_references, find_all_variable_references, resolve_auth_provider,
     resolve_string, resolve_variables,
 };

@@ -1,0 +1,3 @@
+let body = io.read_file("nonexistent.json");
+
+rq post(url: "http://localhost:8080/test", body: body);

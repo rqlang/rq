@@ -242,11 +242,21 @@ function fixSpacing(trimmed: string): string {
 
 function normalizeCommaSpacing(s: string): string {
     let out = '';
-    let inString = false;
+    let stringChar: string | null = null;
     for (let i = 0; i < s.length; i++) {
         const ch = s[i];
-        if (ch === '"') { inString = !inString; }
-        if (ch === ',' && !inString) {
+        if (stringChar !== null) {
+            out += ch;
+            if (ch === '\\') {
+                i++;
+                if (i < s.length) { out += s[i]; }
+            } else if (ch === stringChar) {
+                stringChar = null;
+            }
+        } else if (ch === '"' || ch === "'") {
+            stringChar = ch;
+            out += ch;
+        } else if (ch === ',') {
             while (out.length > 0 && out[out.length - 1] === ' ') { out = out.slice(0, -1); }
             out += ',';
             while (i + 1 < s.length && s[i + 1] === ' ') { i++; }

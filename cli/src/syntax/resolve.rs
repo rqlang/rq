@@ -854,7 +854,7 @@ pub fn collect_declared_variable_errors(
                         line,
                         col,
                         0..0,
-                        path.display().to_string(),
+                        format_path(&path),
                     ));
                 }
             }

@@ -194,11 +194,15 @@ export class DiagnosticsProvider {
             affectedFolderUris.add(key);
         }
 
-        for (const [uriStr] of this.diagnosticCollection) {
-            const filePath = uriStr.fsPath;
-            if (!diagnosticsMap.has(normalizePath(filePath))) {
-                this.diagnosticCollection.delete(uriStr);
+        const toDelete: vscode.Uri[] = [];
+        for (const [uri] of this.diagnosticCollection) {
+            const filePath = normalizePath(uri.fsPath);
+            if (filePath.startsWith(normalizePath(realPath)) && !diagnosticsMap.has(filePath)) {
+                toDelete.push(uri);
             }
+        }
+        for (const uri of toDelete) {
+            this.diagnosticCollection.delete(uri);
         }
     }
 

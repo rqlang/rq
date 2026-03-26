@@ -12,7 +12,8 @@ fn run_check(args: &[&str]) -> (bool, Value) {
 fn error_messages(json: &Value) -> Vec<String> {
     json["errors"]
         .as_array()
-        .unwrap_or(&vec![])
+        .map(|a| a.as_slice())
+        .unwrap_or(&[])
         .iter()
         .map(|e| e["message"].as_str().unwrap_or("").to_string())
         .collect()

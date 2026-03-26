@@ -585,7 +585,7 @@ export async function showEnvironment(name: string, sourceDirectory?: string): P
         const fullCommand = `${executable} ${args.join(' ')}`;
         logCliExecution(fullCommand, cwd);
 
-        const { stdout, stderr } = await spawnAsync(executable, args, { cwd });
+        const { stdout } = await spawnAsync(executable, args, { cwd });
 
         const raw: EnvironmentShowOutput = JSON.parse(stdout);
         return { ...raw, file: normalizePath(raw.file) };
@@ -606,7 +606,7 @@ export async function listEndpoints(sourceDirectory?: string): Promise<EndpointS
 
         logCliExecution(`${executable} ${args.join(' ')}`, cwd);
 
-        const { stdout, stderr } = await spawnAsync(executable, args, { cwd });
+        const { stdout } = await spawnAsync(executable, args, { cwd });
 
         const raw: EndpointShowOutput[] = JSON.parse(stdout);
         return raw.map(e => ({ ...e, file: normalizePath(e.file) }));
@@ -628,7 +628,7 @@ export async function showEndpoint(name: string, sourceDirectory?: string): Prom
         const fullCommand = `${executable} ${args.join(' ')}`;
         logCliExecution(fullCommand, cwd);
 
-        const { stdout, stderr } = await spawnAsync(executable, args, { cwd });
+        const { stdout } = await spawnAsync(executable, args, { cwd });
 
         const raw: EndpointShowOutput = JSON.parse(stdout);
         return { ...raw, file: normalizePath(raw.file) };
@@ -660,7 +660,7 @@ export async function showVariable(
 
         logCliExecution(`${executable} ${args.join(' ')}`, cwd);
 
-        const { stdout, stderr } = await spawnAsync(executable, args, { cwd });
+        const { stdout } = await spawnAsync(executable, args, { cwd });
 
         const raw: VariableShowOutput = JSON.parse(stdout);
         return { ...raw, file: normalizePath(raw.file) };
@@ -684,7 +684,7 @@ export async function listVariables(sourceFile?: string, environment?: string): 
 
         logCliExecution(`${executable} ${args.join(' ')}`, cwd);
 
-        const { stdout, stderr } = await spawnAsync(executable, args, { cwd });
+        const { stdout } = await spawnAsync(executable, args, { cwd });
 
         const raw: VariableShowOutput[] = JSON.parse(stdout);
         return raw.map(v => ({ ...v, file: normalizePath(v.file) }));
@@ -708,7 +708,7 @@ export async function varRefs(
 
         logCliExecution(`${executable} ${args.join(' ')}`, cwd);
 
-        const { stdout, stderr } = await spawnAsync(executable, args, { cwd });
+        const { stdout } = await spawnAsync(executable, args, { cwd });
 
         const raw: ReferenceLocation[] = JSON.parse(stdout);
         return raw.map(r => ({ ...r, file: normalizePath(r.file) }));
@@ -732,7 +732,7 @@ export async function epRefs(
 
         logCliExecution(`${executable} ${args.join(' ')}`, cwd);
 
-        const { stdout, stderr } = await spawnAsync(executable, args, { cwd });
+        const { stdout } = await spawnAsync(executable, args, { cwd });
 
         const raw: ReferenceLocation[] = JSON.parse(stdout);
         return raw.map(r => ({ ...r, file: normalizePath(r.file) }));
@@ -910,7 +910,7 @@ export async function showAuthLocation(name: string, sourceDirectory?: string): 
             args.push('-s', sourceDirectory);
         }
         logCliExecution(`${executable} ${args.join(' ')}`, cwd);
-        const { stdout, stderr } = await spawnAsync(executable, args, { cwd });
+        const { stdout } = await spawnAsync(executable, args, { cwd });
         const raw: LocationOutput = JSON.parse(stdout);
         return { file: normalizePath(raw.file), line: raw.line, character: raw.character };
     } catch (error) {
@@ -927,7 +927,7 @@ export async function showRequestLocation(requestName: string, sourceDirectory?:
             args.push('-s', sourceDirectory);
         }
         logCliExecution(`${executable} ${args.join(' ')}`, cwd);
-        const { stdout, stderr } = await spawnAsync(executable, args, { cwd });
+        const { stdout } = await spawnAsync(executable, args, { cwd });
         const raw: LocationOutput = JSON.parse(stdout);
         return { file: normalizePath(raw.file), line: raw.line, character: raw.character };
     } catch (error) {
@@ -1026,9 +1026,6 @@ export async function executeRequest(options: ExecuteRequestOptions): Promise<Ex
         
         const { stdout, stderr } = await spawnAsync(executable, args, { cwd });
         
-        if (stderr) {
-        }
-
         try {
             const jsonResult = JSON.parse(stdout);
             return {
@@ -1046,9 +1043,6 @@ export async function executeRequest(options: ExecuteRequestOptions): Promise<Ex
         if (error instanceof Error && 'stdout' in error && 'stderr' in error) {
             const execError = error as { stdout?: string; stderr?: string };
             
-            if (execError.stderr) {
-            }
-
             try {
                 const jsonResult = JSON.parse(execError.stdout || '');
                 return {

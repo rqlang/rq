@@ -76,7 +76,7 @@ export const hoverProvider = vscode.languages.registerHoverProvider('rq', {
         const col = position.character;
 
         // Check for rq declaration hover (cursor on keyword or name)
-        const rqDeclMatch = /^\s*(rq)\s+(\w+)\s*\(([^)]*)/.exec(lineText);
+        const rqDeclMatch = /^\s*(rq)\s+([a-zA-Z_][a-zA-Z0-9_-]*)\s*\(([^)]*)/.exec(lineText);
         if (rqDeclMatch) {
             const keywordStart = lineText.indexOf(rqDeclMatch[1]);
             const nameEnd = lineText.indexOf('(');
@@ -98,7 +98,7 @@ export const hoverProvider = vscode.languages.registerHoverProvider('rq', {
         }
 
         // Check for ep declaration hover (cursor on keyword or name)
-        const epDeclMatch = /^\s*(ep)\s+(\w+)(?:<(\w+)>)?\s*[\({]/.exec(lineText);
+        const epDeclMatch = /^\s*(ep)\s+([a-zA-Z_][a-zA-Z0-9_-]*)(?:<([a-zA-Z_][a-zA-Z0-9_-]*)>)?\s*[\({]/.exec(lineText);
         if (epDeclMatch) {
             const keywordStart = lineText.indexOf(epDeclMatch[1]);
             const openParen = lineText.search(/[\({]/);
@@ -121,7 +121,7 @@ export const hoverProvider = vscode.languages.registerHoverProvider('rq', {
         }
 
         // Check for auth declaration hover (cursor on keyword or name)
-        const authDeclMatch = /^\s*(auth)\s+(\w+)\s*\(auth_type\.(\w+)\)/.exec(lineText);
+        const authDeclMatch = /^\s*(auth)\s+([a-zA-Z_][a-zA-Z0-9_-]*)\s*\(auth_type\.(\w+)\)/.exec(lineText);
         if (authDeclMatch) {
             const keywordStart = lineText.indexOf(authDeclMatch[1]);
             const openParen = lineText.indexOf('(');
@@ -137,7 +137,7 @@ export const hoverProvider = vscode.languages.registerHoverProvider('rq', {
         }
 
         // Check for env declaration hover (cursor on keyword or name)
-        const envDeclMatch = /^\s*(env)\s+(\w+)\s*\{/.exec(lineText);
+        const envDeclMatch = /^\s*(env)\s+([a-zA-Z_][a-zA-Z0-9_-]*)\s*\{/.exec(lineText);
         if (envDeclMatch) {
             const keywordStart = lineText.indexOf(envDeclMatch[1]);
             const bracePos = lineText.indexOf('{');

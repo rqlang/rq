@@ -79,6 +79,13 @@ describe('rq declaration hover', () => {
         expect(result).toBeUndefined();
     });
 
+    test('matches hyphenated request names', async () => {
+        const doc = makeDocument(['rq get-users("https://api.example.com/users");']);
+        const result = await provideHover(doc, pos(0, 1)) as vscode.Hover;
+        expect(result).toBeInstanceOf(vscode.Hover);
+        expect((result.contents as unknown as vscode.MarkdownString).value).toContain('get-users');
+    });
+
     test('does not trigger variable lookup for request name', async () => {
         setEnvironmentProvider({ getSelectedEnvironment: () => 'local' });
         const doc = makeDocument(['rq get_users("https://api.example.com");']);

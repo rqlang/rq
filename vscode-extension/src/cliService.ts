@@ -59,7 +59,6 @@ function getErrorMessage(error: unknown): string {
 }
 
 let outputChannel: vscode.OutputChannel | undefined;
-let diagnosticCollection: vscode.DiagnosticCollection | undefined;
 let cliInstalling = false;
 let installFinishedCallback: (() => void) | undefined;
 
@@ -108,93 +107,6 @@ export function isCliBinaryAvailable(): boolean {
 
 export function setOutputChannel(channel: vscode.OutputChannel): void {
     outputChannel = channel;
-}
-
-export function setDiagnosticCollection(collection: vscode.DiagnosticCollection): void {
-    diagnosticCollection = collection;
-}
-
-function parseAndReportErrors(stderr: string, cwd?: string): void {
-    if (!diagnosticCollection) {
-        return;
-    }
-
-    diagnosticCollection.clear();
-
-    const jsonLines = stderr.split('\n').filter(line => line.trimStart().startsWith('{'));
-    if (jsonLines.length > 0) {
-        const diagnosticsMap = new Map<string, vscode.Diagnostic[]>();
-        let hasJsonErrors = false;
-
-        for (const jsonLine of jsonLines) {
-            try {
-                const parsed = JSON.parse(jsonLine);
-                const detail = parsed?.error;
-                if (!detail) {
-                    continue;
-                }
-                hasJsonErrors = true;
-                if (detail.type === 'syntax' && detail.file && detail.line !== undefined && detail.column !== undefined) {
-                    const range = new vscode.Range(detail.line - 1, detail.column - 1, detail.line - 1, Number.MAX_VALUE);
-                    const diagnostic = new vscode.Diagnostic(range, detail.message, vscode.DiagnosticSeverity.Error);
-                    diagnostic.source = 'rq-cli';
-                    const uri = vscode.Uri.file(normalizePath(detail.file));
-                    const uriStr = uri.toString();
-                    if (!diagnosticsMap.has(uriStr)) {
-                        diagnosticsMap.set(uriStr, []);
-                    }
-                    diagnosticsMap.get(uriStr)?.push(diagnostic);
-                } else {
-                    vscode.window.showErrorMessage(`rq: ${detail.message}`);
-                }
-            } catch {
-                continue;
-            }
-        }
-
-        if (hasJsonErrors) {
-            for (const [uriStr, diagnostics] of diagnosticsMap) {
-                diagnosticCollection.set(vscode.Uri.parse(uriStr), diagnostics);
-            }
-            return;
-        }
-    }
-
-    const errorRegex = /Syntax error in (.+) at line (\d+), column (\d+): (.+)/g;
-    let match;
-    const diagnosticsMap = new Map<string, vscode.Diagnostic[]>();
-
-    while ((match = errorRegex.exec(stderr)) !== null) {
-        const rawFilePath = match[1].trim();
-        const line = parseInt(match[2], 10) - 1;
-        const column = parseInt(match[3], 10) - 1;
-        const message = match[4];
-
-        let filePath = rawFilePath;
-        const looksLikeAbsolute = rawFilePath.startsWith('/') || /^[a-zA-Z]:/.test(rawFilePath) || rawFilePath.startsWith('\\');
-        if (!path.isAbsolute(rawFilePath) && !looksLikeAbsolute) {
-            const basePath = cwd || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-            if (basePath) {
-                filePath = path.resolve(basePath, rawFilePath);
-            }
-        }
-
-        filePath = normalizePath(filePath);
-        const range = new vscode.Range(line, column, line, Number.MAX_VALUE);
-        const diagnostic = new vscode.Diagnostic(range, message, vscode.DiagnosticSeverity.Error);
-        diagnostic.source = 'rq-cli';
-
-        const uri = vscode.Uri.file(filePath);
-        const uriStr = uri.toString();
-        if (!diagnosticsMap.has(uriStr)) {
-            diagnosticsMap.set(uriStr, []);
-        }
-        diagnosticsMap.get(uriStr)?.push(diagnostic);
-    }
-
-    for (const [uriStr, diagnostics] of diagnosticsMap) {
-        diagnosticCollection.set(vscode.Uri.parse(uriStr), diagnostics);
-    }
 }
 
 function logCliExecution(command: string, cwd?: string): void {
@@ -614,11 +526,6 @@ export async function listEnvironments(sourceDirectory?: string): Promise<string
         
         if (stderr) {
             console.error('CLI stderr:', stderr);
-            parseAndReportErrors(stderr, cwd);
-        } else {
-            if (diagnosticCollection) {
-                diagnosticCollection.clear();
-            }
         }
         
         const output: Array<{ name: string }> = JSON.parse(stdout);
@@ -627,9 +534,6 @@ export async function listEnvironments(sourceDirectory?: string): Promise<string
         console.error('Failed to list environments:', error);
         logCliError('Failed to list environments', error);
         
-        if (error instanceof Error && 'stderr' in error) {
-            parseAndReportErrors((error as ExecError).stderr || '', getCliCommand().cwd);
-        }
 
         throw new Error(`Failed to list environments: ${getErrorMessage(error)}`);
     }
@@ -656,11 +560,6 @@ export async function listAuthConfigs(sourceDirectory?: string): Promise<AuthLis
         
         if (stderr) {
             console.error('CLI stderr:', stderr);
-            parseAndReportErrors(stderr, cwd);
-        } else {
-            if (diagnosticCollection) {
-                diagnosticCollection.clear();
-            }
         }
         
         const output: AuthListOutput = JSON.parse(stdout);
@@ -669,9 +568,6 @@ export async function listAuthConfigs(sourceDirectory?: string): Promise<AuthLis
         console.error('Failed to list auth configs:', error);
         logCliError('Failed to list auth configs', error);
 
-        if (error instanceof Error && 'stderr' in error) {
-            parseAndReportErrors((error as ExecError).stderr || '', getCliCommand().cwd);
-        }
 
         throw new Error(`Failed to list auth configs: ${getErrorMessage(error)}`);
     }
@@ -691,19 +587,10 @@ export async function showEnvironment(name: string, sourceDirectory?: string): P
 
         const { stdout, stderr } = await spawnAsync(executable, args, { cwd });
 
-        if (stderr) {
-            parseAndReportErrors(stderr, cwd);
-        } else if (diagnosticCollection) {
-            diagnosticCollection.clear();
-        }
-
         const raw: EnvironmentShowOutput = JSON.parse(stdout);
         return { ...raw, file: normalizePath(raw.file) };
     } catch (error) {
         logCliError('Failed to show environment', error);
-        if (error instanceof Error && 'stderr' in error) {
-            parseAndReportErrors((error as ExecError).stderr || '', getCliCommand().cwd);
-        }
         throw new Error(`Failed to show environment: ${getErrorMessage(error)}`);
     }
 }
@@ -721,19 +608,10 @@ export async function listEndpoints(sourceDirectory?: string): Promise<EndpointS
 
         const { stdout, stderr } = await spawnAsync(executable, args, { cwd });
 
-        if (stderr) {
-            parseAndReportErrors(stderr, cwd);
-        } else if (diagnosticCollection) {
-            diagnosticCollection.clear();
-        }
-
         const raw: EndpointShowOutput[] = JSON.parse(stdout);
         return raw.map(e => ({ ...e, file: normalizePath(e.file) }));
     } catch (error) {
         logCliError('Failed to list endpoints', error);
-        if (error instanceof Error && 'stderr' in error) {
-            parseAndReportErrors((error as ExecError).stderr || '', getCliCommand().cwd);
-        }
         throw new Error(`Failed to list endpoints: ${getErrorMessage(error)}`);
     }
 }
@@ -752,19 +630,10 @@ export async function showEndpoint(name: string, sourceDirectory?: string): Prom
 
         const { stdout, stderr } = await spawnAsync(executable, args, { cwd });
 
-        if (stderr) {
-            parseAndReportErrors(stderr, cwd);
-        } else if (diagnosticCollection) {
-            diagnosticCollection.clear();
-        }
-
         const raw: EndpointShowOutput = JSON.parse(stdout);
         return { ...raw, file: normalizePath(raw.file) };
     } catch (error) {
         logCliError('Failed to show endpoint', error);
-        if (error instanceof Error && 'stderr' in error) {
-            parseAndReportErrors((error as ExecError).stderr || '', getCliCommand().cwd);
-        }
         throw new Error(`Failed to show endpoint: ${getErrorMessage(error)}`);
     }
 }
@@ -793,19 +662,10 @@ export async function showVariable(
 
         const { stdout, stderr } = await spawnAsync(executable, args, { cwd });
 
-        if (stderr) {
-            parseAndReportErrors(stderr, cwd);
-        } else if (diagnosticCollection) {
-            diagnosticCollection.clear();
-        }
-
         const raw: VariableShowOutput = JSON.parse(stdout);
         return { ...raw, file: normalizePath(raw.file) };
     } catch (error) {
         logCliError('Failed to show variable', error);
-        if (error instanceof Error && 'stderr' in error) {
-            parseAndReportErrors((error as ExecError).stderr || '', getCliCommand().cwd);
-        }
         throw new Error(`Failed to show variable: ${getErrorMessage(error)}`);
     }
 }
@@ -826,19 +686,10 @@ export async function listVariables(sourceFile?: string, environment?: string): 
 
         const { stdout, stderr } = await spawnAsync(executable, args, { cwd });
 
-        if (stderr) {
-            parseAndReportErrors(stderr, cwd);
-        } else if (diagnosticCollection) {
-            diagnosticCollection.clear();
-        }
-
         const raw: VariableShowOutput[] = JSON.parse(stdout);
         return raw.map(v => ({ ...v, file: normalizePath(v.file) }));
     } catch (error) {
         logCliError('Failed to list variables', error);
-        if (error instanceof Error && 'stderr' in error) {
-            parseAndReportErrors((error as ExecError).stderr || '', getCliCommand().cwd);
-        }
         throw new Error(`Failed to list variables: ${getErrorMessage(error)}`);
     }
 }
@@ -859,19 +710,10 @@ export async function varRefs(
 
         const { stdout, stderr } = await spawnAsync(executable, args, { cwd });
 
-        if (stderr) {
-            parseAndReportErrors(stderr, cwd);
-        } else if (diagnosticCollection) {
-            diagnosticCollection.clear();
-        }
-
         const raw: ReferenceLocation[] = JSON.parse(stdout);
         return raw.map(r => ({ ...r, file: normalizePath(r.file) }));
     } catch (error) {
         logCliError('Failed to find variable references', error);
-        if (error instanceof Error && 'stderr' in error) {
-            parseAndReportErrors((error as ExecError).stderr || '', getCliCommand().cwd);
-        }
         throw new Error(`Failed to find variable references: ${getErrorMessage(error)}`);
     }
 }
@@ -892,19 +734,10 @@ export async function epRefs(
 
         const { stdout, stderr } = await spawnAsync(executable, args, { cwd });
 
-        if (stderr) {
-            parseAndReportErrors(stderr, cwd);
-        } else if (diagnosticCollection) {
-            diagnosticCollection.clear();
-        }
-
         const raw: ReferenceLocation[] = JSON.parse(stdout);
         return raw.map(r => ({ ...r, file: normalizePath(r.file) }));
     } catch (error) {
         logCliError('Failed to find endpoint references', error);
-        if (error instanceof Error && 'stderr' in error) {
-            parseAndReportErrors((error as ExecError).stderr || '', getCliCommand().cwd);
-        }
         throw new Error(`Failed to find endpoint references: ${getErrorMessage(error)}`);
     }
 }
@@ -937,11 +770,6 @@ export async function showAuthConfig(
         
         if (stderr) {
             console.error('CLI stderr:', stderr);
-            parseAndReportErrors(stderr, cwd);
-        } else {
-            if (diagnosticCollection) {
-                diagnosticCollection.clear();
-            }
         }
         
         const raw: AuthShowRaw = JSON.parse(stdout);
@@ -959,9 +787,6 @@ export async function showAuthConfig(
         console.error('Failed to show auth config:', error);
         logCliError('Failed to show auth config', error);
 
-        if (error instanceof Error && 'stderr' in error) {
-            parseAndReportErrors((error as ExecError).stderr || '', getCliCommand().cwd);
-        }
 
         throw new Error(`Failed to show auth config: ${getErrorMessage(error)}`);
     }
@@ -990,7 +815,6 @@ export async function listRequests(sourceDirectory?: string): Promise<ListReques
         if (stderr) {
             console.warn('CLI warnings/errors:');
             console.warn(stderr);
-            parseAndReportErrors(stderr, cwd);
             if (stderr.includes('Warning: Failed to parse')) {
                 errors = stderr.split('\n')
                     .filter(line => line.includes('Warning: Failed to parse'))
@@ -999,10 +823,6 @@ export async function listRequests(sourceDirectory?: string): Promise<ListReques
                 if (errors.length > 0) {
                     console.warn(`Found ${errors.length} file(s) with parse errors - check Output panel for details`);
                 }
-            }
-        } else {
-            if (diagnosticCollection) {
-                diagnosticCollection.clear();
             }
         }
         
@@ -1023,9 +843,6 @@ export async function listRequests(sourceDirectory?: string): Promise<ListReques
         console.error('Failed to list requests:', error);
         logCliError('Failed to list requests', error);
         
-        if (error instanceof Error && 'stderr' in error) {
-            parseAndReportErrors((error as ExecError).stderr || '', getCliCommand().cwd);
-        }
 
         throw new Error(`Failed to list requests: ${getErrorMessage(error)}`);
     }
@@ -1059,11 +876,6 @@ export async function showRequest(
         
         if (stderr) {
             console.error('CLI stderr:', stderr);
-            parseAndReportErrors(stderr, cwd);
-        } else {
-            if (diagnosticCollection) {
-                diagnosticCollection.clear();
-            }
         }
         
         const raw: RequestShowRaw = JSON.parse(stdout);
@@ -1079,9 +891,6 @@ export async function showRequest(
         console.error('Failed to show request:', error);
         logCliError('Failed to show request', error);
 
-        if (error instanceof Error && 'stderr' in error) {
-            parseAndReportErrors((error as ExecError).stderr || '', getCliCommand().cwd);
-        }
 
         throw new Error(`Failed to show request: ${getErrorMessage(error)}`);
     }
@@ -1102,18 +911,10 @@ export async function showAuthLocation(name: string, sourceDirectory?: string): 
         }
         logCliExecution(`${executable} ${args.join(' ')}`, cwd);
         const { stdout, stderr } = await spawnAsync(executable, args, { cwd });
-        if (stderr) {
-            parseAndReportErrors(stderr, cwd);
-        } else if (diagnosticCollection) {
-            diagnosticCollection.clear();
-        }
         const raw: LocationOutput = JSON.parse(stdout);
         return { file: normalizePath(raw.file), line: raw.line, character: raw.character };
     } catch (error) {
         logCliError('Failed to locate auth config', error);
-        if (error instanceof Error && 'stderr' in error) {
-            parseAndReportErrors((error as ExecError).stderr || '', getCliCommand().cwd);
-        }
         throw new Error(`Failed to locate auth config: ${getErrorMessage(error)}`);
     }
 }
@@ -1127,18 +928,10 @@ export async function showRequestLocation(requestName: string, sourceDirectory?:
         }
         logCliExecution(`${executable} ${args.join(' ')}`, cwd);
         const { stdout, stderr } = await spawnAsync(executable, args, { cwd });
-        if (stderr) {
-            parseAndReportErrors(stderr, cwd);
-        } else if (diagnosticCollection) {
-            diagnosticCollection.clear();
-        }
         const raw: LocationOutput = JSON.parse(stdout);
         return { file: normalizePath(raw.file), line: raw.line, character: raw.character };
     } catch (error) {
         logCliError('Failed to locate request', error);
-        if (error instanceof Error && 'stderr' in error) {
-            parseAndReportErrors((error as ExecError).stderr || '', getCliCommand().cwd);
-        }
         throw new Error(`Failed to locate request: ${getErrorMessage(error)}`);
     }
 }
@@ -1164,6 +957,43 @@ export interface RequestExecutionResult {
 export interface ExecuteRequestResult {
     results: RequestExecutionResult[];
     stderr?: string;
+}
+
+export interface CheckDiagnostic {
+    file: string;
+    line: number;
+    column: number;
+    message: string;
+}
+
+export interface CheckResult {
+    errors: CheckDiagnostic[];
+}
+
+export async function checkFolder(folderPath: string, envName?: string): Promise<CheckResult> {
+    const { executable, args: baseArgs, cwd } = getCliCommand();
+    const args = [...baseArgs, 'check', '-s', folderPath];
+    if (envName) {
+        args.push('-e', envName);
+    }
+    logCliExecution(`${executable} ${args.join(' ')}`, cwd);
+    try {
+        const { stdout } = await spawnAsync(executable, args, { cwd });
+        return JSON.parse(stdout) as CheckResult;
+    } catch (error) {
+        if (error instanceof Error && 'stdout' in error) {
+            const execError = error as ExecError;
+            if (execError.stdout) {
+                try {
+                    return JSON.parse(execError.stdout) as CheckResult;
+                } catch {
+                    // fall through
+                }
+            }
+        }
+        logCliError('Failed to check folder', error);
+        return { errors: [] };
+    }
 }
 
 export async function executeRequest(options: ExecuteRequestOptions): Promise<ExecuteRequestResult> {
@@ -1197,11 +1027,6 @@ export async function executeRequest(options: ExecuteRequestOptions): Promise<Ex
         const { stdout, stderr } = await spawnAsync(executable, args, { cwd });
         
         if (stderr) {
-            parseAndReportErrors(stderr, cwd);
-        } else {
-            if (diagnosticCollection) {
-                diagnosticCollection.clear();
-            }
         }
 
         try {
@@ -1222,7 +1047,6 @@ export async function executeRequest(options: ExecuteRequestOptions): Promise<Ex
             const execError = error as { stdout?: string; stderr?: string };
             
             if (execError.stderr) {
-                parseAndReportErrors(execError.stderr, getCliCommand().cwd);
             }
 
             try {

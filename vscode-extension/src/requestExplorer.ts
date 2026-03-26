@@ -22,6 +22,8 @@ export interface RequestInfo {
 export class RequestExplorerProvider implements vscode.TreeDataProvider<RequestTreeItem> {
     private _onDidChangeTreeData: vscode.EventEmitter<RequestTreeItem | undefined | null | void> = new vscode.EventEmitter<RequestTreeItem | undefined | null | void>();
     readonly onDidChangeTreeData: vscode.Event<RequestTreeItem | undefined | null | void> = this._onDidChangeTreeData.event;
+    private _onDidChangeEnvironment: vscode.EventEmitter<string | undefined> = new vscode.EventEmitter<string | undefined>();
+    readonly onDidChangeEnvironment: vscode.Event<string | undefined> = this._onDidChangeEnvironment.event;
     private selectedEnvironment: string | undefined;
     private envItem: RequestTreeItem | undefined;
     private readonly originalIcons = new WeakMap<RequestTreeItem, vscode.TreeItem['iconPath']>();
@@ -50,6 +52,7 @@ export class RequestExplorerProvider implements vscode.TreeDataProvider<RequestT
 
     setSelectedEnvironment(environment: string | undefined): void {
         this.selectedEnvironment = environment;
+        this._onDidChangeEnvironment.fire(environment);
         this.refresh();
     }
 

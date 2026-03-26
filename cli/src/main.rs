@@ -67,6 +67,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let is_subcommand = args.len() > 1
         && (args[1] == "env"
             || args[1] == "auth"
+            || args[1] == "check"
             || args[1] == "ep"
             || args[1] == "request"
             || args[1] == "var"
@@ -76,6 +77,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         let args = Args::parse();
         crate::core::logger::Logger::init(args.debug);
         match args.command {
+            Some(Commands::Check(check_args)) => commands::check::execute(&check_args),
             Some(Commands::Env(env_command)) => match env_command.command {
                 commands::env::EnvSubcommand::List(list_args) => {
                     commands::env::execute_list(&list_args)

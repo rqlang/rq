@@ -1,0 +1,3 @@
+let url = "http://localhost:8080";
+
+rq post(url: "{{url}}", body: "{{missing_body_var}}");

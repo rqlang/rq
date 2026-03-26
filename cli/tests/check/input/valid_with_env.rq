@@ -1,0 +1,5 @@
+env local {
+    base_url: "http://localhost:8080",
+}
+
+rq get("{{base_url}}/users");

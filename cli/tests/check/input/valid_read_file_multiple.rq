@@ -1,0 +1,4 @@
+ep widgets("http://localhost:8080") {
+    rq post(body: io.read_file("widgets-post.json"));
+    rq patch(url: "1", body: io.read_file("widgets-patch.json"));
+}

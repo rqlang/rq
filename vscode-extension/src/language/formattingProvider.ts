@@ -237,7 +237,25 @@ function fixSpacing(trimmed: string): string {
         return `${name}: `;
     });
 
-    return result.replace(/([")\]])\s*,\s*([^\s,\n])/g, '$1, $2');
+    return normalizeCommaSpacing(result);
+}
+
+function normalizeCommaSpacing(s: string): string {
+    let out = '';
+    let inString = false;
+    for (let i = 0; i < s.length; i++) {
+        const ch = s[i];
+        if (ch === '"') { inString = !inString; }
+        if (ch === ',' && !inString) {
+            while (out.length > 0 && out[out.length - 1] === ' ') { out = out.slice(0, -1); }
+            out += ',';
+            while (i + 1 < s.length && s[i + 1] === ' ') { i++; }
+            if (i + 1 < s.length) { out += ' '; }
+        } else {
+            out += ch;
+        }
+    }
+    return out;
 }
 
 export const formattingProvider = vscode.languages.registerDocumentFormattingEditProvider(

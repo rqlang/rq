@@ -1,0 +1,3 @@
+let a = undefined_ref;
+
+rq get("http://localhost:8080");

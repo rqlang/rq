@@ -274,12 +274,21 @@ fn find_all_ep_refs_in_file(path: &Path, ep_name: &str) -> Vec<(usize, usize)> {
     results
 }
 
-fn find_sys_call_location(paths: &[PathBuf], full_func_name: &str) -> (usize, usize, PathBuf) {
+fn find_sys_call_location(
+    paths: &[PathBuf],
+    full_func_name: &str,
+    args: &[String],
+) -> (usize, usize, PathBuf) {
     for path in paths {
         if let Ok(file) = std::fs::File::open(path) {
             let reader = std::io::BufReader::new(file);
             let escaped = regex::escape(full_func_name);
-            let pattern = format!(r"({escaped}|\{{\{{\s*\${escaped})");
+            let pattern = if let Some(first_arg) = args.first() {
+                let escaped_arg = regex::escape(first_arg);
+                format!(r#"{escaped}\s*\(\s*["']{escaped_arg}["']"#)
+            } else {
+                format!(r"({escaped}|\{{\{{\s*\${escaped})")
+            };
             if let Ok(re) = regex::Regex::new(&pattern) {
                 for (index, line) in reader.lines().enumerate() {
                     if let Ok(l) = line {
@@ -328,6 +337,7 @@ fn resolve_variable_value(
     map: &std::collections::HashMap<&str, &VariableValue>,
     visited: &mut std::collections::HashSet<String>,
     source_files: &[PathBuf],
+    dry_run: bool,
 ) -> ResolutionStatus {
     if visited.contains(var_name) {
         return ResolutionStatus::CircularReference;
@@ -342,7 +352,7 @@ fn resolve_variable_value(
             ),
             VariableValue::Json(j) => ResolutionStatus::Resolved(j.clone()),
             VariableValue::Reference(rn) => {
-                let status = resolve_variable_value(rn, map, visited, source_files);
+                let status = resolve_variable_value(rn, map, visited, source_files, dry_run);
                 if let ResolutionStatus::NotFound = status {
                     let (line, col, path) = find_variable_location(source_files, rn);
                     let loc = if line > 0 {
@@ -360,9 +370,13 @@ fn resolve_variable_value(
                 None,
             ),
             VariableValue::SystemFunction { name, args } => {
-                match execute_system_function(name, args, source_files) {
-                    Ok(res) => ResolutionStatus::Resolved(res),
-                    Err(e) => ResolutionStatus::Error(e, None),
+                if dry_run {
+                    ResolutionStatus::Resolved(String::new())
+                } else {
+                    match execute_system_function(name, args, source_files) {
+                        Ok(res) => ResolutionStatus::Resolved(res),
+                        Err(e) => ResolutionStatus::Error(e, None),
+                    }
                 }
             }
         }
@@ -375,6 +389,7 @@ fn resolve_vars_in_string(
     result: &mut String,
     map: &std::collections::HashMap<&str, &VariableValue>,
     source_files: &[PathBuf],
+    dry_run: bool,
 ) -> Result<bool, SyntaxError> {
     let mut changed = false;
     for var_name in map.keys() {
@@ -388,7 +403,7 @@ fn resolve_vars_in_string(
             continue;
         }
         let mut visited = std::collections::HashSet::new();
-        match resolve_variable_value(var_name, map, &mut visited, source_files) {
+        match resolve_variable_value(var_name, map, &mut visited, source_files, dry_run) {
             ResolutionStatus::Resolved(replacement) => {
                 for pattern in &patterns {
                     if result.contains(pattern.as_str()) {
@@ -430,6 +445,41 @@ fn resolve_vars_in_string(
     Ok(changed)
 }
 
+fn validate_system_func(
+    result: &mut String,
+    func_pattern: &regex::Regex,
+    source_files: &[PathBuf],
+) -> Result<bool, SyntaxError> {
+    if !result.contains("{{$") {
+        return Ok(false);
+    }
+    let match_data = if let Some(caps) = func_pattern.captures(result) {
+        let full_match = caps.get(0).unwrap();
+        let range = full_match.range();
+        let namespace = caps[1].to_string();
+        let func_name = caps[2].to_string();
+        Some((range, namespace, func_name))
+    } else {
+        None
+    };
+    if let Some((range, namespace, func_name)) = match_data {
+        let full_func_name = format!("{namespace}.{func_name}");
+        if functions::get_function(&namespace, &func_name).is_none() {
+            let (line, col, path) = find_sys_call_location(source_files, &full_func_name, &[]);
+            return Err(SyntaxError::with_file(
+                format!("Unknown function: {full_func_name}"),
+                line,
+                col,
+                0..0,
+                format_path(&path),
+            ));
+        }
+        result.replace_range(range, "");
+        return Ok(true);
+    }
+    Ok(false)
+}
+
 fn try_resolve_system_func(
     result: &mut String,
     context: &VariableContext,
@@ -463,7 +513,8 @@ fn try_resolve_system_func(
         let replacement = match execute_system_function(&full_func_name, &args, source_files) {
             Ok(res) => res,
             Err(msg) => {
-                let (line, col, path) = find_sys_call_location(source_files, &full_func_name);
+                let (line, col, path) =
+                    find_sys_call_location(source_files, &full_func_name, &args);
                 return Err(SyntaxError::with_file(
                     msg,
                     line,
@@ -477,6 +528,71 @@ fn try_resolve_system_func(
         return Ok(true);
     }
     Ok(false)
+}
+
+fn validate_user_func(
+    result: &mut String,
+    context: &VariableContext,
+    source_files: &[PathBuf],
+    user_func_pattern: &regex::Regex,
+) -> Result<bool, SyntaxError> {
+    let Some(caps) = user_func_pattern.captures(result) else {
+        return Ok(false);
+    };
+    let full_match = caps.get(0).unwrap();
+    let range = full_match.range();
+    let namespace = caps[1].to_string();
+    let func_name = caps[2].to_string();
+    let args_raw = caps[3].to_string();
+
+    if !functions::is_known_namespace(&namespace) {
+        return Ok(false);
+    }
+
+    let fake_source = format!("{namespace}.{func_name}({args_raw})");
+    let tokens = tokenize(&fake_source).map_err(|e| {
+        SyntaxError::with_file(
+            format!("Failed to tokenize function call: {e:?}"),
+            0,
+            0,
+            0..0,
+            String::new(),
+        )
+    })?;
+    let mut reader = TokenReader::new(tokens, PathBuf::from(""), fake_source);
+    reader.advance();
+    reader.skip_ignorable();
+    reader.advance();
+
+    match parse_system_function(&mut reader, &namespace) {
+        Ok(VariableValue::SystemFunction { name: _, args }) => {
+            let full_func_name = format!("{namespace}.{func_name}");
+            let parts: Vec<&str> = full_func_name.split('.').collect();
+            if parts.len() == 2 {
+                if let Some(func) = functions::get_function(parts[0], parts[1]) {
+                    let resolved_args: Vec<String> = args
+                        .iter()
+                        .map(|a| check_string(a, context, source_files).unwrap_or_default())
+                        .collect();
+                    if let Err(msg) = func.validate_args(&resolved_args) {
+                        let (line, col, path) =
+                            find_sys_call_location(source_files, &full_func_name, &resolved_args);
+                        return Err(SyntaxError::with_file(
+                            msg,
+                            line,
+                            col,
+                            0..0,
+                            format_path(&path),
+                        ));
+                    }
+                }
+            }
+            result.replace_range(range, "");
+            Ok(true)
+        }
+        Ok(_) => Ok(false),
+        Err(e) => Err(e),
+    }
 }
 
 fn try_resolve_user_func(
@@ -525,7 +641,7 @@ fn try_resolve_user_func(
                     Ok(res) => res,
                     Err(msg) => {
                         let (line, col, path) =
-                            find_sys_call_location(source_files, &full_func_name);
+                            find_sys_call_location(source_files, &full_func_name, &resolved_args);
                         return Err(SyntaxError::with_file(
                             msg,
                             line,
@@ -543,6 +659,47 @@ fn try_resolve_user_func(
     }
 }
 
+pub fn check_string(
+    input: &str,
+    context: &VariableContext,
+    source_files: &[PathBuf],
+) -> Result<String, SyntaxError> {
+    let map = context.as_map();
+    let mut result = input.to_string();
+
+    let mut iterations = 0;
+    while iterations < 10 {
+        iterations += 1;
+        let mut changed = resolve_vars_in_string(&mut result, &map, source_files, true)?;
+        changed |= validate_system_func(&mut result, &FUNC_PATTERN, source_files)?;
+        if !changed {
+            changed = validate_user_func(&mut result, context, source_files, &USER_FUNC_PATTERN)?;
+        }
+        if !changed {
+            break;
+        }
+    }
+
+    if let Some(caps) = UNRESOLVED_PATTERN.captures(&result) {
+        let var_name = &caps[1];
+        let msg = if iterations >= 10 {
+            format!("Recursion limit exceeded resolving '{var_name}': check for deeply nested variable references")
+        } else {
+            format!("Unresolved variable: '{var_name}'")
+        };
+        let (line, col, path) = find_variable_location(source_files, var_name);
+        return Err(SyntaxError::with_file(
+            msg,
+            line,
+            col,
+            0..0,
+            format_path(&path),
+        ));
+    }
+
+    Ok(result)
+}
+
 pub fn resolve_string(
     input: &str,
     context: &VariableContext,
@@ -554,7 +711,7 @@ pub fn resolve_string(
     let mut iterations = 0;
     while iterations < 10 {
         iterations += 1;
-        let mut changed = resolve_vars_in_string(&mut result, &map, source_files)?;
+        let mut changed = resolve_vars_in_string(&mut result, &map, source_files, false)?;
         changed |= try_resolve_system_func(&mut result, context, source_files, &FUNC_PATTERN)?;
         if !changed {
             changed =
@@ -605,6 +762,106 @@ pub fn resolve_variables(
         request.auth = Some(resolve_string(auth, context, source_files)?);
     }
     Ok(request)
+}
+
+pub fn collect_variable_errors(
+    request: &Request,
+    context: &VariableContext,
+    source_files: &[PathBuf],
+) -> Vec<SyntaxError> {
+    let mut errors = Vec::new();
+    let request_line_1 = request.line + 1;
+    let request_col_1 = request.character + 1;
+    let mut error_index = 0usize;
+    let mut try_resolve = |s: &str| {
+        if let Err(mut e) = check_string(s, context, source_files) {
+            if e.line == 0 || e.line != request_line_1 {
+                e.line = request_line_1;
+                e.column = request_col_1 + error_index;
+                if let Some(ref path) = request.source_path {
+                    e.file_path = Some(path.clone());
+                }
+            }
+            error_index += 1;
+            errors.push(e);
+        }
+    };
+    try_resolve(&request.url);
+    for (k, v) in &request.headers {
+        try_resolve(k);
+        try_resolve(v);
+    }
+    if let Some(ref var_name) = request.headers_var {
+        let is_defined_headers = matches!(
+            context.as_map().get(var_name.as_str()),
+            Some(super::variable_context::VariableValue::Headers(_))
+        );
+        if !is_defined_headers {
+            try_resolve(&format!("{{{{{var_name}}}}}"));
+        }
+    }
+    if let Some(ref body) = request.body {
+        try_resolve(body);
+    }
+    if let Some(ref timeout) = request.timeout {
+        try_resolve(timeout);
+    }
+    if let Some(ref auth) = request.auth {
+        try_resolve(auth);
+    }
+    errors
+}
+
+pub fn collect_declared_variable_errors(
+    variables: &[super::variable_context::Variable],
+    extra_context: &[super::variable_context::Variable],
+    source_files: &[PathBuf],
+) -> Vec<SyntaxError> {
+    let known_names: std::collections::HashSet<&str> = variables
+        .iter()
+        .chain(extra_context.iter())
+        .map(|v| v.name.as_str())
+        .collect();
+    let mut errors = Vec::new();
+    for var in variables {
+        match &var.value {
+            super::variable_context::VariableValue::SystemFunction { name, args } => {
+                let parts: Vec<&str> = name.split('.').collect();
+                let validation_error = if parts.len() == 2 {
+                    match functions::get_function(parts[0], parts[1]) {
+                        None => Some(format!("Unknown function: {name}")),
+                        Some(func) => func.validate_args(args).err(),
+                    }
+                } else {
+                    Some(format!("Invalid function name: {name}"))
+                };
+                if let Some(msg) = validation_error {
+                    let (line, col, path) = find_variable_location(source_files, &var.name);
+                    errors.push(SyntaxError::with_file(
+                        msg,
+                        line,
+                        col,
+                        0..0,
+                        path.display().to_string(),
+                    ));
+                }
+            }
+            super::variable_context::VariableValue::Reference(ref_name) => {
+                if !known_names.contains(ref_name.as_str()) {
+                    let (line, col, path) = find_variable_location(source_files, &var.name);
+                    errors.push(SyntaxError::with_file(
+                        format!("Variable '{ref_name}' is not defined"),
+                        line,
+                        col,
+                        0..0,
+                        path.display().to_string(),
+                    ));
+                }
+            }
+            _ => {}
+        }
+    }
+    errors
 }
 
 pub fn resolve_auth_provider(

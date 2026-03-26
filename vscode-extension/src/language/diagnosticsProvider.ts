@@ -40,7 +40,7 @@ export class DiagnosticsProvider {
 
         const timer = setTimeout(() => {
             this.debounceTimers.delete(folderKey);
-            this.validateFolder(workspaceFolder);
+            void this.validateFolder(workspaceFolder);
         }, DEBOUNCE_MS);
 
         this.debounceTimers.set(folderKey, timer);
@@ -48,7 +48,7 @@ export class DiagnosticsProvider {
 
     validateAllFolders(): void {
         for (const folder of vscode.workspace.workspaceFolders ?? []) {
-            this.validateFolder(folder);
+            void this.validateFolder(folder);
         }
     }
 
@@ -69,7 +69,7 @@ export class DiagnosticsProvider {
             this.debounceTimers.delete(folderKey);
         }
 
-        this.validateFolder(workspaceFolder);
+        void this.validateFolder(workspaceFolder);
     }
 
     dispose(): void {

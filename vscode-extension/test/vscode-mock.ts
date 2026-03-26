@@ -32,7 +32,7 @@ export enum TreeItemCollapsibleState {
 // Mock window
 export const window = {
     showInformationMessage: jest.fn(),
-    showErrorMessage: jest.fn(),
+    showErrorMessage: jest.fn().mockResolvedValue(undefined),
     showWarningMessage: jest.fn(),
     showQuickPick: jest.fn(),
     showInputBox: jest.fn(),

@@ -47,10 +47,20 @@ function parseEnvVariables(document: vscode.TextDocument, startLine: number): st
     let depth = 0;
     for (let i = startLine; i < document.lineCount; i++) {
         const line = document.lineAt(i).text;
-        if (line.includes('{')) { depth++; }
-        if (line.includes('}')) {
-            depth--;
-            if (depth <= 0) { break; }
+        let inString = false;
+        let stringChar = '';
+        for (const ch of line) {
+            if (inString) {
+                if (ch === stringChar) { inString = false; }
+            } else if (ch === '"' || ch === "'") {
+                inString = true;
+                stringChar = ch;
+            } else if (ch === '{') {
+                depth++;
+            } else if (ch === '}') {
+                depth--;
+                if (depth <= 0) { return vars; }
+            }
         }
         const varMatch = /^\s+(\w+)\s*:/.exec(line);
         if (varMatch && depth > 0) {

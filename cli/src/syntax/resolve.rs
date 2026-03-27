@@ -822,6 +822,15 @@ pub fn collect_declared_variable_errors(
         .chain(extra_context.iter())
         .map(|v| v.name.as_str())
         .collect();
+    let string_context = super::variable_context::VariableContext::builder()
+        .file_variables(
+            variables
+                .iter()
+                .chain(extra_context.iter())
+                .cloned()
+                .collect(),
+        )
+        .build();
     let mut errors = Vec::new();
     for var in variables {
         match &var.value {
@@ -859,16 +868,7 @@ pub fn collect_declared_variable_errors(
                 }
             }
             super::variable_context::VariableValue::String(s) if s.contains("{{") => {
-                let context = super::variable_context::VariableContext::builder()
-                    .file_variables(
-                        variables
-                            .iter()
-                            .chain(extra_context.iter())
-                            .cloned()
-                            .collect(),
-                    )
-                    .build();
-                if let Err(e) = check_string(s, &context, source_files) {
+                if let Err(e) = check_string(s, &string_context, source_files) {
                     errors.push(e);
                 }
             }

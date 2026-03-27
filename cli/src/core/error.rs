@@ -27,7 +27,11 @@ pub fn error_to_json(error: &(dyn std::error::Error + 'static)) -> String {
             RqError::Syntax(e) => JsonErrorDetail {
                 error_type: "syntax".to_string(),
                 message: e.message.clone(),
-                file: e.file_path.clone(),
+                file: e
+                    .file_path
+                    .as_deref()
+                    .map(crate::core::paths::clean_path_str)
+                    .map(str::to_string),
                 line: Some(e.line),
                 column: Some(e.column),
             },

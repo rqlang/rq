@@ -1093,11 +1093,19 @@ impl RqClient {
         for v in &all_declared {
             checked_names.insert(v.name.clone());
         }
+        let declared_search_paths: Vec<std::path::PathBuf> = std::iter::once(rq_file.path.clone())
+            .chain(rq_file.imported_files.iter().cloned())
+            .collect();
+        let mut broken_var_names: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
         for e in crate::syntax::collect_declared_variable_errors(
             &all_declared,
             &secret_vars,
-            std::slice::from_ref(&rq_file.path),
+            &declared_search_paths,
         ) {
+            if let Some(var_name) = extract_unresolved_var_name(&e.message) {
+                broken_var_names.insert(var_name);
+            }
             errors.push(RqError::Syntax(e));
         }
 
@@ -1141,6 +1149,12 @@ impl RqClient {
                 &context,
                 &search_paths,
             ) {
+                if extract_unresolved_var_name(&e.message)
+                    .map(|n| broken_var_names.contains(&n))
+                    .unwrap_or(false)
+                {
+                    continue;
+                }
                 errors.push(RqError::Syntax(e));
             }
         }
@@ -1430,4 +1444,11 @@ impl RqClient {
         }
         Ok(())
     }
+}
+
+fn extract_unresolved_var_name(message: &str) -> Option<String> {
+    let prefix = "Unresolved variable: '";
+    let start = message.find(prefix)? + prefix.len();
+    let end = message[start..].find('\'')?;
+    Some(message[start..start + end].to_string())
 }

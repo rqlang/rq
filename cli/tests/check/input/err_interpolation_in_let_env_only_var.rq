@@ -1,0 +1,7 @@
+env local {
+    base_url: "http://localhost:8080",
+}
+
+let widgets_url = "{{base_url}}/widgets";
+
+rq get(widgets_url);

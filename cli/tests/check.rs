@@ -386,6 +386,99 @@ fn test_check_valid_headers_var_used_in_rq() {
 }
 
 #[test]
+fn test_check_error_interpolation_in_let_uses_env_only_var() {
+    let (success, json) = run_check(&[
+        "check",
+        "-s",
+        "tests/check/input/err_interpolation_in_let_env_only_var.rq",
+    ]);
+    assert!(
+        !success,
+        "expected exit 1 when let interpolation references a var only defined in an env block"
+    );
+    let msgs = error_messages(&json);
+    assert!(
+        msgs.iter().any(|m| m.contains("base_url")),
+        "expected error about 'base_url', got: {:?}",
+        msgs
+    );
+    let errors = json["errors"].as_array().unwrap();
+    assert!(
+        errors.iter().any(|e| e["line"].as_u64() == Some(5)),
+        "expected an error on line 5 (the let declaration), got: {:?}",
+        errors
+    );
+}
+
+#[test]
+fn test_check_valid_interpolation_in_let_with_env_flag() {
+    let (success, json) = run_check(&[
+        "check",
+        "-s",
+        "tests/check/input/err_interpolation_in_let_env_only_var.rq",
+        "-e",
+        "local",
+    ]);
+    assert!(
+        success,
+        "expected exit 0 when the correct env is selected, got: {:?}",
+        error_messages(&json)
+    );
+    assert_eq!(error_count(&json), 0);
+}
+
+#[test]
+fn test_check_error_interpolation_in_let_imported_env_only_var() {
+    let (success, json) = run_check(&[
+        "check",
+        "-s",
+        "tests/check/input/err_interpolation_in_let_imported_env_only_var.rq",
+    ]);
+    assert!(
+        !success,
+        "expected exit 1 when imported let interpolation references a var only defined in an env block"
+    );
+    assert_eq!(
+        error_count(&json),
+        1,
+        "expected exactly 1 error (no cascade), got: {:?}",
+        error_messages(&json)
+    );
+    let errors = json["errors"].as_array().unwrap();
+    let e = &errors[0];
+    assert!(
+        e["message"].as_str().unwrap_or("").contains("base_url"),
+        "expected error about 'base_url', got: {}",
+        e["message"]
+    );
+    assert!(
+        e["file"]
+            .as_str()
+            .unwrap_or("")
+            .contains("_shared"),
+        "expected error to point to the shared/imported file, got: {}",
+        e["file"]
+    );
+}
+
+#[test]
+fn test_check_valid_interpolation_in_let_imported_with_env_flag() {
+    let (success, json) = run_check(&[
+        "check",
+        "-s",
+        "tests/check/input/err_interpolation_in_let_imported_env_only_var.rq",
+        "-e",
+        "local",
+    ]);
+    assert!(
+        success,
+        "expected exit 0 when the correct env is selected, got: {:?}",
+        error_messages(&json)
+    );
+    assert_eq!(error_count(&json), 0);
+}
+
+#[test]
 fn test_check_nonexistent_source_exits_nonzero() {
     let output = rq_cmd()
         .args(["check", "-s", "tests/check/input/nonexistent.rq"])

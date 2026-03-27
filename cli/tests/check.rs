@@ -452,10 +452,7 @@ fn test_check_error_interpolation_in_let_imported_env_only_var() {
         e["message"]
     );
     assert!(
-        e["file"]
-            .as_str()
-            .unwrap_or("")
-            .contains("_shared"),
+        e["file"].as_str().unwrap_or("").contains("_shared"),
         "expected error to point to the shared/imported file, got: {}",
         e["file"]
     );

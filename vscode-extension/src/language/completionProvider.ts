@@ -206,7 +206,11 @@ async function resolveCliPath(document: vscode.TextDocument): Promise<{ filePath
         }
     }
     const tempDir = mirrorToTemp(workspaceRoot, overrides);
-    const filePath = path.join(tempDir, path.relative(workspaceRoot, document.uri.fsPath));
+    const relPath = path.relative(workspaceRoot, document.uri.fsPath);
+    if (relPath.startsWith('..')) {
+        return { filePath: document.uri.fsPath, tempDir };
+    }
+    const filePath = path.join(tempDir, relPath);
     return { filePath, tempDir };
 }
 

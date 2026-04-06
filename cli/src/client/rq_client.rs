@@ -441,12 +441,14 @@ impl RqClient {
             ));
         }
 
-        if !source_path.is_dir() {
-            return Err(RqError::NotADirectory(source_path.display().to_string()));
-        }
+        let dir = if source_path.is_file() {
+            source_path.parent().unwrap_or(source_path)
+        } else {
+            source_path
+        };
 
         let mut auth_map = HashMap::new();
-        Self::collect_auth_entries(source_path, &mut auth_map)?;
+        Self::collect_auth_entries(dir, &mut auth_map)?;
 
         let mut auth_list: Vec<super::rq_client_models::AuthListEntry> = auth_map
             .into_iter()
@@ -1212,6 +1214,14 @@ impl RqClient {
             }
         }
 
+        let mut seen = std::collections::HashSet::new();
+        errors.retain(|e| {
+            if let RqError::Syntax(se) = e {
+                seen.insert((se.file_path.clone(), se.line, se.message.clone()))
+            } else {
+                true
+            }
+        });
         errors
     }
 

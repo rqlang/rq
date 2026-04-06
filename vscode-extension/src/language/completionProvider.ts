@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import * as fs from 'fs';
 import * as cliService from '../cliService';
+import { normalizePath, mirrorToTemp } from '../utils';
 import {
     SYSTEM_FUNCTIONS,
     IO_FUNCTIONS,
@@ -190,6 +192,24 @@ const countPositionalArgs = (matchedText: string): number => {
     return positional;
 };
 
+async function resolveCliPath(document: vscode.TextDocument): Promise<{ filePath: string; tempDir: string | null }> {
+    const workspaceRoot = vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath
+        ?? path.dirname(document.uri.fsPath);
+    const hasDirtyDocs = vscode.workspace.textDocuments.some(doc => doc.languageId === 'rq' && doc.isDirty);
+    if (!hasDirtyDocs) {
+        return { filePath: document.uri.fsPath, tempDir: null };
+    }
+    const overrides = new Map<string, string>();
+    for (const doc of vscode.workspace.textDocuments) {
+        if (doc.languageId === 'rq' && doc.isDirty) {
+            overrides.set(normalizePath(doc.uri.fsPath), doc.getText());
+        }
+    }
+    const tempDir = mirrorToTemp(workspaceRoot, overrides);
+    const filePath = path.join(tempDir, path.relative(workspaceRoot, document.uri.fsPath));
+    return { filePath, tempDir };
+}
+
 const builtinFunctionItems = (): vscode.CompletionItem[] => [
     (() => {
         const i = new vscode.CompletionItem('random.guid()', vscode.CompletionItemKind.Function);
@@ -216,6 +236,8 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
     {
         async provideCompletionItems(document: vscode.TextDocument, position: vscode.Position, _token?: vscode.CancellationToken, context?: vscode.CompletionContext) {
             const linePrefix = document.lineAt(position).text.substring(0, position.character);
+            const { filePath: cliFilePath, tempDir: cliTempDir } = await resolveCliPath(document);
+            try {
 
             // Endpoint template completion: ep name< -> list existing endpoints
             const epTemplateMatch = linePrefix.match(/^\s*ep\s+[a-zA-Z_][a-zA-Z0-9_-]*\s*<$/);
@@ -267,7 +289,7 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
             if (/^\s*let\s+[a-zA-Z_][a-zA-Z0-9_-]*\s*=\s*$/.test(linePrefix)) {
                 const suggestions: vscode.CompletionItem[] = [...builtinFunctionItems()];
                 try {
-                    const variables = await cliService.listVariables(document.uri.fsPath, environmentProvider?.getSelectedEnvironment());
+                    const variables = await cliService.listVariables(cliFilePath, environmentProvider?.getSelectedEnvironment());
                     variables.forEach(v => {
                         const item = new vscode.CompletionItem(v.name, vscode.CompletionItemKind.Variable);
                         item.detail = v.value ? `= ${v.value}` : v.source;
@@ -292,7 +314,7 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
                     );
                 }
                 try {
-                    const variables = await cliService.listVariables(document.uri.fsPath, environmentProvider?.getSelectedEnvironment());
+                    const variables = await cliService.listVariables(cliFilePath, environmentProvider?.getSelectedEnvironment());
                     if (variables.length > 0) {
                         return variables.map(v => {
                             const item = new vscode.CompletionItem(v.name, vscode.CompletionItemKind.Variable);
@@ -335,7 +357,7 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
                     const suggestions: vscode.CompletionItem[] = [...builtinFunctionItems()];
                     let gotRemoteVars = false;
                     try {
-                        const variables = await cliService.listVariables(document.uri.fsPath, environmentProvider?.getSelectedEnvironment());
+                        const variables = await cliService.listVariables(cliFilePath, environmentProvider?.getSelectedEnvironment());
                         if (variables.length > 0) {
                             gotRemoteVars = true;
                             variables.forEach(v => {
@@ -454,7 +476,7 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
                         const suggestions: vscode.CompletionItem[] = [...builtinFunctionItems()];
                         let gotRemoteVars = false;
                         try {
-                            const variables = await cliService.listVariables(document.uri.fsPath, environmentProvider?.getSelectedEnvironment());
+                            const variables = await cliService.listVariables(cliFilePath, environmentProvider?.getSelectedEnvironment());
                             if (variables.length > 0) {
                                 gotRemoteVars = true;
                                 variables.forEach(v => {
@@ -496,7 +518,7 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
 
                     const suggestions: vscode.CompletionItem[] = [...builtinFunctionItems()];
                     try {
-                        const variables = await cliService.listVariables(document.uri.fsPath, environmentProvider?.getSelectedEnvironment());
+                        const variables = await cliService.listVariables(cliFilePath, environmentProvider?.getSelectedEnvironment());
                         variables.forEach(v => {
                             const item = new vscode.CompletionItem(v.name, vscode.CompletionItemKind.Variable);
                             item.detail = v.value ? `= ${v.value}` : v.source;
@@ -533,7 +555,7 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
                         const suggestions: vscode.CompletionItem[] = [...builtinFunctionItems()];
                         let gotRemoteVars = false;
                         try {
-                            const variables = await cliService.listVariables(document.uri.fsPath, environmentProvider?.getSelectedEnvironment());
+                            const variables = await cliService.listVariables(cliFilePath, environmentProvider?.getSelectedEnvironment());
                             if (variables.length > 0) {
                                 gotRemoteVars = true;
                                 variables.forEach(v => {
@@ -575,7 +597,7 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
 
                     const suggestions: vscode.CompletionItem[] = [...builtinFunctionItems()];
                     try {
-                        const variables = await cliService.listVariables(document.uri.fsPath, environmentProvider?.getSelectedEnvironment());
+                        const variables = await cliService.listVariables(cliFilePath, environmentProvider?.getSelectedEnvironment());
                         variables.forEach(v => {
                             const item = new vscode.CompletionItem(v.name, vscode.CompletionItemKind.Variable);
                             item.detail = v.value ? `= ${v.value}` : v.source;
@@ -597,6 +619,61 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
                 }
             }
             
+            // Auth name completion inside [auth("...
+            const authAttrValueMatch = linePrefix.match(/^\s*\[auth\("([^"]*)$/);
+            if (authAttrValueMatch) {
+                const partial = authAttrValueMatch[1];
+                try {
+                    const authConfigs = await cliService.listAuthConfigs(cliFilePath);
+                    const afterCursor = document.lineAt(position.line).text.substring(position.character);
+                    const trailingName = afterCursor.match(/^([^"]*)/)?.[1] ?? '';
+                    return authConfigs.map(a => {
+                        const item = new vscode.CompletionItem(a.name, vscode.CompletionItemKind.Reference);
+                        item.detail = a.auth_type;
+                        item.insertText = a.name;
+                        item.range = new vscode.Range(
+                            position.line, position.character - partial.length,
+                            position.line, position.character + trailingName.length
+                        );
+                        return item;
+                    });
+                } catch { return undefined; }
+            }
+
+            // Attribute completion: [method(...)] [timeout(...)] [auth(...)]
+            // Only when [ is at the start of a line, not inside a header dict (let a = [...])
+            const attributeMatch = linePrefix.match(/^\s*\[(\w*)$/);
+            if (attributeMatch) {
+                const blockText = document.getText(new vscode.Range(
+                    new vscode.Position(Math.max(0, position.line - 50), 0),
+                    position
+                ));
+                const bracketOffset = linePrefix.lastIndexOf('[');
+                const blockTextBeforeBracket = document.getText(new vscode.Range(
+                    new vscode.Position(Math.max(0, position.line - 50), 0),
+                    new vscode.Position(position.line, bracketOffset)
+                ));
+                if (!insideArrayLiteral(blockTextBeforeBracket) && !insideEnvOrAuthBlock(blockText)) {
+                    const methodItem = new vscode.CompletionItem('method', vscode.CompletionItemKind.Keyword);
+                    methodItem.detail = 'Override request method';
+                    methodItem.documentation = new vscode.MarkdownString('Sets the HTTP method for the next `rq` statement.\n\n**Example:** `[method(POST)]`');
+                    methodItem.insertText = new vscode.SnippetString('method(${1|GET,POST,PUT,DELETE,PATCH,HEAD,OPTIONS|})');
+
+                    const timeoutItem = new vscode.CompletionItem('timeout', vscode.CompletionItemKind.Keyword);
+                    timeoutItem.detail = 'Request timeout in seconds';
+                    timeoutItem.documentation = new vscode.MarkdownString('Sets the timeout (in seconds) for the next `rq` statement.\n\n**Example:** `[timeout(30)]`');
+                    timeoutItem.insertText = new vscode.SnippetString('timeout(${1:30})');
+
+                    const authItem = new vscode.CompletionItem('auth', vscode.CompletionItemKind.Keyword);
+                    authItem.detail = 'Auth provider name';
+                    authItem.documentation = new vscode.MarkdownString('Attaches an auth provider to the next `rq` statement.\n\n**Example:** `[auth("my_bearer")]`');
+                    authItem.insertText = new vscode.SnippetString('auth("$1")');
+                    authItem.command = { command: 'editor.action.triggerSuggest', title: 'Re-trigger completions' };
+
+                    return [methodItem, timeoutItem, authItem];
+                }
+            }
+
             // Header key completion inside array literals
             const headerKeyMatch = linePrefix.match(/^\s*"?([a-zA-Z0-9_-]*)$/);
             if (headerKeyMatch) {
@@ -822,6 +899,9 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
             }
 
             return undefined;
+            } finally {
+                if (cliTempDir) { fs.rmSync(cliTempDir, { recursive: true, force: true }); }
+            }
         }
     },
     '.', '{', '[', ',', ' ', 'v', 'e', 'p', 'q', ')', '<', '=', '"', ':', '(', '\n'

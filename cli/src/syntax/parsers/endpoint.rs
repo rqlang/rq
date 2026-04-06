@@ -223,7 +223,7 @@ pub(crate) fn parse_endpoint_with_context(
 > {
     let mut ctx = AttributeContext::default();
     let parsers: Vec<&dyn AttributeParser> = vec![&AuthAttributeParser, &TimeoutAttributeParser];
-    parse_attributes(r, &parsers, &mut ctx)?;
+    parse_attributes(r, &parsers, &["method"], &mut ctx)?;
 
     expect(
         r,

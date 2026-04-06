@@ -1,11 +1,10 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as os from 'os';
 import * as cliService from '../cliService';
-import { normalizePath } from '../utils';
+import { normalizePath, mirrorToTemp } from '../utils';
 
-const DEBOUNCE_MS = 500;
+const DEBOUNCE_MS = 1000;
 
 interface EnvironmentProvider {
     getSelectedEnvironment(): string | undefined;
@@ -99,8 +98,7 @@ export class DiagnosticsProvider {
         const env = this.environmentProvider?.getSelectedEnvironment();
 
         if (openDocuments.size > 0) {
-            const tempRoot = this.rebuildTempRoot(folderPath);
-            this.mirrorWorkspaceToTemp(folderPath, tempRoot, openDocuments);
+            const tempRoot = this.rebuildTempRoot(folderPath, openDocuments);
             const result = await cliService.checkFolder(tempRoot, env);
             this.applyDiagnostics(result, tempRoot, folderPath);
         } else {
@@ -110,11 +108,10 @@ export class DiagnosticsProvider {
         }
     }
 
-    private rebuildTempRoot(folderPath: string): string {
-        const key = normalizePath(folderPath);
+    private rebuildTempRoot(folderPath: string, overrides: Map<string, string>): string {
         this.clearTempRoot(folderPath);
-        const tempRoot = normalizePath(fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'rq-check-'))));
-        this.tempRoots.set(key, tempRoot);
+        const tempRoot = mirrorToTemp(folderPath, overrides);
+        this.tempRoots.set(normalizePath(folderPath), tempRoot);
         return tempRoot;
     }
 
@@ -125,42 +122,6 @@ export class DiagnosticsProvider {
             this.removeTempDir(existing);
             this.tempRoots.delete(key);
         }
-    }
-
-    private mirrorWorkspaceToTemp(
-        folderPath: string,
-        tempRoot: string,
-        overrides: Map<string, string>
-    ): void {
-        const rqFiles = this.collectRqFiles(folderPath);
-        for (const filePath of rqFiles) {
-            const relative = path.relative(folderPath, filePath);
-            const dest = path.join(tempRoot, relative);
-            fs.mkdirSync(path.dirname(dest), { recursive: true });
-            const override = overrides.get(normalizePath(filePath));
-            if (override !== undefined) {
-                fs.writeFileSync(dest, override, 'utf8');
-            } else {
-                fs.copyFileSync(filePath, dest);
-            }
-        }
-    }
-
-    private collectRqFiles(dir: string): string[] {
-        const results: string[] = [];
-        try {
-            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-                const full = path.join(dir, entry.name);
-                if (entry.isDirectory()) {
-                    results.push(...this.collectRqFiles(full));
-                } else if (entry.isFile() && entry.name.endsWith('.rq')) {
-                    results.push(full);
-                }
-            }
-        } catch {
-            // skip unreadable dirs
-        }
-        return results;
     }
 
     private applyDiagnostics(

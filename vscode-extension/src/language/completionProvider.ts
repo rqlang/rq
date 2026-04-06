@@ -242,7 +242,11 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
             let cliPathResult: { filePath: string; tempDir: string | null } | undefined;
             const getCliFilePath = async (): Promise<string> => {
                 if (!cliPathResult) {
-                    cliPathResult = await resolveCliPath(document);
+                    try {
+                        cliPathResult = await resolveCliPath(document);
+                    } catch {
+                        cliPathResult = { filePath: document.uri.fsPath, tempDir: null };
+                    }
                 }
                 return cliPathResult.filePath;
             };

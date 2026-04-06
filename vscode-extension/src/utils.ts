@@ -34,12 +34,17 @@ export function collectRqFiles(dir: string): string[] {
 
 export function mirrorToTemp(folderPath: string, overrides: Map<string, string>): string {
     const tempDir = normalizePath(fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'rq-check-'))));
-    for (const filePath of collectRqFiles(folderPath)) {
-        const relative = path.relative(folderPath, filePath);
-        const dest = path.join(tempDir, relative);
-        fs.mkdirSync(path.dirname(dest), { recursive: true });
-        const override = overrides.get(normalizePath(filePath));
-        fs.writeFileSync(dest, override !== undefined ? override : fs.readFileSync(filePath));
+    try {
+        for (const filePath of collectRqFiles(folderPath)) {
+            const relative = path.relative(folderPath, filePath);
+            const dest = path.join(tempDir, relative);
+            fs.mkdirSync(path.dirname(dest), { recursive: true });
+            const override = overrides.get(normalizePath(filePath));
+            fs.writeFileSync(dest, override !== undefined ? override : fs.readFileSync(filePath));
+        }
+    } catch (e) {
+        try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch { /* ignore */ }
+        throw e;
     }
     return tempDir;
 }

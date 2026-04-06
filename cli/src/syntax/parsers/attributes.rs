@@ -54,6 +54,7 @@ pub fn parse_attributes(
             if t.token_type == TokenType::Punctuation && t.value == PUNC_LBRACKET {
                 let mut offset = 1;
                 let mut attr_name = None;
+                let mut attr_span = None;
 
                 while let Some(next) = r.peek(offset) {
                     if matches!(
@@ -67,23 +68,23 @@ pub fn parse_attributes(
                         || next.token_type == TokenType::Keyword
                     {
                         attr_name = Some(next.value.clone());
+                        attr_span = Some(next.span.clone());
                     }
                     break;
                 }
 
                 if let Some(name) = attr_name {
+                    let span = attr_span.unwrap_or_else(|| t.span.clone());
                     if let Some(parser) = parsers.iter().find(|p| p.name() == name) {
                         parser.parse(r, ctx)?;
                         continue;
                     } else if unsupported.contains(&name.as_str()) {
                         return Err(r.create_error(
                             format!("Attribute '{name}' is not supported on ep statements; use it on rq statements instead"),
-                            t.span.clone(),
+                            span,
                         ));
                     } else {
-                        return Err(
-                            r.create_error(format!("Unknown attribute: '{name}'"), t.span.clone())
-                        );
+                        return Err(r.create_error(format!("Unknown attribute: '{name}'"), span));
                     }
                 } else {
                     break;

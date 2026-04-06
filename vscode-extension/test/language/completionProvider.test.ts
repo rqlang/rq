@@ -1,10 +1,32 @@
 jest.mock('../../src/cliService');
+jest.mock('../../src/utils', () => ({
+    ...jest.requireActual('../../src/utils'),
+    mirrorToTemp: jest.fn().mockReturnValue('/tmp/rq-check-mock'),
+}));
 
 import * as vscode from 'vscode';
 import * as cliService from '../../src/cliService';
+import * as utils from '../../src/utils';
 import '../../src/language/completionProvider';
 
 function makeDocument(lines: string[], uri: any = { fsPath: '/workspace/current.rq' }) {
+    const fullText = lines.join('\n');
+    const lineOffsets: number[] = [];
+    let off = 0;
+    for (const line of lines) {
+        lineOffsets.push(off);
+        off += line.length + 1;
+    }
+    const getText = (range?: any): string => {
+        if (!range) { return fullText; }
+        const startLine = range.start?.line ?? 0;
+        const startChar = range.start?.character ?? 0;
+        const endLine = range.end?.line ?? lines.length - 1;
+        const endChar = range.end?.character ?? (lines[lines.length - 1]?.length ?? 0);
+        const startOffset = (lineOffsets[startLine] ?? 0) + startChar;
+        const endOffset = (lineOffsets[endLine] ?? 0) + endChar;
+        return fullText.slice(startOffset, endOffset);
+    };
     return {
         uri,
         lineCount: lines.length,
@@ -12,7 +34,7 @@ function makeDocument(lines: string[], uri: any = { fsPath: '/workspace/current.
             const idx = typeof i === 'number' ? i : (i as vscode.Position).line;
             return { text: lines[idx] };
         },
-        getText: jest.fn().mockReturnValue(lines.join('\n')),
+        getText: jest.fn().mockImplementation(getText),
         getWordRangeAtPosition: jest.fn()
     };
 }
@@ -27,8 +49,12 @@ beforeAll(() => {
 beforeEach(() => {
     jest.clearAllMocks();
     (vscode.workspace.findFiles as jest.Mock).mockResolvedValue([]);
+    (vscode.workspace.textDocuments as any) = [];
+    (vscode.workspace.getWorkspaceFolder as jest.Mock).mockReturnValue(undefined);
     (cliService.listEndpoints as jest.Mock).mockResolvedValue([]);
     (cliService.listVariables as jest.Mock).mockResolvedValue([]);
+    (cliService.listAuthConfigs as jest.Mock).mockResolvedValue([]);
+    (utils.mirrorToTemp as jest.Mock).mockReturnValue('/tmp/rq-check-mock');
 });
 
 describe('import completion', () => {
@@ -969,5 +995,211 @@ describe('auth block property name completion', () => {
 
         expect(items.find((i: any) => i.label === 'token_url')).toBeDefined();
         expect(items.find((i: any) => i.label === 'client_id')).toBeUndefined();
+    });
+});
+
+describe('resolveCliPath — temp mirroring for unsaved files', () => {
+    test('uses original file path when no dirty rq docs exist', async () => {
+        (vscode.workspace.textDocuments as any) = [];
+        (cliService.listVariables as jest.Mock).mockResolvedValue([
+            { name: 'my_var', value: 'x', source: 'let' }
+        ]);
+
+        const doc = makeDocument(['let a = ']);
+        const position = new vscode.Position(0, 8);
+
+        await provideCompletionItems(doc, position);
+
+        expect(utils.mirrorToTemp).not.toHaveBeenCalled();
+        expect(cliService.listVariables).toHaveBeenCalledWith('/workspace/current.rq', undefined);
+    });
+
+    test('uses temp path when current document is dirty', async () => {
+        const dirtyDoc = {
+            languageId: 'rq',
+            isDirty: true,
+            uri: { fsPath: '/workspace/current.rq' },
+            getText: () => 'let a = "dirty"'
+        };
+        (vscode.workspace.textDocuments as any) = [dirtyDoc];
+        (vscode.workspace.getWorkspaceFolder as jest.Mock).mockReturnValue({
+            uri: { fsPath: '/workspace' }
+        });
+        (cliService.listVariables as jest.Mock).mockResolvedValue([]);
+
+        const doc = makeDocument(['let a = ']);
+        const position = new vscode.Position(0, 8);
+
+        await provideCompletionItems(doc, position);
+
+        expect(utils.mirrorToTemp).toHaveBeenCalled();
+        expect(cliService.listVariables).toHaveBeenCalledWith('/tmp/rq-check-mock/current.rq', undefined);
+    });
+
+    test('uses temp path when a different rq file is dirty', async () => {
+        const dirtyDoc = {
+            languageId: 'rq',
+            isDirty: true,
+            uri: { fsPath: '/workspace/shared.rq' },
+            getText: () => 'let token = "secret"'
+        };
+        (vscode.workspace.textDocuments as any) = [dirtyDoc];
+        (vscode.workspace.getWorkspaceFolder as jest.Mock).mockReturnValue({
+            uri: { fsPath: '/workspace' }
+        });
+        (cliService.listVariables as jest.Mock).mockResolvedValue([]);
+
+        const doc = makeDocument(['let a = ']);
+        const position = new vscode.Position(0, 8);
+
+        await provideCompletionItems(doc, position);
+
+        expect(utils.mirrorToTemp).toHaveBeenCalled();
+        expect(cliService.listVariables).toHaveBeenCalledWith('/tmp/rq-check-mock/current.rq', undefined);
+    });
+
+    test('passes dirty doc content as overrides to mirrorToTemp', async () => {
+        const dirtyDoc = {
+            languageId: 'rq',
+            isDirty: true,
+            uri: { fsPath: '/workspace/shared.rq' },
+            getText: () => 'let token = "secret"'
+        };
+        (vscode.workspace.textDocuments as any) = [dirtyDoc];
+        (vscode.workspace.getWorkspaceFolder as jest.Mock).mockReturnValue({
+            uri: { fsPath: '/workspace' }
+        });
+
+        const doc = makeDocument(['let a = ']);
+        const position = new vscode.Position(0, 8);
+
+        await provideCompletionItems(doc, position);
+
+        const overrides: Map<string, string> = (utils.mirrorToTemp as jest.Mock).mock.calls[0][1];
+        expect(overrides.get('/workspace/shared.rq')).toBe('let token = "secret"');
+    });
+
+    test('ignores non-rq dirty documents', async () => {
+        const dirtyDoc = {
+            languageId: 'typescript',
+            isDirty: true,
+            uri: { fsPath: '/workspace/extension.ts' },
+            getText: () => 'export {}'
+        };
+        (vscode.workspace.textDocuments as any) = [dirtyDoc];
+
+        const doc = makeDocument(['let a = ']);
+        const position = new vscode.Position(0, 8);
+
+        await provideCompletionItems(doc, position);
+
+        expect(utils.mirrorToTemp).not.toHaveBeenCalled();
+    });
+});
+
+describe('auth attribute value completion', () => {
+    test('suggests auth configs when typing [auth("', async () => {
+        (cliService.listAuthConfigs as jest.Mock).mockResolvedValue([
+            { name: 'my_bearer', auth_type: 'bearer' },
+            { name: 'my_oauth', auth_type: 'oauth2_client_credentials' }
+        ]);
+
+        const doc = makeDocument(['[auth("']);
+        const position = new vscode.Position(0, 7);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(cliService.listAuthConfigs).toHaveBeenCalledWith('/workspace/current.rq');
+        expect(items).toHaveLength(2);
+        expect(items[0].label).toBe('my_bearer');
+        expect(items[0].detail).toBe('bearer');
+        expect(items[1].label).toBe('my_oauth');
+    });
+
+    test('uses temp path for auth configs when docs are dirty', async () => {
+        const dirtyDoc = {
+            languageId: 'rq',
+            isDirty: true,
+            uri: { fsPath: '/workspace/auth.rq' },
+            getText: () => 'auth my_bearer(auth_type.bearer) { token: "t" }'
+        };
+        (vscode.workspace.textDocuments as any) = [dirtyDoc];
+        (vscode.workspace.getWorkspaceFolder as jest.Mock).mockReturnValue({
+            uri: { fsPath: '/workspace' }
+        });
+        (cliService.listAuthConfigs as jest.Mock).mockResolvedValue([
+            { name: 'my_bearer', auth_type: 'bearer' }
+        ]);
+
+        const doc = makeDocument(['[auth("']);
+        const position = new vscode.Position(0, 7);
+
+        await provideCompletionItems(doc, position);
+
+        expect(utils.mirrorToTemp).toHaveBeenCalled();
+        expect(cliService.listAuthConfigs).toHaveBeenCalledWith('/tmp/rq-check-mock/current.rq');
+    });
+
+    test('returns undefined when listAuthConfigs throws', async () => {
+        (cliService.listAuthConfigs as jest.Mock).mockRejectedValue(new Error('CLI error'));
+
+        const doc = makeDocument(['[auth("']);
+        const position = new vscode.Position(0, 7);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items).toBeUndefined();
+    });
+
+    test('does not trigger outside auth attribute context', async () => {
+        const doc = makeDocument(['let x = "']);
+        const position = new vscode.Position(0, 9);
+
+        await provideCompletionItems(doc, position);
+
+        expect(cliService.listAuthConfigs).not.toHaveBeenCalled();
+    });
+});
+
+describe('attribute completion', () => {
+    test('suggests method, timeout, auth when [ typed at start of line', async () => {
+        const doc = makeDocument(['[']);
+        const position = new vscode.Position(0, 1);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items.find((i: any) => i.label === 'method')).toBeDefined();
+        expect(items.find((i: any) => i.label === 'timeout')).toBeDefined();
+        expect(items.find((i: any) => i.label === 'auth')).toBeDefined();
+    });
+
+    test('does not suggest attributes inside a header dict', async () => {
+        const lines = ['let h = [', '    "'];
+        const doc = makeDocument(lines);
+        const position = new vscode.Position(1, 5);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items?.find((i: any) => i.label === 'method')).toBeUndefined();
+    });
+
+    test('method item uses snippet with HTTP verb choices', async () => {
+        const doc = makeDocument(['[']);
+        const position = new vscode.Position(0, 1);
+
+        const items = await provideCompletionItems(doc, position);
+
+        const method = items.find((i: any) => i.label === 'method');
+        expect((method.insertText as any).value).toContain('GET,POST,PUT,DELETE');
+    });
+
+    test('auth item triggers suggest command after insertion', async () => {
+        const doc = makeDocument(['[']);
+        const position = new vscode.Position(0, 1);
+
+        const items = await provideCompletionItems(doc, position);
+
+        const auth = items.find((i: any) => i.label === 'auth');
+        expect(auth.command?.command).toBe('editor.action.triggerSuggest');
     });
 });

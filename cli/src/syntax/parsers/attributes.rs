@@ -45,6 +45,7 @@ pub trait AttributeParser {
 pub fn parse_attributes(
     r: &mut TokenReader,
     parsers: &[&dyn AttributeParser],
+    unsupported: &[&str],
     ctx: &mut AttributeContext,
 ) -> Result<(), SyntaxError> {
     loop {
@@ -74,6 +75,11 @@ pub fn parse_attributes(
                     if let Some(parser) = parsers.iter().find(|p| p.name() == name) {
                         parser.parse(r, ctx)?;
                         continue;
+                    } else if unsupported.contains(&name.as_str()) {
+                        return Err(r.create_error(
+                            format!("Attribute '{name}' is not supported on ep statements; use it on rq statements instead"),
+                            t.span.clone(),
+                        ));
                     } else {
                         return Err(
                             r.create_error(format!("Unknown attribute: '{name}'"), t.span.clone())

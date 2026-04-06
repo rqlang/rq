@@ -83,8 +83,10 @@ export const workspace = {
         get: jest.fn().mockReturnValue(false)
     }),
     workspaceFolders: [],
+    textDocuments: [] as any[],
     openTextDocument: jest.fn(),
-    findFiles: jest.fn().mockResolvedValue([])
+    findFiles: jest.fn().mockResolvedValue([]),
+    getWorkspaceFolder: jest.fn()
 };
 
 // Mock ViewColumn

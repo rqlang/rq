@@ -339,7 +339,7 @@ fn test_check_error_undefined_qs_var_in_ep() {
 }
 
 #[test]
-fn test_check_error_duplicate_undefined_var_positional_reports_all() {
+fn test_check_error_duplicate_undefined_var_positional_deduped() {
     let (success, json) = run_check(&[
         "check",
         "-s",
@@ -348,14 +348,20 @@ fn test_check_error_duplicate_undefined_var_positional_reports_all() {
     assert!(!success, "expected exit 1 for undefined variables");
     assert_eq!(
         error_count(&json),
-        3,
-        "expected 3 errors (url, headers, body), got: {:?}",
+        1,
+        "same variable missing in url/headers/body should be reported once, got: {:?}",
         error_messages(&json)
+    );
+    let msgs = error_messages(&json);
+    assert!(
+        msgs[0].contains("not_found"),
+        "expected error about 'not_found', got: {}",
+        msgs[0]
     );
 }
 
 #[test]
-fn test_check_error_duplicate_undefined_var_named_reports_all() {
+fn test_check_error_duplicate_undefined_var_named_deduped() {
     let (success, json) = run_check(&[
         "check",
         "-s",
@@ -364,9 +370,44 @@ fn test_check_error_duplicate_undefined_var_named_reports_all() {
     assert!(!success, "expected exit 1 for undefined variables");
     assert_eq!(
         error_count(&json),
-        3,
-        "expected 3 errors (url:, headers:, body:), got: {:?}",
+        1,
+        "same variable missing in url:/headers:/body: should be reported once, got: {:?}",
         error_messages(&json)
+    );
+    let msgs = error_messages(&json);
+    assert!(
+        msgs[0].contains("not_found"),
+        "expected error about 'not_found', got: {}",
+        msgs[0]
+    );
+}
+
+#[test]
+fn test_check_error_endpoint_shared_url_var_deduped() {
+    let input = std::env::temp_dir().join(format!(
+        "err_endpoint_shared_url_var_{}.rq",
+        std::process::id()
+    ));
+    std::fs::write(
+        &input,
+        "ep api(\"http://localhost/{{auth_name}}\") {\n    rq list();\n    rq get(\"/1\");\n    rq create();\n}\n",
+    )
+    .unwrap();
+    let input_str = input.to_string_lossy();
+    let (success, json) = run_check(&["check", "-s", &input_str]);
+    std::fs::remove_file(&input).unwrap();
+    assert!(!success, "expected exit 1 for unresolved variable");
+    assert_eq!(
+        error_count(&json),
+        1,
+        "same variable in endpoint URL shared by multiple child requests should produce one error, got: {:?}",
+        error_messages(&json)
+    );
+    let msgs = error_messages(&json);
+    assert!(
+        msgs[0].contains("auth_name"),
+        "expected error about 'auth_name', got: {}",
+        msgs[0]
     );
 }
 

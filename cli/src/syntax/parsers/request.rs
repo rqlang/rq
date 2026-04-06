@@ -262,7 +262,7 @@ pub(crate) fn parse_request_with_context(
         &AuthAttributeParser,
         &TimeoutAttributeParser,
     ];
-    parse_attributes(r, &parsers, &mut ctx)?;
+    parse_attributes(r, &parsers, &[], &mut ctx)?;
 
     expect(
         r,

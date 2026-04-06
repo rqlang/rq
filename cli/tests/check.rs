@@ -384,14 +384,18 @@ fn test_check_error_duplicate_undefined_var_named_deduped() {
 
 #[test]
 fn test_check_error_endpoint_shared_url_var_deduped() {
-    let input = "tests/check/input/err_endpoint_shared_url_var.rq";
+    let input = std::env::temp_dir().join(format!(
+        "err_endpoint_shared_url_var_{}.rq",
+        std::process::id()
+    ));
     std::fs::write(
-        input,
+        &input,
         "ep api(\"http://localhost/{{auth_name}}\") {\n    rq list();\n    rq get(\"/1\");\n    rq create();\n}\n",
     )
     .unwrap();
-    let (success, json) = run_check(&["check", "-s", input]);
-    std::fs::remove_file(input).unwrap();
+    let input_str = input.to_string_lossy();
+    let (success, json) = run_check(&["check", "-s", &input_str]);
+    std::fs::remove_file(&input).unwrap();
     assert!(!success, "expected exit 1 for unresolved variable");
     assert_eq!(
         error_count(&json),

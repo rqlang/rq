@@ -1132,6 +1132,12 @@ impl RqClient {
                 &scoped_context,
                 std::slice::from_ref(&rq_file.path),
             ) {
+                if extract_unresolved_var_name(&e.message)
+                    .map(|n| broken_var_names.contains(&n))
+                    .unwrap_or(false)
+                {
+                    continue;
+                }
                 errors.push(RqError::Syntax(e));
             }
             let context = crate::syntax::variable_context::VariableContext::builder()
@@ -1193,9 +1199,20 @@ impl RqClient {
                         None
                     }
                 };
+                let push_ep_error = |errors: &mut Vec<RqError>, e: RqError| {
+                    if let RqError::Syntax(ref se) = e {
+                        if extract_unresolved_var_name(&se.message)
+                            .map(|n| broken_var_names.contains(&n))
+                            .unwrap_or(false)
+                        {
+                            return;
+                        }
+                    }
+                    errors.push(e);
+                };
                 if !ep_def.url.is_empty() {
                     if let Some(e) = check_ep(&ep_def.url) {
-                        errors.push(e);
+                        push_ep_error(&mut errors, e);
                     }
                 }
                 if let Some(ref var_name) = ep_def.headers_var {
@@ -1205,13 +1222,13 @@ impl RqClient {
                     );
                     if !is_defined_headers {
                         if let Some(e) = check_ep(&format!("{{{{{var_name}}}}}")) {
-                            errors.push(e);
+                            push_ep_error(&mut errors, e);
                         }
                     }
                 }
                 if let Some(ref qs) = ep_def.qs {
                     if let Some(e) = check_ep(qs) {
-                        errors.push(e);
+                        push_ep_error(&mut errors, e);
                     }
                 }
             }
@@ -1460,8 +1477,12 @@ impl RqClient {
 }
 
 fn extract_unresolved_var_name(message: &str) -> Option<String> {
-    let prefix = "Unresolved variable: '";
-    let start = message.find(prefix)? + prefix.len();
-    let end = message[start..].find('\'')?;
-    Some(message[start..start + end].to_string())
+    for prefix in &["Unresolved variable: '", "Variable '"] {
+        if let Some(start) = message.find(prefix).map(|i| i + prefix.len()) {
+            if let Some(end) = message[start..].find('\'') {
+                return Some(message[start..start + end].to_string());
+            }
+        }
+    }
+    None
 }

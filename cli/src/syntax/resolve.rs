@@ -822,6 +822,17 @@ pub fn collect_declared_variable_errors(
         .chain(extra_context.iter())
         .map(|v| v.name.as_str())
         .collect();
+    let broken_ref_names: std::collections::HashSet<&str> = variables
+        .iter()
+        .filter_map(|v| {
+            if let super::variable_context::VariableValue::Reference(ref_name) = &v.value {
+                if !known_names.contains(ref_name.as_str()) {
+                    return Some(ref_name.as_str());
+                }
+            }
+            None
+        })
+        .collect();
     let string_context = super::variable_context::VariableContext::builder()
         .file_variables(
             variables
@@ -857,7 +868,7 @@ pub fn collect_declared_variable_errors(
             }
             super::variable_context::VariableValue::Reference(ref_name) => {
                 if !known_names.contains(ref_name.as_str()) {
-                    let (line, col, path) = find_variable_location(source_files, &var.name);
+                    let (line, col, path) = find_variable_location(source_files, ref_name);
                     errors.push(SyntaxError::with_file(
                         format!("Variable '{ref_name}' is not defined"),
                         line,
@@ -869,13 +880,25 @@ pub fn collect_declared_variable_errors(
             }
             super::variable_context::VariableValue::String(s) if s.contains("{{") => {
                 if let Err(e) = check_string(s, &string_context, source_files) {
-                    errors.push(e);
+                    let covered = extract_var_name_from_unresolved(&e.message)
+                        .map(|n| broken_ref_names.contains(n.as_str()))
+                        .unwrap_or(false);
+                    if !covered {
+                        errors.push(e);
+                    }
                 }
             }
             _ => {}
         }
     }
     errors
+}
+
+fn extract_var_name_from_unresolved(message: &str) -> Option<String> {
+    let prefix = "Unresolved variable: '";
+    let start = message.find(prefix)? + prefix.len();
+    let end = message[start..].find('\'')?;
+    Some(message[start..start + end].to_string())
 }
 
 pub fn resolve_auth_provider(

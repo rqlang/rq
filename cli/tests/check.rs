@@ -517,6 +517,46 @@ fn test_check_valid_interpolation_in_let_imported_with_env_flag() {
 }
 
 #[test]
+fn test_check_error_ref_to_renamed_var_points_to_import_source() {
+    let (success, json) = run_check(&[
+        "check",
+        "-s",
+        "tests/check/input/err_ref_to_renamed_var_imported.rq",
+    ]);
+    assert!(
+        !success,
+        "expected exit 1 for undefined variable reference in imported file"
+    );
+    assert_eq!(
+        error_count(&json),
+        1,
+        "cascade errors from transitive string/request usage must be suppressed, got: {:?}",
+        error_messages(&json)
+    );
+    let errors = json["errors"].as_array().unwrap();
+    let e = &errors[0];
+    assert!(
+        e["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("api_version_ga"),
+        "expected error about 'api_version_ga', got: {}",
+        e["message"]
+    );
+    assert!(
+        e["file"].as_str().unwrap_or("").contains("shared"),
+        "expected error to point to the shared/imported file, got: {}",
+        e["file"]
+    );
+    assert_eq!(
+        e["line"].as_u64(),
+        Some(2),
+        "expected error on line 2 (the reference in the shared file), got: {:?}",
+        e["line"]
+    );
+}
+
+#[test]
 fn test_check_nonexistent_source_exits_nonzero() {
     let output = rq_cmd()
         .args(["check", "-s", "tests/check/input/nonexistent.rq"])

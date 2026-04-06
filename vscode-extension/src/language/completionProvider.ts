@@ -236,7 +236,13 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
     {
         async provideCompletionItems(document: vscode.TextDocument, position: vscode.Position, _token?: vscode.CancellationToken, context?: vscode.CompletionContext) {
             const linePrefix = document.lineAt(position).text.substring(0, position.character);
-            const { filePath: cliFilePath, tempDir: cliTempDir } = await resolveCliPath(document);
+            let cliPathResult: { filePath: string; tempDir: string | null } | undefined;
+            const getCliFilePath = async (): Promise<string> => {
+                if (!cliPathResult) {
+                    cliPathResult = await resolveCliPath(document);
+                }
+                return cliPathResult.filePath;
+            };
             try {
 
             // Endpoint template completion: ep name< -> list existing endpoints
@@ -289,7 +295,7 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
             if (/^\s*let\s+[a-zA-Z_][a-zA-Z0-9_-]*\s*=\s*$/.test(linePrefix)) {
                 const suggestions: vscode.CompletionItem[] = [...builtinFunctionItems()];
                 try {
-                    const variables = await cliService.listVariables(cliFilePath, environmentProvider?.getSelectedEnvironment());
+                    const variables = await cliService.listVariables(await getCliFilePath(), environmentProvider?.getSelectedEnvironment());
                     variables.forEach(v => {
                         const item = new vscode.CompletionItem(v.name, vscode.CompletionItemKind.Variable);
                         item.detail = v.value ? `= ${v.value}` : v.source;
@@ -314,7 +320,7 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
                     );
                 }
                 try {
-                    const variables = await cliService.listVariables(cliFilePath, environmentProvider?.getSelectedEnvironment());
+                    const variables = await cliService.listVariables(await getCliFilePath(), environmentProvider?.getSelectedEnvironment());
                     if (variables.length > 0) {
                         return variables.map(v => {
                             const item = new vscode.CompletionItem(v.name, vscode.CompletionItemKind.Variable);
@@ -357,7 +363,7 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
                     const suggestions: vscode.CompletionItem[] = [...builtinFunctionItems()];
                     let gotRemoteVars = false;
                     try {
-                        const variables = await cliService.listVariables(cliFilePath, environmentProvider?.getSelectedEnvironment());
+                        const variables = await cliService.listVariables(await getCliFilePath(), environmentProvider?.getSelectedEnvironment());
                         if (variables.length > 0) {
                             gotRemoteVars = true;
                             variables.forEach(v => {
@@ -476,7 +482,7 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
                         const suggestions: vscode.CompletionItem[] = [...builtinFunctionItems()];
                         let gotRemoteVars = false;
                         try {
-                            const variables = await cliService.listVariables(cliFilePath, environmentProvider?.getSelectedEnvironment());
+                            const variables = await cliService.listVariables(await getCliFilePath(), environmentProvider?.getSelectedEnvironment());
                             if (variables.length > 0) {
                                 gotRemoteVars = true;
                                 variables.forEach(v => {
@@ -518,7 +524,7 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
 
                     const suggestions: vscode.CompletionItem[] = [...builtinFunctionItems()];
                     try {
-                        const variables = await cliService.listVariables(cliFilePath, environmentProvider?.getSelectedEnvironment());
+                        const variables = await cliService.listVariables(await getCliFilePath(), environmentProvider?.getSelectedEnvironment());
                         variables.forEach(v => {
                             const item = new vscode.CompletionItem(v.name, vscode.CompletionItemKind.Variable);
                             item.detail = v.value ? `= ${v.value}` : v.source;
@@ -555,7 +561,7 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
                         const suggestions: vscode.CompletionItem[] = [...builtinFunctionItems()];
                         let gotRemoteVars = false;
                         try {
-                            const variables = await cliService.listVariables(cliFilePath, environmentProvider?.getSelectedEnvironment());
+                            const variables = await cliService.listVariables(await getCliFilePath(), environmentProvider?.getSelectedEnvironment());
                             if (variables.length > 0) {
                                 gotRemoteVars = true;
                                 variables.forEach(v => {
@@ -597,7 +603,7 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
 
                     const suggestions: vscode.CompletionItem[] = [...builtinFunctionItems()];
                     try {
-                        const variables = await cliService.listVariables(cliFilePath, environmentProvider?.getSelectedEnvironment());
+                        const variables = await cliService.listVariables(await getCliFilePath(), environmentProvider?.getSelectedEnvironment());
                         variables.forEach(v => {
                             const item = new vscode.CompletionItem(v.name, vscode.CompletionItemKind.Variable);
                             item.detail = v.value ? `= ${v.value}` : v.source;
@@ -624,7 +630,7 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
             if (authAttrValueMatch) {
                 const partial = authAttrValueMatch[1];
                 try {
-                    const authConfigs = await cliService.listAuthConfigs(cliFilePath);
+                    const authConfigs = await cliService.listAuthConfigs(await getCliFilePath());
                     const afterCursor = document.lineAt(position.line).text.substring(position.character);
                     const trailingName = afterCursor.match(/^([^"]*)/)?.[1] ?? '';
                     return authConfigs.map(a => {
@@ -900,7 +906,7 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
 
             return undefined;
             } finally {
-                if (cliTempDir) { fs.rmSync(cliTempDir, { recursive: true, force: true }); }
+                if (cliPathResult?.tempDir) { fs.rmSync(cliPathResult.tempDir, { recursive: true, force: true }); }
             }
         }
     },

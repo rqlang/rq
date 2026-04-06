@@ -442,7 +442,10 @@ impl RqClient {
         }
 
         let dir = if source_path.is_file() {
-            source_path.parent().unwrap_or(source_path)
+            source_path
+                .parent()
+                .filter(|p| !p.as_os_str().is_empty())
+                .unwrap_or(Path::new("."))
         } else {
             source_path
         };

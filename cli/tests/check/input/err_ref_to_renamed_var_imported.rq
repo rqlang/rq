@@ -1,0 +1,3 @@
+import "err_ref_to_renamed_var_imported_shared";
+
+rq get("{{api_url}}");

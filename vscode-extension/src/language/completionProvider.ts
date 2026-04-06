@@ -195,15 +195,14 @@ const countPositionalArgs = (matchedText: string): number => {
 async function resolveCliPath(document: vscode.TextDocument): Promise<{ filePath: string; tempDir: string | null }> {
     const workspaceRoot = vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath
         ?? path.dirname(document.uri.fsPath);
-    const hasDirtyDocs = vscode.workspace.textDocuments.some(doc => doc.languageId === 'rq' && doc.isDirty);
-    if (!hasDirtyDocs) {
-        return { filePath: document.uri.fsPath, tempDir: null };
-    }
     const overrides = new Map<string, string>();
     for (const doc of vscode.workspace.textDocuments) {
-        if (doc.languageId === 'rq' && doc.isDirty) {
+        if (doc.languageId === 'rq' && doc.isDirty && normalizePath(doc.uri.fsPath).startsWith(normalizePath(workspaceRoot))) {
             overrides.set(normalizePath(doc.uri.fsPath), doc.getText());
         }
+    }
+    if (overrides.size === 0) {
+        return { filePath: document.uri.fsPath, tempDir: null };
     }
     const tempDir = mirrorToTemp(workspaceRoot, overrides);
     const relPath = path.relative(workspaceRoot, document.uri.fsPath);

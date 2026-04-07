@@ -113,7 +113,9 @@ fn find_variable_in_io_files(source_files: &[PathBuf], var_name: &str) -> Option
     let re = regex::Regex::new(r#"io\.read_file\(\s*"([^"]+)"\s*\)"#).ok()?;
     let pattern = format!("{{{{{var_name}}}}}");
     for source in source_files {
-        let content = std::fs::read_to_string(source).ok()?;
+        let Ok(content) = std::fs::read_to_string(source) else {
+            continue;
+        };
         let parent = source.parent().unwrap_or(Path::new("."));
         for caps in re.captures_iter(&content) {
             let ext_path = parent.join(&caps[1]);

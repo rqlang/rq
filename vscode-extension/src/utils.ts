@@ -56,7 +56,9 @@ export function applyTreeItemLoading(
     fireChange: (item: vscode.TreeItem) => void
 ): void {
     if (loading) {
-        originalIcons.set(item, item.iconPath);
+        if (!originalIcons.has(item)) {
+            originalIcons.set(item, item.iconPath);
+        }
         item.iconPath = new vscode.ThemeIcon('sync~spin');
     } else {
         item.iconPath = originalIcons.get(item) ?? item.iconPath;

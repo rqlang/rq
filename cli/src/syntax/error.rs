@@ -45,17 +45,23 @@ impl std::fmt::Display for SyntaxError {
             } else {
                 crate::core::paths::clean_path(path)
             };
-            write!(
-                f,
-                "Syntax error in {} at line {}, column {}: {}",
-                display_path, self.line, self.column, self.message
-            )
-        } else {
+            if self.line > 0 {
+                write!(
+                    f,
+                    "Syntax error in {} at line {}, column {}: {}",
+                    display_path, self.line, self.column, self.message
+                )
+            } else {
+                write!(f, "Syntax error in {}: {}", display_path, self.message)
+            }
+        } else if self.line > 0 {
             write!(
                 f,
                 "Syntax error at line {}, column {}: {}",
                 self.line, self.column, self.message
             )
+        } else {
+            write!(f, "Syntax error: {}", self.message)
         }
     }
 }

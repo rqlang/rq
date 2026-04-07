@@ -103,7 +103,30 @@ pub fn find_variable_location(paths: &[PathBuf], var_name: &str) -> (usize, usiz
             return (line, col, path.clone());
         }
     }
+    if let Some(ext_path) = find_variable_in_io_files(paths, var_name) {
+        return (0, 0, ext_path);
+    }
     (0, 0, paths.first().cloned().unwrap_or_default())
+}
+
+fn find_variable_in_io_files(source_files: &[PathBuf], var_name: &str) -> Option<PathBuf> {
+    let re = regex::Regex::new(r#"io\.read_file\(\s*"([^"]+)"\s*\)"#).ok()?;
+    let var_re = regex::Regex::new(&format!(r"\{{\{{\s*{var_name}\s*\}}\}}")).ok()?;
+    for source in source_files {
+        let Ok(content) = std::fs::read_to_string(source) else {
+            continue;
+        };
+        let parent = source.parent().unwrap_or(Path::new("."));
+        for caps in re.captures_iter(&content) {
+            let ext_path = parent.join(&caps[1]);
+            if let Ok(ext_content) = std::fs::read_to_string(&ext_path) {
+                if var_re.is_match(&ext_content) {
+                    return Some(ext_path);
+                }
+            }
+        }
+    }
+    None
 }
 
 pub fn find_all_variable_references(

@@ -1,0 +1,1 @@
+Error: Syntax error in tests/request/run/input/invalid_syntax__code_2/endpoint/unexpected_token_in_body.rq at line 2, column 5: Unexpected token 'invalid'

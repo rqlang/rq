@@ -8,24 +8,24 @@ name = "rq"
 path = "src/main.rs"
 
 [dependencies]
-clap = { version = "4.0", features = ["derive"] }
-regex = "1.0"
-lazy_static = "1.4"
-reqwest = { version = "0.11", features = ["json", "native-tls"] }
-tokio = { version = "1.0", features = ["full"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-jsonwebtoken = { version = "10.3.0", features = ["rust_crypto", "use_pem"] }
-uuid = { version = "1.20.0", features = ["v4"] }
-base64 = "0.22.1"
-sha1 = "0.10"
-pem = "3.0"
+clap = { version = "4", features = ["derive"] }
+regex = "1"
+lazy_static = "1.5"
+reqwest = { version = "0.13", features = ["json", "native-tls", "form"] }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+jsonwebtoken = { version = "10", features = ["rust_crypto", "use_pem"] }
+uuid = { version = "1", features = ["v4"] }
+base64 = "0.22"
+sha1 = "0.11"
+pem = "3"
 openssl = { version = "0.10", features = ["vendored"] }
-chrono = "0.4.43"
+chrono = "0.4"
 
 [dev-dependencies]
-libtest-mimic = "0.6"
-wiremock = "0.5"
+libtest-mimic = "0.8"
+wiremock = "0.6"
 tokio = { version = "1", features = ["full", "macros"] }
 
 [[test]]

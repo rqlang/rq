@@ -225,7 +225,7 @@ export class OAuthProvider implements vscode.AuthenticationProvider, vscode.Disp
         return this._sessions;
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+     
     async createSession(_scopes: string[]): Promise<vscode.AuthenticationSession> {
         throw new Error(
             'createSession is not supported. Use executeOAuth2Flow() with configuration from RQ CLI instead. ' +

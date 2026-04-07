@@ -146,7 +146,11 @@ fn parse_array_or_headers(r: &mut TokenReader) -> Result<VariableValue, SyntaxEr
             r.advance();
         }
     }
-    if is_headers {
+    let is_empty = r
+        .cur()
+        .map(|t| t.token_type == TokenType::Punctuation && t.value == PUNC_RBRACKET)
+        .unwrap_or(false);
+    if is_headers || is_empty {
         parse_headers_variable(r)
     } else {
         parse_array_variable(r)

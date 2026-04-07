@@ -510,17 +510,16 @@ pub(crate) fn parse_endpoint_with_context(
             });
             continue;
         }
-        if r.is_end() {
-            let span = if r.tokens.is_empty() {
-                0..0
-            } else {
-                let last = r.tokens.last().unwrap();
-                last.span.end..last.span.end
-            };
-
-            return Err(r.create_error("Expected '}'".into(), span));
+        if let Some(t) = r.cur() {
+            return Err(r.create_error(format!("Unexpected token '{}'", t.value), t.span.clone()));
         }
-        r.advance();
+        let span = if r.tokens.is_empty() {
+            0..0
+        } else {
+            let last = r.tokens.last().unwrap();
+            last.span.end..last.span.end
+        };
+        return Err(r.create_error("Expected '}'".into(), span));
     }
 
     let ep_def = EndpointDefinition {

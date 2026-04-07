@@ -1,0 +1,1 @@
+Error: Syntax error in tests/request/run/input/invalid_syntax__code_2/sys_func/read_file_missing_var_body.txt: Unresolved variable: 'missing_var'

@@ -32,8 +32,8 @@ pub fn error_to_json(error: &(dyn std::error::Error + 'static)) -> String {
                     .as_deref()
                     .map(crate::core::paths::clean_path_str)
                     .map(str::to_string),
-                line: Some(e.line),
-                column: Some(e.column),
+                line: if e.line > 0 { Some(e.line) } else { None },
+                column: if e.column > 0 { Some(e.column) } else { None },
             },
             RqError::Auth(msg) => JsonErrorDetail {
                 error_type: "auth".to_string(),

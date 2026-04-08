@@ -4,9 +4,7 @@ module.exports = {
   moduleNameMapper: {
     '^vscode$': '<rootDir>/test/vscode-mock.ts'
   },
-  globals: {
-    'ts-jest': {
-      tsconfig: 'tsconfig.test.json'
-    }
+  transform: {
+    '^.+\\.tsx?$': ['ts-jest', { tsconfig: 'tsconfig.test.json' }]
   }
 };

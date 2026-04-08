@@ -1,0 +1,3 @@
+rq get_users("http://localhost:8080/users");
+
+rq get_users("http://localhost:8080/users/all");

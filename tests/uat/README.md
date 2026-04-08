@@ -127,22 +127,76 @@ Expected:
 
 ---
 
-## B. Error review in the Request Explorer
+## B. Diagnostics
 
-### B1. Errors in the `errors` folder
+### B1. Syntax error
 
 Steps:
 
-1. Open the UAT folder in VS Code that contains the `.rq` files with errors (the `errors` subfolder).
-2. Wait for the RQ Request Explorer to load and finish analyzing the files.
-3. Open the Problems view in VS Code.
-4. Find the two problems reported by the RQ analyzer and click each one.
+1. Open [errors/syntax_error.rq](errors/syntax_error.rq).
 
 Expected:
 
-- Clicking each problem opens the corresponding `.rq` file.
-- The line indicated by the problem is underlined in the editor.
-- The location (line/column) matches the information shown in the Problems view.
+- The offending line is underlined in red immediately.
+- The Problems panel shows one error from source `rq` with the correct line and column.
+
+### B2. Validation error — wrong auth property
+
+Steps:
+
+1. Open [errors/validation_error.rq](errors/validation_error.rq).
+
+Expected:
+
+- An error is reported on the `token_url:` line — `bearer` auth does not accept that property.
+- The Problems panel shows one error pointing to that line.
+
+### B3. Missing variable
+
+Steps:
+
+1. Open [errors/missing_variable.rq](errors/missing_variable.rq).
+
+Expected:
+
+- Two errors appear, one for each undefined variable (`base_url`, `user_id`).
+- Each underline points to the exact `{{variable}}` reference inside the URL string.
+
+### B4. Duplicate request name
+
+Steps:
+
+1. Open [errors/duplicate_name.rq](errors/duplicate_name.rq).
+
+Expected:
+
+- An error is reported on the second `rq get_users` declaration.
+- The first declaration has no error.
+
+### B5. Real-time diagnostics — error appears while typing
+
+Steps:
+
+1. Create a new empty `.rq` file inside the `tests/uat` workspace (e.g. `scratch.rq`).
+2. Type a valid request: `rq ping("http://localhost:8080/test");`
+3. Introduce a syntax error by removing the closing `"` from the URL.
+
+Expected:
+
+- Within ~1 second of stopping typing, a red underline appears on the broken line.
+- The Problems panel updates automatically — no save required.
+
+### B6. Real-time diagnostics — error clears on fix
+
+Steps:
+
+1. Continue from B5 with the syntax error still present.
+2. Restore the closing `"` to make the line valid again.
+
+Expected:
+
+- The underline disappears within ~1 second.
+- The Problems panel clears the entry for that file.
 
 ---
 
@@ -389,5 +443,224 @@ Expected:
 - After running `Clear OAuth2 Access Tokens`, the cache is cleared.
 - The next `Get OAuth2 Access Token` call triggers the full browser-based OAuth2 Authorization Code flow again.
 - The new access token is obtained and cached successfully.
+
+---
+
+## E. Autocomplete
+
+All scenarios in this section start from [requests/autocomplete.rq](requests/autocomplete.rq), which is an empty file. Work through the tests in order — each one adds content to the file using autocomplete, so later tests build on what was typed in earlier ones.
+
+### E1. Variables — declare with `let`
+
+Steps:
+
+1. Open `requests/autocomplete.rq`.
+2. Type `let base = ` and trigger autocomplete (Ctrl+Space / ⌃Space).
+
+Expected:
+
+- Built-in function snippets appear: `random.guid()`, `datetime.now()`, `io.read_file()`.
+- No variables appear yet (file is empty).
+- Dismiss the list and finish typing `"http://localhost:8080";` manually.
+
+### E2. Variables — second `let` suggests existing variable
+
+Steps:
+
+1. On a new line type `let user_id = ` and trigger autocomplete.
+
+Expected:
+
+- `base` appears in the list as a variable suggestion.
+- Built-in functions are still offered.
+- Dismiss and type `"123";` manually.
+
+### E3. Variable interpolation inside a string
+
+Steps:
+
+1. On a new line start typing `rq get_users("{{` and observe the completion list (it triggers automatically after `{{`).
+
+Expected:
+
+- Both `base` and `user_id` appear as completions.
+- Selecting `base` inserts the name; the cursor lands after it, ready to type `}}/users");`.
+- Complete the line to `rq get_users("{{base}}/users");`.
+
+### E4. `rq` — positional first argument
+
+Steps:
+
+1. On a new line type `rq post_user(` and trigger autocomplete.
+
+Expected:
+
+- The list includes the defined variables (`base`, `user_id`) and built-in functions.
+- Named parameter hints (`url:`, `headers:`, `body:`) are also offered.
+- Dismiss and continue building the statement in the next tests.
+
+### E5. `rq` — named parameter completion and deduplication
+
+Steps:
+
+1. Select `url:` from the list. The editor inserts `url: ` and positions the cursor at the value.
+2. Type `"{{base}}/users",` then press Enter.
+3. Trigger autocomplete on the new line.
+
+Expected:
+
+- `url:` is no longer offered.
+- Only `headers:` and `body:` remain.
+- Select `headers:` to continue. Complete the statement:
+  ```
+  rq post_user(
+      url: "{{base}}/users",
+      headers: ["Content-Type": "application/json"],
+      body: ${"name": "Alice"},
+  );
+  ```
+
+### E6. `ep` — named parameter completion
+
+Steps:
+
+1. On a new line type `ep api(` and trigger autocomplete.
+
+Expected:
+
+- The list offers `url:`, `headers:`, and `qs:` as named parameters alongside variables.
+- Select `url:`, type `"{{base}}",`, press Enter, trigger again.
+- `url:` is gone; `headers:` and `qs:` remain.
+- Complete to `ep api(url: "{{base}}", qs: "v=1");`.
+
+### E7. `ep` body — `rq` inside an endpoint
+
+Steps:
+
+1. Add a new endpoint with a body:
+   ```
+   ep users<
+   ```
+   Trigger autocomplete after `<`.
+
+Expected:
+
+- `api` appears as a template option (the `ep` declared without a `{}` body in E6).
+- Select `api` to get `ep users<api>`.
+- Complete the declaration: `ep users<api>("/users") {` and press Enter.
+2. Inside the body type `rq ` and trigger autocomplete — no crash, normal identifier completion.
+3. Type `rq list();` and close the block with `}`.
+
+### E8. Attribute — `[` at line start
+
+Steps:
+
+1. On a new line before `rq list();` type `[` and trigger autocomplete.
+
+Expected:
+
+- Exactly three completions: `method`, `timeout`, `auth`.
+- Verify no completions appear when `[` is inside a header dict (e.g. type `let h = [` on a scratch line — no attribute completions).
+
+### E9. Attribute — method values
+
+Steps:
+
+1. Select `method` from the list in E8.
+
+Expected:
+
+- The snippet `method(GET)` is inserted with `GET` as a tab-stop choice.
+- Cycling through choices shows all HTTP verbs: `GET`, `POST`, `PUT`, `DELETE`, `PATCH`, `HEAD`, `OPTIONS`.
+- Select `POST` and confirm the line reads `[method(POST)]`.
+
+### E10. `auth` block — auth type completion
+
+Steps:
+
+1. On a new line type `auth my_auth(` and trigger autocomplete.
+
+Expected:
+
+- `auth_type` is suggested. Select it — the editor inserts `auth_type.` and re-triggers completions.
+- The list shows exactly four entries: `bearer`, `oauth2_authorization_code`, `oauth2_client_credentials`, `oauth2_implicit`.
+- Each has a detail label and documentation.
+- Select `bearer` and complete the line: `auth my_auth(auth_type.bearer) {`.
+
+### E11. `auth` block — property completions
+
+Steps:
+
+1. Press Enter to create a blank line inside the block and trigger autocomplete.
+
+Expected:
+
+- `token:` appears as a required property (sorted first).
+- Select `token:` — inserts `token: ""` with cursor inside the quotes.
+- Type a value (e.g. `"abc"`), press Enter, and trigger autocomplete again.
+
+Expected (second trigger):
+
+- `token:` is no longer offered (already defined).
+- No crash or duplicates.
+- Close the block with `}`.
+
+### E12. `[auth("` — auth name completion
+
+Steps:
+
+1. On a new line type `[auth("` and trigger autocomplete.
+
+Expected:
+
+- `my_auth` appears in the completion list.
+- Selecting it inserts the name between the quotes: `[auth("my_auth")]`.
+- Complete the attribute and add a request below it:
+  ```
+  [auth("my_auth")]
+  rq secure("{{base}}/secure");
+  ```
+
+### E13. Header key completions inside array literals
+
+Steps:
+
+1. Start a new `rq` with a headers array:
+   ```
+   rq with_headers(
+       "{{base}}/test",
+       ["
+   ```
+   Trigger autocomplete after the opening `"` inside the `[`.
+
+Expected:
+
+- Common HTTP header names appear (`Accept`, `Authorization`, `Content-Type`, `X-Api-Key`, etc.).
+- Selecting a header inserts `"Header-Name": ""` with the cursor at the value.
+- Typing a partial name (e.g. `"Con`) filters the list to `Content-Length`, `Content-Type`.
+
+### E14. `ep crud` snippet
+
+Steps:
+
+1. On a new line type `ep` and trigger autocomplete.
+2. Select the `ep crud` entry from the list.
+
+Expected:
+
+- The snippet expands to a full CRUD endpoint block:
+  ```
+  let {name}_id = "";
+
+  ep {name}s(<cursor>) {
+      rq list();
+      rq get();
+      rq post(body: io.read_file("{name}-post.json"));
+      rq patch(url: {name}_id, body: io.read_file("{name}-patch.json"));
+      rq delete();
+  }
+  ```
+- The first tab stop is the entity name (e.g. type `widget`) — all occurrences update simultaneously: `widget_id`, `ep widgets`, `widget-post.json`, `widget-patch.json`.
+- The second tab stop (cursor `$0`) lands inside the `ep` parameter list, ready to type the base URL.
 
 

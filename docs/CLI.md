@@ -14,8 +14,11 @@ At a high level:
 
 - `rq` without subcommands runs a request (`request run`).
 - `rq request` manages requests (list, show, run).
-- `rq env` lists environments found in `.rq` files.
+- `rq env` lists and inspects environments found in `.rq` files.
 - `rq auth` lists and inspects auth providers.
+- `rq ep` lists and inspects endpoints.
+- `rq var` lists and inspects variables.
+- `rq check` validates `.rq` files without executing requests.
 
 All subcommands accept a global `-d, --debug` flag to enable debug logging.
 
@@ -30,6 +33,9 @@ Commands:
 - `env` – Manage environments.
 - `auth` – Manage authentication.
 - `request` – Manage requests.
+- `ep` – Manage endpoints.
+- `var` – Manage variables.
+- `check` – Validate `.rq` files.
 
 If you call `rq` without a subcommand, it behaves like `rq request run` with the same arguments.
 
@@ -58,8 +64,6 @@ Commands:
 - `show` – Show request details.
 - `run` – Run a request.
 
-All `rq request` commands accept `-d, --debug`.
-
 ### `rq request list`
 
 List all requests discovered under a file or directory.
@@ -77,7 +81,6 @@ Behavior:
 
 - In `text` mode, prints a human-readable list with entries like `name: basic`, `file: tests/request/run/input/basic.rq`.
 - In `json` mode, prints a JSON array; each item contains at least `name` and `file`, and requests defined inside endpoints include endpoint context (for example `endpoint: api`, `name: api/get`).
-- If no requests are found, prints a friendly message (e.g. `No requests found`).
 
 Example:
 
@@ -99,6 +102,7 @@ Options:
 - `-s, --source <SOURCE>` – Path to the `.rq` file or directory (default: `.`).
 - `-n, --name <NAME>` – Name of the request to show (required). If the request is defined inside an endpoint, use `<endpoint>/<request>` or `<endpoint>.<request>` (for example `users/list` or `users.list`).
 - `-e, --env <ENVIRONMENT>` – Environment name to resolve variables and env-specific settings.
+- `--no-var-interpolation` – Skip variable interpolation and show raw values.
 - `-o, --output <OUTPUT>` – Output format: `text` or `json` (default: `text`).
 
 Behavior:
@@ -165,8 +169,7 @@ rq env [OPTIONS] <COMMAND>
 Commands:
 
 - `list` – List environments.
-
-All `rq env` commands accept `-d, --debug`.
+- `show` – Show environment details.
 
 ### `rq env list`
 
@@ -201,6 +204,28 @@ rq env list
 Error handling:
 
 - A non-existent `--source` path causes the command to exit with code `2` and an error mentioning `Path does not exist`.
+
+### `rq env show`
+
+Show details for a single environment.
+
+```bash
+rq env show [OPTIONS] --name <NAME>
+```
+
+Options:
+
+- `-s, --source <SOURCE>` – Path to the `.rq` file or directory (default: `.`).
+- `-n, --name <NAME>` – Name of the environment to show (required).
+- `--no-var-interpolation` – Skip variable interpolation and show raw values.
+- `-o, --output <OUTPUT>` – Output format: `text` or `json` (default: `text`).
+
+Examples:
+
+```bash
+rq env show -s tests/env/list/input/simple.rq -n local
+rq env show -s tests/env/list/input/simple.rq -n local -o json
+```
 
 ## Managing auth providers: `rq auth`
 
@@ -283,9 +308,237 @@ Error handling:
 
 - If the named auth provider does not exist, the command fails with an error mentioning that the auth configuration was not found.
 
+## Managing endpoints: `rq ep`
+
+The `ep` subcommand lets you discover and inspect endpoints defined in `.rq` files.
+
+```bash
+rq ep [OPTIONS] <COMMAND>
+```
+
+Commands:
+
+- `list` – List endpoints.
+- `show` – Show endpoint details.
+- `refs` – Find all references to an endpoint.
+
+All `rq ep` commands accept `-d, --debug`.
+
+### `rq ep list`
+
+List all endpoints discovered under a file or directory.
+
+```bash
+rq ep list [OPTIONS]
+```
+
+Options:
+
+- `-s, --source <SOURCE>` – Path to the `.rq` file or directory (default: `.`).
+- `-o, --output <OUTPUT>` – Output format: `text` or `json` (default: `text`).
+
+Behavior:
+
+- In `text` mode, prints `Endpoints found:` followed by endpoint names, or `No endpoints found in .rq files`.
+- In `json` mode, prints a JSON array of endpoint entries.
+
+Examples:
+
+```bash
+rq ep list -s src/
+rq ep list -s src/ -o json
+```
+
+### `rq ep show`
+
+Show details for a single endpoint.
+
+```bash
+rq ep show [OPTIONS] --name <NAME>
+```
+
+Options:
+
+- `-s, --source <SOURCE>` – Path to the `.rq` file or directory (default: `.`).
+- `-n, --name <NAME>` – Name of the endpoint to show (required).
+- `--no-var-interpolation` – Skip variable interpolation and show raw values.
+- `-o, --output <OUTPUT>` – Output format: `text` or `json` (default: `text`).
+
+Examples:
+
+```bash
+rq ep show -n users
+rq ep show -n users -o json
+```
+
+### `rq ep refs`
+
+Find all references to an endpoint across `.rq` files.
+
+```bash
+rq ep refs [OPTIONS] --name <NAME>
+```
+
+Options:
+
+- `-s, --source <SOURCE>` – Path to the `.rq` file or directory (default: `.`).
+- `-n, --name <NAME>` – Name of the endpoint to find references for (required).
+- `-o, --output <OUTPUT>` – Output format: `text` or `json` (default: `text`).
+
+Behavior:
+
+- Prints `References found:` followed by locations, or `No references found`.
+
+Examples:
+
+```bash
+rq ep refs -n users
+rq ep refs -n users -o json
+```
+
+## Managing variables: `rq var`
+
+The `var` subcommand lets you discover and inspect variables defined in `.rq` files.
+
+```bash
+rq var [OPTIONS] <COMMAND>
+```
+
+Commands:
+
+- `list` – List variables.
+- `show` – Show variable details.
+- `refs` – Find all references to a variable.
+
+All `rq var` commands accept `-d, --debug`.
+
+### `rq var list`
+
+List all variables discovered under a file or directory.
+
+```bash
+rq var list [OPTIONS]
+```
+
+Options:
+
+- `-s, --source <SOURCE>` – Path to the `.rq` file or directory (default: `.`).
+- `-e, --env <ENVIRONMENT>` – Environment name to filter environment-specific variables.
+- `-o, --output <OUTPUT>` – Output format: `text` or `json` (default: `text`).
+
+Behavior:
+
+- In `text` mode, prints `Variables found:` followed by variable names, or `No variables found in .rq files`.
+- In `json` mode, prints a JSON array of variable entries.
+
+Examples:
+
+```bash
+rq var list -s src/
+rq var list -s src/ -e local -o json
+```
+
+### `rq var show`
+
+Show details for a single variable.
+
+```bash
+rq var show [OPTIONS] --name <NAME>
+```
+
+Options:
+
+- `-s, --source <SOURCE>` – Path to the `.rq` file or directory (default: `.`).
+- `-n, --name <NAME>` – Name of the variable to show (required).
+- `-e, --env <ENVIRONMENT>` – Environment name to resolve environment-specific values.
+- `--no-var-interpolation` – Skip variable interpolation and show raw values.
+- `-o, --output <OUTPUT>` – Output format: `text` or `json` (default: `text`).
+
+Examples:
+
+```bash
+rq var show -n base_url
+rq var show -n base_url -e local -o json
+```
+
+### `rq var refs`
+
+Find all references to a variable across `.rq` files.
+
+```bash
+rq var refs [OPTIONS] --name <NAME>
+```
+
+Options:
+
+- `-s, --source <SOURCE>` – Path to the `.rq` file or directory (default: `.`).
+- `-n, --name <NAME>` – Name of the variable to find references for (required).
+- `-o, --output <OUTPUT>` – Output format: `text` or `json` (default: `text`).
+
+Behavior:
+
+- Prints `References found:` followed by locations, or `No references found`.
+
+Examples:
+
+```bash
+rq var refs -n base_url
+rq var refs -n base_url -o json
+```
+
+## Validating files: `rq check`
+
+Parse and validate `.rq` files without executing any requests.
+
+```bash
+rq check [OPTIONS]
+```
+
+Options:
+
+- `-s, --source <SOURCE>` – Path to the `.rq` file or directory (default: `.`).
+- `-e, --env <ENVIRONMENT>` – Environment name to use for variable resolution.
+
+Behavior:
+
+- Always outputs JSON with a single `errors` array.
+- Each error entry contains `file`, `line`, `column`, and `message`.
+- If no errors are found, `errors` is an empty array.
+- Exits with code `1` if any errors are found; exits with code `0` on success.
+
+Example:
+
+```bash
+rq check -s src/
+rq check -s src/api.rq -e local
+```
+
+Example output (no errors):
+
+```json
+{
+  "errors": []
+}
+```
+
+Example output (with errors):
+
+```json
+{
+  "errors": [
+    {
+      "file": "src/api.rq",
+      "line": 5,
+      "column": 3,
+      "message": "unexpected token"
+    }
+  ]
+}
+```
+
 ## Output formats
 
-Across `request list`, `request show`, `request run`, `env list` and `auth list/show`, the `-o, --output` flag controls how results are printed:
+Across all commands, the `-o, --output` flag controls how results are printed (except `rq check`, which always outputs JSON):
 
 - `text` – Human-readable, stable but meant for terminals.
 - `json` – Machine-readable, designed for scripting and automated checks.

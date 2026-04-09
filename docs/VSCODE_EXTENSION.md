@@ -17,10 +17,9 @@ This page describes the main features of the extension. For the language itself,
 The extension understands rq files and provides:
 
 - **Syntax highlighting** for keywords (`let`, `rq`, `ep`, `env`, `auth`), HTTP methods, attributes, and interpolations.
-- **Basic validation** of syntax errors surfaced in the VS Code **Problems** view.
+- **Real-time diagnostics** powered by the built-in language server — syntax and semantic errors are surfaced in the VS Code **Problems** view as you type, without needing to run anything.
+- **IntelliSense autocomplete, hover tooltips, navigation actions, and snippets** for common rq constructs (see [IntelliSense & language features](#intellisense--language-features) below).
 - A tight integration with the rq CLI for executing requests.
-
-- **IntelliSense autocomplete and snippets** for common rq constructs, including language keywords, functions, and request templates.
 
 For a complete description of the rq language (statements, variables, environments, auth, endpoints, imports, functions, etc.), refer to the [Language Definition](./LANGUAGE_DEFINITION.md).
 
@@ -35,6 +34,7 @@ Key capabilities:
 	![Use environment selector](./media/environment.png)
 	- Use the environment selector at the top of the view to switch between environments (for example `local`, `dev`, `prod`).
 	- The selected environment applies to all requests executed from the explorer and is resolved using the same rules described in [Environments](./LANGUAGE_DEFINITION.md#environments).
+	- If a variable is only defined within a specific environment block, the language server will report it as an error until that environment is selected. This is expected — switch to the right environment and the error will clear.
 
 2. **Executing requests**
 
@@ -47,16 +47,44 @@ Key capabilities:
 
 	- The tree groups requests by folder and endpoint structure (for example, endpoint-based requests appear under their `ep` name).
 	- Clicking a request opens the corresponding `.rq` file and jumps directly to the definition of that request.
+	- **Environments and auth providers** defined in `.rq` files are listed under a **Configuration** section in the tree, so you can inspect them without opening the file manually.
 
-## IntelliSense & autocomplete
+## Response panel
 
-To make editing `.rq` files comfortable, the extension offers IntelliSense in several places:
+After a request runs, the extension opens a **response panel** showing the status code, response headers, and formatted body.
 
-- **System functions**: Suggestions and inline documentation for built-in functions such as `io.read_file`, `random.guid`, and `datetime.now`.
-- **Variables**: Completion for available variables, including `let` bindings, environment variables, and some language constructs. Interpolations like `{{variable}}` include hover information where possible.
-- **Request and endpoint parameters**: Context-aware suggestions for named parameters on `rq` and `ep` (such as `url`, `headers`, `body`, `qs`, `timeout`), as well as attributes like `[timeout(...)]` and `[auth("...")]`.
+- Use the **Copy** button in the panel to copy the response body to the clipboard.
+- For execution errors (network failures, interpolation issues, auth problems), check the **RQ** output channel via **View → Output → RQ** for the full details.
 
-The goal is to mirror the semantics described in the language definition, so that incorrect names or unsupported parameters are easy to spot while editing.
+## IntelliSense & language features
+
+The extension ships a built-in language server that analyses your `.rq` files as you edit them. This means you get meaningful feedback and editor assistance without having to run a single request.
+
+### Autocomplete
+
+Context-aware suggestions are available throughout:
+
+- **Keywords and snippets**: Templates for `rq`, `ep`, `env`, `auth`, and common constructs to get you started quickly.
+- **System functions**: Suggestions for built-in functions such as `io.read_file`, `random.guid`, and `datetime.now`.
+- **Defined objects**: The editor suggests variables, request names, environment names, and auth providers that are already declared in the file or imported files.
+- **Object parameters**: Named parameters for `rq` (e.g. `url`, `headers`, `body`) and `ep` (e.g. `url`, `headers`, `qs`) are suggested in context, so you never have to guess valid field names.
+- **Auth properties**: When defining an `auth` block, the available fields are filtered by the selected `auth_type` — you only see what is relevant.
+- **Attributes**: Valid request attributes (e.g. `[method(...)]`, `[timeout(...)]`, `[auth("...")]`) are suggested when writing attribute lines.
+- **Imports**: Typing `import` triggers suggestions for other `.rq` files found in the workspace.
+
+### Hover tooltips
+
+Hovering over an `rq`, `ep`, `env`, or `auth` statement shows a summary of its definition inline, without having to navigate to it.
+
+### Navigation
+
+- **Go to definition**: Jump to the declaration of any request, variable, environment, or auth provider with the standard VS Code shortcut (`F12` or right-click → Go to Definition).
+- **Find all references**: See every place a symbol is used across the file (`Shift+F12` or right-click → Find All References).
+- **Rename symbol**: Rename a request, variable, auth provider, or environment name consistently across the entire file (`F2` or right-click → Rename Symbol).
+
+### Format document
+
+The extension can format the current `.rq` file using the standard VS Code format command (`Shift+Alt+F`). This normalises indentation and spacing to keep files consistent.
 
 ## Syntax highlighting and errors
 
@@ -65,14 +93,12 @@ The extension ships with a TextMate grammar for rq, providing:
 - Highlighting for keywords, identifiers, HTTP methods, attributes, strings, interpolations, and comments.
 - Clear coloring for block constructs (`env`, `ep`, `auth`, `rq`).
 
-Basic syntax errors are reported via the Problems panel:
+### Parse and semantic errors
 
-- Parse errors detected by the rq parser (for example missing braces, invalid attributes, unknown auth fields) are surfaced with file, line, and column.
-- These diagnostics help you fix issues before running requests.
+Errors are surfaced in two places depending on their nature:
 
-> **Note**: Currently, error checking is refreshed when you interact with the RQ Explorer (e.g., expanding or refreshing items). A Language Server implementation is in development to provide real-time diagnostics as you type.
-
-As the language evolves, additional validation (for example semantic checks) may be added by the extension.
+- **Problems panel**: Parse and semantic errors (missing braces, invalid attributes, unknown auth fields, duplicate identifiers, missing variables, etc.) are reported with file, line, and column as you type. These are detected by the language server in real time — no need to trigger a request to see them.
+- **Output panel**: Errors that occur at execution time (for example, a failed HTTP request, a runtime interpolation error, or an auth flow problem) are written to the **RQ** output channel. Open it via **View → Output** and select **RQ** from the dropdown to see execution logs and error details.
 
 ## Interactive OAuth authentication
 

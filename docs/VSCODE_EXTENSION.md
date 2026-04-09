@@ -78,8 +78,8 @@ Hovering over an `rq`, `ep`, `env`, or `auth` statement shows a summary of its d
 
 ### Navigation
 
-- **Go to definition**: Jump to the declaration of any request, variable, environment, or auth provider with the standard VS Code shortcut (`F12` or right-click → Go to Definition).
-- **Find all references**: See every place a symbol is used across the file (`Shift+F12` or right-click → Find All References).
+- **Go to definition**: Jump to the declaration of any request, variable, environment, or auth provider across the workspace (`F12` or right-click → Go to Definition).
+- **Find all references**: See every place a symbol is used across the workspace (`Shift+F12` or right-click → Find All References).
 - **Rename symbol**: Rename a request, variable, auth provider, or environment name consistently across the workspace (`F2` or right-click → Rename Symbol).
 
 ### Format document

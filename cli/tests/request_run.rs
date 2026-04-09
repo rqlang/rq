@@ -382,17 +382,28 @@ fn test_request_run_connection_refused() -> Result<(), Failed> {
         return Err("Expected command to fail but it succeeded".into());
     }
 
-    if output.status.code() != Some(1) {
-        return Err(format!("Expected exit code 1, got: {:?}", output.status.code()).into());
+    if output.status.code() != Some(6) {
+        return Err(format!("Expected exit code 6, got: {:?}", output.status.code()).into());
     }
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     let parsed: serde_json::Value = serde_json::from_str(stderr.trim())
         .map_err(|e| format!("stderr is not valid JSON: {e}\nstderr: {stderr}"))?;
 
-    let message = parsed
+    let error = parsed
         .get("error")
-        .and_then(|e| e.get("message"))
+        .ok_or("Missing 'error' key in JSON output")?;
+
+    if error.get("type").and_then(|t| t.as_str()) != Some("network") {
+        return Err(format!(
+            "Expected error.type 'network', got: {:?}",
+            error.get("type")
+        )
+        .into());
+    }
+
+    let message = error
+        .get("message")
         .and_then(|m| m.as_str())
         .ok_or("Missing error.message in JSON output")?;
 

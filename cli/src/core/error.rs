@@ -84,6 +84,13 @@ pub fn error_to_json(error: &(dyn std::error::Error + 'static)) -> String {
                 line: None,
                 column: None,
             },
+            RqError::Network(msg) => JsonErrorDetail {
+                error_type: "network".to_string(),
+                message: msg.clone(),
+                file: None,
+                line: None,
+                column: None,
+            },
             RqError::Generic(msg) => JsonErrorDetail {
                 error_type: "generic".to_string(),
                 message: msg.clone(),
@@ -137,6 +144,7 @@ pub enum RqError {
     NotADirectory(String),
     RequestNotFound(String),
     EnvironmentNotFound(String),
+    Network(String),
     Generic(String),
 }
 
@@ -159,6 +167,7 @@ impl fmt::Display for RqError {
             ),
             RqError::RequestNotFound(name) => write!(f, "Request not found: {name}"),
             RqError::EnvironmentNotFound(name) => write!(f, "Environment not found: {name}"),
+            RqError::Network(msg) => write!(f, "{msg}"),
             RqError::Generic(msg) => write!(f, "{msg}"),
         }
     }

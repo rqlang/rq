@@ -1,3 +1,4 @@
+use crate::core::error::RqError;
 use crate::core::logger::Logger;
 use crate::syntax::Request;
 use std::error::Error;
@@ -9,7 +10,7 @@ pub struct HttpResponse {
     pub body: String,
 }
 
-pub async fn execute_request(request: &Request) -> Result<HttpResponse, String> {
+pub async fn execute_request(request: &Request) -> Result<HttpResponse, RqError> {
     Logger::debug(&format!(
         "Executing {} request '{}' to URL: {}",
         request.method.as_str(),
@@ -44,13 +45,16 @@ pub async fn execute_request(request: &Request) -> Result<HttpResponse, String> 
         if let Ok(secs) = timeout_str.parse::<f64>() {
             req_builder = req_builder.timeout(std::time::Duration::from_secs_f64(secs));
         } else {
-            return Err(format!(
+            return Err(RqError::Generic(format!(
                 "HTTP Error: Timeout value '{timeout_str}' must be a number"
-            ));
+            )));
         }
     }
 
-    let response = req_builder.send().await.map_err(|e| error_chain(&e))?;
+    let response = req_builder
+        .send()
+        .await
+        .map_err(|e| RqError::Network(error_chain(&e)))?;
     let status = response.status().as_u16();
 
     let mut headers = std::collections::HashMap::new();
@@ -60,7 +64,10 @@ pub async fn execute_request(request: &Request) -> Result<HttpResponse, String> 
         }
     }
 
-    let body = response.text().await.map_err(|e| error_chain(&e))?;
+    let body = response
+        .text()
+        .await
+        .map_err(|e| RqError::Network(error_chain(&e)))?;
 
     Ok(HttpResponse {
         status,

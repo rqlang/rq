@@ -198,7 +198,7 @@ impl RqClient {
                         });
                     }
                     Err(error) => {
-                        return Err(RqError::Generic(error));
+                        return Err(error);
                     }
                 }
             }

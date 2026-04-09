@@ -43,6 +43,7 @@ impl From<&Box<dyn std::error::Error>> for ExitCode {
                 RqError::NotADirectory(_) => ExitCode::FileError,
                 RqError::RequestNotFound(_) => ExitCode::NotFoundError,
                 RqError::EnvironmentNotFound(_) => ExitCode::ConfigError,
+                RqError::Network(_) => ExitCode::NetworkError,
                 RqError::Generic(_) => ExitCode::GeneralError,
             }
         } else {

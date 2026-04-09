@@ -47,7 +47,10 @@ Key capabilities:
 
 	- The tree groups requests by folder and endpoint structure (for example, endpoint-based requests appear under their `ep` name).
 	- Clicking a request opens the corresponding `.rq` file and jumps directly to the definition of that request.
-	- **Environments and auth providers** defined in `.rq` files are listed under a **Configuration** section in the tree, so you can inspect them without opening the file manually.
+
+4. **Configuration view**
+
+	A separate **Configuration** view (also in the Activity Bar) lists all environments and auth providers defined across your workspace, so you can inspect them without opening the file manually.
 
 ## Response panel
 

@@ -246,6 +246,23 @@ Expected:
 - The first execution uses the default value `user_id = 123` and the URL is `http://localhost:8080/users/123?v=1`.
 - The second execution uses the overridden value `user_id = 321` and the URL is `http://localhost:8080/users/321?v=1`.
 
+### C4. Execute a request when the echo server is not running
+
+Steps:
+
+1. Stop the local echo server if it is running (port `8080` must be unavailable).
+2. With the `tests/uat` folder open in VS Code, go to the RQ Request Explorer view.
+3. Locate the `get_basic` request defined in `requests/basic.rq`.
+4. Execute the request from the explorer.
+
+Expected:
+
+- The request fails immediately.
+- A VS Code error notification appears indicating the request failed, with a "Show Output" action.
+- Opening the "RQ" output channel shows a `Request Failed: get_basic` block with a human-readable message such as `error sending request for url (http://localhost:8080/test): ... Connection refused`.
+- The error message is plain text — not raw JSON.
+- No crash or unhandled exception occurs in the extension.
+
 ---
 
 ## D. OAuth authentication flows

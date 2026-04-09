@@ -58,7 +58,7 @@ After a request runs, the extension opens a **response panel** showing the statu
 
 ## IntelliSense & language features
 
-The extension ships a built-in language server that analyses your `.rq` files as you edit them. This means you get meaningful feedback and editor assistance without having to run a single request.
+The extension ships a built-in language server that analyzes your `.rq` files as you edit them. This means you get meaningful feedback and editor assistance without having to run a single request.
 
 ### Autocomplete
 
@@ -84,7 +84,7 @@ Hovering over an `rq`, `ep`, `env`, or `auth` statement shows a summary of its d
 
 ### Format document
 
-The extension can format the current `.rq` file using the standard VS Code **Format Document** command (`Shift+Alt+F` on Windows/Linux, `Shift+Option+F` on macOS). This normalises indentation and spacing to keep files consistent.
+The extension can format the current `.rq` file using the standard VS Code **Format Document** command (`Shift+Alt+F` on Windows/Linux, `Shift+Option+F` on macOS). This normalizes indentation and spacing to keep files consistent.
 
 ## Syntax highlighting and errors
 

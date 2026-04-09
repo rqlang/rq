@@ -84,7 +84,7 @@ Hovering over an `rq`, `ep`, `env`, or `auth` statement shows a summary of its d
 
 ### Format document
 
-The extension can format the current `.rq` file using the standard VS Code format command (`Shift+Alt+F`). This normalises indentation and spacing to keep files consistent.
+The extension can format the current `.rq` file using the standard VS Code **Format Document** command (`Shift+Alt+F` on Windows/Linux, `Shift+Option+F` on macOS). This normalises indentation and spacing to keep files consistent.
 
 ## Syntax highlighting and errors
 

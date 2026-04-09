@@ -25,7 +25,7 @@ Want the full tour? Check out the [VS Code Extension docs](https://www.rqlang.co
 - **IntelliSense** — autocomplete for variables, request names, environments, auth providers, object parameters, auth properties, attributes, and imports.
 - **Hover tooltips** — inline summaries for `rq`, `ep`, `env`, and `auth` statements.
 - **Navigation** — go to definition, find all references, and rename symbol across the workspace.
-- **Format document** — format the current `.rq` file with `Shift+Alt+F`.
+- **Format document** — format the current `.rq` file via the **Format Document** command (`Shift+Alt+F` on Windows/Linux, `Shift+Option+F` on macOS).
 - **Request Explorer** sidebar to browse requests, environments, and auth providers, with environment selection and run/run-with-variables actions.
 - **Response panel** — view response status, headers, and formatted body; copy the body with one click.
 - Integration with rq auth providers, including interactive OAuth flows (Authorization Code with PKCE and Implicit).

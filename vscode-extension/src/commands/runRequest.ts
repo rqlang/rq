@@ -335,6 +335,9 @@ export class RequestRunner {
                     if (parsed?.error?.message) {
                         return parsed.error.message;
                     }
+                    if (parsed?.warning?.message) {
+                        return `Warning: ${parsed.warning.message}`;
+                    }
                 } catch {
                     // not JSON, keep as-is
                 }

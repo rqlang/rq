@@ -21,7 +21,7 @@ Want the full tour? Check out the [VS Code Extension docs](https://www.rqlang.co
 ## Core features (overview)
 
 - Syntax highlighting for rq keywords, HTTP methods, attributes and interpolations.
-- **Language server** — real-time diagnostics as you type: parse errors, semantic errors, and missing variables surfaced in the Problems panel without running a request.
+- **Language server** — real-time diagnostics as you type: parse errors, semantic errors, and missing variables are surfaced in the Problems panel without running a request.
 - **IntelliSense** — autocomplete for variables, request names, environments, auth providers, object parameters, auth properties, attributes, and imports.
 - **Hover tooltips** — inline summaries for `rq`, `ep`, `env`, and `auth` statements.
 - **Navigation** — go to definition, find all references, and rename symbol across the file.

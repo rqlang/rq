@@ -52,6 +52,10 @@ fn main() {
             "request_run_ep_dot_notation",
             test_request_run_ep_dot_notation,
         ),
+        Trial::test(
+            "request_run_connection_refused",
+            test_request_run_connection_refused,
+        ),
     ];
 
     // Discover tests from organized directories
@@ -354,6 +358,47 @@ fn test_request_run_ep_dot_notation() -> Result<(), Failed> {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(format!(
             "Request 'api.get' was not found (dot notation not normalized): {stderr}"
+        )
+        .into());
+    }
+
+    Ok(())
+}
+
+fn test_request_run_connection_refused() -> Result<(), Failed> {
+    let output = Command::new("target/debug/rq")
+        .args([
+            "request",
+            "run",
+            "-s",
+            "tests/request/run/fixtures/connection_refused/test.rq",
+            "-o",
+            "json",
+        ])
+        .output()
+        .map_err(|e| format!("Failed to execute command: {e}"))?;
+
+    if output.status.success() {
+        return Err("Expected command to fail but it succeeded".into());
+    }
+
+    if output.status.code() != Some(1) {
+        return Err(format!("Expected exit code 1, got: {:?}", output.status.code()).into());
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let parsed: serde_json::Value = serde_json::from_str(stderr.trim())
+        .map_err(|e| format!("stderr is not valid JSON: {e}\nstderr: {stderr}"))?;
+
+    let message = parsed
+        .get("error")
+        .and_then(|e| e.get("message"))
+        .and_then(|m| m.as_str())
+        .ok_or("Missing error.message in JSON output")?;
+
+    if !message.contains("Connection refused") && !message.contains("connection refused") {
+        return Err(format!(
+            "Expected error message to contain 'Connection refused', got: {message}"
         )
         .into());
     }

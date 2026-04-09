@@ -328,6 +328,17 @@ export class RequestRunner {
                 if (l.startsWith('Compiling ')) { return false; }
                 if (l.startsWith("For more information, try '--help'")) { return false; }
                 return true;
+            })
+            .map(l => {
+                try {
+                    const parsed = JSON.parse(l);
+                    if (parsed?.error?.message) {
+                        return parsed.error.message;
+                    }
+                } catch {
+                    // not JSON, keep as-is
+                }
+                return l;
             });
 
         return lines.length > 0 ? lines.join('\n') : stderr;

@@ -4,7 +4,6 @@ use std::path::Path;
 mod client;
 mod commands;
 mod core;
-mod syntax;
 
 use commands::Commands;
 use core::error::error_to_json;

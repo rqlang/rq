@@ -44,7 +44,7 @@ pub struct ShowArgs {
 
 pub fn execute_list(args: &ListArgs) -> Result<(), Box<dyn std::error::Error>> {
     let path = std::path::Path::new(&args.source.source);
-    let env_list = crate::client::RqClient::list_environments(path)?;
+    let env_list = crate::client::make_listing_client().list_environments(path)?;
 
     match args.output.output {
         OutputFormat::Json => {
@@ -75,7 +75,7 @@ pub fn execute_list(args: &ListArgs) -> Result<(), Box<dyn std::error::Error>> {
 
 pub fn execute_show(args: &ShowArgs) -> Result<(), Box<dyn std::error::Error>> {
     let path = std::path::Path::new(&args.source.source);
-    let entry = crate::client::RqClient::get_environment(path, &args.name)?;
+    let entry = crate::client::make_listing_client().get_environment(path, &args.name)?;
     match args.output.output {
         OutputFormat::Json => {
             println!(

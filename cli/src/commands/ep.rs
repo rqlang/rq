@@ -69,7 +69,7 @@ pub struct RefsArgs {
 
 pub fn execute_list(args: &ListArgs) -> Result<(), Box<dyn std::error::Error>> {
     let path = std::path::Path::new(&args.source.source);
-    let entries = crate::client::RqClient::list_endpoints(path)?;
+    let entries = crate::client::make_listing_client().list_endpoints(path)?;
 
     match args.output.output {
         OutputFormat::Json => {
@@ -97,7 +97,7 @@ pub fn execute_list(args: &ListArgs) -> Result<(), Box<dyn std::error::Error>> {
 
 pub fn execute_show(args: &ShowArgs) -> Result<(), Box<dyn std::error::Error>> {
     let path = std::path::Path::new(&args.source.source);
-    let entry = crate::client::RqClient::get_endpoint(path, &args.name)?;
+    let entry = crate::client::make_listing_client().get_endpoint(path, &args.name)?;
     match args.output.output {
         OutputFormat::Json => {
             println!(
@@ -115,7 +115,7 @@ pub fn execute_show(args: &ShowArgs) -> Result<(), Box<dyn std::error::Error>> {
 
 pub fn execute_refs(args: &RefsArgs) -> Result<(), Box<dyn std::error::Error>> {
     let path = std::path::Path::new(&args.source.source);
-    let refs = crate::client::RqClient::list_endpoint_references(path, &args.name)?;
+    let refs = crate::client::make_listing_client().list_endpoint_references(path, &args.name)?;
     let formatter = crate::core::formatter::get_formatter(&args.output.output);
     print!(
         "{}",

@@ -8,20 +8,14 @@ name = "rq"
 path = "src/main.rs"
 
 [dependencies]
+rq-lib = { path = "../rq-lib" }
 clap = { version = "4", features = ["derive"] }
 regex = "1"
 lazy_static = "1.5"
-reqwest = { version = "0.13", features = ["json", "native-tls", "form"] }
-tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-jsonwebtoken = { version = "10", features = ["rust_crypto", "use_pem"] }
-uuid = { version = "1", features = ["v4"] }
-base64 = "0.22"
-sha1 = "0.11"
-pem = "3"
-openssl = { version = "0.10", features = ["vendored"] }
-chrono = "0.4"
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.13", features = ["json", "native-tls"] }
 
 [dev-dependencies]
 libtest-mimic = "0.8"
@@ -31,4 +25,3 @@ tokio = { version = "1", features = ["full", "macros"] }
 [[test]]
 name = "request_run"
 harness = false
-

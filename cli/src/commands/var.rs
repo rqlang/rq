@@ -58,7 +58,8 @@ pub struct ShowArgs {
 
 pub fn execute_list(args: &ListArgs) -> Result<(), Box<dyn std::error::Error>> {
     let path = std::path::Path::new(&args.source.source);
-    let entries = crate::client::RqClient::list_variables(path, args.env.environment.as_deref())?;
+    let entries = crate::client::make_listing_client()
+        .list_variables(path, args.env.environment.as_deref())?;
 
     match args.output.output {
         OutputFormat::Json => {
@@ -103,7 +104,7 @@ pub struct RefsArgs {
 
 pub fn execute_show(args: &ShowArgs) -> Result<(), Box<dyn std::error::Error>> {
     let path = std::path::Path::new(&args.source.source);
-    let entry = crate::client::RqClient::get_variable(
+    let entry = crate::client::make_listing_client().get_variable(
         path,
         &args.name,
         args.env.environment.as_deref(),
@@ -126,7 +127,7 @@ pub fn execute_show(args: &ShowArgs) -> Result<(), Box<dyn std::error::Error>> {
 
 pub fn execute_refs(args: &RefsArgs) -> Result<(), Box<dyn std::error::Error>> {
     let path = std::path::Path::new(&args.source.source);
-    let refs = crate::client::RqClient::list_variable_references(path, &args.name)?;
+    let refs = crate::client::make_listing_client().list_variable_references(path, &args.name)?;
     let formatter = crate::core::formatter::get_formatter(&args.output.output);
     print!(
         "{}",

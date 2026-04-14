@@ -80,7 +80,7 @@ pub struct ShowArgs {
 
 pub fn execute_list(args: &ListArgs) -> Result<(), Box<dyn std::error::Error>> {
     let source_path = Path::new(&args.source.source);
-    let auth_list = crate::client::RqClient::list_auth(source_path)?;
+    let auth_list = crate::client::make_listing_client().list_auth(source_path)?;
 
     match args.output.output {
         OutputFormat::Json => {
@@ -108,7 +108,7 @@ pub fn execute_show(args: &ShowArgs) -> Result<(), Box<dyn std::error::Error>> {
     let source_path = Path::new(&args.source.source);
 
     let (auth_name, auth_type_str, fields, file, line, character) =
-        crate::client::RqClient::get_auth_details(
+        crate::client::make_listing_client().get_auth_details(
             source_path,
             &args.name,
             args.env_args.environment.as_deref(),

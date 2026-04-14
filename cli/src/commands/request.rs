@@ -1,4 +1,4 @@
-use crate::client::{RequestExecutionResult, RqClient, RqConfig};
+use crate::client::{make_client, make_listing_client, RequestExecutionResult, RqConfig};
 use crate::commands::shared::{EnvArgs, OutputArgs, SourceArgs};
 use crate::commands::validators;
 use crate::core::logger::Logger;
@@ -135,7 +135,7 @@ pub struct RunArgs {
 
 pub fn execute_list(args: &ListArgs) -> Result<(), Box<dyn std::error::Error>> {
     let source_path = Path::new(&args.source.source);
-    let (requests, parse_errors) = RqClient::list_requests(source_path)?;
+    let (requests, parse_errors) = make_listing_client().list_requests(source_path)?;
 
     for e in &parse_errors {
         match args.output.output {
@@ -166,7 +166,7 @@ pub fn execute_show(args: &ShowArgs) -> Result<(), Box<dyn std::error::Error>> {
         .ok_or("Request name is required")?
         .replace('.', "/");
 
-    let details = RqClient::get_request_details(
+    let details = make_listing_client().get_request_details(
         source_path,
         &name,
         args.env_args.environment.as_deref(),
@@ -236,7 +236,7 @@ pub async fn execute_run(args: &RunArgs) -> Result<(), Box<dyn std::error::Error
         output_format: args.output.output.to_string(),
     };
 
-    let client = RqClient::new(config);
+    let client = make_client(config);
     let results = client.run().await?;
 
     for result in &results {

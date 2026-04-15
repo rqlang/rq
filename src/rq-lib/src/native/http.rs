@@ -1,61 +1,7 @@
-use rq_lib::error::RqError;
-use rq_lib::http::{HttpClient, HttpResponse};
-use rq_lib::syntax::fs::Fs;
-use rq_lib::syntax::secrets::{collect_secrets, SecretProvider};
-use rq_lib::syntax::variable_context::Variable;
-use rq_lib::syntax::Request;
-use std::path::{Path, PathBuf};
+use crate::error::RqError;
+use crate::http::{HttpClient, HttpResponse};
+use crate::syntax::Request;
 use std::pin::Pin;
-
-pub struct NativeFs;
-
-impl Fs for NativeFs {
-    fn read(&self, path: &Path) -> Result<String, String> {
-        std::fs::read_to_string(path).map_err(|e| e.to_string())
-    }
-
-    fn resolve_path(&self, base: &Path, relative: &str) -> Result<PathBuf, String> {
-        let dir = if base.is_dir() {
-            base.to_path_buf()
-        } else {
-            base.parent().unwrap_or(base).to_path_buf()
-        };
-        dir.join(relative).canonicalize().map_err(|e| e.to_string())
-    }
-
-    fn exists(&self, path: &Path) -> bool {
-        path.exists()
-    }
-
-    fn is_file(&self, path: &Path) -> bool {
-        path.is_file()
-    }
-
-    fn is_dir(&self, path: &Path) -> bool {
-        path.is_dir()
-    }
-
-    fn read_dir(&self, dir: &Path) -> Result<Vec<PathBuf>, String> {
-        std::fs::read_dir(dir)
-            .map_err(|e| e.to_string())?
-            .map(|e| e.map(|e| e.path()).map_err(|e| e.to_string()))
-            .collect()
-    }
-
-    fn canonicalize(&self, path: &Path) -> Result<PathBuf, String> {
-        path.canonicalize().map_err(|e| e.to_string())
-    }
-}
-
-pub struct NativeSecretProvider;
-
-impl SecretProvider for NativeSecretProvider {
-    fn collect(&self, dir: &Path, selected_env: Option<&str>) -> Vec<Variable> {
-        let env_file_content = std::fs::read_to_string(dir.join(".env")).ok();
-        let os_vars = std::env::vars().collect::<Vec<_>>();
-        collect_secrets(env_file_content.as_deref(), &os_vars, selected_env)
-    }
-}
 
 pub struct ReqwestHttpClient;
 
@@ -75,7 +21,7 @@ async fn execute_with_reqwest(request: &Request) -> Result<HttpResponse, RqError
 
     req_builder = req_builder.header(
         reqwest::header::USER_AGENT,
-        &format!("rq/{}", rq_lib::version::app_version()),
+        &format!("rq/{}", crate::version::app_version()),
     );
 
     for (key, value) in &request.headers {
@@ -124,8 +70,8 @@ async fn execute_with_reqwest(request: &Request) -> Result<HttpResponse, RqError
     })
 }
 
-fn to_reqwest_method(method: &rq_lib::syntax::http_method::HttpMethod) -> reqwest::Method {
-    use rq_lib::syntax::http_method::HttpMethod;
+fn to_reqwest_method(method: &crate::syntax::http_method::HttpMethod) -> reqwest::Method {
+    use crate::syntax::http_method::HttpMethod;
     match method {
         HttpMethod::GET => reqwest::Method::GET,
         HttpMethod::POST => reqwest::Method::POST,

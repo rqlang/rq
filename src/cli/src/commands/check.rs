@@ -1,6 +1,6 @@
-use crate::client::make_listing_client;
 use crate::core::error::RqError;
 use clap::Args;
+use rq_lib::RqClient;
 use serde::Serialize;
 
 #[derive(Args)]
@@ -37,7 +37,7 @@ struct CheckResult {
 
 pub fn execute(args: &CheckArgs) -> Result<(), Box<dyn std::error::Error>> {
     let path = std::path::Path::new(&args.source);
-    let errors = make_listing_client().check_path(path, args.env.as_deref())?;
+    let errors = RqClient::default().check_path(path, args.env.as_deref())?;
 
     let check_errors: Vec<CheckError> = errors
         .into_iter()

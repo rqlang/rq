@@ -75,11 +75,3 @@ pub struct ReferenceLocation {
     pub line: usize,
     pub character: usize,
 }
-
-pub struct RqConfig {
-    pub source_path: String,
-    pub request_name: Option<String>,
-    pub environment: Option<String>,
-    pub variables: Vec<String>,
-    pub output_format: String,
-}

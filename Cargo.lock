@@ -1899,7 +1899,6 @@ dependencies = [
  "lazy_static",
  "libtest-mimic",
  "regex",
- "reqwest",
  "rq-lib",
  "serde",
  "serde_json",

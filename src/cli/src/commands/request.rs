@@ -1,8 +1,8 @@
-use crate::client::{make_client, make_listing_client, RequestExecutionResult, RqConfig};
 use crate::commands::shared::{EnvArgs, OutputArgs, SourceArgs};
 use crate::commands::validators;
 use crate::core::logger::Logger;
 use clap::{Args, Subcommand};
+use rq_lib::{RequestExecutionResult, RqClient};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::path::Path;
@@ -135,7 +135,7 @@ pub struct RunArgs {
 
 pub fn execute_list(args: &ListArgs) -> Result<(), Box<dyn std::error::Error>> {
     let source_path = Path::new(&args.source.source);
-    let (requests, parse_errors) = make_listing_client().list_requests(source_path)?;
+    let (requests, parse_errors) = RqClient::default().list_requests(source_path)?;
 
     for e in &parse_errors {
         match args.output.output {
@@ -166,7 +166,7 @@ pub fn execute_show(args: &ShowArgs) -> Result<(), Box<dyn std::error::Error>> {
         .ok_or("Request name is required")?
         .replace('.', "/");
 
-    let details = make_listing_client().get_request_details(
+    let details = RqClient::default().get_request_details(
         source_path,
         &name,
         args.env_args.environment.as_deref(),
@@ -224,20 +224,31 @@ pub fn execute_show(args: &ShowArgs) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 pub async fn execute_run(args: &RunArgs) -> Result<(), Box<dyn std::error::Error>> {
-    let config = RqConfig {
-        source_path: args.source.source.clone(),
-        request_name: args
-            .request_name_args
-            .name
-            .as_deref()
-            .map(|n| n.replace('.', "/")),
-        environment: args.env_args.environment.clone(),
-        variables: args.variable.clone(),
-        output_format: args.output.output.to_string(),
-    };
+    let source_path = Path::new(&args.source.source);
+    let request_name = args
+        .request_name_args
+        .name
+        .as_deref()
+        .map(|n| n.replace('.', "/"));
+    let (results, parse_warnings) = RqClient::default()
+        .run(
+            source_path,
+            request_name.as_deref(),
+            args.env_args.environment.as_deref(),
+            &args.variable,
+        )
+        .await?;
 
-    let client = make_client(config);
-    let results = client.run().await?;
+    for w in &parse_warnings {
+        match args.output.output {
+            crate::core::formatter::OutputFormat::Json => {
+                eprintln!("{}", crate::core::error::error_to_json(w));
+            }
+            crate::core::formatter::OutputFormat::Text => {
+                eprintln!("Warning: Failed to parse: {w}");
+            }
+        }
+    }
 
     for result in &results {
         let elapsed_str = format!("{} ms", result.elapsed_ms);

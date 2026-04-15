@@ -1,7 +1,8 @@
 pub mod models;
+use crate::native;
 
-use crate::client::models::{RequestDetails, RequestExecutionResult, RequestInfo, RqConfig};
-use crate::error::{warning_to_json, RqError};
+use crate::client::models::{RequestDetails, RequestExecutionResult, RequestInfo};
+use crate::error::RqError;
 use crate::http::HttpClient;
 use crate::logger::Logger;
 use crate::syntax::{Fs, RqFile, SecretProvider, Variable, VariableValue};
@@ -21,7 +22,6 @@ type AuthDetails = (
 );
 
 pub struct RqClient {
-    config: RqConfig,
     fs: Arc<dyn Fs>,
     secrets: Arc<dyn SecretProvider>,
     http: Arc<dyn HttpClient>,
@@ -29,31 +29,21 @@ pub struct RqClient {
 
 impl RqClient {
     pub fn new(
-        config: RqConfig,
         fs: Arc<dyn Fs>,
         secrets: Arc<dyn SecretProvider>,
         http: Arc<dyn HttpClient>,
     ) -> Self {
-        Self {
-            config,
-            fs,
-            secrets,
-            http,
-        }
+        Self { fs, secrets, http }
     }
 
-    pub async fn run(&self) -> Result<Vec<RequestExecutionResult>, RqError> {
-        let source_path = Path::new(&self.config.source_path);
-
-        let (rq_files, parse_warnings) =
-            self.get_rq_files_to_process(source_path, self.config.request_name.as_deref())?;
-        for w in parse_warnings {
-            if self.config.output_format == "json" {
-                eprintln!("{}", warning_to_json(&format!("Failed to parse: {w}")));
-            } else {
-                eprintln!("Warning: Failed to parse: {w}");
-            }
-        }
+    pub async fn run(
+        &self,
+        source_path: &Path,
+        request_name: Option<&str>,
+        environment: Option<&str>,
+        variables: &[String],
+    ) -> Result<(Vec<RequestExecutionResult>, Vec<RqError>), RqError> {
+        let (rq_files, parse_warnings) = self.get_rq_files_to_process(source_path, request_name)?;
 
         if rq_files.is_empty() {
             return Err(RqError::RequestNotFound(format!(
@@ -65,31 +55,31 @@ impl RqClient {
         let mut all_results = Vec::new();
 
         for rq_file in rq_files {
-            let env_vars = if let Some(env_name) = &self.config.environment {
+            let env_vars = if let Some(env_name) = environment {
                 if let Some(vars) = rq_file.environments.get(env_name) {
                     vars.clone()
                 } else {
-                    return Err(RqError::EnvironmentNotFound(env_name.clone()));
+                    return Err(RqError::EnvironmentNotFound(env_name.to_string()));
                 }
             } else {
                 Vec::new()
             };
 
-            let secret_vars = self.collect_secrets(source_path);
-            let cli_vars = self.parse_cli_variables()?;
+            let secret_vars = self.collect_secrets_for_env(source_path, environment);
+            let cli_vars = Self::parse_cli_variables(variables)?;
 
-            let filtered_requests = self.filter_requests(rq_file.requests);
+            let filtered_requests = Self::filter_requests(rq_file.requests, request_name);
 
             if filtered_requests.is_empty() {
-                if let Some(ref request_name) = self.config.request_name {
+                if let Some(request_name) = request_name {
                     eprintln!("No request found with name '{request_name}'");
                 } else {
                     eprintln!("No requests found in the file");
                 }
-                return Ok(vec![]);
+                return Ok((vec![], parse_warnings));
             }
 
-            if let Some(ref request_name) = self.config.request_name {
+            if let Some(request_name) = request_name {
                 Logger::debug(&format!(
                     "Found {} request(s) with name '{request_name}':",
                     filtered_requests.len()
@@ -189,15 +179,6 @@ impl RqClient {
                     }
                 }
 
-                if self.config.output_format != "json" {
-                    println!(
-                        "Request: \"{}\" {} {}",
-                        resolved_request.name,
-                        resolved_request.method.as_str(),
-                        resolved_request.url
-                    );
-                }
-
                 let start_time = Instant::now();
                 match self.http.execute(&resolved_request).await {
                     Ok(response) => {
@@ -228,7 +209,7 @@ impl RqClient {
             all_results.extend(results);
         }
 
-        Ok(all_results)
+        Ok((all_results, parse_warnings))
     }
 
     pub fn list_requests(
@@ -1028,10 +1009,6 @@ impl RqClient {
         Some(RqFile::from_content_lenient(canonical, &content, &*self.fs))
     }
 
-    fn collect_secrets(&self, source_path: &Path) -> Vec<Variable> {
-        self.collect_secrets_for_env(source_path, self.config.environment.as_deref())
-    }
-
     fn collect_secrets_for_env(&self, source_path: &Path, env: Option<&str>) -> Vec<Variable> {
         let dir = if self.fs.is_dir(source_path) {
             source_path.to_path_buf()
@@ -1432,10 +1409,8 @@ impl RqClient {
         Err(format!("Unresolved variable: '{name}'"))
     }
 
-    fn parse_cli_variables(&self) -> Result<Vec<Variable>, RqError> {
-        let cli_variables: Vec<Variable> = self
-            .config
-            .variables
+    fn parse_cli_variables(variables: &[String]) -> Result<Vec<Variable>, RqError> {
+        let cli_variables: Vec<Variable> = variables
             .iter()
             .filter_map(|kv| {
                 if let Some(eq) = kv.find('=') {
@@ -1461,13 +1436,13 @@ impl RqClient {
     }
 
     fn filter_requests(
-        &self,
         requests: Vec<crate::syntax::parse_result::RequestWithVariables>,
+        request_name: Option<&str>,
     ) -> Vec<crate::syntax::parse_result::RequestWithVariables> {
-        if let Some(ref request_name) = self.config.request_name {
+        if let Some(request_name) = request_name {
             requests
                 .into_iter()
-                .filter(|r| r.request.name == *request_name)
+                .filter(|r| r.request.name == request_name)
                 .collect()
         } else {
             requests
@@ -1531,6 +1506,16 @@ impl RqClient {
             }
         }
         Ok(())
+    }
+}
+
+impl Default for RqClient {
+    fn default() -> Self {
+        Self::new(
+            Arc::new(native::NativeFs),
+            Arc::new(native::NativeSecretProvider),
+            Arc::new(native::ReqwestHttpClient),
+        )
     }
 }
 

@@ -1,7 +1,6 @@
 use clap::{CommandFactory, Parser};
 use std::path::Path;
 
-mod client;
 mod commands;
 mod core;
 

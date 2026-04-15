@@ -31,7 +31,7 @@ jobs:
     - name: Build Rust CLI
       if: matrix.language == 'rust'
       run: |
-        cd cli
+        cd src/cli
         cargo build --verbose
 
     - name: Perform CodeQL Analysis

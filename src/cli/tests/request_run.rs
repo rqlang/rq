@@ -2,10 +2,9 @@
 use libtest_mimic::{run, Arguments, Failed, Trial};
 use std::fs;
 use std::path::Path;
-use std::process::Command;
 
 mod common;
-use common::{ensure_built, validate_json_response};
+use common::{ensure_built, rq_cmd, validate_json_response};
 
 fn main() {
     let args = Arguments::from_args();
@@ -68,7 +67,7 @@ fn main() {
 // --- Fixture Tests ---
 
 fn test_request_secrets() -> Result<(), Failed> {
-    let output = Command::new("target/debug/rq")
+    let output = rq_cmd()
         .args([
             "request",
             "run",
@@ -99,7 +98,7 @@ fn test_request_secrets() -> Result<(), Failed> {
 }
 
 fn test_request_secrets_uppercase_prefixes() -> Result<(), Failed> {
-    let output = Command::new("target/debug/rq")
+    let output = rq_cmd()
         .args([
             "request",
             "run",
@@ -129,7 +128,7 @@ fn test_request_secrets_uppercase_prefixes() -> Result<(), Failed> {
 }
 
 fn test_request_auth_token_backdoor() -> Result<(), Failed> {
-    let output = Command::new("target/debug/rq")
+    let output = rq_cmd()
         .args([
             "request",
             "run",
@@ -156,7 +155,7 @@ fn test_request_auth_token_backdoor() -> Result<(), Failed> {
 }
 
 fn test_request_auth_token_backdoor_upper() -> Result<(), Failed> {
-    let output = Command::new("target/debug/rq")
+    let output = rq_cmd()
         .args([
             "request",
             "run",
@@ -183,7 +182,7 @@ fn test_request_auth_token_backdoor_upper() -> Result<(), Failed> {
 }
 
 fn test_request_cli_variable_override() -> Result<(), Failed> {
-    let output = Command::new("target/debug/rq")
+    let output = rq_cmd()
         .args([
             "request",
             "run",
@@ -212,7 +211,7 @@ fn test_request_cli_variable_override() -> Result<(), Failed> {
 }
 
 fn test_request_dotenv() -> Result<(), Failed> {
-    let output = Command::new("target/debug/rq")
+    let output = rq_cmd()
         .args([
             "request",
             "run",
@@ -241,7 +240,7 @@ fn test_request_dotenv() -> Result<(), Failed> {
 }
 
 fn test_request_run_file_not_found() -> Result<(), Failed> {
-    let output = Command::new("target/debug/rq")
+    let output = rq_cmd()
         .args(["request", "run", "-s", "non_existent_file"])
         .output()
         .map_err(|e| format!("Failed to execute command: {e}"))?;
@@ -261,7 +260,7 @@ fn test_request_run_file_not_found() -> Result<(), Failed> {
 }
 
 fn test_request_run_invalid_request_name() -> Result<(), Failed> {
-    let output = Command::new("target/debug/rq")
+    let output = rq_cmd()
         .args([
             "request",
             "run",
@@ -286,7 +285,7 @@ fn test_request_run_invalid_request_name() -> Result<(), Failed> {
 }
 
 fn test_request_run_invalid_variable_format() -> Result<(), Failed> {
-    let output = Command::new("target/debug/rq")
+    let output = rq_cmd()
         .args([
             "request",
             "run",
@@ -311,7 +310,7 @@ fn test_request_run_invalid_variable_format() -> Result<(), Failed> {
 }
 
 fn test_request_run_invalid_variable_name() -> Result<(), Failed> {
-    let output = Command::new("target/debug/rq")
+    let output = rq_cmd()
         .args([
             "request",
             "run",
@@ -338,7 +337,7 @@ fn test_request_run_invalid_variable_name() -> Result<(), Failed> {
 }
 
 fn test_request_run_ep_dot_notation() -> Result<(), Failed> {
-    let output = Command::new("target/debug/rq")
+    let output = rq_cmd()
         .args([
             "request",
             "run",
@@ -366,7 +365,7 @@ fn test_request_run_ep_dot_notation() -> Result<(), Failed> {
 }
 
 fn test_request_run_connection_refused() -> Result<(), Failed> {
-    let output = Command::new("target/debug/rq")
+    let output = rq_cmd()
         .args([
             "request",
             "run",
@@ -487,7 +486,7 @@ fn run_directory_test(dir_name: &str, file_name: &str) -> Result<(), Failed> {
     let request_name = extract_request_from_name(file_name);
     let use_dir_source = file_name.contains("__dir__");
 
-    let mut cmd = Command::new("target/debug/rq");
+    let mut cmd = rq_cmd();
 
     if use_dir_source {
         let path = Path::new(&input_file);

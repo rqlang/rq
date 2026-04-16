@@ -193,20 +193,14 @@ mod tests {
 
     #[test]
     fn read_dir_returns_subdirectory_as_single_entry() {
-        let target = make_fs(&[
-            ("/project/sub/a.rq", ""),
-            ("/project/sub/b.rq", ""),
-        ]);
+        let target = make_fs(&[("/project/sub/a.rq", ""), ("/project/sub/b.rq", "")]);
         let entries = target.read_dir(Path::new("/project")).unwrap();
         assert_eq!(entries, vec![PathBuf::from("/project/sub")]);
     }
 
     #[test]
     fn read_dir_returns_both_files_and_subdirs() {
-        let target = make_fs(&[
-            ("/project/root.rq", ""),
-            ("/project/sub/a.rq", ""),
-        ]);
+        let target = make_fs(&[("/project/root.rq", ""), ("/project/sub/a.rq", "")]);
         let mut entries = target.read_dir(Path::new("/project")).unwrap();
         entries.sort();
         assert_eq!(
@@ -232,10 +226,7 @@ mod tests {
 
     #[test]
     fn read_dir_does_not_include_entries_from_sibling_dirs() {
-        let target = make_fs(&[
-            ("/project/a/x.rq", ""),
-            ("/project/b/y.rq", ""),
-        ]);
+        let target = make_fs(&[("/project/a/x.rq", ""), ("/project/b/y.rq", "")]);
         let entries_a = target.read_dir(Path::new("/project/a")).unwrap();
         assert_eq!(entries_a, vec![PathBuf::from("/project/a/x.rq")]);
     }

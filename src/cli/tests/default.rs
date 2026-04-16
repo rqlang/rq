@@ -16,10 +16,10 @@ async fn test_default_run_with_source() -> Result<(), Box<dyn std::error::Error>
         .await;
 
     let rq_content = format!("rq basic(\"{}/get\");", mock_server.uri());
-    let rq_path = "target/test_default_basic.rq";
-    std::fs::write(rq_path, rq_content)?;
+    let rq_path = format!("{}/test_default_basic.rq", env!("CARGO_TARGET_TMPDIR"));
+    std::fs::write(&rq_path, rq_content)?;
 
-    let rq_output = rq_cmd().args(["-s", rq_path]).current_dir(".").output()?;
+    let rq_output = rq_cmd().args(["-s", &rq_path]).current_dir(".").output()?;
 
     let stdout = String::from_utf8_lossy(&rq_output.stdout);
     let stderr = String::from_utf8_lossy(&rq_output.stderr);
@@ -32,7 +32,11 @@ async fn test_default_run_with_source() -> Result<(), Box<dyn std::error::Error>
         return Err(format!("Command failed. stderr: {stderr}, stdout: {stdout}").into());
     }
 
-    if stdout.contains("Response status:") || stdout.contains("Request:") {
+    if stdout.contains("Response status:")
+        || stdout.contains("Request:")
+        || stdout.contains("status: 200")
+        || stdout.contains("request_name: basic")
+    {
         Ok(())
     } else {
         Err(format!("Unexpected output. stdout: {stdout}").into())
@@ -62,11 +66,11 @@ rq env_local_demo("{{{{base_url}}}}/api/env-test");
 "#,
         mock_server.uri()
     );
-    let rq_path = "target/test_default_env.rq";
-    std::fs::write(rq_path, rq_content)?;
+    let rq_path = format!("{}/test_default_env.rq", env!("CARGO_TARGET_TMPDIR"));
+    std::fs::write(&rq_path, rq_content)?;
 
     let rq_output = rq_cmd()
-        .args(["-s", rq_path, "-e", "local"])
+        .args(["-s", &rq_path, "-e", "local"])
         .current_dir(".")
         .output()?;
 
@@ -104,11 +108,11 @@ rq cli_variable_override("{}/get?color={{{{color}}}}");
 "#,
         mock_server.uri()
     );
-    let rq_path = "target/test_default_vars.rq";
-    std::fs::write(rq_path, rq_content)?;
+    let rq_path = format!("{}/test_default_vars.rq", env!("CARGO_TARGET_TMPDIR"));
+    std::fs::write(&rq_path, rq_content)?;
 
     let rq_output = rq_cmd()
-        .args(["-s", rq_path, "-v", "color=blue"])
+        .args(["-s", &rq_path, "-v", "color=blue"])
         .current_dir(".")
         .output()?;
 

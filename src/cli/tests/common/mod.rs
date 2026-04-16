@@ -103,13 +103,11 @@ pub fn validate_json_response(stdout: &str, expected_path: &Path) -> Result<(), 
                 match ch {
                     '"' => in_string = true,
                     '{' => depth += 1,
-                    '}' => {
-                        if depth > 0 {
-                            depth -= 1;
-                            if depth == 0 {
-                                end_index = Some(i + 1);
-                                break;
-                            }
+                    '}' if depth > 0 => {
+                        depth -= 1;
+                        if depth == 0 {
+                            end_index = Some(i + 1);
+                            break;
                         }
                     }
                     _ => {}

@@ -152,33 +152,25 @@ impl RqClient {
                                 &*self.fs,
                             )?;
 
-                            #[cfg(feature = "native")]
+                            let provider = crate::auth::get_provider(&resolved_provider.auth_type);
+                            match provider
+                                .configure(
+                                    &resolved_provider,
+                                    &context,
+                                    resolved_request.url.clone(),
+                                    resolved_request.headers.clone(),
+                                )
+                                .await
                             {
-                                let provider =
-                                    crate::auth::get_provider(&resolved_provider.auth_type);
-                                match provider
-                                    .configure(
-                                        &resolved_provider,
-                                        &context,
-                                        resolved_request.url.clone(),
-                                        resolved_request.headers.clone(),
-                                    )
-                                    .await
-                                {
-                                    Ok((modified_url, modified_headers)) => {
-                                        resolved_request.url = modified_url;
-                                        resolved_request.headers = modified_headers;
-                                    }
-                                    Err(e) => {
-                                        return Err(RqError::Auth(format!(
-                                            "Configuration '{auth_name}' failed: {e}"
-                                        )));
-                                    }
+                                Ok((modified_url, modified_headers)) => {
+                                    resolved_request.url = modified_url;
+                                    resolved_request.headers = modified_headers;
                                 }
-                            }
-                            #[cfg(not(feature = "native"))]
-                            {
-                                let _ = resolved_provider;
+                                Err(e) => {
+                                    return Err(RqError::Auth(format!(
+                                        "Configuration '{auth_name}' failed: {e}"
+                                    )));
+                                }
                             }
                         } else {
                             return Err(RqError::Validation(format!(

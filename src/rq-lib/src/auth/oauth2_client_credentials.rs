@@ -1,10 +1,16 @@
 use super::auth_provider::{AuthFuture, AuthProvider};
 use crate::syntax::error::AuthError;
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
-use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
-use openssl::pkcs12::Pkcs12;
-use sha1::{Digest, Sha1};
 use std::collections::HashMap;
+
+#[cfg(feature = "native")]
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+#[cfg(feature = "native")]
+use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
+#[cfg(feature = "native")]
+use openssl::pkcs12::Pkcs12;
+#[cfg(feature = "native")]
+use sha1::{Digest, Sha1};
+#[cfg(feature = "native")]
 use uuid::Uuid;
 
 const CLIENT_ID_FIELD: &str = "client_id";
@@ -44,22 +50,33 @@ impl AuthProvider for OAuth2ClientCredentialsProvider {
             let client_id = &auth_config.fields[CLIENT_ID_FIELD].value;
             let token_url = &auth_config.fields[TOKEN_URL_FIELD].value;
             let scope = auth_config.fields.get(SCOPE_FIELD).map(|t| &t.value);
-
             let client_secret = auth_config
                 .fields
                 .get(CLIENT_SECRET_FIELD)
                 .map(|t| &t.value);
             let cert_file = auth_config.fields.get(CERT_FILE_FIELD).map(|t| &t.value);
-            let cert_password = auth_config
-                .fields
-                .get(CERT_PASSWORD_FIELD)
-                .map(|t| &t.value);
 
-            let client_builder = reqwest::Client::builder().user_agent("rq-cli");
-            let mut jwt_assertion = None;
-            let mut x5t_thumbprint = None;
+            #[cfg(not(feature = "native"))]
+            if cert_file.is_some() {
+                return Err(AuthError::new(format!(
+                    "OAuth2 Client Credentials auth '{}': certificate-based auth is not supported in WASM builds",
+                    auth_config.name
+                ))
+                .into());
+            }
 
+            #[cfg(feature = "native")]
+            let mut jwt_assertion: Option<String> = None;
+            #[cfg(feature = "native")]
+            let mut x5t_thumbprint: Option<String> = None;
+
+            #[cfg(feature = "native")]
             if let Some(cert_path) = cert_file {
+                let cert_password = auth_config
+                    .fields
+                    .get(CERT_PASSWORD_FIELD)
+                    .map(|t| &t.value);
+
                 let path = std::path::Path::new(cert_path);
                 let resolved_path = if path.is_absolute() {
                     path.to_path_buf()
@@ -165,14 +182,20 @@ impl AuthProvider for OAuth2ClientCredentialsProvider {
                 jwt_assertion = Some(token);
             }
 
-            let client = client_builder
+            #[cfg(not(target_arch = "wasm32"))]
+            let client = reqwest::Client::builder()
+                .user_agent("rq-cli")
                 .build()
                 .map_err(|e| AuthError::new(format!("Failed to build http client: {e}")))?;
+
+            #[cfg(target_arch = "wasm32")]
+            let client = reqwest::Client::new();
 
             let mut params = HashMap::new();
             params.insert("grant_type", "client_credentials".to_string());
             params.insert("client_id", client_id.clone());
 
+            #[cfg(feature = "native")]
             if let Some(assertion) = jwt_assertion {
                 params.insert(
                     "client_assertion_type",
@@ -180,6 +203,11 @@ impl AuthProvider for OAuth2ClientCredentialsProvider {
                 );
                 params.insert("client_assertion", assertion);
             } else if let Some(secret) = client_secret {
+                params.insert("client_secret", secret.clone());
+            }
+
+            #[cfg(not(feature = "native"))]
+            if let Some(secret) = client_secret {
                 params.insert("client_secret", secret.clone());
             }
 
@@ -192,9 +220,12 @@ impl AuthProvider for OAuth2ClientCredentialsProvider {
             if !response.status().is_success() {
                 let status = response.status();
                 let text = response.text().await.unwrap_or_default();
+                #[cfg(feature = "native")]
                 let x5t_info = x5t_thumbprint
                     .map(|t| format!(" (x5t used: {t})"))
                     .unwrap_or_default();
+                #[cfg(not(feature = "native"))]
+                let x5t_info = String::new();
 
                 return Err(AuthError::new(format!(
                     "OAuth2 Client Credentials failed.\n  URL: {token_url}\n  Client ID: {client_id}\n  Status: {status}\n  Response: {text}{x5t_info}"

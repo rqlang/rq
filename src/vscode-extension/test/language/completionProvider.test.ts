@@ -1,11 +1,11 @@
-jest.mock('../../src/cliService');
+jest.mock('../../src/rqClient');
 jest.mock('../../src/utils', () => ({
     ...jest.requireActual('../../src/utils'),
     mirrorToTemp: jest.fn().mockReturnValue('/tmp/rq-check-mock'),
 }));
 
 import * as vscode from 'vscode';
-import * as cliService from '../../src/cliService';
+import * as cliService from '../../src/rqClient';
 import * as utils from '../../src/utils';
 import '../../src/language/completionProvider';
 

@@ -1,16 +1,14 @@
 import * as vscode from 'vscode';
 import { ConfigurationExplorerProvider, ConfigurationTreeItem } from '../src/configurationExplorer';
-import * as cp from 'child_process';
-import { ShellMock } from './shell-mock';
+import * as rqClient from '../src/rqClient';
 
-jest.mock('child_process');
+jest.mock('../src/rqClient');
 
 describe('ConfigurationExplorerProvider', () => {
     let target: ConfigurationExplorerProvider;
-    let shellMock: ShellMock;
 
     beforeEach(() => {
-        shellMock = new ShellMock();
+        jest.clearAllMocks();
         target = new ConfigurationExplorerProvider('/root');
     });
 
@@ -42,7 +40,7 @@ describe('ConfigurationExplorerProvider', () => {
     });
 
     test('getChildren(section-environments) returns environment items', async () => {
-        shellMock.setCommandOutput('env list', [{ name: 'local' }, { name: 'prod' }]);
+        (rqClient.listEnvironments as jest.Mock).mockResolvedValue(['local', 'prod']);
 
         const sectionItem = new ConfigurationTreeItem('Environments', 'section-environments', vscode.TreeItemCollapsibleState.Collapsed);
         const children = await target.getChildren(sectionItem);
@@ -58,7 +56,7 @@ describe('ConfigurationExplorerProvider', () => {
     });
 
     test('getChildren(section-auth) returns auth config items', async () => {
-        shellMock.setCommandOutput('auth list', [
+        (rqClient.listAuthConfigs as jest.Mock).mockResolvedValue([
             { name: 'my-token', auth_type: 'Bearer' },
             { name: 'api-key', auth_type: 'ApiKey' }
         ]);
@@ -78,7 +76,7 @@ describe('ConfigurationExplorerProvider', () => {
     });
 
     test('getChildren(section-environments) handles CLI error gracefully', async () => {
-        shellMock.setCommandError('env list', 'CLI Error');
+        (rqClient.listEnvironments as jest.Mock).mockRejectedValue(new Error('CLI Error'));
 
         const sectionItem = new ConfigurationTreeItem('Environments', 'section-environments', vscode.TreeItemCollapsibleState.Collapsed);
         const children = await target.getChildren(sectionItem);
@@ -88,7 +86,7 @@ describe('ConfigurationExplorerProvider', () => {
     });
 
     test('getChildren(section-auth) handles CLI error gracefully', async () => {
-        shellMock.setCommandError('auth list', 'CLI Error');
+        (rqClient.listAuthConfigs as jest.Mock).mockRejectedValue(new Error('CLI Error'));
 
         const sectionItem = new ConfigurationTreeItem('Auth', 'section-auth', vscode.TreeItemCollapsibleState.Collapsed);
         const children = await target.getChildren(sectionItem);

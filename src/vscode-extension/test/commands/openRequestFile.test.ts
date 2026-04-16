@@ -1,9 +1,9 @@
 import * as vscode from 'vscode';
-import * as cliService from '../../src/cliService';
+import * as cliService from '../../src/rqClient';
 import { registerOpenRequestFileCommand } from '../../src/commands/openRequestFile';
 import { RequestExplorerProvider, RequestTreeItem } from '../../src/requestExplorer';
 
-jest.mock('../../src/cliService');
+jest.mock('../../src/rqClient');
 jest.mock('../../src/requestExplorer');
 
 describe('openRequestFile Command', () => {

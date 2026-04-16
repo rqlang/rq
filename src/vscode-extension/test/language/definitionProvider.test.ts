@@ -1,7 +1,7 @@
-jest.mock('../../src/cliService');
+jest.mock('../../src/rqClient');
 
 import * as vscode from 'vscode';
-import * as cliService from '../../src/cliService';
+import * as cliService from '../../src/rqClient';
 import { setEnvironmentProvider } from '../../src/language/definitionProvider';
 
 function makeDocument(lines: string[], uri: any = { fsPath: '/test/file.rq' }) {

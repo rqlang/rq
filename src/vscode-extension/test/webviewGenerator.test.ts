@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { getWebviewContent } from '../src/ui/webviewGenerator';
-import * as cliService from '../src/cliService';
+import * as cliService from '../src/rqClient';
 
 describe('webviewGenerator', () => {
     // Mock context

@@ -1,19 +1,17 @@
 import * as vscode from 'vscode';
 import { RequestExplorerProvider, RequestTreeItem } from '../src/requestExplorer';
-import * as cp from 'child_process';
-import { ShellMock } from './shell-mock';
+import * as rqClient from '../src/rqClient';
 
-jest.mock('child_process');
+jest.mock('../src/rqClient');
 
 // Jest will automatically swap 'vscode' with our mock because of jest.config.js
 // We don't even need to import it here unless we want to check types
 
 describe('RequestExplorerProvider', () => {
     let target: RequestExplorerProvider;
-    let shellMock: ShellMock;
 
     beforeEach(() => {
-        shellMock = new ShellMock();
+        jest.clearAllMocks();
         target = new RequestExplorerProvider('/root');
     });
 
@@ -78,7 +76,7 @@ describe('RequestExplorerProvider', () => {
             { name: 'req2', endpoint: null, file: '/root/req2.http' }
         ];
 
-        shellMock.setCommandOutput('request list', mockOutput);
+        (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: mockOutput });
 
         const children = await target.getChildren();
 
@@ -97,14 +95,14 @@ describe('RequestExplorerProvider', () => {
         expect(reqItem).toBeDefined();
         expect(reqItem?.contextValue).toBe('request');
 
-        expect(cp.spawn).toHaveBeenCalled();
+        expect(rqClient.listRequests).toHaveBeenCalledWith('/root');
     });
 
     test('getChildren() handles CLI errors gracefully', async () => {
         const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => { });
 
         try {
-            shellMock.setCommandError('request list', 'CLI Error');
+            (rqClient.listRequests as jest.Mock).mockRejectedValue(new Error('CLI Error'));
 
             const children = await target.getChildren();
 
@@ -127,9 +125,8 @@ describe('RequestExplorerProvider', () => {
             const mockOutput = [
                 { name: 'req1', endpoint: null, file: '/root/req1.http' }
             ];
-            const mockStderr = 'Warning: Failed to parse file1.rq: Syntax error\nWarning: Failed to parse file2.rq: Syntax error';
-
-            shellMock.setCommandSuccessWithStderr('request list', mockOutput, mockStderr);
+            const errors = ['Warning: Failed to parse file1.rq: Syntax error', 'Warning: Failed to parse file2.rq: Syntax error'];
+            (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: mockOutput, errors });
 
             const children = await target.getChildren();
 
@@ -189,7 +186,7 @@ describe('RequestExplorerProvider', () => {
             { name: 'req1', endpoint: null, file: '/outside/req1.http' }
         ];
 
-        shellMock.setCommandOutput('request list', mockOutput);
+        (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: mockOutput });
 
         const children = await target.getChildren();
 
@@ -214,7 +211,7 @@ describe('RequestExplorerProvider', () => {
             }
         ];
 
-        shellMock.setCommandOutput('request list', mockOutput);
+        (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: mockOutput });
 
         const children = await target.getChildren();
 
@@ -238,7 +235,7 @@ describe('RequestExplorerProvider', () => {
             }
         ];
 
-        shellMock.setCommandOutput('request list', mockOutput);
+        (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: mockOutput });
 
         const children = await target.getChildren();
 

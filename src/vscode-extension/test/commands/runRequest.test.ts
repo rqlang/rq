@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { RequestRunner } from '../../src/commands/runRequest';
 import { RequestExplorerProvider } from '../../src/requestExplorer';
-import * as cliService from '../../src/cliService';
+import * as cliService from '../../src/rqClient';
 import * as auth from '../../src/auth';
 import * as webviewGenerator from '../../src/ui/webviewGenerator';
 
@@ -21,7 +21,7 @@ jest.mock('../../src/requestExplorer', () => {
         }))
     };
 });
-jest.mock('../../src/cliService');
+jest.mock('../../src/rqClient');
 jest.mock('../../src/auth');
 jest.mock('../../src/ui/webviewGenerator');
 
@@ -74,8 +74,6 @@ describe('runRequest Commands', () => {
         requestRunner = new RequestRunner(context, outputChannel);
 
         // Mock cliService defaults
-        (cliService as any).isCliInstalling.mockReturnValue(false);
-        (cliService as any).isCliBinaryAvailable.mockReturnValue(true);
         (cliService as any).showRequest.mockResolvedValue({ name: 'test-req' });
         (cliService as any).executeRequest.mockResolvedValue({ results: [{}] });
 

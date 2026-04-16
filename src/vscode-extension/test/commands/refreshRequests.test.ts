@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { registerRefreshRequestsCommand } from '../../src/commands/refreshRequests';
 import { RequestExplorerProvider } from '../../src/requestExplorer';
-import * as cliService from '../../src/cliService';
+import * as cliService from '../../src/rqClient';
 
 // Mock dependencies
 jest.mock('../../src/requestExplorer');
@@ -24,9 +24,6 @@ describe('refreshRequests Command', () => {
         provider.refresh = jest.fn();
 
         // Mock cliService
-        jest.spyOn(cliService, 'isCliInstalling').mockReturnValue(false);
-        jest.spyOn(cliService, 'isCliBinaryAvailable').mockReturnValue(false);
-        jest.spyOn(cliService, 'handleCliNotFoundError').mockResolvedValue(undefined);
 
         // Capture the command callback
         (vscode.commands.registerCommand as jest.Mock).mockImplementation((command, callback) => {

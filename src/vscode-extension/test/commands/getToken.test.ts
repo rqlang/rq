@@ -1,11 +1,11 @@
 import * as vscode from 'vscode';
 import { registerGetTokenCommand } from '../../src/commands/getToken';
-import * as cliService from '../../src/cliService';
+import * as cliService from '../../src/rqClient';
 import { FetchMock } from '../fetch-mock';
 import { authUriHandler } from '../../src/auth/authUriHandler';
 
 // Mock CLI service but NOT auth module
-jest.mock('../../src/cliService');
+jest.mock('../../src/rqClient');
 
 describe('getToken Command (Integration)', () => {
     let context: vscode.ExtensionContext;
@@ -43,8 +43,6 @@ describe('getToken Command (Integration)', () => {
         } as unknown as vscode.OutputChannel;
 
         // Mock cliService defaults
-        (cliService as any).isCliInstalling.mockReturnValue(false);
-        (cliService as any).isCliBinaryAvailable.mockReturnValue(true);
 
         // Capture the command callback
         (vscode.commands.registerCommand as jest.Mock).mockImplementation((command, callback) => {

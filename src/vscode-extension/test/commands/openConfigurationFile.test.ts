@@ -1,9 +1,9 @@
 import * as vscode from 'vscode';
-import * as cliService from '../../src/cliService';
+import * as cliService from '../../src/rqClient';
 import { registerOpenConfigurationFileCommand } from '../../src/commands/openConfigurationFile';
 import { ConfigurationExplorerProvider, ConfigurationTreeItem } from '../../src/configurationExplorer';
 
-jest.mock('../../src/cliService');
+jest.mock('../../src/rqClient');
 jest.mock('../../src/configurationExplorer');
 
 describe('openConfigurationFile Command', () => {

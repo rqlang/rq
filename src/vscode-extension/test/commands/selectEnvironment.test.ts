@@ -1,11 +1,11 @@
 import * as vscode from 'vscode';
 import { registerSelectEnvironmentCommand } from '../../src/commands/selectEnvironment';
 import { RequestExplorerProvider } from '../../src/requestExplorer';
-import * as cliService from '../../src/cliService';
+import * as cliService from '../../src/rqClient';
 
 // Mock dependencies
 jest.mock('../../src/requestExplorer');
-jest.mock('../../src/cliService');
+jest.mock('../../src/rqClient');
 
 describe('selectEnvironment Command', () => {
     let context: vscode.ExtensionContext;
@@ -25,8 +25,6 @@ describe('selectEnvironment Command', () => {
         provider.setSelectedEnvironment = jest.fn();
 
         // Mock cliService defaults
-        (cliService as any).isCliInstalling.mockReturnValue(false);
-        (cliService as any).isCliBinaryAvailable.mockReturnValue(true);
 
         // Capture the command callback
         (vscode.commands.registerCommand as jest.Mock).mockImplementation((command, callback) => {

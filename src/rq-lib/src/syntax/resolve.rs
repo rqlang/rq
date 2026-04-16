@@ -64,26 +64,24 @@ fn find_in_file(fs: &dyn Fs, path: &Path, var_name: &str) -> (usize, usize) {
     for (i, token) in tokens.iter().enumerate() {
         match token.token_type {
             TokenType::Comment => continue,
-            TokenType::Identifier => {
-                if token.value == var_name {
-                    let mut is_key = false;
-                    for next_token in tokens.iter().skip(i + 1) {
-                        match next_token.token_type {
-                            TokenType::Whitespace | TokenType::Newline | TokenType::Comment => {
-                                continue;
-                            }
-                            TokenType::Punctuation => {
-                                if next_token.value == ":" {
-                                    is_key = true;
-                                }
-                                break;
-                            }
-                            _ => break,
+            TokenType::Identifier if token.value == var_name => {
+                let mut is_key = false;
+                for next_token in tokens.iter().skip(i + 1) {
+                    match next_token.token_type {
+                        TokenType::Whitespace | TokenType::Newline | TokenType::Comment => {
+                            continue;
                         }
+                        TokenType::Punctuation => {
+                            if next_token.value == ":" {
+                                is_key = true;
+                            }
+                            break;
+                        }
+                        _ => break,
                     }
-                    if !is_key {
-                        return get_line_col(token.span.start);
-                    }
+                }
+                if !is_key {
+                    return get_line_col(token.span.start);
                 }
             }
             _ => {}
@@ -910,17 +908,17 @@ pub fn collect_declared_variable_errors(
                     ));
                 }
             }
-            crate::syntax::variable_context::VariableValue::Reference(ref_name) => {
-                if !known_names.contains(ref_name.as_str()) {
-                    let (line, col, path) = find_variable_location(fs, source_files, ref_name);
-                    errors.push(SyntaxError::with_file(
-                        format!("Variable '{ref_name}' is not defined"),
-                        line,
-                        col,
-                        0..0,
-                        format_path(&path),
-                    ));
-                }
+            crate::syntax::variable_context::VariableValue::Reference(ref_name)
+                if !known_names.contains(ref_name.as_str()) =>
+            {
+                let (line, col, path) = find_variable_location(fs, source_files, ref_name);
+                errors.push(SyntaxError::with_file(
+                    format!("Variable '{ref_name}' is not defined"),
+                    line,
+                    col,
+                    0..0,
+                    format_path(&path),
+                ));
             }
             crate::syntax::variable_context::VariableValue::String(s) if s.contains("{{") => {
                 if let Err(e) = check_string(s, &string_context, source_files, fs) {

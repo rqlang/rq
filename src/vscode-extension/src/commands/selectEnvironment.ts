@@ -1,19 +1,9 @@
 import * as vscode from 'vscode';
-import * as cliService from '../cliService';
+import * as rqClient from '../rqClient';
 import { RequestExplorerProvider } from '../requestExplorer';
 
 export function registerSelectEnvironmentCommand(context: vscode.ExtensionContext, provider: RequestExplorerProvider) {
     const command = vscode.commands.registerCommand('rq.selectEnvironment', async () => {
-        if (cliService.isCliInstalling()) {
-            vscode.window.showWarningMessage('rq CLI is being installed. Please wait until installation completes.');
-            return;
-        }
-
-        if (!cliService.isCliBinaryAvailable()) {
-            await cliService.handleCliNotFoundError();
-            return;
-        }
-
         try {
             const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
             const sourceDirectory = workspaceFolder?.uri.fsPath;
@@ -21,7 +11,7 @@ export function registerSelectEnvironmentCommand(context: vscode.ExtensionContex
             provider.setTreeLoading(true);
             let environments: string[];
             try {
-                environments = await cliService.listEnvironments(sourceDirectory);
+                environments = await rqClient.listEnvironments(sourceDirectory);
             } finally {
                 provider.setTreeLoading(false);
             }

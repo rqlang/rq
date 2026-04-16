@@ -1,4 +1,5 @@
 pub mod models;
+#[cfg(feature = "native")]
 use crate::native;
 
 use crate::client::models::{RequestDetails, RequestExecutionResult, RequestInfo};
@@ -133,6 +134,7 @@ impl RqClient {
                         })?;
                 }
 
+                #[allow(unused_mut)]
                 let mut resolved_request = crate::syntax::resolve::resolve_variables(
                     working,
                     &context,
@@ -150,26 +152,33 @@ impl RqClient {
                                 &*self.fs,
                             )?;
 
-                            let provider = crate::auth::get_executor(&resolved_provider.auth_type);
-
-                            match provider
-                                .configure(
-                                    &resolved_provider,
-                                    &context,
-                                    resolved_request.url.clone(),
-                                    resolved_request.headers.clone(),
-                                )
-                                .await
+                            #[cfg(feature = "native")]
                             {
-                                Ok((modified_url, modified_headers)) => {
-                                    resolved_request.url = modified_url;
-                                    resolved_request.headers = modified_headers;
+                                let provider =
+                                    crate::auth::get_executor(&resolved_provider.auth_type);
+                                match provider
+                                    .configure(
+                                        &resolved_provider,
+                                        &context,
+                                        resolved_request.url.clone(),
+                                        resolved_request.headers.clone(),
+                                    )
+                                    .await
+                                {
+                                    Ok((modified_url, modified_headers)) => {
+                                        resolved_request.url = modified_url;
+                                        resolved_request.headers = modified_headers;
+                                    }
+                                    Err(e) => {
+                                        return Err(RqError::Auth(format!(
+                                            "Configuration '{auth_name}' failed: {e}"
+                                        )));
+                                    }
                                 }
-                                Err(e) => {
-                                    return Err(RqError::Auth(format!(
-                                        "Configuration '{auth_name}' failed: {e}"
-                                    )));
-                                }
+                            }
+                            #[cfg(not(feature = "native"))]
+                            {
+                                let _ = resolved_provider;
                             }
                         } else {
                             return Err(RqError::Validation(format!(
@@ -332,7 +341,7 @@ impl RqClient {
             if let Some(vars) = rq_file.environments.get(env_name) {
                 vars.clone()
             } else {
-                Vec::new()
+                return Err(RqError::EnvironmentNotFound(env_name.to_string()));
             }
         } else {
             Vec::new()
@@ -1509,6 +1518,7 @@ impl RqClient {
     }
 }
 
+#[cfg(feature = "native")]
 impl Default for RqClient {
     fn default() -> Self {
         Self::new(

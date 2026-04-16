@@ -1,5 +1,4 @@
 import * as vscode from 'vscode';
-import * as cliService from './cliService';
 import { RequestExplorerProvider } from './requestExplorer';
 import { ConfigurationExplorerProvider } from './configurationExplorer';
 import { completionProvider, insideArrayLiteral, setEnvironmentProvider as setCompletionEnvironmentProvider } from './language/completionProvider';
@@ -28,11 +27,6 @@ export function activate(context: vscode.ExtensionContext) {
 
     registerAuthUriHandler(context);
 
-    cliService.setExtensionMode(context.extensionMode);
-    cliService.setExtensionPath(context.extensionPath);
-
-    cliService.setOutputChannel(rqOutputChannel);
-
     const diagnosticCollection = vscode.languages.createDiagnosticCollection('rq');
     context.subscriptions.push(diagnosticCollection);
 
@@ -54,17 +48,9 @@ export function activate(context: vscode.ExtensionContext) {
     });
     context.subscriptions.push(configurationExplorerView);
 
-    cliService.checkCliVersion('rq-lang.rq-language').then(() => {
-        requestExplorerProvider.refresh();
-        configurationExplorerProvider.refresh();
-        diagnosticsProvider.validateAllFolders();
-    });
-
-    cliService.onInstallFinished(() => {
-        requestExplorerProvider.refresh();
-        configurationExplorerProvider.refresh();
-        diagnosticsProvider.validateAllFolders();
-    });
+    requestExplorerProvider.refresh();
+    configurationExplorerProvider.refresh();
+    diagnosticsProvider.validateAllFolders();
 
     // Register commands
     registerRefreshRequestsCommand(context, requestExplorerProvider);

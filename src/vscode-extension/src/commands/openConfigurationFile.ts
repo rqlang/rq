@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import * as cliService from '../cliService';
+import * as rqClient from '../rqClient';
 import { normalizePath } from '../utils';
 import { ConfigurationExplorerProvider, ConfigurationTreeItem } from '../configurationExplorer';
 
@@ -13,12 +13,12 @@ export function registerOpenConfigurationFileCommand(context: vscode.ExtensionCo
             let character: number;
 
             if (artifactType === 'env') {
-                const result = await cliService.showEnvironment(name, sourceDirectory);
+                const result = await rqClient.showEnvironment(name, sourceDirectory);
                 file = result.file;
                 line = result.line;
                 character = result.character;
             } else {
-                const result = await cliService.showAuthLocation(name, sourceDirectory);
+                const result = await rqClient.showAuthLocation(name, sourceDirectory);
                 file = result.file;
                 line = result.line;
                 character = result.character;

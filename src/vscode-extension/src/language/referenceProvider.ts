@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import * as cliService from '../cliService';
+import * as rqClient from '../rqClient';
 
 const EP_TEMPLATE_PATTERN = /^\s*ep\s+[a-zA-Z_][a-zA-Z0-9_-]*\s*<\s*([a-zA-Z_][a-zA-Z0-9_-]*)\s*>/;
 const VAR_NAME_PATTERN = /[a-zA-Z_][a-zA-Z0-9_-]*/;
@@ -18,7 +18,7 @@ export const referenceProvider = vscode.languages.registerReferenceProvider('rq'
 
             if (position.character >= parentStart && position.character <= parentEnd) {
                 try {
-                    const refs = await cliService.epRefs(parentName, sourceDirectory);
+                    const refs = await rqClient.epRefs(parentName, sourceDirectory);
                     return refs.map(r => new vscode.Location(
                         vscode.Uri.file(r.file),
                         new vscode.Position(r.line, r.character)
@@ -36,7 +36,7 @@ export const referenceProvider = vscode.languages.registerReferenceProvider('rq'
         const word = document.getText(wordRange);
 
         try {
-            const refs = await cliService.varRefs(word, sourceDirectory);
+            const refs = await rqClient.varRefs(word, sourceDirectory);
             return refs.map(r => new vscode.Location(
                 vscode.Uri.file(r.file),
                 new vscode.Position(r.line, r.character)

@@ -1,19 +1,9 @@
 import * as vscode from 'vscode';
-import * as cliService from '../cliService';
+import * as rqClient from '../rqClient';
 import { performOAuth2Flow } from '../auth';
 
 export function registerGetTokenCommand(context: vscode.ExtensionContext, outputChannel: vscode.OutputChannel) {
     const command = vscode.commands.registerCommand('rq.getToken', async () => {
-        if (cliService.isCliInstalling()) {
-            vscode.window.showWarningMessage('rq CLI is being installed. Please wait until installation completes.');
-            return;
-        }
-
-        if (!cliService.isCliBinaryAvailable()) {
-            await cliService.handleCliNotFoundError();
-            return;
-        }
-
         try {
             console.log('Getting auth token from CLI...');
             
@@ -23,7 +13,7 @@ export function registerGetTokenCommand(context: vscode.ExtensionContext, output
             
             // Step 1: Get environments
             console.log('Fetching environments...');
-            const environments = await cliService.listEnvironments(sourceDirectory);
+            const environments = await rqClient.listEnvironments(sourceDirectory);
             
             let selectedEnvironment: string | undefined;
             
@@ -47,7 +37,7 @@ export function registerGetTokenCommand(context: vscode.ExtensionContext, output
             
             // Step 2: Get auth configurations
             console.log('Fetching auth configurations...');
-            const authConfigs = await cliService.listAuthConfigs(sourceDirectory);
+            const authConfigs = await rqClient.listAuthConfigs(sourceDirectory);
             
             if (authConfigs.length === 0) {
                 vscode.window.showWarningMessage('No auth configurations found in the workspace.');
@@ -79,7 +69,7 @@ export function registerGetTokenCommand(context: vscode.ExtensionContext, output
             
             // Step 4: Get auth details
             console.log(`Fetching auth config: ${selectedAuthName}`);
-            const authConfig = await cliService.showAuthConfig(
+            const authConfig = await rqClient.showAuthConfig(
                 selectedAuthName,
                 sourceDirectory,
                 selectedEnvironment

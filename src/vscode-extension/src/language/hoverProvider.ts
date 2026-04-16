@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import * as cliService from '../cliService';
+import * as rqClient from '../rqClient';
 import {
     SYSTEM_FUNCTIONS,
     IO_FUNCTIONS,
@@ -257,7 +257,7 @@ export const hoverProvider = vscode.languages.registerHoverProvider('rq', {
             if (environment) {
                 try {
                     const sourceDirectory = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-                    const result = await cliService.showVariable(word, sourceDirectory, environment);
+                    const result = await rqClient.showVariable(word, sourceDirectory, environment);
                     const contents = new vscode.MarkdownString();
                     contents.appendMarkdown(`**Variable: \`${result.name}\`** *(${result.source})*\n\n`);
                     contents.appendMarkdown('**Value:**\n');

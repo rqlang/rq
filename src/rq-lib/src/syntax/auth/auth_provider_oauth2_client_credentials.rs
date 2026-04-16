@@ -1,11 +1,19 @@
 use crate::syntax::auth::{AuthFuture, AuthProvider};
-use crate::syntax::error::{AuthError, SyntaxError};
+use crate::syntax::error::SyntaxError;
 use crate::syntax::token::Token;
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
-use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
-use openssl::pkcs12::Pkcs12;
-use sha1::{Digest, Sha1};
 use std::collections::HashMap;
+
+#[cfg(feature = "native")]
+use crate::syntax::error::AuthError;
+#[cfg(feature = "native")]
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+#[cfg(feature = "native")]
+use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
+#[cfg(feature = "native")]
+use openssl::pkcs12::Pkcs12;
+#[cfg(feature = "native")]
+use sha1::{Digest, Sha1};
+#[cfg(feature = "native")]
 use uuid::Uuid;
 
 const CLIENT_ID_FIELD: &str = "client_id";
@@ -104,12 +112,22 @@ impl AuthProvider for OAuth2ClientCredentialsProvider {
 
     fn configure<'a>(
         &'a self,
-        auth_config: &'a crate::syntax::auth::Config,
+        _auth_config: &'a crate::syntax::auth::Config,
         _context: &'a crate::syntax::variable_context::VariableContext,
         url: String,
-        mut headers: Vec<(String, String)>,
+        headers: Vec<(String, String)>,
     ) -> AuthFuture<'a> {
+        #[cfg(not(feature = "native"))]
+        {
+            Box::pin(async move {
+                let _ = (url, headers);
+                Err("OAuth2 client credentials execution requires the native feature".into())
+            })
+        }
+        #[cfg(feature = "native")]
         Box::pin(async move {
+            let auth_config = _auth_config;
+            let mut headers = headers;
             let client_id = &auth_config.fields[CLIENT_ID_FIELD].value;
             let token_url = &auth_config.fields[TOKEN_URL_FIELD].value;
             let scope = auth_config.fields.get(SCOPE_FIELD).map(|t| &t.value);
@@ -287,7 +305,7 @@ impl AuthProvider for OAuth2ClientCredentialsProvider {
                 .ok_or_else(|| AuthError::new("No access_token in response".to_string()))?;
 
             headers.push((
-                reqwest::header::AUTHORIZATION.as_str().to_string(),
+                "authorization".to_string(),
                 format!("Bearer {access_token}"),
             ));
 

@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import * as cliService from './cliService';
+import * as rqClient from './rqClient';
 import { applyTreeItemLoading } from './utils';
 
 type ItemKind = 'section-environments' | 'section-auth' | 'environment' | 'auth-config';
@@ -37,7 +37,7 @@ export class ConfigurationExplorerProvider implements vscode.TreeDataProvider<Co
 
         try {
             if (element.kind === 'section-environments') {
-                const names = await cliService.listEnvironments(this.workspaceRoot);
+                const names = await rqClient.listEnvironments(this.workspaceRoot);
                 return names.map(name => {
                     const item = new ConfigurationTreeItem(name, 'environment', vscode.TreeItemCollapsibleState.None);
                     item.iconPath = new vscode.ThemeIcon('server-environment');
@@ -47,7 +47,7 @@ export class ConfigurationExplorerProvider implements vscode.TreeDataProvider<Co
             }
 
             if (element.kind === 'section-auth') {
-                const entries = await cliService.listAuthConfigs(this.workspaceRoot);
+                const entries = await rqClient.listAuthConfigs(this.workspaceRoot);
                 return entries.map(e => {
                     const item = new ConfigurationTreeItem(e.name, 'auth-config', vscode.TreeItemCollapsibleState.None);
                     item.iconPath = new vscode.ThemeIcon('key');

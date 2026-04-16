@@ -1,8 +1,10 @@
+#[cfg(feature = "native")]
 pub mod auth;
 pub mod client;
 pub mod error;
 pub mod http;
 pub mod logger;
+#[cfg(feature = "native")]
 pub mod native;
 pub mod paths;
 pub mod syntax;

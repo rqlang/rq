@@ -1,9 +1,7 @@
 import * as vscode from 'vscode';
-import * as cliService from './cliService';
+import * as rqClient from './rqClient';
 import * as path from 'path';
 import { normalizePath, applyTreeItemLoading } from './utils';
-
-const CLI_NOT_INSTALLED_MSG = 'rq CLI is not installed. Use the "Install Now" prompt or install it manually.';
 
 export interface RequestInfo {
     name: string;
@@ -104,24 +102,9 @@ export class RequestExplorerProvider implements vscode.TreeDataProvider<RequestT
 
         items.push(envItem);
 
-        // If the CLI is currently being installed, show a placeholder
-        if (cliService.isCliInstalling()) {
-            const installingItem = new RequestTreeItem(
-                'Installing rq CLI…',
-                null,
-                vscode.TreeItemCollapsibleState.None
-            );
-            installingItem.contextValue = 'info';
-            installingItem.iconPath = new vscode.ThemeIcon('sync~spin');
-            installingItem.description = 'Please wait';
-            installingItem.tooltip = 'The rq CLI is being installed. The explorer will refresh automatically when it is ready.';
-            items.push(installingItem);
-            return items;
-        }
-
         try {
             // Get and group requests
-            const result = await cliService.listRequests(this.workspaceRoot);
+            const result = await rqClient.listRequests(this.workspaceRoot);
             const requestItems = this.groupRequestsByFolder(result.requests);
             
             const finalItems = [...items, ...requestItems];
@@ -143,20 +126,6 @@ export class RequestExplorerProvider implements vscode.TreeDataProvider<RequestT
             
             return finalItems;
         } catch (error) {
-            // Show a friendly message when the CLI is simply not installed
-            if (cliService.isCliNotFound(error)) {
-                const notInstalledItem = new RequestTreeItem(
-                    'rq CLI not installed',
-                    null,
-                    vscode.TreeItemCollapsibleState.None
-                );
-                notInstalledItem.iconPath = new vscode.ThemeIcon('warning');
-                notInstalledItem.description = 'Click refresh button to install';
-                notInstalledItem.tooltip = CLI_NOT_INSTALLED_MSG;
-                items.push(notInstalledItem);
-                return items;
-            }
-
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
             vscode.window.showErrorMessage(`Failed to list requests: ${errorMessage}`);
             

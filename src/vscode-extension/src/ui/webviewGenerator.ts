@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import * as cliService from '../cliService';
+import * as rqClient from '../rqClient';
 
 /**
  * Escape HTML special characters
@@ -18,7 +18,7 @@ function escapeHtml(text: string): string {
 /**
  * Generate HTML content for the request result webview
  */
-export async function getWebviewContent(context: vscode.ExtensionContext, result: cliService.RequestExecutionResult): Promise<string> {
+export async function getWebviewContent(context: vscode.ExtensionContext, result: rqClient.RequestExecutionResult): Promise<string> {
     const statusClass = result.status >= 200 && result.status < 300 ? 'success' : 
                         result.status >= 400 ? 'error' : 'info';
     

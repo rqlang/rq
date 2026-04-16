@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import * as cliService from '../cliService';
+import * as rqClient from '../rqClient';
 import { normalizePath } from '../utils';
 import { RequestExplorerProvider, RequestTreeItem } from '../requestExplorer';
 
@@ -8,7 +8,7 @@ export function registerOpenRequestFileCommand(context: vscode.ExtensionContext,
         if (item) { provider.setItemLoading(item, true); }
         try {
             const sourceDirectory = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-            const result = await cliService.showRequestLocation(requestName, sourceDirectory);
+            const result = await rqClient.showRequestLocation(requestName, sourceDirectory);
             const normalizedPath = normalizePath(result.file);
             const document = await vscode.workspace.openTextDocument(normalizedPath);
             const editor = await vscode.window.showTextDocument(document);

@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import * as cliService from '../cliService';
+import * as rqClient from '../rqClient';
 import { RequestExplorerProvider, RequestTreeItem } from '../requestExplorer';
 import { performOAuth2Flow } from '../auth';
 import { getWebviewContent } from '../ui/webviewGenerator';
@@ -29,16 +29,6 @@ export class RequestRunner {
     }
 
     public async runRequest(requestItem: RequestTreeItem, provider: RequestExplorerProvider) {
-        if (cliService.isCliInstalling()) {
-            vscode.window.showWarningMessage('rq CLI is being installed. Please wait until installation completes.');
-            return;
-        }
-
-        if (!cliService.isCliBinaryAvailable()) {
-            await cliService.handleCliNotFoundError();
-            return;
-        }
-
         if (!requestItem.request) {
             vscode.window.showErrorMessage('Cannot run: No request information available');
             return;
@@ -63,16 +53,6 @@ export class RequestRunner {
     }
 
     public async runRequestWithVariables(requestItem: RequestTreeItem, provider: RequestExplorerProvider) {
-        if (cliService.isCliInstalling()) {
-            vscode.window.showWarningMessage('rq CLI is being installed. Please wait until installation completes.');
-            return;
-        }
-
-        if (!cliService.isCliBinaryAvailable()) {
-            await cliService.handleCliNotFoundError();
-            return;
-        }
-
         if (!requestItem.request) {
             vscode.window.showErrorMessage('Cannot run: No request information available');
             return;
@@ -106,13 +86,13 @@ export class RequestRunner {
         environment: string | undefined
     ): Promise<Record<string, string> | undefined> {
         try {
-            const requestDetails = await cliService.showRequest(requestName, sourceDirectory, environment);
+            const requestDetails = await rqClient.showRequest(requestName, sourceDirectory, environment);
             this.outputChannel.appendLine(`Request details for '${requestName}': ${JSON.stringify(requestDetails)}`);
 
             if (requestDetails.auth && (requestDetails.auth.type === 'oauth2_authorization_code' || requestDetails.auth.type === 'oauth2_implicit')) {
                 this.outputChannel.appendLine(`Detected OAuth2 auth: ${requestDetails.auth.name} (${requestDetails.auth.type})`);
 
-                const authConfig = await cliService.showAuthConfig(
+                const authConfig = await rqClient.showAuthConfig(
                     requestDetails.auth.name,
                     sourceDirectory,
                     environment
@@ -183,7 +163,7 @@ export class RequestRunner {
             title: `Running request: ${requestName}`,
             cancellable: false
         }, async () => {
-            const result = await cliService.executeRequest({ requestName, sourceDirectory, environment, variables });
+            const result = await rqClient.executeRequest({ requestName, sourceDirectory, environment, variables });
 
             if (result.results.length > 0) {
                 await this.handleSuccessfulExecution(requestName, variables, result);
@@ -196,7 +176,7 @@ export class RequestRunner {
     private async handleSuccessfulExecution(
         requestName: string,
         variables: Record<string, string> | undefined,
-        result: cliService.ExecuteRequestResult
+        result: rqClient.ExecuteRequestResult
     ) {
         // Log the successful response to the output channel
         if (result.results.length > 0) {
@@ -226,7 +206,7 @@ export class RequestRunner {
     private handleFailedExecution(
         requestName: string,
         variables: Record<string, string> | undefined,
-        result: cliService.ExecuteRequestResult
+        result: rqClient.ExecuteRequestResult
     ) {
         const fullError = result.stderr
             ? this.cleanErrorMessage(result.stderr)
@@ -269,7 +249,7 @@ export class RequestRunner {
         }, undefined, this.context.subscriptions);
     }
 
-    private formatResponseForLog(result: cliService.RequestExecutionResult): string {
+    private formatResponseForLog(result: rqClient.RequestExecutionResult): string {
         let output = `Status: ${result.status}\n`;
         output += `Time: ${result.elapsed_ms}ms\n`;
         output += `Method: ${result.method}\n`;
@@ -304,7 +284,22 @@ export class RequestRunner {
     }
 
     private handleError(error: unknown) {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        let errorMessage: string;
+        const asAggregate = error as { errors?: unknown[] };
+        const unwrapped = Array.isArray(asAggregate?.errors) && asAggregate.errors.length > 0
+            ? asAggregate.errors[0]
+            : error;
+        if (unwrapped instanceof Error) {
+            errorMessage = unwrapped.message || unwrapped.toString();
+            const code = (unwrapped as NodeJS.ErrnoException).code;
+            if (!errorMessage || errorMessage === '[object Error]') {
+                errorMessage = code ?? 'Unknown error';
+            } else if (code && !errorMessage.includes(code)) {
+                errorMessage = `${code}: ${errorMessage}`;
+            }
+        } else {
+            errorMessage = String(unwrapped) || 'Unknown error';
+        }
         if (errorMessage === 'Cancelled by user') {
             return;
         }

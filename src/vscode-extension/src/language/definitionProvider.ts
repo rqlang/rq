@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import * as cliService from '../cliService';
+import * as rqClient from '../rqClient';
 import { parseVariables } from './definitions';
 
 const EP_TEMPLATE_PATTERN = /^\s*ep\s+[a-zA-Z_][a-zA-Z0-9_-]*\s*<\s*([a-zA-Z_][a-zA-Z0-9_-]*)\s*>/;
@@ -25,7 +25,7 @@ export const definitionProvider = vscode.languages.registerDefinitionProvider('r
             if (position.character >= parentStart && position.character <= parentEnd) {
                 try {
                     const sourceDirectory = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-                    const result = await cliService.showEndpoint(parentName, sourceDirectory);
+                    const result = await rqClient.showEndpoint(parentName, sourceDirectory);
                     return new vscode.Location(
                         vscode.Uri.file(result.file),
                         new vscode.Position(result.line, result.character)
@@ -57,7 +57,7 @@ export const definitionProvider = vscode.languages.registerDefinitionProvider('r
         }
 
         try {
-            const result = await cliService.showVariable(word, sourceDirectory, environment, false);
+            const result = await rqClient.showVariable(word, sourceDirectory, environment, false);
             return new vscode.Location(
                 vscode.Uri.file(result.file),
                 new vscode.Position(result.line, result.character)

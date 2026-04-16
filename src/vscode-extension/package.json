@@ -125,10 +125,6 @@
         "editor.wordBasedSuggestions": "off"
       }
     },
-    "configuration": {
-      "title": "RQ",
-      "properties": {}
-    },
     "authentication": [
       {
         "id": "rq-azure-oauth",
@@ -196,8 +192,10 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile",
-    "compile": "tsc -p ./",
+    "build-wasm": "wasm-pack build ../rq-wasm --target nodejs --out-dir ./src/wasm",
+    "copy-wasm": "node -e \"const fs=require('fs');const src='../rq-wasm/src/wasm';if(fs.existsSync(src+'/rq_wasm.js')){fs.mkdirSync('out/wasm',{recursive:true});['rq_wasm.js','rq_wasm_bg.wasm'].forEach(f=>fs.copyFileSync(src+'/'+f,'out/wasm/'+f));}else{console.log('WASM not built, skipping wasm copy');}\"",
+    "vscode:prepublish": "npm run build-wasm && npm run compile",
+    "compile": "tsc -p ./ && npm run copy-wasm",
     "watch": "tsc -watch -p ./",
     "pretest": "npm run compile",
     "lint": "eslint src",

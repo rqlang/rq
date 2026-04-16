@@ -16,13 +16,17 @@ export function normalizePath(p: string): string {
 }
 
 export function collectRqFiles(dir: string): string[] {
+    return collectAllFiles(dir).filter(f => f.endsWith('.rq'));
+}
+
+export function collectAllFiles(dir: string): string[] {
     const results: string[] = [];
     try {
         for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
             const full = path.join(dir, entry.name);
             if (entry.isDirectory()) {
-                results.push(...collectRqFiles(full));
-            } else if (entry.isFile() && entry.name.endsWith('.rq')) {
+                results.push(...collectAllFiles(full));
+            } else if (entry.isFile()) {
                 results.push(full);
             }
         }

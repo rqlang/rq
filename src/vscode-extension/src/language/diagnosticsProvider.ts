@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as cliService from '../cliService';
+import * as rqClient from '../rqClient';
 import { normalizePath, mirrorToTemp } from '../utils';
 
 const DEBOUNCE_MS = 1000;
@@ -99,11 +99,11 @@ export class DiagnosticsProvider {
 
         if (openDocuments.size > 0) {
             const tempRoot = this.rebuildTempRoot(folderPath, openDocuments);
-            const result = await cliService.checkFolder(tempRoot, env);
+            const result = await rqClient.checkFolder(tempRoot, env);
             this.applyDiagnostics(result, tempRoot, folderPath);
         } else {
             this.clearTempRoot(folderPath);
-            const result = await cliService.checkFolder(folderPath, env);
+            const result = await rqClient.checkFolder(folderPath, env);
             this.applyDiagnostics(result, folderPath, folderPath);
         }
     }
@@ -125,7 +125,7 @@ export class DiagnosticsProvider {
     }
 
     private applyDiagnostics(
-        result: cliService.CheckResult,
+        result: rqClient.CheckResult,
         sourcePath: string,
         realPath: string
     ): void {

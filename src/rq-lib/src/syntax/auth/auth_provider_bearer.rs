@@ -37,10 +37,7 @@ impl BearerAuthProvider {
     }
 
     fn add_bearer_header(headers: &mut Vec<(String, String)>, token: &str) {
-        headers.push((
-            reqwest::header::AUTHORIZATION.as_str().to_string(),
-            format!("Bearer {token}"),
-        ));
+        headers.push(("authorization".to_string(), format!("Bearer {token}")));
     }
 }
 

@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import * as cliService from '../cliService';
+import * as rqClient from '../rqClient';
 
 const EP_TEMPLATE_PATTERN = /^\s*ep\s+[a-zA-Z_][a-zA-Z0-9_-]*\s*<\s*([a-zA-Z_][a-zA-Z0-9_-]*)\s*>/;
 const EP_DEF_PATTERN = /^\s*ep\s+([a-zA-Z_][a-zA-Z0-9_-]*)/;
@@ -111,7 +111,7 @@ export const renameProvider = vscode.languages.registerRenameProvider('rq', {
 
         if (symbol.kind === 'ep') {
             try {
-                const refs = await cliService.epRefs(symbol.name, sourceDirectory);
+                const refs = await rqClient.epRefs(symbol.name, sourceDirectory);
                 if (refs.length === 0) { return undefined; }
                 for (const r of refs) {
                     edit.replace(
@@ -130,7 +130,7 @@ export const renameProvider = vscode.languages.registerRenameProvider('rq', {
         }
 
         try {
-            const refs = await cliService.varRefs(symbol.name, sourceDirectory);
+            const refs = await rqClient.varRefs(symbol.name, sourceDirectory);
             if (refs.length === 0) { return undefined; }
             for (const r of refs) {
                 edit.replace(

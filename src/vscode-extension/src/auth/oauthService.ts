@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import * as cliService from '../cliService';
+import * as rqClient from '../rqClient';
 import { OAuthProvider } from './oauthProvider';
 import { OAuth2Config } from './types';
 
@@ -30,7 +30,7 @@ export function getFlowTypeFromAuthType(authType: string): 'authorization_code_p
  * @raises Error: If OAuth2 flow fails or auth type is unsupported
  */
 export async function performOAuth2Flow(
-    authConfig: cliService.AuthShowOutput,
+    authConfig: rqClient.AuthShowOutput,
     context: vscode.ExtensionContext,
     outputChannel?: vscode.OutputChannel
 ): Promise<string> {

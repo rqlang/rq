@@ -27,9 +27,7 @@ pub fn ensure_built() {
 
 pub fn rq_cmd() -> Command {
     ensure_built();
-    let mut path = std::env::current_dir().unwrap();
-    path.push("target/debug/rq");
-    Command::new(path)
+    Command::new(env!("CARGO_BIN_EXE_rq"))
 }
 
 pub fn json_subset(expected: &Value, actual: &Value) -> bool {

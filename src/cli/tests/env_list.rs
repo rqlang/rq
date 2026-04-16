@@ -58,12 +58,7 @@ fn test_env_list_nonexistent_directory() -> Result<(), Box<dyn std::error::Error
 
 #[test]
 fn test_env_list_default_directory() -> Result<(), Box<dyn std::error::Error>> {
-    // Change to tests/request/run/input directory and run without -s flag
-    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".to_string());
-    let binary_path = format!("{manifest_dir}/target/debug/rq");
-    common::ensure_built();
-
-    let output = std::process::Command::new(&binary_path)
+    let output = rq_cmd()
         .args(["env", "list"])
         .current_dir("tests/request/run/input")
         .output()?;

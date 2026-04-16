@@ -1,22 +1,22 @@
-use super::auth_executor::{AuthExecutor, AuthFuture};
-use super::bearer::BearerExecutor;
+use super::auth_provider::{AuthFuture, AuthProvider};
+use super::bearer::BearerProvider;
 use crate::syntax::error::AuthError;
 
-pub struct OAuth2ImplicitExecutor;
+pub struct OAuth2ImplicitProvider;
 
-impl OAuth2ImplicitExecutor {
+impl OAuth2ImplicitProvider {
     pub fn new() -> Self {
         Self
     }
 }
 
-impl Default for OAuth2ImplicitExecutor {
+impl Default for OAuth2ImplicitProvider {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl AuthExecutor for OAuth2ImplicitExecutor {
+impl AuthProvider for OAuth2ImplicitProvider {
     fn auth_type(&self) -> &str {
         "oauth2_implicit"
     }
@@ -31,7 +31,7 @@ impl AuthExecutor for OAuth2ImplicitExecutor {
         Box::pin(async move {
             let variables = context.all_variables();
             let (modified_headers, applied) =
-                BearerExecutor::apply_from_variables(&variables, headers);
+                BearerProvider::apply_from_variables(&variables, headers);
 
             if applied {
                 return Ok((url, modified_headers));
@@ -52,7 +52,7 @@ mod tests {
 
     #[test]
     fn test_implicit_type() {
-        let executor = OAuth2ImplicitExecutor::new();
+        let executor = OAuth2ImplicitProvider::new();
         assert_eq!(executor.auth_type(), "oauth2_implicit");
     }
 }

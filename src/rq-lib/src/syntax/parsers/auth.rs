@@ -1,7 +1,7 @@
 use super::parse_trait::Parse;
 use crate::syntax::fs::Fs;
 use crate::syntax::{
-    auth::{AuthType, Config as AuthProvider},
+    auth::{AuthType, Config as AuthConfig},
     error::SyntaxError,
     keywords::{
         KW_AUTH, PUNC_COLON, PUNC_COMMA, PUNC_DOT, PUNC_LBRACE, PUNC_LPAREN, PUNC_RBRACE,
@@ -34,8 +34,8 @@ impl Parse for AuthParser {
 
 pub(crate) fn parse_auth_definition(
     r: &mut TokenReader,
-    existing_providers: &HashMap<String, AuthProvider>,
-) -> Result<AuthProvider, SyntaxError> {
+    existing_providers: &HashMap<String, AuthConfig>,
+) -> Result<AuthConfig, SyntaxError> {
     let auth_token = expect(
         r,
         |t| t.token_type == TokenType::Keyword && t.value == KW_AUTH,
@@ -214,7 +214,7 @@ pub(crate) fn parse_auth_definition(
         r,
     )?;
 
-    let config = AuthProvider {
+    let config = AuthConfig {
         name: auth_name,
         auth_type,
         fields,

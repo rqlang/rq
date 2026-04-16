@@ -1,4 +1,4 @@
-use crate::syntax::auth::Config as AuthProvider;
+use crate::syntax::auth::Config as AuthConfig;
 use crate::syntax::http_method::HttpMethod;
 use crate::syntax::variable_context::Variable;
 
@@ -50,7 +50,7 @@ pub struct ParseResult {
     pub requests: Vec<RequestWithVariables>,
     pub environments: std::collections::HashMap<String, Vec<Variable>>,
     pub environment_locations: std::collections::HashMap<String, (String, usize, usize)>,
-    pub auth_providers: std::collections::HashMap<String, AuthProvider>,
+    pub auth_providers: std::collections::HashMap<String, AuthConfig>,
     pub endpoints: std::collections::HashMap<String, EndpointDefinition>,
     pub file_variables: Vec<Variable>,
     pub imported_files: Vec<std::path::PathBuf>,

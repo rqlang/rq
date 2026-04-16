@@ -1,4 +1,4 @@
-use crate::syntax::auth::{AuthFuture, AuthProvider};
+use crate::syntax::auth::{AuthConfig, AuthFuture};
 use crate::syntax::error::{AuthError, SyntaxError};
 use crate::syntax::token::Token;
 use std::collections::HashMap;
@@ -11,21 +11,21 @@ const REDIRECT_URI_FIELD: &str = "redirect_uri";
 const REQUIRED_FIELDS: [&str; 2] = [CLIENT_ID_FIELD, AUTHORIZATION_URL_FIELD];
 const OPTIONAL_FIELDS: [&str; 2] = [SCOPE_FIELD, REDIRECT_URI_FIELD];
 
-pub struct OAuth2ImplicitProvider;
+pub struct OAuth2ImplicitConfig;
 
-impl OAuth2ImplicitProvider {
+impl OAuth2ImplicitConfig {
     pub fn new() -> Self {
         Self
     }
 }
 
-impl Default for OAuth2ImplicitProvider {
+impl Default for OAuth2ImplicitConfig {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl AuthProvider for OAuth2ImplicitProvider {
+impl AuthConfig for OAuth2ImplicitConfig {
     fn auth_type(&self) -> &'static str {
         "oauth2_implicit"
     }
@@ -40,9 +40,6 @@ impl AuthProvider for OAuth2ImplicitProvider {
                     ),
                     0,
                     0,
-                    // We don't have a specific token for the missing field, so we use a default span or the span of the auth block if passed (but here we only have fields)
-                    // The caller handles the position if we return a generic error, or we can use the first field's span if available.
-                    // For now, using 0..0 as per existing pattern or minimal info.
                     if let Some(first) = fields.values().next() {
                         first.span.clone()
                     } else {
@@ -81,15 +78,13 @@ impl AuthProvider for OAuth2ImplicitProvider {
     ) -> AuthFuture<'a> {
         Box::pin(async move {
             let variables = context.all_variables();
-            // Fallback to manually provided token in environment
             let (modified_headers, applied) =
-                crate::syntax::auth::BearerAuthProvider::apply_from_variables(&variables, headers);
+                crate::syntax::auth::BearerAuthConfig::apply_from_variables(&variables, headers);
 
             if applied {
                 return Ok((url, modified_headers));
             }
 
-            // In the future, this is where we would trigger the interactive browser flow
             Err(AuthError::new(format!(
                 "OAuth2 Implicit auth '{}' requires interactive authentication. This feature is not yet implemented.",
                 auth_config.name
@@ -114,13 +109,13 @@ mod tests {
 
     #[test]
     fn test_implicit_type() {
-        let config = OAuth2ImplicitProvider::new();
+        let config = OAuth2ImplicitConfig::new();
         assert_eq!(config.auth_type(), "oauth2_implicit");
     }
 
     #[test]
     fn test_valid_implicit_minimal() {
-        let config = OAuth2ImplicitProvider::new();
+        let config = OAuth2ImplicitConfig::new();
         let mut fields = HashMap::new();
         fields.insert(CLIENT_ID_FIELD.to_string(), t("my-client-id"));
         fields.insert(
@@ -133,7 +128,7 @@ mod tests {
 
     #[test]
     fn test_valid_implicit_full() {
-        let config = OAuth2ImplicitProvider::new();
+        let config = OAuth2ImplicitConfig::new();
         let mut fields = HashMap::new();
         fields.insert(CLIENT_ID_FIELD.to_string(), t("my-client-id"));
         fields.insert(
@@ -148,7 +143,7 @@ mod tests {
 
     #[test]
     fn test_implicit_missing_fields() {
-        let config = OAuth2ImplicitProvider::new();
+        let config = OAuth2ImplicitConfig::new();
         let mut fields = HashMap::new();
         fields.insert(CLIENT_ID_FIELD.to_string(), t("my-client-id"));
         // Missing authorization_url
@@ -163,7 +158,7 @@ mod tests {
 
     #[test]
     fn test_implicit_unexpected_field() {
-        let config = OAuth2ImplicitProvider::new();
+        let config = OAuth2ImplicitConfig::new();
         let mut fields = HashMap::new();
         fields.insert(CLIENT_ID_FIELD.to_string(), t("my-client-id"));
         fields.insert(

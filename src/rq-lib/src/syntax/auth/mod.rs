@@ -1,15 +1,15 @@
-mod auth_provider;
-mod auth_provider_bearer;
-mod auth_provider_oauth2_authorization_code;
-mod auth_provider_oauth2_client_credentials;
-mod auth_provider_oauth2_implicit;
+mod auth_config;
+mod auth_config_bearer;
+mod auth_config_oauth2_authorization_code;
+mod auth_config_oauth2_client_credentials;
+mod auth_config_oauth2_implicit;
 
-pub use auth_provider::AuthFuture;
-pub use auth_provider::AuthProvider;
-pub use auth_provider_bearer::BearerAuthProvider;
-pub use auth_provider_oauth2_authorization_code::OAuth2AuthorizationCodeProvider;
-pub use auth_provider_oauth2_client_credentials::OAuth2ClientCredentialsProvider;
-pub use auth_provider_oauth2_implicit::OAuth2ImplicitProvider;
+pub use auth_config::AuthConfig;
+pub use auth_config::AuthFuture;
+pub use auth_config_bearer::BearerAuthConfig;
+pub use auth_config_oauth2_authorization_code::OAuth2AuthorizationCodeConfig;
+pub use auth_config_oauth2_client_credentials::OAuth2ClientCredentialsConfig;
+pub use auth_config_oauth2_implicit::OAuth2ImplicitConfig;
 
 use crate::syntax::error::SyntaxError;
 use crate::syntax::token::Token;
@@ -52,12 +52,12 @@ impl AuthType {
         }
     }
 
-    pub fn get_config(&self) -> Box<dyn AuthProvider> {
+    pub fn get_config(&self) -> Box<dyn AuthConfig> {
         match self {
-            AuthType::Bearer => Box::new(BearerAuthProvider::new()),
-            AuthType::OAuth2AuthorizationCode => Box::new(OAuth2AuthorizationCodeProvider::new()),
-            AuthType::OAuth2ClientCredentials => Box::new(OAuth2ClientCredentialsProvider::new()),
-            AuthType::OAuth2Implicit => Box::new(OAuth2ImplicitProvider::new()),
+            AuthType::Bearer => Box::new(BearerAuthConfig::new()),
+            AuthType::OAuth2AuthorizationCode => Box::new(OAuth2AuthorizationCodeConfig::new()),
+            AuthType::OAuth2ClientCredentials => Box::new(OAuth2ClientCredentialsConfig::new()),
+            AuthType::OAuth2Implicit => Box::new(OAuth2ImplicitConfig::new()),
         }
     }
 
@@ -104,8 +104,8 @@ pub struct Config {
 
 impl Config {
     pub fn validate(&self) -> Result<(), SyntaxError> {
-        let auth_provider = self.auth_type.get_config();
-        auth_provider.validate(&self.name, &self.fields)
+        let auth_config = self.auth_type.get_config();
+        auth_config.validate(&self.name, &self.fields)
     }
 
     /// - redirect_uri: "vscode://rq-lang.rq-language/oauth-callback" (if not present)

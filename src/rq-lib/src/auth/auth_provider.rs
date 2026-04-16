@@ -9,7 +9,7 @@ pub type AuthFuture<'a> = Pin<
     Box<dyn Future<Output = Result<ConfiguredRequest, Box<dyn std::error::Error>>> + Send + 'a>,
 >;
 
-pub trait AuthExecutor: Send + Sync {
+pub trait AuthProvider: Send + Sync {
     #[allow(dead_code)]
     fn auth_type(&self) -> &str;
 

@@ -1,13 +1,13 @@
-use super::auth_executor::{AuthExecutor, AuthFuture};
+use super::auth_provider::{AuthFuture, AuthProvider};
 use crate::syntax::variable_context::{Variable, VariableValue};
 
 const TOKEN_FIELD: &str = "token";
 
-pub struct BearerExecutor;
+pub struct BearerProvider;
 
-impl BearerExecutor {
+impl BearerProvider {
     pub fn new() -> Self {
-        BearerExecutor
+        BearerProvider
     }
 
     pub fn apply_from_variables(
@@ -41,13 +41,13 @@ impl BearerExecutor {
     }
 }
 
-impl Default for BearerExecutor {
+impl Default for BearerProvider {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl AuthExecutor for BearerExecutor {
+impl AuthProvider for BearerProvider {
     fn auth_type(&self) -> &str {
         "bearer"
     }
@@ -74,7 +74,7 @@ mod tests {
 
     #[test]
     fn test_bearer_type() {
-        let executor = BearerExecutor::new();
+        let executor = BearerProvider::new();
         assert_eq!(executor.auth_type(), "bearer");
     }
 
@@ -91,7 +91,7 @@ mod tests {
             },
         ];
         let headers = vec![("Content-Type".to_string(), "application/json".to_string())];
-        let (result, applied) = BearerExecutor::apply_from_variables(&variables, headers);
+        let (result, applied) = BearerProvider::apply_from_variables(&variables, headers);
         assert!(applied);
         assert_eq!(result.len(), 2);
         assert_eq!(
@@ -110,7 +110,7 @@ mod tests {
             value: VariableValue::String("other-value".to_string()),
         }];
         let headers = vec![("Content-Type".to_string(), "application/json".to_string())];
-        let (result, applied) = BearerExecutor::apply_from_variables(&variables, headers);
+        let (result, applied) = BearerProvider::apply_from_variables(&variables, headers);
         assert!(!applied);
         assert_eq!(result.len(), 1);
     }

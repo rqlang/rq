@@ -1,22 +1,22 @@
-pub mod auth_executor;
+pub mod auth_provider;
 pub mod bearer;
 pub mod oauth2_authorization_code;
 pub mod oauth2_client_credentials;
 pub mod oauth2_implicit;
 
-pub use auth_executor::{AuthExecutor, AuthFuture, ConfiguredRequest};
-pub use bearer::BearerExecutor;
-pub use oauth2_authorization_code::OAuth2AuthorizationCodeExecutor;
-pub use oauth2_client_credentials::OAuth2ClientCredentialsExecutor;
-pub use oauth2_implicit::OAuth2ImplicitExecutor;
+pub use auth_provider::{AuthFuture, AuthProvider, ConfiguredRequest};
+pub use bearer::BearerProvider;
+pub use oauth2_authorization_code::OAuth2AuthorizationCodeProvider;
+pub use oauth2_client_credentials::OAuth2ClientCredentialsProvider;
+pub use oauth2_implicit::OAuth2ImplicitProvider;
 
 pub use crate::syntax::auth::{AuthType, Config};
 
-pub fn get_executor(auth_type: &AuthType) -> Box<dyn AuthExecutor> {
+pub fn get_provider(auth_type: &AuthType) -> Box<dyn AuthProvider> {
     match auth_type {
-        AuthType::Bearer => Box::new(BearerExecutor::new()),
-        AuthType::OAuth2AuthorizationCode => Box::new(OAuth2AuthorizationCodeExecutor::new()),
-        AuthType::OAuth2ClientCredentials => Box::new(OAuth2ClientCredentialsExecutor::new()),
-        AuthType::OAuth2Implicit => Box::new(OAuth2ImplicitExecutor::new()),
+        AuthType::Bearer => Box::new(BearerProvider::new()),
+        AuthType::OAuth2AuthorizationCode => Box::new(OAuth2AuthorizationCodeProvider::new()),
+        AuthType::OAuth2ClientCredentials => Box::new(OAuth2ClientCredentialsProvider::new()),
+        AuthType::OAuth2Implicit => Box::new(OAuth2ImplicitProvider::new()),
     }
 }

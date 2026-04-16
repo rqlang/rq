@@ -1,4 +1,4 @@
-use crate::syntax::auth::{AuthFuture, AuthProvider};
+use crate::syntax::auth::{AuthConfig, AuthFuture};
 use crate::syntax::error::{AuthError, SyntaxError};
 use crate::syntax::token::Token;
 use std::collections::HashMap;
@@ -16,21 +16,21 @@ const CODE_CHALLENGE_METHOD_FIELD: &str = "code_challenge_method";
 const USE_STATE_FIELD: &str = "use_state";
 const USE_PKCE_FIELD: &str = "use_pkce";
 
-pub struct OAuth2AuthorizationCodeProvider;
+pub struct OAuth2AuthorizationCodeConfig;
 
-impl OAuth2AuthorizationCodeProvider {
+impl OAuth2AuthorizationCodeConfig {
     pub fn new() -> Self {
-        OAuth2AuthorizationCodeProvider
+        OAuth2AuthorizationCodeConfig
     }
 }
 
-impl Default for OAuth2AuthorizationCodeProvider {
+impl Default for OAuth2AuthorizationCodeConfig {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl AuthProvider for OAuth2AuthorizationCodeProvider {
+impl AuthConfig for OAuth2AuthorizationCodeConfig {
     fn auth_type(&self) -> &str {
         "oauth2_authorization_code"
     }
@@ -149,7 +149,7 @@ impl AuthProvider for OAuth2AuthorizationCodeProvider {
         Box::pin(async move {
             let variables = context.all_variables();
             let (modified_headers, applied) =
-                crate::syntax::auth::BearerAuthProvider::apply_from_variables(&variables, headers);
+                crate::syntax::auth::BearerAuthConfig::apply_from_variables(&variables, headers);
 
             if applied {
                 return Ok((url, modified_headers));
@@ -179,13 +179,13 @@ mod tests {
 
     #[test]
     fn test_oauth2_auth_code_type() {
-        let config = OAuth2AuthorizationCodeProvider::new();
+        let config = OAuth2AuthorizationCodeConfig::new();
         assert_eq!(config.auth_type(), "oauth2_authorization_code");
     }
 
     #[test]
     fn test_valid_oauth2_auth_code_minimal() {
-        let config = OAuth2AuthorizationCodeProvider::new();
+        let config = OAuth2AuthorizationCodeConfig::new();
         let mut fields = HashMap::new();
         fields.insert(CLIENT_ID_FIELD.to_string(), t("my-client-id"));
         fields.insert(
@@ -202,7 +202,7 @@ mod tests {
 
     #[test]
     fn test_valid_oauth2_auth_code_with_use_state() {
-        let config = OAuth2AuthorizationCodeProvider::new();
+        let config = OAuth2AuthorizationCodeConfig::new();
         let mut fields = HashMap::new();
         fields.insert(CLIENT_ID_FIELD.to_string(), t("my-client-id"));
         fields.insert(
@@ -220,7 +220,7 @@ mod tests {
 
     #[test]
     fn test_invalid_oauth2_auth_code_use_state() {
-        let config = OAuth2AuthorizationCodeProvider::new();
+        let config = OAuth2AuthorizationCodeConfig::new();
         let mut fields = HashMap::new();
         fields.insert(CLIENT_ID_FIELD.to_string(), t("my-client-id"));
         fields.insert(
@@ -238,7 +238,7 @@ mod tests {
 
     #[test]
     fn test_valid_oauth2_auth_code_with_pkce() {
-        let config = OAuth2AuthorizationCodeProvider::new();
+        let config = OAuth2AuthorizationCodeConfig::new();
         let mut fields = HashMap::new();
         fields.insert(CLIENT_ID_FIELD.to_string(), t("my-client-id"));
         fields.insert(
@@ -261,7 +261,7 @@ mod tests {
 
     #[test]
     fn test_valid_oauth2_auth_code_with_client_secret() {
-        let config = OAuth2AuthorizationCodeProvider::new();
+        let config = OAuth2AuthorizationCodeConfig::new();
         let mut fields = HashMap::new();
         fields.insert(CLIENT_ID_FIELD.to_string(), t("my-client-id"));
         fields.insert(CLIENT_SECRET_FIELD.to_string(), t("secret123"));
@@ -279,7 +279,7 @@ mod tests {
 
     #[test]
     fn test_oauth2_auth_code_missing_client_id() {
-        let config = OAuth2AuthorizationCodeProvider::new();
+        let config = OAuth2AuthorizationCodeConfig::new();
         let mut fields = HashMap::new();
         fields.insert(
             AUTHORIZATION_URL_FIELD.to_string(),
@@ -300,7 +300,7 @@ mod tests {
 
     #[test]
     fn test_oauth2_auth_code_missing_authorization_url() {
-        let config = OAuth2AuthorizationCodeProvider::new();
+        let config = OAuth2AuthorizationCodeConfig::new();
         let mut fields = HashMap::new();
         fields.insert(CLIENT_ID_FIELD.to_string(), t("my-client-id"));
         fields.insert(
@@ -318,7 +318,7 @@ mod tests {
 
     #[test]
     fn test_oauth2_auth_code_missing_token_url() {
-        let config = OAuth2AuthorizationCodeProvider::new();
+        let config = OAuth2AuthorizationCodeConfig::new();
         let mut fields = HashMap::new();
         fields.insert(CLIENT_ID_FIELD.to_string(), t("my-client-id"));
         fields.insert(
@@ -336,7 +336,7 @@ mod tests {
 
     #[test]
     fn test_oauth2_auth_code_empty_field() {
-        let config = OAuth2AuthorizationCodeProvider::new();
+        let config = OAuth2AuthorizationCodeConfig::new();
         let mut fields = HashMap::new();
         fields.insert(CLIENT_ID_FIELD.to_string(), t("   "));
         fields.insert(
@@ -358,7 +358,7 @@ mod tests {
 
     #[test]
     fn test_oauth2_auth_code_invalid_challenge_method() {
-        let config = OAuth2AuthorizationCodeProvider::new();
+        let config = OAuth2AuthorizationCodeConfig::new();
         let mut fields = HashMap::new();
         fields.insert(CLIENT_ID_FIELD.to_string(), t("my-client-id"));
         fields.insert(
@@ -381,7 +381,7 @@ mod tests {
 
     #[test]
     fn test_oauth2_auth_code_unexpected_field() {
-        let config = OAuth2AuthorizationCodeProvider::new();
+        let config = OAuth2AuthorizationCodeConfig::new();
         let mut fields = HashMap::new();
         fields.insert(CLIENT_ID_FIELD.to_string(), t("my-client-id"));
         fields.insert(
@@ -406,7 +406,7 @@ mod tests {
     async fn test_oauth2_configure_fallback_to_bearer_with_auth_token() {
         use crate::syntax::variable_context::{Variable, VariableValue};
 
-        let provider = OAuth2AuthorizationCodeProvider::new();
+        let provider = OAuth2AuthorizationCodeConfig::new();
 
         let auth_config = crate::syntax::auth::Config {
             name: "test_oauth".to_string(),
@@ -453,7 +453,7 @@ mod tests {
     async fn test_oauth2_configure_no_fallback_returns_error() {
         use crate::syntax::variable_context::{Variable, VariableValue};
 
-        let config = OAuth2AuthorizationCodeProvider::new();
+        let config = OAuth2AuthorizationCodeConfig::new();
 
         let variables = vec![Variable {
             name: "other_var".to_string(),
@@ -492,7 +492,7 @@ mod tests {
 
     #[test]
     fn test_valid_oauth2_auth_code_with_use_pkce() {
-        let config = OAuth2AuthorizationCodeProvider::new();
+        let config = OAuth2AuthorizationCodeConfig::new();
         let mut fields = HashMap::new();
         fields.insert(CLIENT_ID_FIELD.to_string(), t("my-client-id"));
         fields.insert(
@@ -510,7 +510,7 @@ mod tests {
 
     #[test]
     fn test_invalid_oauth2_auth_code_use_pkce() {
-        let config = OAuth2AuthorizationCodeProvider::new();
+        let config = OAuth2AuthorizationCodeConfig::new();
         let mut fields = HashMap::new();
         fields.insert(CLIENT_ID_FIELD.to_string(), t("my-client-id"));
         fields.insert(

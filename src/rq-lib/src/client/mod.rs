@@ -155,7 +155,7 @@ impl RqClient {
                             #[cfg(feature = "native")]
                             {
                                 let provider =
-                                    crate::auth::get_executor(&resolved_provider.auth_type);
+                                    crate::auth::get_provider(&resolved_provider.auth_type);
                                 match provider
                                     .configure(
                                         &resolved_provider,

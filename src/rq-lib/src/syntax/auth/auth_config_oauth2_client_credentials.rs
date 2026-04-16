@@ -1,4 +1,4 @@
-use crate::syntax::auth::{AuthFuture, AuthProvider};
+use crate::syntax::auth::{AuthConfig, AuthFuture};
 use crate::syntax::error::SyntaxError;
 use crate::syntax::token::Token;
 use std::collections::HashMap;
@@ -23,21 +23,21 @@ const SCOPE_FIELD: &str = "scope";
 const CERT_FILE_FIELD: &str = "cert_file";
 const CERT_PASSWORD_FIELD: &str = "cert_password";
 
-pub struct OAuth2ClientCredentialsProvider;
+pub struct OAuth2ClientCredentialsConfig;
 
-impl OAuth2ClientCredentialsProvider {
+impl OAuth2ClientCredentialsConfig {
     pub fn new() -> Self {
-        OAuth2ClientCredentialsProvider
+        OAuth2ClientCredentialsConfig
     }
 }
 
-impl Default for OAuth2ClientCredentialsProvider {
+impl Default for OAuth2ClientCredentialsConfig {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl AuthProvider for OAuth2ClientCredentialsProvider {
+impl AuthConfig for OAuth2ClientCredentialsConfig {
     fn auth_type(&self) -> &str {
         "oauth2_client_credentials"
     }
@@ -329,13 +329,13 @@ mod tests {
 
     #[test]
     fn test_client_credentials_type() {
-        let provider = OAuth2ClientCredentialsProvider::new();
+        let provider = OAuth2ClientCredentialsConfig::new();
         assert_eq!(provider.auth_type(), "oauth2_client_credentials");
     }
 
     #[test]
     fn test_valid_client_credentials() {
-        let provider = OAuth2ClientCredentialsProvider::new();
+        let provider = OAuth2ClientCredentialsConfig::new();
         let mut fields = HashMap::new();
         fields.insert(CLIENT_ID_FIELD.to_string(), t("my-client"));
         fields.insert(CLIENT_SECRET_FIELD.to_string(), t("my-secret"));
@@ -346,7 +346,7 @@ mod tests {
 
     #[test]
     fn test_client_credentials_missing_field() {
-        let provider = OAuth2ClientCredentialsProvider::new();
+        let provider = OAuth2ClientCredentialsConfig::new();
         let mut fields = HashMap::new();
         fields.insert(CLIENT_ID_FIELD.to_string(), t("my-client"));
         // Missing secret and token_url
@@ -356,7 +356,7 @@ mod tests {
 
     #[test]
     fn test_client_credentials_empty_field() {
-        let provider = OAuth2ClientCredentialsProvider::new();
+        let provider = OAuth2ClientCredentialsConfig::new();
         let mut fields = HashMap::new();
         fields.insert(CLIENT_ID_FIELD.to_string(), t(""));
         fields.insert(CLIENT_SECRET_FIELD.to_string(), t("my-secret"));
@@ -367,7 +367,7 @@ mod tests {
 
     #[test]
     fn test_valid_client_credentials_with_cert() {
-        let provider = OAuth2ClientCredentialsProvider::new();
+        let provider = OAuth2ClientCredentialsConfig::new();
         let mut fields = HashMap::new();
         fields.insert(CLIENT_ID_FIELD.to_string(), t("my-client"));
         fields.insert(CERT_FILE_FIELD.to_string(), t("/path/to/cert.p12"));
@@ -378,7 +378,7 @@ mod tests {
 
     #[test]
     fn test_client_credentials_missing_secret_and_cert() {
-        let provider = OAuth2ClientCredentialsProvider::new();
+        let provider = OAuth2ClientCredentialsConfig::new();
         let mut fields = HashMap::new();
         fields.insert(CLIENT_ID_FIELD.to_string(), t("my-client"));
         fields.insert(TOKEN_URL_FIELD.to_string(), t("https://example.com/token"));

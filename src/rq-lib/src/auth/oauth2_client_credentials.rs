@@ -1,4 +1,4 @@
-use super::auth_executor::{AuthExecutor, AuthFuture};
+use super::auth_provider::{AuthFuture, AuthProvider};
 use crate::syntax::error::AuthError;
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
@@ -14,21 +14,21 @@ const SCOPE_FIELD: &str = "scope";
 const CERT_FILE_FIELD: &str = "cert_file";
 const CERT_PASSWORD_FIELD: &str = "cert_password";
 
-pub struct OAuth2ClientCredentialsExecutor;
+pub struct OAuth2ClientCredentialsProvider;
 
-impl OAuth2ClientCredentialsExecutor {
+impl OAuth2ClientCredentialsProvider {
     pub fn new() -> Self {
         Self
     }
 }
 
-impl Default for OAuth2ClientCredentialsExecutor {
+impl Default for OAuth2ClientCredentialsProvider {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl AuthExecutor for OAuth2ClientCredentialsExecutor {
+impl AuthProvider for OAuth2ClientCredentialsProvider {
     fn auth_type(&self) -> &str {
         "oauth2_client_credentials"
     }
@@ -224,7 +224,7 @@ mod tests {
 
     #[test]
     fn test_client_credentials_type() {
-        let executor = OAuth2ClientCredentialsExecutor::new();
+        let executor = OAuth2ClientCredentialsProvider::new();
         assert_eq!(executor.auth_type(), "oauth2_client_credentials");
     }
 }

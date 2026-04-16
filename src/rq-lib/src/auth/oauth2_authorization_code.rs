@@ -1,22 +1,22 @@
-use super::auth_executor::{AuthExecutor, AuthFuture};
-use super::bearer::BearerExecutor;
+use super::auth_provider::{AuthFuture, AuthProvider};
+use super::bearer::BearerProvider;
 use crate::syntax::error::AuthError;
 
-pub struct OAuth2AuthorizationCodeExecutor;
+pub struct OAuth2AuthorizationCodeProvider;
 
-impl OAuth2AuthorizationCodeExecutor {
+impl OAuth2AuthorizationCodeProvider {
     pub fn new() -> Self {
         Self
     }
 }
 
-impl Default for OAuth2AuthorizationCodeExecutor {
+impl Default for OAuth2AuthorizationCodeProvider {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl AuthExecutor for OAuth2AuthorizationCodeExecutor {
+impl AuthProvider for OAuth2AuthorizationCodeProvider {
     fn auth_type(&self) -> &str {
         "oauth2_authorization_code"
     }
@@ -31,7 +31,7 @@ impl AuthExecutor for OAuth2AuthorizationCodeExecutor {
         Box::pin(async move {
             let variables = context.all_variables();
             let (modified_headers, applied) =
-                BearerExecutor::apply_from_variables(&variables, headers);
+                BearerProvider::apply_from_variables(&variables, headers);
 
             if applied {
                 return Ok((url, modified_headers));
@@ -53,7 +53,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_configure_fallback_to_bearer_with_auth_token() {
-        let executor = OAuth2AuthorizationCodeExecutor::new();
+        let executor = OAuth2AuthorizationCodeProvider::new();
         let auth_config = crate::syntax::auth::Config {
             name: "test_oauth".to_string(),
             auth_type: crate::syntax::auth::AuthType::OAuth2AuthorizationCode,
@@ -93,7 +93,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_configure_no_fallback_returns_error() {
-        let executor = OAuth2AuthorizationCodeExecutor::new();
+        let executor = OAuth2AuthorizationCodeProvider::new();
         let auth_config = crate::syntax::auth::Config {
             name: "test_oauth".to_string(),
             auth_type: crate::syntax::auth::AuthType::OAuth2AuthorizationCode,

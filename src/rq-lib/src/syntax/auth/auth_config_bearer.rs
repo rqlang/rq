@@ -1,4 +1,4 @@
-use crate::syntax::auth::{AuthFuture, AuthProvider};
+use crate::syntax::auth::{AuthConfig, AuthFuture};
 use crate::syntax::error::SyntaxError;
 use crate::syntax::token::Token;
 use crate::syntax::variable_context::Variable;
@@ -6,11 +6,11 @@ use std::collections::HashMap;
 
 const TOKEN_FIELD: &str = "token";
 
-pub struct BearerAuthProvider;
+pub struct BearerAuthConfig;
 
-impl BearerAuthProvider {
+impl BearerAuthConfig {
     pub fn new() -> Self {
-        BearerAuthProvider
+        BearerAuthConfig
     }
 
     pub fn apply_from_variables(
@@ -41,13 +41,13 @@ impl BearerAuthProvider {
     }
 }
 
-impl Default for BearerAuthProvider {
+impl Default for BearerAuthConfig {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl AuthProvider for BearerAuthProvider {
+impl AuthConfig for BearerAuthConfig {
     fn auth_type(&self) -> &str {
         "bearer"
     }
@@ -88,13 +88,13 @@ mod tests {
 
     #[test]
     fn test_bearer_auth_type() {
-        let config = BearerAuthProvider::new();
+        let config = BearerAuthConfig::new();
         assert_eq!(config.auth_type(), "bearer");
     }
 
     #[test]
     fn test_valid_bearer_auth() {
-        let config = BearerAuthProvider::new();
+        let config = BearerAuthConfig::new();
         let mut fields = HashMap::new();
         fields.insert(
             "token".to_string(),
@@ -110,7 +110,7 @@ mod tests {
 
     #[test]
     fn test_bearer_auth_missing_token() {
-        let config = BearerAuthProvider::new();
+        let config = BearerAuthConfig::new();
         let fields = HashMap::new();
 
         let result = config.validate("test_auth", &fields);
@@ -119,7 +119,7 @@ mod tests {
 
     #[test]
     fn test_bearer_auth_empty_token() {
-        let config = BearerAuthProvider::new();
+        let config = BearerAuthConfig::new();
         let mut fields = HashMap::new();
         fields.insert(
             "token".to_string(),
@@ -139,7 +139,7 @@ mod tests {
 
     #[test]
     fn test_bearer_auth_unexpected_field() {
-        let config = BearerAuthProvider::new();
+        let config = BearerAuthConfig::new();
         let mut fields = HashMap::new();
         fields.insert(
             "token".to_string(),
@@ -179,7 +179,7 @@ mod tests {
 
         let headers = vec![("Content-Type".to_string(), "application/json".to_string())];
 
-        let (result, applied) = BearerAuthProvider::apply_from_variables(&variables, headers);
+        let (result, applied) = BearerAuthConfig::apply_from_variables(&variables, headers);
 
         assert!(applied);
         assert_eq!(result.len(), 2);
@@ -207,7 +207,7 @@ mod tests {
 
         let headers = vec![("Content-Type".to_string(), "application/json".to_string())];
 
-        let (result, applied) = BearerAuthProvider::apply_from_variables(&variables, headers);
+        let (result, applied) = BearerAuthConfig::apply_from_variables(&variables, headers);
 
         assert!(!applied);
         assert_eq!(result.len(), 1);
@@ -228,7 +228,7 @@ mod tests {
 
         let headers = vec![];
 
-        let (result, applied) = BearerAuthProvider::apply_from_variables(&variables, headers);
+        let (result, applied) = BearerAuthConfig::apply_from_variables(&variables, headers);
 
         assert!(applied);
         assert_eq!(result.len(), 1);

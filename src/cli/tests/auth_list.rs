@@ -184,11 +184,7 @@ rq test("http://localhost:8080/test");
 "#,
     )?;
 
-    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".to_string());
-    let binary_path = format!("{manifest_dir}/target/debug/rq");
-    common::ensure_built();
-
-    let output = std::process::Command::new(&binary_path)
+    let output = rq_cmd()
         .args(["auth", "list"])
         .current_dir(&temp_dir)
         .output()?;

@@ -16,7 +16,7 @@
       "answer": 42
     },
     "headers": {
-      "user-agent": "rq/0.0.0",
+      "user-agent": "rq/0.1.0",
       "accept": "*/*",
       "host": "localhost:8080",
       "content-type": "application/json",

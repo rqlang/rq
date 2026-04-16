@@ -11,7 +11,7 @@
         "cookies": {},
         "body": {},
         "headers": {
-            "user-agent": "rq/0.0.0",
+            "user-agent": "rq/0.1.0",
             "test": "{{var_a}}",
             "accept": "*/*",
             "host": "localhost:8080"

@@ -15,7 +15,7 @@
             "inline": "yes"
         },
         "headers": {
-            "user-agent": "rq/0.0.0",
+            "user-agent": "rq/0.1.0",
             "accept": "application/json",
             "host": "localhost:8080",
             "content-type": "application/json",

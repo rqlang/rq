@@ -3,6 +3,8 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as http from 'http';
 import * as https from 'https';
+import * as crypto from 'crypto';
+import { execFileSync } from 'child_process';
 import { normalizePath, collectAllFiles } from './utils';
 
 // ---------------------------------------------------------------------------
@@ -401,7 +403,7 @@ export async function executeRequest(options: ExecuteRequestOptions): Promise<Ex
             }
         } else if (authType === 'oauth2_client_credentials') {
             const authDetails = await showAuthConfig(authName, options.sourceDirectory, options.environment);
-            const token = await fetchClientCredentialsToken(authDetails.fields);
+            const token = await fetchClientCredentialsToken(authDetails.fields, path.dirname(authDetails.file));
             headers['authorization'] = `Bearer ${token}`;
         }
     }
@@ -470,14 +472,43 @@ function nodeHttpRequest(url: string, method: string, reqHeaders: Record<string,
     });
 }
 
-async function fetchClientCredentialsToken(fields: Record<string, string>): Promise<string> {
-    const { client_id, client_secret, token_url, scope } = fields;
+async function fetchClientCredentialsToken(fields: Record<string, string>, authFileDir?: string): Promise<string> {
+    const { client_id, client_secret, token_url, scope, cert_file, cert_password } = fields;
+
+    if (cert_file) {
+        const certPath = (authFileDir && !path.isAbsolute(cert_file))
+            ? path.join(authFileDir, cert_file)
+            : cert_file;
+        const certContent = fs.readFileSync(certPath);
+        const { certDer, privateKeyPem } = certContent.toString('utf8').includes('-----BEGIN')
+            ? parsePemCert(certContent)
+            : extractPemFromP12(certPath, cert_password ?? '');
+        const assertion = createJwtAssertion(privateKeyPem, certDer, client_id, token_url);
+        const params = new URLSearchParams({
+            grant_type: 'client_credentials',
+            client_id,
+            client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
+            client_assertion: assertion,
+        });
+        if (scope) { params.set('scope', scope); }
+        const response = await nodeHttpRequest(token_url, 'POST', {
+            'content-type': 'application/x-www-form-urlencoded',
+        }, params.toString());
+        if (response.status < 200 || response.status >= 300) {
+            throw new Error(`Token request failed with status ${response.status}: ${response.body}`);
+        }
+        const data = JSON.parse(response.body) as { access_token?: string };
+        if (!data.access_token) {
+            throw new Error(`Token response missing access_token: ${response.body}`);
+        }
+        return data.access_token;
+    }
+
     const params = new URLSearchParams({ grant_type: 'client_credentials', client_id, client_secret });
     if (scope) { params.set('scope', scope); }
-    const body = params.toString();
     const response = await nodeHttpRequest(token_url, 'POST', {
         'content-type': 'application/x-www-form-urlencoded',
-    }, body);
+    }, params.toString());
     if (response.status < 200 || response.status >= 300) {
         throw new Error(`Token request failed with status ${response.status}: ${response.body}`);
     }
@@ -486,4 +517,57 @@ async function fetchClientCredentialsToken(fields: Record<string, string>): Prom
         throw new Error(`Token response missing access_token: ${response.body}`);
     }
     return data.access_token;
+}
+
+export function base64url(buf: Buffer): string {
+    return buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+}
+
+export function parsePemCert(content: Buffer): { certDer: Buffer; privateKeyPem: Buffer } {
+    const text = content.toString('utf8');
+    const certMatch = text.match(/-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/);
+    if (!certMatch) { throw new Error('No CERTIFICATE block found in PEM file'); }
+    const certDer = Buffer.from(
+        certMatch[0].split('\n').filter(l => !l.startsWith('-----')).join(''),
+        'base64',
+    );
+    const keyMatch = text.match(/-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----[\s\S]+?-----END (?:[A-Z]+ )?PRIVATE KEY-----/);
+    if (!keyMatch) { throw new Error('No PRIVATE KEY block found in PEM file. Ensure the file contains an unencrypted private key.'); }
+    return { certDer, privateKeyPem: Buffer.from(keyMatch[0]) };
+}
+
+export function extractPemFromP12(p12Path: string, password: string): { certDer: Buffer; privateKeyPem: Buffer } {
+    const baseArgs = ['-in', p12Path, '-passin', `pass:${password}`];
+    const run = (extra: string[]) => execFileSync('openssl', ['pkcs12', ...baseArgs, ...extra]);
+    try {
+        const combined = Buffer.concat([run(['-nokeys']), run(['-nocerts', '-nodes'])]);
+        return parsePemCert(combined);
+    } catch {
+        try {
+            const combined = Buffer.concat([run(['-nokeys', '-legacy']), run(['-nocerts', '-nodes', '-legacy'])]);
+            return parsePemCert(combined);
+        } catch (e: unknown) {
+            const msg = e instanceof Error ? e.message : String(e);
+            throw new Error(`Failed to parse .p12 certificate. Ensure openssl is installed and the password is correct. ${msg}`);
+        }
+    }
+}
+
+export function createJwtAssertion(privateKeyPem: Buffer, certDer: Buffer, clientId: string, tokenUrl: string): string {
+    const now = Math.floor(Date.now() / 1000);
+    const x5t = base64url(crypto.createHash('sha1').update(certDer).digest());
+    const header = base64url(Buffer.from(JSON.stringify({ alg: 'RS256', typ: 'JWT', x5t })));
+    const payload = base64url(Buffer.from(JSON.stringify({
+        iss: clientId,
+        sub: clientId,
+        aud: tokenUrl,
+        jti: crypto.randomUUID(),
+        iat: now,
+        nbf: now - 60,
+        exp: now + 300,
+    })));
+    const signingInput = `${header}.${payload}`;
+    const sign = crypto.createSign('RSA-SHA256');
+    sign.update(signingInput);
+    return `${signingInput}.${base64url(sign.sign(privateKeyPem))}`;
 }

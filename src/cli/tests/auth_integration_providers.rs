@@ -20,19 +20,22 @@ async fn test_auth_bearer_integration() {
         .await;
 
     // 3. Create .rq file from template
-    let template_path = "tests/fixtures/templates/auth_bearer.rq.template";
+    let template_path = format!(
+        "{}/tests/fixtures/templates/auth_bearer.rq.template",
+        env!("CARGO_MANIFEST_DIR")
+    );
     let template_content =
         std::fs::read_to_string(template_path).expect("Failed to read template file");
 
     let rq_file_content = template_content.replace("{{MOCK_URL}}", &mock_server.uri());
 
-    let rq_path = "target/test_auth_bearer.rq";
-    std::fs::write(rq_path, rq_file_content).unwrap();
+    let rq_path = format!("{}/test_auth_bearer.rq", env!("CARGO_TARGET_TMPDIR"));
+    std::fs::write(&rq_path, rq_file_content).unwrap();
 
     // 4. Run `rq`
     let output = common::rq_cmd()
         .arg("-s")
-        .arg(rq_path)
+        .arg(&rq_path)
         .output()
         .expect("Failed to execute rq binary");
 
@@ -80,19 +83,22 @@ async fn test_auth_oauth2_client_credentials_integration() {
         .await;
 
     // 3. Create .rq file from template
-    let template_path = "tests/fixtures/templates/auth_oauth2_cc.rq.template";
+    let template_path = format!(
+        "{}/tests/fixtures/templates/auth_oauth2_cc.rq.template",
+        env!("CARGO_MANIFEST_DIR")
+    );
     let template_content =
         std::fs::read_to_string(template_path).expect("Failed to read template file");
 
     let rq_file_content = template_content.replace("{{MOCK_URL}}", &mock_server.uri());
 
-    let rq_path = "target/test_auth_cc.rq";
-    std::fs::write(rq_path, rq_file_content).unwrap();
+    let rq_path = format!("{}/test_auth_cc.rq", env!("CARGO_TARGET_TMPDIR"));
+    std::fs::write(&rq_path, rq_file_content).unwrap();
 
     // 4. Run `rq`
     let output = common::rq_cmd()
         .arg("-s")
-        .arg(rq_path)
+        .arg(&rq_path)
         .output()
         .expect("Failed to execute rq binary");
 
@@ -127,18 +133,21 @@ async fn test_auth_oauth2_auth_code_integration() {
         .await;
 
     // 2. Create .rq file from template
-    let template_path = "tests/fixtures/templates/auth_oauth2_ac.rq.template";
+    let template_path = format!(
+        "{}/tests/fixtures/templates/auth_oauth2_ac.rq.template",
+        env!("CARGO_MANIFEST_DIR")
+    );
     let template_content =
         std::fs::read_to_string(template_path).expect("Failed to read template file");
 
     let rq_file_content = template_content.replace("{{MOCK_URL}}", &mock_server.uri());
-    let rq_path = "target/test_auth_ac.rq";
-    std::fs::write(rq_path, rq_file_content).unwrap();
+    let rq_path = format!("{}/test_auth_ac.rq", env!("CARGO_TARGET_TMPDIR"));
+    std::fs::write(&rq_path, rq_file_content).unwrap();
 
     // 3. CASE A: Expect Failure (No token provided)
     let output_fail = common::rq_cmd()
         .arg("-s")
-        .arg(rq_path)
+        .arg(&rq_path)
         .output()
         .expect("Failed to execute rq binary");
 
@@ -152,7 +161,7 @@ async fn test_auth_oauth2_auth_code_integration() {
     // 4. CASE B: Expect Success (Fallback variable provided)
     let output_ok = common::rq_cmd()
         .arg("-s")
-        .arg(rq_path)
+        .arg(&rq_path)
         .arg("-v")
         .arg("auth_token=fallback-token-123")
         .output()
@@ -194,7 +203,10 @@ async fn test_auth_oauth2_client_credentials_variables() {
         .mount(&mock_server)
         .await;
 
-    let template_path = "tests/fixtures/templates/auth_oauth2_cc_vars.rq.template";
+    let template_path = format!(
+        "{}/tests/fixtures/templates/auth_oauth2_cc_vars.rq.template",
+        env!("CARGO_MANIFEST_DIR")
+    );
     let template_content =
         std::fs::read_to_string(template_path).expect("Failed to read template file");
 
@@ -209,15 +221,15 @@ async fn test_auth_oauth2_client_credentials_variables() {
         mock_server.uri()
     );
 
-    let rq_path = "target/test_auth_cc_vars.rq";
-    std::fs::write(rq_path, rq_content).unwrap();
+    let rq_path = format!("{}/test_auth_cc_vars.rq", env!("CARGO_TARGET_TMPDIR"));
+    std::fs::write(&rq_path, rq_content).unwrap();
 
     let output = common::rq_cmd()
         .arg("-s")
         .arg("test_auth_cc_vars.rq")
         .arg("-e")
         .arg("test")
-        .current_dir("target")
+        .current_dir(env!("CARGO_TARGET_TMPDIR"))
         .output()
         .expect("Failed to execute rq binary");
 
@@ -267,26 +279,29 @@ async fn test_auth_oauth2_client_credentials_cert_integration() {
         .await;
 
     // 3. Create .rq file from template
-    let template_path = "tests/fixtures/templates/auth_oauth2_cc_cert.rq.template";
+    let template_path = format!(
+        "{}/tests/fixtures/templates/auth_oauth2_cc_cert.rq.template",
+        env!("CARGO_MANIFEST_DIR")
+    );
     let template_content =
         std::fs::read_to_string(template_path).expect("Failed to read template file");
 
-    // Use relative path from the .rq file (which will be in target/) to the cert
-    // target/ is 1 level deep from root. tests/ is in root.
-    // So ../tests/fixtures/certs/client.p12
-    let cert_path_str = "../tests/fixtures/certs/client.p12";
+    let cert_path_str = format!(
+        "{}/tests/fixtures/certs/client.p12",
+        env!("CARGO_MANIFEST_DIR")
+    );
 
     let rq_file_content = template_content
         .replace("{{MOCK_URL}}", &mock_server.uri())
-        .replace("{{CERT_PATH}}", cert_path_str);
+        .replace("{{CERT_PATH}}", &cert_path_str);
 
-    let rq_path = "target/test_auth_cc_cert.rq";
-    std::fs::write(rq_path, rq_file_content).unwrap();
+    let rq_path = format!("{}/test_auth_cc_cert.rq", env!("CARGO_TARGET_TMPDIR"));
+    std::fs::write(&rq_path, rq_file_content).unwrap();
 
     // 4. Run `rq`
     let output = common::rq_cmd()
         .arg("-s")
-        .arg(rq_path)
+        .arg(&rq_path)
         .output()
         .expect("Failed to execute rq binary");
 
@@ -332,24 +347,29 @@ async fn test_auth_oauth2_client_credentials_pfx_integration() {
         .await;
 
     // 3. Create .rq file from template
-    let template_path = "tests/fixtures/templates/auth_oauth2_cc_cert.rq.template";
+    let template_path = format!(
+        "{}/tests/fixtures/templates/auth_oauth2_cc_cert.rq.template",
+        env!("CARGO_MANIFEST_DIR")
+    );
     let template_content =
         std::fs::read_to_string(template_path).expect("Failed to read template file");
 
-    // Use .pfx file
-    let cert_path_str = "../tests/fixtures/certs/client.pfx";
+    let cert_path_str = format!(
+        "{}/tests/fixtures/certs/client.pfx",
+        env!("CARGO_MANIFEST_DIR")
+    );
 
     let rq_file_content = template_content
         .replace("{{MOCK_URL}}", &mock_server.uri())
-        .replace("{{CERT_PATH}}", cert_path_str);
+        .replace("{{CERT_PATH}}", &cert_path_str);
 
-    let rq_path = "target/test_auth_cc_pfx.rq";
-    std::fs::write(rq_path, rq_file_content).unwrap();
+    let rq_path = format!("{}/test_auth_cc_pfx.rq", env!("CARGO_TARGET_TMPDIR"));
+    std::fs::write(&rq_path, rq_file_content).unwrap();
 
     // 4. Run `rq`
     let output = common::rq_cmd()
         .arg("-s")
-        .arg(rq_path)
+        .arg(&rq_path)
         .output()
         .expect("Failed to execute rq binary");
 
@@ -395,24 +415,29 @@ async fn test_auth_oauth2_client_credentials_pem_integration() {
         .await;
 
     // 3. Create .rq file from template
-    let template_path = "tests/fixtures/templates/auth_oauth2_cc_cert.rq.template";
+    let template_path = format!(
+        "{}/tests/fixtures/templates/auth_oauth2_cc_cert.rq.template",
+        env!("CARGO_MANIFEST_DIR")
+    );
     let template_content =
         std::fs::read_to_string(template_path).expect("Failed to read template file");
 
-    // Use .pem file
-    let cert_path_str = "../tests/fixtures/certs/client.pem";
+    let cert_path_str = format!(
+        "{}/tests/fixtures/certs/client.pem",
+        env!("CARGO_MANIFEST_DIR")
+    );
 
     let rq_file_content = template_content
         .replace("{{MOCK_URL}}", &mock_server.uri())
-        .replace("{{CERT_PATH}}", cert_path_str);
+        .replace("{{CERT_PATH}}", &cert_path_str);
 
-    let rq_path = "target/test_auth_cc_pem.rq";
-    std::fs::write(rq_path, rq_file_content).unwrap();
+    let rq_path = format!("{}/test_auth_cc_pem.rq", env!("CARGO_TARGET_TMPDIR"));
+    std::fs::write(&rq_path, rq_file_content).unwrap();
 
     // 4. Run `rq`
     let output = common::rq_cmd()
         .arg("-s")
-        .arg(rq_path)
+        .arg(&rq_path)
         .output()
         .expect("Failed to execute rq binary");
 
@@ -444,18 +469,21 @@ async fn test_auth_oauth2_implicit_integration() {
         .await;
 
     // 2. Create .rq file from template
-    let template_path = "tests/fixtures/templates/auth_oauth2_implicit.rq.template";
+    let template_path = format!(
+        "{}/tests/fixtures/templates/auth_oauth2_implicit.rq.template",
+        env!("CARGO_MANIFEST_DIR")
+    );
     let template_content =
         std::fs::read_to_string(template_path).expect("Failed to read template file");
 
     let rq_file_content = template_content.replace("{{MOCK_URL}}", &mock_server.uri());
-    let rq_path = "target/test_auth_implicit.rq";
-    std::fs::write(rq_path, rq_file_content).unwrap();
+    let rq_path = format!("{}/test_auth_implicit.rq", env!("CARGO_TARGET_TMPDIR"));
+    std::fs::write(&rq_path, rq_file_content).unwrap();
 
     // 3. CASE A: Expect Failure (No token provided)
     let output_fail = common::rq_cmd()
         .arg("-s")
-        .arg(rq_path)
+        .arg(&rq_path)
         .output()
         .expect("Failed to execute rq binary");
 
@@ -469,7 +497,7 @@ async fn test_auth_oauth2_implicit_integration() {
     // 4. CASE B: Expect Success (Fallback variable provided)
     let output_ok = common::rq_cmd()
         .arg("-s")
-        .arg(rq_path)
+        .arg(&rq_path)
         .arg("-v")
         .arg("auth_token=implicit-token-123")
         .output()

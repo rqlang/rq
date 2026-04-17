@@ -4,12 +4,10 @@ use std::fs;
 use std::path::Path;
 
 mod common;
-use common::{ensure_built, rq_cmd, validate_json_response};
+use common::{rq_cmd, validate_json_response};
 
 fn main() {
     let args = Arguments::from_args();
-
-    ensure_built();
 
     let mut trials: Vec<Trial> = vec![
         // Fixture tests (Manual setup)

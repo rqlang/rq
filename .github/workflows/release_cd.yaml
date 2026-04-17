@@ -93,9 +93,6 @@ jobs:
             target: aarch64-apple-darwin
             artifact_name: rq
             asset_name: rq-macos-aarch64
-    defaults:
-      run:
-        working-directory: ./src/cli
     env:
       CARGO_TERM_COLOR: always
     steps:
@@ -111,9 +108,9 @@ jobs:
         shell: bash
         run: |
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            sed -i "s/^version = \".*\"/version = \"${{ needs.version.outputs.version }}\"/" Cargo.toml
+            sed -i "s/^version = \".*\"/version = \"${{ needs.version.outputs.version }}\"/" src/cli/Cargo.toml
           else
-            sed -i.bak "s/^version = \".*\"/version = \"${{ needs.version.outputs.version }}\"/" Cargo.toml
+            sed -i.bak "s/^version = \".*\"/version = \"${{ needs.version.outputs.version }}\"/" src/cli/Cargo.toml
           fi
 
       - name: Cache cargo registry
@@ -122,8 +119,8 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            src/cli/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('src/cli/**/Cargo.lock') }}
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-
 
@@ -166,7 +163,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.asset_name }}
-          path: src/cli/${{ steps.binpath.outputs.path }}
+          path: ${{ steps.binpath.outputs.path }}
           if-no-files-found: error
 
   build-extension:

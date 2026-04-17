@@ -70,11 +70,11 @@ jobs:
 
       - name: Install system OpenSSL (Linux)
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
+        run: |
+          sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
+          echo "OPENSSL_NO_VENDOR=1" >> $GITHUB_ENV
 
       - name: Build
-        env:
-          OPENSSL_NO_VENDOR: ${{ runner.os == 'Linux' && '1' || '' }}
         run: cargo build --release --target ${{ matrix.target }}
 
       - name: Code sign macOS binary

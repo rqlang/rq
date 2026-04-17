@@ -1,0 +1,3 @@
+[workspace]
+members = ["src/cli", "src/rq-lib"]
+resolver = "2"

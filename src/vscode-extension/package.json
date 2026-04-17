@@ -1,0 +1,220 @@
+{
+  "name": "rq-language",
+  "displayName": "rq",
+  "description": "Language support for rq, a language for managing and executing HTTP requests",
+  "version": "0.1.0",
+  "publisher": "rq-lang",
+  "icon": "rq.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rqlang/rq"
+  },
+  "homepage": "https://www.rqlang.com",
+  "engines": {
+    "vscode": "^1.110.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Snippets",
+    "Other"
+  ],
+  "keywords": [
+    "rq",
+    "HTTP",
+    "REST",
+    "API",
+    "request",
+    "OAuth2",
+    "language",
+    "API client"
+  ],
+  "main": "./out/extension.js",
+  "activationEvents": [
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "rq",
+        "aliases": [
+          "RQ",
+          "rq"
+        ],
+        "extensions": [
+          ".rq"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "rq",
+        "scopeName": "source.rq",
+        "path": "./syntaxes/rq.tmLanguage.json"
+      },
+      {
+        "scopeName": "source.rq.basic",
+        "path": "./syntaxes/basic-types.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "rq",
+        "path": "./snippets/rq.code-snippets.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "rq.getToken",
+        "title": "Get OAuth2 Token",
+        "category": "RQ"
+      },
+      {
+        "command": "rq.clearOAuthCache",
+        "title": "Clear OAuth Cache",
+        "category": "RQ"
+      },
+      {
+        "command": "rq.refreshRequests",
+        "title": "Refresh Requests",
+        "category": "RQ",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "rq.selectEnvironment",
+        "title": "Select Environment",
+        "category": "RQ",
+        "icon": "$(server-environment)"
+      },
+      {
+        "command": "rq.openRequestFile",
+        "title": "Open Request File",
+        "category": "RQ"
+      },
+      {
+        "command": "rq.openConfigurationFile",
+        "title": "Open Configuration File",
+        "category": "RQ"
+      },
+      {
+        "command": "rq.openEndpoint",
+        "title": "Open Endpoint File",
+        "category": "RQ"
+      },
+      {
+        "command": "rq.refreshConfiguration",
+        "title": "Refresh Configuration",
+        "category": "RQ",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "rq.runRequest",
+        "title": "Run Request",
+        "category": "RQ",
+        "icon": "$(play)"
+      },
+      {
+        "command": "rq.runRequestWithVariables",
+        "title": "Run Request with Variables",
+        "category": "RQ",
+        "icon": "$(run-with-deps)"
+      }
+    ],
+    "configurationDefaults": {
+      "[rq]": {
+        "editor.snippetSuggestions": "none",
+        "editor.wordBasedSuggestions": "off"
+      }
+    },
+    "authentication": [
+      {
+        "id": "rq-azure-oauth",
+        "label": "RQ Azure OAuth"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "rq-explorer",
+          "title": "RQ",
+          "icon": "$(globe)"
+        }
+      ]
+    },
+    "views": {
+      "rq-explorer": [
+        {
+          "id": "rqRequestExplorer",
+          "name": "Requests",
+          "icon": "$(globe)"
+        },
+        {
+          "id": "rqConfigurationExplorer",
+          "name": "Configuration",
+          "icon": "$(symbol-misc)"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "rq.selectEnvironment",
+          "when": "view == rqRequestExplorer",
+          "group": "navigation"
+        },
+        {
+          "command": "rq.refreshRequests",
+          "when": "view == rqRequestExplorer",
+          "group": "navigation"
+        },
+        {
+          "command": "rq.refreshConfiguration",
+          "when": "view == rqConfigurationExplorer",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "rq.runRequest",
+          "when": "view == rqRequestExplorer && viewItem == request",
+          "group": "inline@1"
+        },
+        {
+          "command": "rq.runRequestWithVariables",
+          "when": "view == rqRequestExplorer && viewItem == request",
+          "group": "inline@2"
+        },
+        {
+          "command": "rq.openRequestFile",
+          "when": "view == rqRequestExplorer && viewItem == request",
+          "group": "navigation"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "build-wasm": "wasm-pack build ../rq-wasm --target nodejs --out-dir ./src/wasm",
+    "copy-wasm": "node -e \"const fs=require('fs');const src='../rq-wasm/src/wasm';if(fs.existsSync(src+'/rq_wasm.js')){fs.mkdirSync('out/wasm',{recursive:true});['rq_wasm.js','rq_wasm_bg.wasm'].forEach(f=>fs.copyFileSync(src+'/'+f,'out/wasm/'+f));}else{console.log('WASM not built, skipping wasm copy');}\"",
+    "vscode:prepublish": "npm run build-wasm && npm run compile",
+    "compile": "tsc -p ./ && npm run copy-wasm",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile",
+    "lint": "eslint src",
+    "test": "jest"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "@types/node": "^25.5.2",
+    "@types/vscode": "^1.110.0",
+    "@typescript-eslint/eslint-plugin": "^8.58.0",
+    "@typescript-eslint/parser": "^8.58.0",
+    "eslint": "^10.2.0",
+    "jest": "^30.3.0",
+    "ts-jest": "^29.4.9",
+    "typescript": "^6.0.2"
+  },
+  "license": "MIT",
+  "overrides": {
+    "glob": "^13.0.6",
+    "test-exclude": "^8.0.0"
+  }
+}

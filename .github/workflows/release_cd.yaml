@@ -93,9 +93,6 @@ jobs:
             target: aarch64-apple-darwin
             artifact_name: rq
             asset_name: rq-macos-aarch64
-    defaults:
-      run:
-        working-directory: ./cli
     env:
       CARGO_TERM_COLOR: always
     steps:
@@ -111,9 +108,9 @@ jobs:
         shell: bash
         run: |
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            sed -i "s/^version = \".*\"/version = \"${{ needs.version.outputs.version }}\"/" Cargo.toml
+            sed -i "s/^version = \".*\"/version = \"${{ needs.version.outputs.version }}\"/" src/cli/Cargo.toml
           else
-            sed -i.bak "s/^version = \".*\"/version = \"${{ needs.version.outputs.version }}\"/" Cargo.toml
+            sed -i.bak "s/^version = \".*\"/version = \"${{ needs.version.outputs.version }}\"/" src/cli/Cargo.toml
           fi
 
       - name: Cache cargo registry
@@ -122,8 +119,8 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            cli/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('cli/**/Cargo.lock') }}
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-
 
@@ -146,12 +143,12 @@ jobs:
         run: |
           $pfxPath = Join-Path -Path $env:RUNNER_TEMP -ChildPath "certificate.pfx"
           [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:PFX_BASE64))
-          
+
           $signtool = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin" -Filter "signtool.exe" -Recurse | Where-Object { $_.FullName -like "*x64*" } | Sort-Object FullName -Descending | Select-Object -First 1
           if (-not $signtool) { throw "signtool.exe not found" }
-          
+
           & $signtool.FullName sign /f $pfxPath /p $env:PFX_PASSWORD /tr http://timestamp.digicert.com /td sha256 /fd sha256 "target/${{ matrix.target }}/release/${{ matrix.artifact_name }}"
-          
+
           Remove-Item $pfxPath
 
       - name: Locate binary
@@ -166,7 +163,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.asset_name }}
-          path: cli/${{ steps.binpath.outputs.path }}
+          path: ${{ steps.binpath.outputs.path }}
           if-no-files-found: error
 
   build-extension:
@@ -175,7 +172,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ./vscode-extension
+        working-directory: ./src/vscode-extension
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -185,13 +182,13 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
-          cache-dependency-path: vscode-extension/package-lock.json
+          cache-dependency-path: src/vscode-extension/package-lock.json
 
       - name: Bundle installer scripts
         run: |
           mkdir -p scripts
-          cp ../deployment/install-rq-dev.sh scripts/
-          cp ../deployment/install-rq-dev.ps1 scripts/
+          cp ../../deployment/install-rq-dev.sh scripts/
+          cp ../../deployment/install-rq-dev.ps1 scripts/
 
       - name: Install dependencies
         run: npm ci
@@ -236,5 +233,5 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: rq-language-extension-${{ needs.version.outputs.version }}
-          path: vscode-extension/*.vsix
+          path: src/vscode-extension/*.vsix
           if-no-files-found: error

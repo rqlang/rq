@@ -6,7 +6,7 @@ on:
     branches:
       - main
     paths:
-      - 'cli/**'
+      - 'src/cli/**'
       - '.github/workflows/cli_bvt.yaml'
 
 env:
@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ./cli
+        working-directory: ./src/cli
     permissions:
       contents: read
     steps:
@@ -35,8 +35,8 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            cli/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('cli/**/Cargo.lock') }}
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-
 
@@ -63,13 +63,13 @@ jobs:
             echo "Waiting... ($i/30)"
             sleep 1
           done
-          
+
           if [ "$SERVER_READY" = false ]; then
             echo "ERROR: Echo server failed to start within 30 seconds"
             docker logs rq-echo || true
             exit 1
           fi
-          
+
           echo "Testing server response:"
           curl -v http://localhost:8080
 

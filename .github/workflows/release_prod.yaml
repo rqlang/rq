@@ -56,11 +56,11 @@ jobs:
         shell: bash
         run: |
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            sed -i "s/^version = \".*\"/version = \"${{ steps.read_version.outputs.version }}\"/" cli/Cargo.toml
+            sed -i "s/^version = \".*\"/version = \"${{ steps.read_version.outputs.version }}\"/" src/cli/Cargo.toml
           else
-            sed -i.bak "s/^version = \".*\"/version = \"${{ steps.read_version.outputs.version }}\"/" cli/Cargo.toml
+            sed -i.bak "s/^version = \".*\"/version = \"${{ steps.read_version.outputs.version }}\"/" src/cli/Cargo.toml
           fi
-          cat cli/Cargo.toml | grep "^version"
+          cat src/cli/Cargo.toml | grep "^version"
 
       - name: Install Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -69,16 +69,14 @@ jobs:
           target: ${{ matrix.target }}
 
       - name: Build
-        run: |
-          cd cli
-          cargo build --release --target ${{ matrix.target }}
+        run: cargo build --release --target ${{ matrix.target }}
 
       - name: Code sign macOS binary
         if: runner.os == 'macOS'
         run: |
           codesign --force --deep --sign - \
             --options runtime --timestamp \
-            ./cli/target/${{ matrix.target }}/release/${{ matrix.artifact_name }}
+            ./target/${{ matrix.target }}/release/${{ matrix.artifact_name }}
 
       - name: Code sign Windows binary
         if: matrix.os == 'windows-latest'
@@ -89,18 +87,18 @@ jobs:
         run: |
           $pfxPath = Join-Path -Path $env:RUNNER_TEMP -ChildPath "certificate.pfx"
           [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:PFX_BASE64))
-          
+
           $signtool = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin" -Filter "signtool.exe" -Recurse | Where-Object { $_.FullName -like "*x64*" } | Sort-Object FullName -Descending | Select-Object -First 1
           if (-not $signtool) { throw "signtool.exe not found" }
-          
-          & $signtool.FullName sign /f $pfxPath /p $env:PFX_PASSWORD /tr http://timestamp.digicert.com /td sha256 /fd sha256 "./cli/target/${{ matrix.target }}/release/${{ matrix.artifact_name }}"
-          
+
+          & $signtool.FullName sign /f $pfxPath /p $env:PFX_PASSWORD /tr http://timestamp.digicert.com /td sha256 /fd sha256 "./target/${{ matrix.target }}/release/${{ matrix.artifact_name }}"
+
           Remove-Item $pfxPath
 
       - name: Rename artifact
         shell: bash
         run: |
-          cp ./cli/target/${{ matrix.target }}/release/${{ matrix.artifact_name }} ./${{ matrix.asset_name }}
+          cp ./target/${{ matrix.target }}/release/${{ matrix.artifact_name }} ./${{ matrix.asset_name }}
 
       - name: Upload Asset to Release
         env:
@@ -128,24 +126,24 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
-          cache-dependency-path: vscode-extension/package-lock.json
+          cache-dependency-path: src/vscode-extension/package-lock.json
 
       - name: Bundle installer scripts
-        working-directory: ./vscode-extension
+        working-directory: ./src/vscode-extension
         run: |
           mkdir -p scripts
-          cp ../deployment/install-rq.sh scripts/
-          cp ../deployment/install-rq.ps1 scripts/
+          cp ../../deployment/install-rq.sh scripts/
+          cp ../../deployment/install-rq.ps1 scripts/
 
       - name: Install dependencies
-        working-directory: ./vscode-extension
+        working-directory: ./src/vscode-extension
         run: npm ci
 
       - name: Install vsce
         run: npm install -g @vscode/vsce
 
       - name: Update version in package.json
-        working-directory: ./vscode-extension
+        working-directory: ./src/vscode-extension
         shell: bash
         run: |
           current=$(node -p "require('./package.json').version")
@@ -159,15 +157,15 @@ jobs:
           fi
 
       - name: Compile TypeScript
-        working-directory: ./vscode-extension
+        working-directory: ./src/vscode-extension
         run: npm run compile
 
       - name: Package extension
-        working-directory: ./vscode-extension
+        working-directory: ./src/vscode-extension
         run: vsce package --allow-missing-repository
 
       - name: Upload VSIX to Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release upload ${{ github.event.release.tag_name }} vscode-extension/*.vsix --clobber
+          gh release upload ${{ github.event.release.tag_name }} src/vscode-extension/*.vsix --clobber

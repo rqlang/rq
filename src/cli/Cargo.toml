@@ -1,0 +1,26 @@
+[package]
+name = "rq"
+version = "0.0.0"
+edition = "2021"
+
+[[bin]]
+name = "rq"
+path = "src/main.rs"
+
+[dependencies]
+rq-lib = { path = "../rq-lib" }
+clap = { version = "4", features = ["derive"] }
+regex = "1"
+lazy_static = "1.5"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+
+[dev-dependencies]
+libtest-mimic = "0.8"
+wiremock = "0.6"
+tokio = { version = "1", features = ["full", "macros"] }
+
+[[test]]
+name = "request_run"
+harness = false

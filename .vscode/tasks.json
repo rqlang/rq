@@ -8,7 +8,7 @@
 			"problemMatcher": ["$rustc"],
 			"group": {"kind": "test", "isDefault": true},
 			"label": "rust: cargo test (all)",
-			"options": {"cwd": "${workspaceFolder}/cli"}
+			"options": {"cwd": "${workspaceFolder}/src/cli"}
 		},
 		{
 			"type": "cargo",
@@ -17,7 +17,7 @@
 			"problemMatcher": ["$rustc"],
 			"group": "test",
 			"label": "rust: cargo test (run)",
-			"options": {"cwd": "${workspaceFolder}/cli"}
+			"options": {"cwd": "${workspaceFolder}/src/cli"}
 		},
 		{
 			"type": "cargo",
@@ -26,14 +26,22 @@
 			"problemMatcher": ["$rustc"],
 			"group": "test",
 			"label": "rust: cargo test (env)",
-			"options": {"cwd": "${workspaceFolder}/cli"}
+			"options": {"cwd": "${workspaceFolder}/src/cli"}
+		},
+		{
+			"label": "Build WASM",
+			"type": "shell",
+			"command": "/usr/bin/env",
+			"args": ["bash", "-c", "npm run build-wasm"],
+			"options": {"cwd": "${workspaceFolder}/src/vscode-extension"},
+			"problemMatcher": []
 		},
 		{
 			"label": "Extension Compile",
 			"type": "shell",
 			"command": "/usr/bin/env",
 			"args": ["bash", "-c", "npm ci && npm run compile"],
-			"options": {"cwd": "${workspaceFolder}/vscode-extension"},
+			"options": {"cwd": "${workspaceFolder}/src/vscode-extension"},
 			"problemMatcher": ["$tsc"],
 			"group": {"kind": "build", "isDefault": true}
 		},
@@ -41,9 +49,11 @@
 			"label": "Extension Watch",
 			"type": "shell",
 			"command": "/usr/bin/env",
-			"args": ["bash", "-c", "npm ci && npm run watch"],
-			"options": {"cwd": "${workspaceFolder}/vscode-extension"},
+			"args": ["bash", "-c", "npm ci && npm run copy-wasm && npm run watch"],
+			"options": {"cwd": "${workspaceFolder}/src/vscode-extension"},
 			"isBackground": true,
+			"dependsOn": ["Build WASM"],
+			"dependsOrder": "sequence",
 			"problemMatcher": ["$tsc-watch"],
 			"group": {"kind": "build", "isDefault": false}
 		}

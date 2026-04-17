@@ -69,16 +69,14 @@ jobs:
           target: ${{ matrix.target }}
 
       - name: Build
-        run: |
-          cd src/cli
-          cargo build --release --target ${{ matrix.target }}
+        run: cargo build --release --target ${{ matrix.target }}
 
       - name: Code sign macOS binary
         if: runner.os == 'macOS'
         run: |
           codesign --force --deep --sign - \
             --options runtime --timestamp \
-            ./src/cli/target/${{ matrix.target }}/release/${{ matrix.artifact_name }}
+            ./target/${{ matrix.target }}/release/${{ matrix.artifact_name }}
 
       - name: Code sign Windows binary
         if: matrix.os == 'windows-latest'
@@ -93,14 +91,14 @@ jobs:
           $signtool = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin" -Filter "signtool.exe" -Recurse | Where-Object { $_.FullName -like "*x64*" } | Sort-Object FullName -Descending | Select-Object -First 1
           if (-not $signtool) { throw "signtool.exe not found" }
 
-          & $signtool.FullName sign /f $pfxPath /p $env:PFX_PASSWORD /tr http://timestamp.digicert.com /td sha256 /fd sha256 "./src/cli/target/${{ matrix.target }}/release/${{ matrix.artifact_name }}"
+          & $signtool.FullName sign /f $pfxPath /p $env:PFX_PASSWORD /tr http://timestamp.digicert.com /td sha256 /fd sha256 "./target/${{ matrix.target }}/release/${{ matrix.artifact_name }}"
 
           Remove-Item $pfxPath
 
       - name: Rename artifact
         shell: bash
         run: |
-          cp ./src/cli/target/${{ matrix.target }}/release/${{ matrix.artifact_name }} ./${{ matrix.asset_name }}
+          cp ./target/${{ matrix.target }}/release/${{ matrix.artifact_name }} ./${{ matrix.asset_name }}
 
       - name: Upload Asset to Release
         env:

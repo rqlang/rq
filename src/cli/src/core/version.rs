@@ -1,1 +1,1 @@
-pub use rq_lib::version::*;
+pub use rq_lib::version::app_version;

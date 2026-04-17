@@ -156,7 +156,7 @@ Add directly to `request_run.rs` using `Command::new(env!("CARGO_BIN_EXE_rq"))`.
 
 | Helper | Use |
 |---|---|
-| `rq_cmd()` | `Command` → `target/debug/rq` |
+| `rq_cmd()` | `Command` → binary via `env!("CARGO_BIN_EXE_rq")` |
 | `json_subset(expected, actual)` | Subset assertion with `{{*}}` / `{{regex:...}}` |
 | `validate_json_response(stdout, path)` | Parse response envelope, validate body against `.json` |
 | `validate_pure_json_response(stdout, path)` | Raw JSON output vs `.json` file |

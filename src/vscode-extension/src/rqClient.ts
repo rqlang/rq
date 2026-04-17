@@ -340,9 +340,9 @@ export async function listRequests(sourceDirectory?: string): Promise<ListReques
     return { requests };
 }
 
-export async function showRequest(requestName: string, sourceDirectory?: string, environment?: string): Promise<RequestShowOutput> {
+export async function showRequest(requestName: string, sourceDirectory?: string, environment?: string, interpolate = false): Promise<RequestShowOutput> {
     const source = resolveSource(sourceDirectory);
-    const result = getWasm().get_request_details(buildFilesMap(source), buildSecretsMap(source), source, requestName, environment, false);
+    const result = getWasm().get_request_details(buildFilesMap(source), buildSecretsMap(source), source, requestName, environment, interpolate);
     const raw = JSON.parse(result) as RequestShowRaw;
     return {
         name: raw.Request,

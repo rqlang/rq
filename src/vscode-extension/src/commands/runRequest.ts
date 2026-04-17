@@ -86,7 +86,7 @@ export class RequestRunner {
         environment: string | undefined
     ): Promise<Record<string, string> | undefined> {
         try {
-            const requestDetails = await rqClient.showRequest(requestName, sourceDirectory, environment);
+            const requestDetails = await rqClient.showRequest(requestName, sourceDirectory, environment, true);
             this.outputChannel.appendLine(`Request details for '${requestName}': ${JSON.stringify(requestDetails)}`);
 
             if (requestDetails.auth && (requestDetails.auth.type === 'oauth2_authorization_code' || requestDetails.auth.type === 'oauth2_implicit')) {

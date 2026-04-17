@@ -3,30 +3,8 @@ use serde_json::Value;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
-use std::sync::Once;
-
-static BUILD: Once = Once::new();
-
-pub fn ensure_built() {
-    BUILD.call_once(|| {
-        println!("Building project...");
-        let build_output = Command::new("cargo")
-            .args(["build"])
-            .output()
-            .expect("Failed to execute cargo build");
-
-        if !build_output.status.success() {
-            panic!(
-                "Failed to build project: {}",
-                String::from_utf8_lossy(&build_output.stderr)
-            );
-        }
-        println!("Project built successfully");
-    });
-}
 
 pub fn rq_cmd() -> Command {
-    ensure_built();
     Command::new(env!("CARGO_BIN_EXE_rq"))
 }
 

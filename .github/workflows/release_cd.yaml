@@ -113,6 +113,10 @@ jobs:
             sed -i.bak "s/^version = \".*\"/version = \"${{ needs.version.outputs.version }}\"/" src/cli/Cargo.toml
           fi
 
+      - name: Install system OpenSSL (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
+
       - name: Cache cargo registry
         uses: actions/cache@v5
         with:
@@ -125,6 +129,8 @@ jobs:
             ${{ runner.os }}-cargo-
 
       - name: Build (release)
+        env:
+          OPENSSL_NO_VENDOR: ${{ runner.os == 'Linux' && '1' || '' }}
         run: cargo build --release --target ${{ matrix.target }} --verbose
 
       - name: Code sign macOS binary

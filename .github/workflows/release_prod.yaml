@@ -68,7 +68,13 @@ jobs:
           toolchain: stable
           target: ${{ matrix.target }}
 
+      - name: Install system OpenSSL (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
+
       - name: Build
+        env:
+          OPENSSL_NO_VENDOR: ${{ runner.os == 'Linux' && '1' || '' }}
         run: cargo build --release --target ${{ matrix.target }}
 
       - name: Code sign macOS binary

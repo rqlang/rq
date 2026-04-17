@@ -193,6 +193,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
       - name: Install vsce
         run: npm install -g @vscode/vsce
 

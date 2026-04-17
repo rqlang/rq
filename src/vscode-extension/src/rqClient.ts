@@ -170,7 +170,8 @@ function getWasm(): RqWasmModule {
 // ---------------------------------------------------------------------------
 
 function resolveSource(sourceDir?: string): string {
-    return sourceDir ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
+    const raw = sourceDir ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
+    return raw.replace(/\\/g, '/');
 }
 
 function getSourceDir(source: string): string {
@@ -185,7 +186,7 @@ function buildFilesMap(source: string): string {
     const dir = getSourceDir(source);
     const files: Record<string, string> = {};
     for (const filePath of collectAllFiles(dir)) {
-        const normalized = normalizePath(filePath);
+        const normalized = filePath.replace(/\\/g, '/');
         try {
             files[normalized] = fs.readFileSync(filePath, 'utf8');
         } catch {

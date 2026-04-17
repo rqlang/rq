@@ -12,7 +12,8 @@ impl WasmFs {
     }
 
     fn normalize(path: &Path) -> String {
-        let s = path.to_string_lossy();
+        let raw = path.to_string_lossy();
+        let s = raw.replace('\\', "/");
         let mut parts: Vec<&str> = Vec::new();
         for component in s.split('/') {
             match component {

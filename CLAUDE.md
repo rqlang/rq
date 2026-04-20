@@ -65,7 +65,7 @@ npm run test
 
 ## Rust Code Style
 
-- Public methods first: constructors → public → private
+- Method ordering within `impl` blocks: constructors → public methods (grouped) → private methods (grouped). Private helpers always go at the bottom, after all public methods.
 - **No comments (`//`, `///`)** — names must be self-explanatory
 - Methods ≤ ~50 lines; extract helpers for complex logic
 - No `.unwrap()` in production; use `?`

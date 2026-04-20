@@ -215,47 +215,6 @@ impl RqClient {
         Ok((all_results, parse_warnings))
     }
 
-    fn prepare_request(mut request: Request) -> Result<Request, RqError> {
-        if !request
-            .headers
-            .iter()
-            .any(|(k, _)| k.to_lowercase() == "user-agent")
-        {
-            request.headers.push((
-                "user-agent".to_string(),
-                format!("rq/{}", crate::version::app_version()),
-            ));
-        }
-
-        if let Some(body) = &request.body {
-            if !request
-                .headers
-                .iter()
-                .any(|(k, _)| k.to_lowercase() == "content-type")
-                && is_json_body(body)
-            {
-                request
-                    .headers
-                    .push(("content-type".to_string(), "application/json".to_string()));
-            }
-        }
-
-        if let Some(timeout_str) = &request.timeout {
-            let secs = timeout_str.parse::<f64>().map_err(|_| {
-                RqError::Generic(format!(
-                    "HTTP Error: Timeout value '{timeout_str}' must be a number"
-                ))
-            })?;
-            if !secs.is_finite() || secs < 0.0 {
-                return Err(RqError::Generic(format!(
-                    "HTTP Error: Timeout value '{timeout_str}' must be a non-negative finite number"
-                )));
-            }
-        }
-
-        Ok(request)
-    }
-
     pub fn list_requests(
         &self,
         source_path: &Path,
@@ -1051,6 +1010,47 @@ impl RqClient {
         let canonical = self.fs.canonicalize(path).ok()?;
         let content = self.fs.read(&canonical).ok()?;
         Some(RqFile::from_content_lenient(canonical, &content, &*self.fs))
+    }
+
+    fn prepare_request(mut request: Request) -> Result<Request, RqError> {
+        if !request
+            .headers
+            .iter()
+            .any(|(k, _)| k.to_lowercase() == "user-agent")
+        {
+            request.headers.push((
+                "user-agent".to_string(),
+                format!("rq/{}", crate::version::app_version()),
+            ));
+        }
+
+        if let Some(body) = &request.body {
+            if !request
+                .headers
+                .iter()
+                .any(|(k, _)| k.to_lowercase() == "content-type")
+                && is_json_body(body)
+            {
+                request
+                    .headers
+                    .push(("content-type".to_string(), "application/json".to_string()));
+            }
+        }
+
+        if let Some(timeout_str) = &request.timeout {
+            let secs = timeout_str.parse::<f64>().map_err(|_| {
+                RqError::Generic(format!(
+                    "HTTP Error: Timeout value '{timeout_str}' must be a number"
+                ))
+            })?;
+            if !secs.is_finite() || secs < 0.0 {
+                return Err(RqError::Generic(format!(
+                    "HTTP Error: Timeout value '{timeout_str}' must be a non-negative finite number"
+                )));
+            }
+        }
+
+        Ok(request)
     }
 
     fn collect_secrets_for_env(&self, source_path: &Path, env: Option<&str>) -> Vec<Variable> {

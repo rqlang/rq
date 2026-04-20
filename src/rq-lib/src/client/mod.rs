@@ -241,11 +241,16 @@ impl RqClient {
         }
 
         if let Some(timeout_str) = &request.timeout {
-            timeout_str.parse::<f64>().map_err(|_| {
+            let secs = timeout_str.parse::<f64>().map_err(|_| {
                 RqError::Generic(format!(
                     "HTTP Error: Timeout value '{timeout_str}' must be a number"
                 ))
             })?;
+            if !secs.is_finite() || secs < 0.0 {
+                return Err(RqError::Generic(format!(
+                    "HTTP Error: Timeout value '{timeout_str}' must be a non-negative finite number"
+                )));
+            }
         }
 
         Ok(request)

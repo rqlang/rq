@@ -195,10 +195,11 @@ pub fn get_request_details(
     interpolate: bool,
     variables_json: Option<String>,
 ) -> Result<String, JsError> {
-    let variables: Vec<String> = variables_json
-        .as_deref()
-        .and_then(|s| serde_json::from_str(s).ok())
-        .unwrap_or_default();
+    let variables: Vec<String> = match variables_json.as_deref() {
+        Some(s) => serde_json::from_str(s)
+            .map_err(|e| JsError::new(&format!("Invalid variables_json: {e}")))?,
+        None => vec![],
+    };
     let details = make_client(parse_files(files_json)?, parse_secrets(secrets_json))
         .get_request_details(Path::new(source), name, env.as_deref(), interpolate, &variables)?;
 
@@ -336,9 +337,11 @@ pub async fn run_request(
     let secrets = parse_secrets(secrets_json);
     let client = make_client(files, secrets);
 
-    let variables: Vec<String> = variables_json
-        .and_then(|j| serde_json::from_str(&j).ok())
-        .unwrap_or_default();
+    let variables: Vec<String> = match variables_json.as_deref() {
+        Some(s) => serde_json::from_str(s)
+            .map_err(|e| JsError::new(&format!("Invalid variables_json: {e}")))?,
+        None => vec![],
+    };
 
     let (results, _warnings) = client
         .run(

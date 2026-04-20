@@ -68,68 +68,9 @@ Repeat key flows in both modes if applicable:
 
 ---
 
-## A. Activation & CLI installation
+## A. Diagnostics
 
-### A1. Activation baseline (CLI already installed)
-
-Steps:
-
-1. Ensure `rq` CLI is installed and available to the extension.
-2. Open VS Code to the test workspace.
-3. Wait for activation (open any `.rq` file if needed).
-
-Expected:
-
-- No “rq CLI is not installed” prompt.
-- RQ Request Explorer renders items.
-- “RQ” output channel shows normal command execution logs when you interact.
-
-### A2. Missing CLI (fresh machine)
-
-Steps:
-
-1. Ensure `rq` is not available to the extension (no working CLI binary configured).
-2. Reload the VS Code window.
-3. Observe the prompt.
-
-Expected:
-
-- A warning prompt appears indicating the CLI is missing.
-- Choosing “Install Now” starts installation.
-- RQ Request Explorer shows “Installing rq CLI…” placeholder while install is in progress.
-
-### A3. Install completion refresh (no reload)
-
-Steps:
-
-1. Trigger CLI installation.
-2. Keep VS Code open; do not reload.
-3. Wait for the installer process to finish.
-
-Expected:
-
-- The “Installing…” placeholder disappears automatically.
-- RQ Request Explorer refreshes and loads real request items.
-
-### A4. Version mismatch (update CLI)
-
-Steps:
-
-1. Install an `rq` version that does not match the extension version.
-2. Reload VS Code.
-3. Choose “Update Now`.
-
-Expected:
-
-- The update starts.
-- The extension clears the “installing” state when the process ends.
-- The explorer refreshes after update.
-
----
-
-## B. Diagnostics
-
-### B1. Syntax error
+### A1. Syntax error
 
 Steps:
 
@@ -140,7 +81,7 @@ Expected:
 - The offending line is underlined in red immediately.
 - The Problems panel shows one error from source `rq` with the correct line and column.
 
-### B2. Validation error — wrong auth property
+### A2. Validation error — wrong auth property
 
 Steps:
 
@@ -151,7 +92,7 @@ Expected:
 - An error is reported on the `token_url:` line — `bearer` auth does not accept that property.
 - The Problems panel shows one error pointing to that line.
 
-### B3. Missing variable
+### A3. Missing variable
 
 Steps:
 
@@ -162,7 +103,7 @@ Expected:
 - Two errors appear, one for each undefined variable (`base_url`, `user_id`).
 - Each underline points to the exact `{{variable}}` reference inside the URL string.
 
-### B4. Duplicate request name
+### A4. Duplicate request name
 
 Steps:
 
@@ -173,7 +114,7 @@ Expected:
 - An error is reported on the second `rq get_users` declaration.
 - The first declaration has no error.
 
-### B5. Real-time diagnostics — error appears while typing
+### A5. Real-time diagnostics — error appears while typing
 
 Steps:
 
@@ -186,7 +127,7 @@ Expected:
 - Within ~1 second of stopping typing, a red underline appears on the broken line.
 - The Problems panel updates automatically — no save required.
 
-### B6. Real-time diagnostics — error clears on fix
+### A6. Real-time diagnostics — error clears on fix
 
 Steps:
 
@@ -200,9 +141,9 @@ Expected:
 
 ---
 
-## C. Using the Request Explorer to execute requests
+## B. Using the Request Explorer to execute requests
 
-### C1. Execute a request without selecting an environment
+### B1. Execute a request without selecting an environment
 
 Steps:
 
@@ -217,7 +158,7 @@ Expected:
 - The “RQ” output channel shows the executed command and the response.
 - No new errors appear in the Problems view related to this execution.
 
-### C2. Execute a request with an environment
+### B2. Execute a request with an environment
 
 Steps:
 
@@ -232,7 +173,7 @@ Expected:
 - The URL used respects the environment values (for example `base_url` and `api_path`).
 - The “RQ” output channel reflects the environment used and the execution completes without errors.
 
-### C3. Execute a request with variables
+### B3. Execute a request with variables
 
 Steps:
 
@@ -246,7 +187,7 @@ Expected:
 - The first execution uses the default value `user_id = 123` and the URL is `http://localhost:8080/users/123?v=1`.
 - The second execution uses the overridden value `user_id = 321` and the URL is `http://localhost:8080/users/321?v=1`.
 
-### C4. Execute a request when the echo server is not running
+### B4. Execute a request when the echo server is not running
 
 Steps:
 
@@ -265,7 +206,7 @@ Expected:
 
 ---
 
-## D. OAuth authentication flows
+## C. OAuth authentication flows
 
 The extension supports multiple redirect handling strategies:
 
@@ -275,7 +216,7 @@ The extension supports multiple redirect handling strategies:
 
 These tests assume you have an OAuth provider configured in your `.rq` files and that you use the consolidated auth fixtures.
 
-### D0. Common setup
+### C0. Common setup
 
 1. Use the auth fixtures under:
    - [auth/shared.rq](auth/shared.rq)
@@ -288,7 +229,7 @@ Expected:
 - The `.env` file is present and contains valid values so the variables used in shared.rq can be resolved.
 - The auth config is discoverable by the extension when running requests from basic.rq.
 
-### D1. Bearer token auth (bearer_auth)
+### C1. Bearer token auth (bearer_auth)
 
 This auth uses a static bearer token provided by the `api_token` variable. No interactive browser flow is required.
 
@@ -306,7 +247,7 @@ Expected:
 - The request is sent to `http://localhost:8080/test`.
 - The **Authorization** header is present with a `Bearer` token value derived from `api_token`.
 
-### D2. OAuth2 authorization code (default redirect) (oauth_ac_default)
+### C2. OAuth2 authorization code (default redirect) (oauth_ac_default)
 
 This auth performs an OAuth2 Authorization Code flow with PKCE using the extension's default redirect URI (`vscode://rq-lang.rq-language/oauth-callback`).
 
@@ -325,7 +266,7 @@ Expected:
 - After successful login, the request is executed automatically.
 - The **Authorization** header is present with a `Bearer` access token obtained from the OAuth provider.
 
-### D3. OAuth2 authorization code (custom localhost redirect) (oauth_ac_custom)
+### C3. OAuth2 authorization code (custom localhost redirect) (oauth_ac_custom)
 
 This auth performs an OAuth2 Authorization Code flow with PKCE using a custom `redirect_uri` pointing to a localhost HTTP endpoint.
 
@@ -344,7 +285,7 @@ Expected:
 - After successful login, the listener captures the authorization code and the extension exchanges it for a token.
 - The **Authorization** header is present with a `Bearer` access token obtained from the OAuth provider.
 
-### D4. OAuth2 authorization code (external redirect) (oauth_ac_external)
+### C4. OAuth2 authorization code (external redirect) (oauth_ac_external)
 
 This auth performs an OAuth2 Authorization Code flow with PKCE using an external HTTPS redirect URI hosted by your identity provider (for example `https://example.com/callback`). The extension cannot listen on this domain, so the final redirect URL must be copied manually from the browser.
 
@@ -367,7 +308,7 @@ Expected:
 - The request to `http://localhost:8080/test` completes successfully.
 - The **Authorization** header is present with a `Bearer` access token obtained from the OAuth provider.
 
-### D5. OAuth2 client credentials (shared secret) (oauth_cc)
+### C5. OAuth2 client credentials (shared secret) (oauth_cc)
 
 This auth uses the OAuth2 Client Credentials flow with a client secret (no interactive browser).
 
@@ -384,7 +325,7 @@ Expected:
 - The request to `http://localhost:8080/test` succeeds.
 - The **Authorization** header is present with a `Bearer` access token obtained via the client credentials flow.
 
-### D6. OAuth2 client credentials with client certificate (oauth_cc_cert)
+### C6. OAuth2 client credentials with client certificate (oauth_cc_cert)
 
 This auth uses the OAuth2 Client Credentials flow with a client certificate (`.p12` file) instead of a shared secret.
 
@@ -402,7 +343,7 @@ Expected:
 - The request to `http://localhost:8080/test` succeeds.
 - The **Authorization** header is present with a `Bearer` access token obtained via the certificate-based client credentials flow.
 
-### D7. OAuth2 implicit flow (oauth_implicit_default)
+### C7. OAuth2 implicit flow (oauth_implicit_default)
 
 This auth uses the OAuth2 Implicit flow, where the access token is returned directly in the redirect.
 
@@ -421,7 +362,7 @@ Expected:
 - After successful login, the request to `http://localhost:8080/test` is executed.
 - The **Authorization** header is present with a `Bearer` access token obtained from the implicit flow.
 
-### D8. Get OAuth2 access token command (oauth_ac_default)
+### C8. Get OAuth2 access token command (oauth_ac_default)
 
 This scenario validates the `RQ: Get OAuth2 Access Token` command using the same `oauth_ac_default` configuration.
 
@@ -442,7 +383,7 @@ Expected:
 - The access token is copied to the clipboard.
 - The token is cached internally so subsequent calls can reuse it.
 
-### D9. Clear OAuth2 access tokens command
+### C9. Clear OAuth2 access tokens command
 
 This scenario validates the interaction between the `RQ: Get OAuth2 Access Token` command and the `RQ: Clear OAuth2 Access Tokens` command.
 
@@ -463,11 +404,11 @@ Expected:
 
 ---
 
-## E. Autocomplete
+## D. Autocomplete
 
 All scenarios in this section start from [requests/autocomplete.rq](requests/autocomplete.rq), which is an empty file. Work through the tests in order — each one adds content to the file using autocomplete, so later tests build on what was typed in earlier ones.
 
-### E1. Variables — declare with `let`
+### D1. Variables — declare with `let`
 
 Steps:
 
@@ -480,7 +421,7 @@ Expected:
 - No variables appear yet (file is empty).
 - Dismiss the list and finish typing `"http://localhost:8080";` manually.
 
-### E2. Variables — second `let` suggests existing variable
+### D2. Variables — second `let` suggests existing variable
 
 Steps:
 
@@ -492,7 +433,7 @@ Expected:
 - Built-in functions are still offered.
 - Dismiss and type `"123";` manually.
 
-### E3. Variable interpolation inside a string
+### D3. Variable interpolation inside a string
 
 Steps:
 
@@ -504,7 +445,7 @@ Expected:
 - Selecting `base` inserts the name; the cursor lands after it, ready to type `}}/users");`.
 - Complete the line to `rq get_users("{{base}}/users");`.
 
-### E4. `rq` — positional first argument
+### D4. `rq` — positional first argument
 
 Steps:
 
@@ -516,7 +457,7 @@ Expected:
 - Named parameter hints (`url:`, `headers:`, `body:`) are also offered.
 - Dismiss and continue building the statement in the next tests.
 
-### E5. `rq` — named parameter completion and deduplication
+### D5. `rq` — named parameter completion and deduplication
 
 Steps:
 
@@ -537,7 +478,7 @@ Expected:
   );
   ```
 
-### E6. `ep` — named parameter completion
+### D6. `ep` — named parameter completion
 
 Steps:
 
@@ -550,7 +491,7 @@ Expected:
 - `url:` is gone; `headers:` and `qs:` remain.
 - Complete to `ep api(url: "{{base}}", qs: "v=1");`.
 
-### E7. `ep` body — `rq` inside an endpoint
+### D7. `ep` body — `rq` inside an endpoint
 
 Steps:
 
@@ -568,7 +509,7 @@ Expected:
 2. Inside the body type `rq ` and trigger autocomplete — no crash, normal identifier completion.
 3. Type `rq list();` and close the block with `}`.
 
-### E8. Attribute — `[` at line start
+### D8. Attribute — `[` at line start
 
 Steps:
 
@@ -579,7 +520,7 @@ Expected:
 - Exactly three completions: `method`, `timeout`, `auth`.
 - Verify no completions appear when `[` is inside a header dict (e.g. type `let h = [` on a scratch line — no attribute completions).
 
-### E9. Attribute — method values
+### D9. Attribute — method values
 
 Steps:
 
@@ -591,7 +532,7 @@ Expected:
 - Cycling through choices shows all HTTP verbs: `GET`, `POST`, `PUT`, `DELETE`, `PATCH`, `HEAD`, `OPTIONS`.
 - Select `POST` and confirm the line reads `[method(POST)]`.
 
-### E10. `auth` block — auth type completion
+### D10. `auth` block — auth type completion
 
 Steps:
 
@@ -604,7 +545,7 @@ Expected:
 - Each has a detail label and documentation.
 - Select `bearer` and complete the line: `auth my_auth(auth_type.bearer) {`.
 
-### E11. `auth` block — property completions
+### D11. `auth` block — property completions
 
 Steps:
 
@@ -622,7 +563,7 @@ Expected (second trigger):
 - No crash or duplicates.
 - Close the block with `}`.
 
-### E12. `[auth("` — auth name completion
+### D12. `[auth("` — auth name completion
 
 Steps:
 
@@ -638,7 +579,7 @@ Expected:
   rq secure("{{base}}/secure");
   ```
 
-### E13. Header key completions inside array literals
+### D13. Header key completions inside array literals
 
 Steps:
 
@@ -656,7 +597,7 @@ Expected:
 - Selecting a header inserts `"Header-Name": ""` with the cursor at the value.
 - Typing a partial name (e.g. `"Con`) filters the list to `Content-Length`, `Content-Type`.
 
-### E14. `ep crud` snippet
+### D14. `ep crud` snippet
 
 Steps:
 

@@ -6,7 +6,7 @@ Language support for rq – a domain-specific language designed for managing and
 rq get("https://rqlang.com");
 ```
 
-This extension adds syntax highlighting, a built-in language server, IntelliSense, and a Request Explorer for `.rq` files, and integrates with the rq CLI and auth flows, including interactive OAuth flows.
+This extension adds syntax highlighting, a built-in language server, IntelliSense, and a Request Explorer for `.rq` files, with full support for auth flows including interactive OAuth.
 
 ![rq animation](https://raw.githubusercontent.com/rqlang/rq/main/docs/media/rq.gif)
 
@@ -29,8 +29,4 @@ Want the full tour? Check out the [VS Code Extension docs](https://www.rqlang.co
 - **Request Explorer** sidebar to browse and run requests, with environment selection and run/run-with-variables actions.
 - **Configuration view** — a dedicated sidebar view listing the environments and auth providers defined across your workspace.
 - **Response panel** — view response status, headers, and formatted body; copy the body with one click.
-- Integration with rq auth providers, including interactive OAuth flows (Authorization Code with PKCE and Implicit).
-
-## Requirements
-
-> **Note:** This extension requires the **rq CLI executable** to function. On activation, the extension automatically detects whether the CLI is installed or needs to be updated, and downloads the appropriate binary from the [latest GitHub release](https://github.com/rqlang/rq/releases/latest) for your platform. See the [Installation Guide](https://www.rqlang.com/docs/INSTALLATION.html) for more details.
+- **Integration with rq auth providers, including interactive OAuth flows (Authorization Code with PKCE and Implicit).**

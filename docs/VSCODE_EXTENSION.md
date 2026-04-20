@@ -8,8 +8,6 @@ nav_order: 5
 
 The rq VS Code extension provides first-class support for editing and running `.rq` files directly from the editor. It is the most convenient way to explore the language, iterate on requests, and use interactive authentication flows.
 
-If you haven't installed rq yet, see the [INSTALLATION guide](INSTALLATION.md) first.
-
 This page describes the main features of the extension. For the language itself, see the [Language Definition](./LANGUAGE_DEFINITION.md).
 
 ## Language syntax support
@@ -19,7 +17,7 @@ The extension understands rq files and provides:
 - **Syntax highlighting** for keywords (`let`, `rq`, `ep`, `env`, `auth`), HTTP methods, attributes, and interpolations.
 - **Real-time diagnostics** powered by the built-in language server — syntax and semantic errors are surfaced in the VS Code **Problems** view as you type, without needing to run anything.
 - **IntelliSense autocomplete, hover tooltips, navigation actions, and snippets** for common rq constructs (see [IntelliSense & language features](#intellisense--language-features) below).
-- A tight integration with the rq CLI for executing requests.
+- **Request execution** with full support for environments, variables, and authentication flows.
 
 For a complete description of the rq language (statements, variables, environments, auth, endpoints, imports, functions, etc.), refer to the [Language Definition](./LANGUAGE_DEFINITION.md).
 

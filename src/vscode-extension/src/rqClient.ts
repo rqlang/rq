@@ -389,11 +389,13 @@ export async function executeRequest(options: ExecuteRequestOptions): Promise<Ex
     const body = raw.Body;
     const headers: Record<string, string> = { ...raw.Headers };
 
-    if (!Object.keys(headers).some(k => k.toLowerCase() === 'user-agent')) {
+    const existingHeaders = new Set(Object.keys(headers).map(k => k.toLowerCase()));
+
+    if (!existingHeaders.has('user-agent')) {
         headers['user-agent'] = `rq/${getWasm().version()}`;
     }
 
-    if (body && !Object.keys(headers).some(k => k.toLowerCase() === 'content-type') && isJsonBody(body)) {
+    if (body && !existingHeaders.has('content-type') && isJsonBody(body)) {
         headers['content-type'] = 'application/json';
     }
 

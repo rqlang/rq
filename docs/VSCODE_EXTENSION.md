@@ -8,8 +8,6 @@ nav_order: 5
 
 The rq VS Code extension provides first-class support for editing and running `.rq` files directly from the editor. It is the most convenient way to explore the language, iterate on requests, and use interactive authentication flows.
 
-If you haven't installed rq yet, see the [INSTALLATION guide](INSTALLATION.md) first.
-
 This page describes the main features of the extension. For the language itself, see the [Language Definition](./LANGUAGE_DEFINITION.md).
 
 ## Language syntax support

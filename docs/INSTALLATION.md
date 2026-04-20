@@ -26,7 +26,7 @@ Each release publishes a `.vsix` file as a release asset on GitHub. You can down
 
 ## CLI (Manual Download)
 
-If you prefer not to rely on the extension to install the CLI, or if you want to use the CLI independently, you can download the prebuilt **portable** binary directly from the GitHub Releases page. The binaries are self-contained and do not require any additional runtime or installation steps.
+If you want to use the rq CLI independently, you can download the prebuilt **portable** binary directly from the GitHub Releases page. The binaries are self-contained and do not require any additional runtime or installation steps.
 
 1. Open the Releases page in your browser:
 	- https://github.com/rqlang/rq/releases

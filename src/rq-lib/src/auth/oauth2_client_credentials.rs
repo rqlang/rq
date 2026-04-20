@@ -1,4 +1,5 @@
 use super::auth_provider::{AuthFuture, AuthProvider};
+use super::bearer::BearerProvider;
 use crate::syntax::error::AuthError;
 use std::collections::HashMap;
 
@@ -18,6 +19,7 @@ const CLIENT_SECRET_FIELD: &str = "client_secret";
 const TOKEN_URL_FIELD: &str = "token_url";
 const SCOPE_FIELD: &str = "scope";
 const CERT_FILE_FIELD: &str = "cert_file";
+#[cfg(feature = "native")]
 const CERT_PASSWORD_FIELD: &str = "cert_password";
 
 pub struct OAuth2ClientCredentialsProvider;
@@ -42,11 +44,17 @@ impl AuthProvider for OAuth2ClientCredentialsProvider {
     fn configure<'a>(
         &'a self,
         auth_config: &'a crate::syntax::auth::Config,
-        _context: &'a crate::syntax::variable_context::VariableContext,
+        context: &'a crate::syntax::variable_context::VariableContext,
         url: String,
-        mut headers: Vec<(String, String)>,
+        headers: Vec<(String, String)>,
     ) -> AuthFuture<'a> {
         Box::pin(async move {
+            let variables = context.all_variables();
+            let (mut headers, applied) = BearerProvider::apply_from_variables(&variables, headers);
+            if applied {
+                return Ok((url, headers));
+            }
+
             let client_id = &auth_config.fields[CLIENT_ID_FIELD].value;
             let token_url = &auth_config.fields[TOKEN_URL_FIELD].value;
             let scope = auth_config.fields.get(SCOPE_FIELD).map(|t| &t.value);

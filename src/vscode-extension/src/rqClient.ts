@@ -389,6 +389,14 @@ export async function executeRequest(options: ExecuteRequestOptions): Promise<Ex
     const body = raw.Body;
     const headers: Record<string, string> = { ...raw.Headers };
 
+    if (!Object.keys(headers).some(k => k.toLowerCase() === 'user-agent')) {
+        headers['user-agent'] = `rq/${getWasm().version()}`;
+    }
+
+    if (body && !Object.keys(headers).some(k => k.toLowerCase() === 'content-type') && isJsonBody(body)) {
+        headers['content-type'] = 'application/json';
+    }
+
     if (raw.Auth) {
         const { name: authName, type: authType } = raw.Auth;
         if (authType === 'oauth2_authorization_code' || authType === 'oauth2_implicit') {
@@ -518,6 +526,11 @@ async function fetchClientCredentialsToken(fields: Record<string, string>, authF
         throw new Error(`Token response missing access_token: ${response.body}`);
     }
     return data.access_token;
+}
+
+function isJsonBody(body: string): boolean {
+    const t = body.trim();
+    return (t.startsWith('{') && t.endsWith('}')) || (t.startsWith('[') && t.endsWith(']'));
 }
 
 export function base64url(buf: Buffer): string {

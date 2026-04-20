@@ -19,29 +19,17 @@ async fn execute_with_reqwest(request: &Request) -> Result<HttpResponse, RqError
     let method = to_reqwest_method(&request.method);
     let mut req_builder = client.request(method, &request.url);
 
-    req_builder = req_builder.header(
-        reqwest::header::USER_AGENT,
-        &format!("rq/{}", crate::version::app_version()),
-    );
-
     for (key, value) in &request.headers {
         req_builder = req_builder.header(key, value);
     }
 
     if let Some(body) = &request.body {
-        if is_json_content(body) {
-            req_builder = req_builder.header(reqwest::header::CONTENT_TYPE, "application/json");
-        }
         req_builder = req_builder.body(body.clone());
     }
 
     if let Some(timeout_str) = &request.timeout {
         if let Ok(secs) = timeout_str.parse::<f64>() {
             req_builder = req_builder.timeout(std::time::Duration::from_secs_f64(secs));
-        } else {
-            return Err(RqError::Generic(format!(
-                "HTTP Error: Timeout value '{timeout_str}' must be a number"
-            )));
         }
     }
 
@@ -92,10 +80,4 @@ fn error_chain(e: &dyn std::error::Error) -> String {
         source = s.source();
     }
     msg
-}
-
-fn is_json_content(body: &str) -> bool {
-    let trimmed = body.trim();
-    (trimmed.starts_with('{') && trimmed.ends_with('}'))
-        || (trimmed.starts_with('[') && trimmed.ends_with(']'))
 }

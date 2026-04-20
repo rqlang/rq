@@ -28,8 +28,20 @@ async fn execute_with_reqwest(request: &Request) -> Result<HttpResponse, RqError
     }
 
     if let Some(timeout_str) = &request.timeout {
-        if let Ok(secs) = timeout_str.parse::<f64>() {
-            req_builder = req_builder.timeout(std::time::Duration::from_secs_f64(secs));
+        match timeout_str.parse::<f64>() {
+            Ok(secs) if secs.is_finite() && secs >= 0.0 => {
+                req_builder = req_builder.timeout(std::time::Duration::from_secs_f64(secs));
+            }
+            Ok(_) => {
+                return Err(RqError::Generic(format!(
+                    "HTTP Error: Timeout value '{timeout_str}' must be a non-negative finite number"
+                )));
+            }
+            Err(_) => {
+                return Err(RqError::Generic(format!(
+                    "HTTP Error: Timeout value '{timeout_str}' must be a number"
+                )));
+            }
         }
     }
 

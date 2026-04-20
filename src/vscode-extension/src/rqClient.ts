@@ -144,7 +144,7 @@ interface RqWasmModule {
     list_endpoints(files_json: string, secrets_json: string, source: string): string;
     list_variables(files_json: string, secrets_json: string, source: string, env: string | undefined): string;
     check(files_json: string, secrets_json: string, source: string, env: string | undefined): string;
-    get_request_details(files_json: string, secrets_json: string, source: string, name: string, env: string | undefined, interpolate: boolean): string;
+    get_request_details(files_json: string, secrets_json: string, source: string, name: string, env: string | undefined, interpolate: boolean, variables_json?: string): string;
     get_auth_details(files_json: string, secrets_json: string, source: string, name: string, env: string | undefined, interpolate: boolean): string;
     get_environment(files_json: string, secrets_json: string, source: string, name: string): string;
     get_endpoint(files_json: string, secrets_json: string, source: string, name: string): string;
@@ -378,9 +378,13 @@ export async function executeRequest(options: ExecuteRequestOptions): Promise<Ex
     const filesJson = buildFilesMap(source);
     const secretsJson = buildSecretsMap(source);
 
+    const variablesList = options.variables
+        ? Object.entries(options.variables).map(([k, v]) => `${k}=${v}`)
+        : undefined;
     const detailsRaw = getWasm().get_request_details(
         filesJson, secretsJson, source,
         options.requestName, options.environment, true,
+        variablesList ? JSON.stringify(variablesList) : undefined,
     );
     const raw = JSON.parse(detailsRaw) as RequestShowRaw;
 

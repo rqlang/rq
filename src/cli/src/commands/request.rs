@@ -171,6 +171,7 @@ pub fn execute_show(args: &ShowArgs) -> Result<(), Box<dyn std::error::Error>> {
         &name,
         args.env_args.environment.as_deref(),
         !args.no_var_interpolation,
+        &[],
     )?;
 
     let auth = if let (Some(auth_name), Some(auth_type)) = (&details.auth_name, &details.auth_type)

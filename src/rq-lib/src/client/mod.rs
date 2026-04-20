@@ -275,6 +275,7 @@ impl RqClient {
         request_name: &str,
         environment: Option<&str>,
         interpolate_variables: bool,
+        variables: &[String],
     ) -> Result<RequestDetails, RqError> {
         let (rq_files, _) = self.get_rq_files_to_process(source_path, Some(request_name))?;
 
@@ -342,6 +343,7 @@ impl RqClient {
         };
 
         let secret_vars = self.collect_secrets_for_env(source_path, environment);
+        let cli_vars = Self::parse_cli_variables(variables)?;
 
         let context = crate::syntax::variable_context::VariableContext::builder()
             .file_variables(loaded_variables)
@@ -349,6 +351,7 @@ impl RqClient {
             .secret_variables(secret_vars)
             .endpoint_variables(req_with_vars.endpoint_variables.clone())
             .request_variables(req_with_vars.request_variables.clone())
+            .cli_variables(cli_vars)
             .build();
 
         let mut working = req_with_vars.request;

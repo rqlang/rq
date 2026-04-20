@@ -17,7 +17,7 @@ The extension understands rq files and provides:
 - **Syntax highlighting** for keywords (`let`, `rq`, `ep`, `env`, `auth`), HTTP methods, attributes, and interpolations.
 - **Real-time diagnostics** powered by the built-in language server — syntax and semantic errors are surfaced in the VS Code **Problems** view as you type, without needing to run anything.
 - **IntelliSense autocomplete, hover tooltips, navigation actions, and snippets** for common rq constructs (see [IntelliSense & language features](#intellisense--language-features) below).
-- Request execution with full support for environments, variables, and authentication flows.
+- **Request execution** with full support for environments, variables, and authentication flows.
 
 For a complete description of the rq language (statements, variables, environments, auth, endpoints, imports, functions, etc.), refer to the [Language Definition](./LANGUAGE_DEFINITION.md).
 

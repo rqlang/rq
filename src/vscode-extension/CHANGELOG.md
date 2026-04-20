@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.4.0]
+
+### Enhancements
+
+- The extension no longer requires the `rq` CLI to be installed. All core functionality — request execution, syntax analysis, variable resolution, and auth handling — now runs entirely through a bundled WebAssembly module. The CLI remains supported as an optional tool but is no longer a prerequisite for the extension to work.
+
 ## [0.3.1]
 
 ### Bug Fixes

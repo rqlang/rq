@@ -14,29 +14,6 @@ This document describes how to install the rq VS Code extension.
 
 The rq VS Code extension is distributed through the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=rq-lang.rq-language)
 
-The extension uses the rq CLI as its backend. When the extension starts it will:
-
-- Check whether the `rq` CLI is available on your system.
-- Compare the installed CLI version with the extension version.
-- If the CLI is missing or outdated, offer to install it from scratch or update it.
-
-The installation and update of the CLI are handled automatically by the extension using platform-specific scripts:
-
-- On Linux and macOS it runs the Bash installer script `deployment/install-rq.sh`.
-- On Windows it runs the PowerShell installer script `deployment/install-rq.ps1`.
-
-The install behaviour depends on the platform:
-
-The binary is installed to a **local directory**:
-- **Linux / macOS**: `~/.local/bin`
-- **Windows**: `%LOCALAPPDATA%\rq`
-
-The extension will use the binary directly from this location.
-
-On **Ubuntu Desktop** (and many other modern Linux distributions), `~/.local/bin` is typically already in your `PATH`. This means you can run the `rq` command from your terminal immediately after installation (you may need to open a new terminal window).
-
-On **macOS**, **Windows**, and other systems where `~/.local/bin` is not in the `PATH`, you will need to add the installation directory to your `PATH` manually if you wish to use the CLI outside of VS Code.
-
 ## VS Code Extension (Manual Install from VSIX)
 
 Each release publishes a `.vsix` file as a release asset on GitHub. You can download and install it manually if you prefer not to use the Marketplace.

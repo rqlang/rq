@@ -29,8 +29,6 @@ Want the full tour? Check out the [VS Code Extension docs](https://www.rqlang.co
 - **Request Explorer** sidebar to browse and run requests, with environment selection and run/run-with-variables actions.
 - **Configuration view** — a dedicated sidebar view listing the environments and auth providers defined across your workspace.
 - **Response panel** — view response status, headers, and formatted body; copy the body with one click.
-- Integration with rq auth providers, including interactive OAuth flows (Authorization Code with PKCE and Implicit).
+- **Integration with rq auth providers, including interactive OAuth flows (Authorization Code with PKCE and Implicit).**
 
-## Requirements
-
-> **Note:** This extension requires the **rq CLI executable** to function. On activation, the extension automatically detects whether the CLI is installed or needs to be updated, and downloads the appropriate binary from the [latest GitHub release](https://github.com/rqlang/rq/releases/latest) for your platform. See the [Installation Guide](https://www.rqlang.com/docs/INSTALLATION.html) for more details.
+## Installation

@@ -193,14 +193,9 @@ pub fn get_request_details(
     name: &str,
     env: Option<String>,
     interpolate: bool,
-    variables_json: Option<String>,
 ) -> Result<String, JsError> {
-    let variables: Vec<String> = variables_json
-        .as_deref()
-        .and_then(|s| serde_json::from_str(s).ok())
-        .unwrap_or_default();
     let details = make_client(parse_files(files_json)?, parse_secrets(secrets_json))
-        .get_request_details(Path::new(source), name, env.as_deref(), interpolate, &variables)?;
+        .get_request_details(Path::new(source), name, env.as_deref(), interpolate)?;
 
     let headers: HashMap<String, String> = details.headers.into_iter().collect();
     let auth = details.auth_name.map(|n| AuthRef {

@@ -6,7 +6,7 @@ use crate::client::models::{RequestDetails, RequestExecutionResult, RequestInfo}
 use crate::error::RqError;
 use crate::http::HttpClient;
 use crate::logger::Logger;
-use crate::syntax::{Fs, RqFile, SecretProvider, Variable, VariableValue};
+use crate::syntax::{Fs, Request, RqFile, SecretProvider, Variable, VariableValue};
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -180,20 +180,22 @@ impl RqClient {
                     }
                 }
 
+                let prepared_request = Self::prepare_request(resolved_request)?;
+
                 let start_time = Instant::now();
-                match self.http.execute(&resolved_request).await {
+                match self.http.execute(&prepared_request).await {
                     Ok(response) => {
                         let elapsed = start_time.elapsed();
 
                         let mut request_headers = HashMap::new();
-                        for (key, value) in &resolved_request.headers {
+                        for (key, value) in &prepared_request.headers {
                             request_headers.insert(key.clone(), value.clone());
                         }
 
                         results.push(RequestExecutionResult {
-                            request_name: resolved_request.name.clone(),
-                            method: resolved_request.method.as_str().to_string(),
-                            url: resolved_request.url.clone(),
+                            request_name: prepared_request.name.clone(),
+                            method: prepared_request.method.as_str().to_string(),
+                            url: prepared_request.url.clone(),
                             status: response.status,
                             elapsed_ms: elapsed.as_millis() as u64,
                             request_headers,
@@ -1010,6 +1012,47 @@ impl RqClient {
         Some(RqFile::from_content_lenient(canonical, &content, &*self.fs))
     }
 
+    fn prepare_request(mut request: Request) -> Result<Request, RqError> {
+        if !request
+            .headers
+            .iter()
+            .any(|(k, _)| k.to_lowercase() == "user-agent")
+        {
+            request.headers.push((
+                "user-agent".to_string(),
+                format!("rq/{}", crate::version::app_version()),
+            ));
+        }
+
+        if let Some(body) = &request.body {
+            if !request
+                .headers
+                .iter()
+                .any(|(k, _)| k.to_lowercase() == "content-type")
+                && is_json_body(body)
+            {
+                request
+                    .headers
+                    .push(("content-type".to_string(), "application/json".to_string()));
+            }
+        }
+
+        if let Some(timeout_str) = &request.timeout {
+            let secs = timeout_str.parse::<f64>().map_err(|_| {
+                RqError::Generic(format!(
+                    "HTTP Error: Timeout value '{timeout_str}' must be a number"
+                ))
+            })?;
+            if !secs.is_finite() || secs < 0.0 {
+                return Err(RqError::Generic(format!(
+                    "HTTP Error: Timeout value '{timeout_str}' must be a non-negative finite number"
+                )));
+            }
+        }
+
+        Ok(request)
+    }
+
     fn collect_secrets_for_env(&self, source_path: &Path, env: Option<&str>) -> Vec<Variable> {
         let dir = if self.fs.is_dir(source_path) {
             source_path.to_path_buf()
@@ -1519,6 +1562,12 @@ impl Default for RqClient {
             Arc::new(native::ReqwestHttpClient),
         )
     }
+}
+
+fn is_json_body(body: &str) -> bool {
+    let trimmed = body.trim();
+    (trimmed.starts_with('{') && trimmed.ends_with('}'))
+        || (trimmed.starts_with('[') && trimmed.ends_with(']'))
 }
 
 fn extract_unresolved_var_name(message: &str) -> Option<String> {

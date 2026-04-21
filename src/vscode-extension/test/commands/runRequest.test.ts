@@ -83,7 +83,19 @@ describe('runRequest Commands', () => {
             line: 1,
             character: 0
         });
-        (cliService as any).executeRequest.mockResolvedValue({ results: [{}] });
+        (cliService as any).executeRequest.mockResolvedValue({
+            results: [{
+                request_name: 'test-req',
+                status: 200,
+                body: '{}',
+                elapsed_ms: 100,
+                method: 'GET',
+                url: 'http://localhost',
+                response_headers: { 'content-type': 'application/json' },
+                request_headers: {}
+            }],
+            stderr: ''
+        });
 
         // Mock auth
         (auth as any).performOAuth2Flow.mockResolvedValue('mock-token');

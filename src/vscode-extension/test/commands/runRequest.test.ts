@@ -90,7 +90,7 @@ describe('runRequest Commands', () => {
 
         // Mock webview
         (webviewGenerator as any).getWebviewContent.mockReturnValue('<html></html>');
-        (webviewGenerator as any).getErrorWebviewContent.mockReturnValue('<html>error</html>');
+        (webviewGenerator as any).getErrorWebviewContent.mockResolvedValue('<html>error</html>');
     });
 
     describe('rq.runRequest', () => {
@@ -160,6 +160,7 @@ describe('runRequest Commands', () => {
             expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
             expect(vscode.window.createWebviewPanel).toHaveBeenCalled();
             expect(webviewGenerator.getErrorWebviewContent).toHaveBeenCalledWith(
+                expect.anything(),
                 'error-req',
                 'Execution failed',
                 expect.anything()
@@ -191,6 +192,7 @@ describe('runRequest Commands', () => {
             expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
             expect(vscode.window.createWebviewPanel).toHaveBeenCalled();
             expect(webviewGenerator.getErrorWebviewContent).toHaveBeenCalledWith(
+                expect.anything(),
                 'fail-req',
                 'error: invalid value',
                 expect.anything()
@@ -257,6 +259,7 @@ describe('runRequest Commands', () => {
             expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
             expect(vscode.window.createWebviewPanel).toHaveBeenCalled();
             expect(webviewGenerator.getErrorWebviewContent).toHaveBeenCalledWith(
+                expect.anything(),
                 'throw-req',
                 'CLI crashed',
                 expect.anything()

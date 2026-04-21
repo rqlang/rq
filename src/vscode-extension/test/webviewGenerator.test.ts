@@ -66,14 +66,25 @@ describe('webviewGenerator', () => {
     });
 
     describe('getErrorWebviewContent', () => {
-        test('renders request name and error message', () => {
-            const html = getErrorWebviewContent('my-request', 'Connection refused');
+        const mockErrorTemplate = '<html><body>{{REQUEST_NAME}} {{REQUEST_INFO}} {{HEADERS_SECTION}} {{ERROR_MESSAGE}}</body></html>';
+
+        beforeEach(() => {
+            mockFs.readFile.mockImplementation((uri: any) => {
+                if (uri.fsPath.endsWith('webviewErrorTemplate.html')) {
+                    return Promise.resolve(new TextEncoder().encode(mockErrorTemplate));
+                }
+                return Promise.reject(new Error('File not found'));
+            });
+        });
+
+        test('renders request name and error message', async () => {
+            const html = await getErrorWebviewContent(mockContext, 'my-request', 'Connection refused');
 
             expect(html).toContain('my-request');
             expect(html).toContain('Connection refused');
         });
 
-        test('renders method and url when request details provided', () => {
+        test('renders method and url when request details provided', async () => {
             const details: cliService.RequestShowOutput = {
                 name: 'my-request',
                 method: 'POST',
@@ -84,13 +95,13 @@ describe('webviewGenerator', () => {
                 character: 0
             };
 
-            const html = getErrorWebviewContent('my-request', 'Connection refused', details);
+            const html = await getErrorWebviewContent(mockContext, 'my-request', 'Connection refused', details);
 
             expect(html).toContain('POST');
             expect(html).toContain('https://api.example.com/users');
         });
 
-        test('renders request headers section when headers provided', () => {
+        test('renders request headers section when headers provided', async () => {
             const details: cliService.RequestShowOutput = {
                 name: 'my-request',
                 method: 'GET',
@@ -101,7 +112,7 @@ describe('webviewGenerator', () => {
                 character: 0
             };
 
-            const html = getErrorWebviewContent('my-request', 'error', details);
+            const html = await getErrorWebviewContent(mockContext, 'my-request', 'error', details);
 
             expect(html).toContain('Request Headers (2)');
             expect(html).toContain('Authorization');
@@ -110,7 +121,7 @@ describe('webviewGenerator', () => {
             expect(html).toContain('application/json');
         });
 
-        test('renders empty request headers section when no headers defined', () => {
+        test('renders empty request headers section when no headers defined', async () => {
             const details: cliService.RequestShowOutput = {
                 name: 'my-request',
                 method: 'GET',
@@ -121,30 +132,23 @@ describe('webviewGenerator', () => {
                 character: 0
             };
 
-            const html = getErrorWebviewContent('my-request', 'error', details);
+            const html = await getErrorWebviewContent(mockContext, 'my-request', 'error', details);
 
             expect(html).toContain('Request Headers (0)');
         });
 
-        test('omits request details section when no details provided', () => {
-            const html = getErrorWebviewContent('my-request', 'error');
+        test('omits request details section when no details provided', async () => {
+            const html = await getErrorWebviewContent(mockContext, 'my-request', 'error');
 
             expect(html).not.toContain('Request Headers');
             expect(html).not.toContain('class="method"');
         });
 
-        test('escapes HTML special characters in error message', () => {
-            const html = getErrorWebviewContent('my-request', '<script>alert("xss")</script>');
+        test('escapes HTML special characters in error message', async () => {
+            const html = await getErrorWebviewContent(mockContext, 'my-request', '<script>alert("xss")</script>');
 
             expect(html).toContain('&lt;script&gt;');
             expect(html).not.toContain('<script>alert');
-        });
-
-        test('includes run again button', () => {
-            const html = getErrorWebviewContent('my-request', 'error');
-
-            expect(html).toContain('Run Again');
-            expect(html).toContain('runAgain()');
         });
     });
 

@@ -324,7 +324,7 @@ export class RequestRunner {
         }
 
         if (this.resultsPanel) {
-            this.resultsPanel.webview.html = getErrorWebviewContent(requestName, errorMessage, requestDetails);
+            this.resultsPanel.webview.html = await getErrorWebviewContent(this.context, requestName, errorMessage, requestDetails);
         }
     }
 

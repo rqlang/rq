@@ -1,9 +1,6 @@
 import * as vscode from 'vscode';
 import * as rqClient from '../rqClient';
 
-/**
- * Escape HTML special characters
- */
 function escapeHtml(text: string): string {
     const map: Record<string, string> = {
         '&': '&amp;',
@@ -15,9 +12,42 @@ function escapeHtml(text: string): string {
     return text.replace(/[&<>"']/g, m => map[m]);
 }
 
-/**
- * Generate HTML content for the request result webview
- */
+export async function getErrorWebviewContent(
+    context: vscode.ExtensionContext,
+    requestName: string,
+    errorMessage: string,
+    requestDetails?: rqClient.RequestShowOutput
+): Promise<string> {
+    const requestInfoHtml = requestDetails ? `
+        <div class="request-info">
+            <span class="method">${escapeHtml(requestDetails.method)}</span>
+            <span class="url">${escapeHtml(requestDetails.url)}</span>
+        </div>` : '';
+
+    const headers = requestDetails?.headers ?? {};
+    const headersHtml = Object.entries(headers)
+        .map(([k, v]) => `<tr><td class="header-key">${escapeHtml(k)}</td><td class="header-value">${escapeHtml(v)}</td></tr>`)
+        .join('\n');
+
+    const headersSection = requestDetails ? `
+    <div class="section">
+        <div class="section-title collapsed" onclick="toggleSection(this)">Request Headers (${Object.keys(headers).length})</div>
+        <div class="section-content collapsed">
+            <table>${headersHtml}</table>
+        </div>
+    </div>` : '';
+
+    const templateUri = vscode.Uri.joinPath(context.extensionUri, 'media', 'webviewErrorTemplate.html');
+    const templateBuffer = await vscode.workspace.fs.readFile(templateUri);
+    const html = new TextDecoder().decode(templateBuffer);
+
+    return html
+        .replace('{{REQUEST_NAME}}', escapeHtml(requestName))
+        .replace('{{REQUEST_INFO}}', requestInfoHtml)
+        .replace('{{HEADERS_SECTION}}', headersSection)
+        .replace('{{ERROR_MESSAGE}}', escapeHtml(errorMessage));
+}
+
 export async function getWebviewContent(context: vscode.ExtensionContext, result: rqClient.RequestExecutionResult): Promise<string> {
     const statusClass = result.status >= 200 && result.status < 300 ? 'success' : 
                         result.status >= 400 ? 'error' : 'info';

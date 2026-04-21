@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { getWebviewContent } from '../src/ui/webviewGenerator';
+import { getWebviewContent, getErrorWebviewContent } from '../src/ui/webviewGenerator';
 import * as cliService from '../src/rqClient';
 
 describe('webviewGenerator', () => {
@@ -63,6 +63,93 @@ describe('webviewGenerator', () => {
         expect(html).toContain('id="json-body"'); // From {{BODY_CONTENT}} for JSON
         expect(html).toContain('const jsonData = {'); // From {{JSON_SCRIPT}}
         expect(html).toContain(mockRenderer); // Injected renderer script
+    });
+
+    describe('getErrorWebviewContent', () => {
+        const mockErrorTemplate = '<html><body>{{REQUEST_NAME}} {{REQUEST_INFO}} {{HEADERS_SECTION}} {{ERROR_MESSAGE}}</body></html>';
+
+        beforeEach(() => {
+            mockFs.readFile.mockImplementation((uri: any) => {
+                if (uri.fsPath.endsWith('webviewErrorTemplate.html')) {
+                    return Promise.resolve(new TextEncoder().encode(mockErrorTemplate));
+                }
+                return Promise.reject(new Error('File not found'));
+            });
+        });
+
+        test('renders request name and error message', async () => {
+            const html = await getErrorWebviewContent(mockContext, 'my-request', 'Connection refused');
+
+            expect(html).toContain('my-request');
+            expect(html).toContain('Connection refused');
+        });
+
+        test('renders method and url when request details provided', async () => {
+            const details: cliService.RequestShowOutput = {
+                name: 'my-request',
+                method: 'POST',
+                url: 'https://api.example.com/users',
+                headers: {},
+                file: 'test.rq',
+                line: 1,
+                character: 0
+            };
+
+            const html = await getErrorWebviewContent(mockContext, 'my-request', 'Connection refused', details);
+
+            expect(html).toContain('POST');
+            expect(html).toContain('https://api.example.com/users');
+        });
+
+        test('renders request headers section when headers provided', async () => {
+            const details: cliService.RequestShowOutput = {
+                name: 'my-request',
+                method: 'GET',
+                url: 'http://localhost',
+                headers: { 'Authorization': 'Bearer token', 'Accept': 'application/json' },
+                file: 'test.rq',
+                line: 1,
+                character: 0
+            };
+
+            const html = await getErrorWebviewContent(mockContext, 'my-request', 'error', details);
+
+            expect(html).toContain('Request Headers (2)');
+            expect(html).toContain('Authorization');
+            expect(html).toContain('Bearer token');
+            expect(html).toContain('Accept');
+            expect(html).toContain('application/json');
+        });
+
+        test('renders empty request headers section when no headers defined', async () => {
+            const details: cliService.RequestShowOutput = {
+                name: 'my-request',
+                method: 'GET',
+                url: 'http://localhost',
+                headers: {},
+                file: 'test.rq',
+                line: 1,
+                character: 0
+            };
+
+            const html = await getErrorWebviewContent(mockContext, 'my-request', 'error', details);
+
+            expect(html).toContain('Request Headers (0)');
+        });
+
+        test('omits request details section when no details provided', async () => {
+            const html = await getErrorWebviewContent(mockContext, 'my-request', 'error');
+
+            expect(html).not.toContain('Request Headers');
+            expect(html).not.toContain('class="method"');
+        });
+
+        test('escapes HTML special characters in error message', async () => {
+            const html = await getErrorWebviewContent(mockContext, 'my-request', '<script>alert("xss")</script>');
+
+            expect(html).toContain('&lt;script&gt;');
+            expect(html).not.toContain('<script>alert');
+        });
     });
 
     test('getWebviewContent handles non-JSON body', async () => {

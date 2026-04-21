@@ -84,6 +84,9 @@ export interface ListRequestsResult {
 
 export interface RequestShowOutput {
     name: string;
+    method: string;
+    url: string;
+    headers: Record<string, string>;
     auth?: {
         name: string;
         type: string;
@@ -347,6 +350,9 @@ export async function showRequest(requestName: string, sourceDirectory?: string,
     const raw = JSON.parse(result) as RequestShowRaw;
     return {
         name: raw.Request,
+        method: raw.Method,
+        url: raw.URL,
+        headers: raw.Headers,
         auth: raw.Auth,
         file: normalizePath(raw.file),
         line: raw.line,

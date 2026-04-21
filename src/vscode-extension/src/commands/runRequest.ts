@@ -235,7 +235,7 @@ export class RequestRunner {
                     this.lastExecutionContext.sourceDirectory,
                     this.lastExecutionContext.environment,
                     this.lastExecutionContext.variables
-                );
+                ).catch(error => this.handleError(error));
             }
             if (message.command === 'copyBody' && this.lastBody !== undefined) {
                 vscode.env.clipboard.writeText(this.lastBody);

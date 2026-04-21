@@ -1,6 +1,6 @@
 # RQ Language Support for VS Code
 
-Language support for rq – a domain-specific language designed for managing and executing HTTP requests.
+Language support for [rq](https://rqlang.com) – a domain-specific language designed for managing and executing HTTP requests.
 
 ```
 rq get("https://rqlang.com");

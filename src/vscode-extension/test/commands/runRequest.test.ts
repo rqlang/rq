@@ -74,7 +74,15 @@ describe('runRequest Commands', () => {
         requestRunner = new RequestRunner(context, outputChannel);
 
         // Mock cliService defaults
-        (cliService as any).showRequest.mockResolvedValue({ name: 'test-req' });
+        (cliService as any).showRequest.mockResolvedValue({
+            name: 'test-req',
+            method: 'GET',
+            url: 'http://localhost',
+            headers: {},
+            file: 'test.rq',
+            line: 1,
+            character: 0
+        });
         (cliService as any).executeRequest.mockResolvedValue({ results: [{}] });
 
         // Mock auth
@@ -82,6 +90,7 @@ describe('runRequest Commands', () => {
 
         // Mock webview
         (webviewGenerator as any).getWebviewContent.mockReturnValue('<html></html>');
+        (webviewGenerator as any).getErrorWebviewContent.mockReturnValue('<html>error</html>');
     });
 
     describe('rq.runRequest', () => {
@@ -144,12 +153,18 @@ describe('runRequest Commands', () => {
             const request = { name: 'error-req', endpoint: 'GET /', file: 'test.rq' };
             const item = new RequestTreeItem('error-req', request, 0);
 
-            (cliService.showRequest as jest.Mock).mockResolvedValue({ name: 'error-req' });
             (cliService.executeRequest as jest.Mock).mockRejectedValue(new Error('Execution failed'));
 
             await requestRunner.runRequest(item, provider);
 
-            expect(vscode.window.showErrorMessage).toHaveBeenCalledWith('Execution failed', 'Show Output');
+            expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
+            expect(vscode.window.createWebviewPanel).toHaveBeenCalled();
+            expect(webviewGenerator.getErrorWebviewContent).toHaveBeenCalledWith(
+                'error-req',
+                'Execution failed',
+                expect.anything()
+            );
+            expect(mockWebviewPanel.webview.html).toBe('<html>error</html>');
             expect(provider.setItemLoading).toHaveBeenCalledTimes(2);
             expect(provider.setItemLoading).toHaveBeenNthCalledWith(1, item, true);
             expect(provider.setItemLoading).toHaveBeenNthCalledWith(2, item, false);
@@ -158,8 +173,6 @@ describe('runRequest Commands', () => {
         test('filters cargo output from error message', async () => {
             const request = { name: 'fail-req', endpoint: 'GET /', file: 'test.rq' };
             const item = new RequestTreeItem('fail-req', request, 0);
-
-            (cliService.showRequest as jest.Mock).mockResolvedValue({ name: 'fail-req' });
 
             const stderr = [
                 'Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.07s',
@@ -175,7 +188,14 @@ describe('runRequest Commands', () => {
 
             await requestRunner.runRequest(item, provider);
 
-            expect(vscode.window.showErrorMessage).toHaveBeenCalledWith("Request 'fail-req' failed. Check the output for details.", 'Show Output');
+            expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
+            expect(vscode.window.createWebviewPanel).toHaveBeenCalled();
+            expect(webviewGenerator.getErrorWebviewContent).toHaveBeenCalledWith(
+                'fail-req',
+                'error: invalid value',
+                expect.anything()
+            );
+            expect(mockWebviewPanel.webview.html).toBe('<html>error</html>');
             expect(provider.setItemLoading).toHaveBeenCalledTimes(2);
             expect(provider.setItemLoading).toHaveBeenNthCalledWith(1, item, true);
             expect(provider.setItemLoading).toHaveBeenNthCalledWith(2, item, false);
@@ -229,13 +249,18 @@ describe('runRequest Commands', () => {
             const request = { name: 'throw-req', endpoint: 'GET /', file: 'test.rq' };
             const item = new RequestTreeItem('throw-req', request, 0);
 
-            (cliService.showRequest as jest.Mock).mockResolvedValue({ name: 'throw-req' });
             (vscode.window.showInputBox as jest.Mock).mockResolvedValue('');
             (cliService.executeRequest as jest.Mock).mockRejectedValue(new Error('CLI crashed'));
 
             await requestRunner.runRequestWithVariables(item, provider);
 
-            expect(vscode.window.showErrorMessage).toHaveBeenCalledWith('CLI crashed', 'Show Output');
+            expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
+            expect(vscode.window.createWebviewPanel).toHaveBeenCalled();
+            expect(webviewGenerator.getErrorWebviewContent).toHaveBeenCalledWith(
+                'throw-req',
+                'CLI crashed',
+                expect.anything()
+            );
             expect(provider.setItemLoading).toHaveBeenCalledTimes(2);
             expect(provider.setItemLoading).toHaveBeenNthCalledWith(1, item, true);
             expect(provider.setItemLoading).toHaveBeenNthCalledWith(2, item, false);

@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as rqClient from '../rqClient';
 import { RequestExplorerProvider, RequestTreeItem } from '../requestExplorer';
 import { performOAuth2Flow } from '../auth';
-import { getWebviewContent } from '../ui/webviewGenerator';
+import { getWebviewContent, getErrorWebviewContent } from '../ui/webviewGenerator';
 
 interface RequestExecutionContext {
     requestName: string;
@@ -46,7 +46,7 @@ export class RequestRunner {
             await this.executeRequestLogic(requestName, sourceDirectory, environment, variables);
 
         } catch (error) {
-            this.handleError(error);
+            await this.handleError(error);
         } finally {
             provider.setItemLoading(requestItem, false);
         }
@@ -70,7 +70,7 @@ export class RequestRunner {
             await this.executeRequestLogic(requestName, sourceDirectory, environment, Object.keys(variables).length > 0 ? variables : undefined);
 
         } catch (error) {
-            this.handleError(error);
+            await this.handleError(error);
         } finally {
             provider.setItemLoading(requestItem, false);
         }
@@ -168,7 +168,7 @@ export class RequestRunner {
             if (result.results.length > 0) {
                 await this.handleSuccessfulExecution(requestName, variables, result);
             } else {
-                this.handleFailedExecution(requestName, variables, result);
+                await this.handleFailedExecution(requestName, variables, result);
             }
         });
     }
@@ -203,7 +203,7 @@ export class RequestRunner {
         }
     }
 
-    private handleFailedExecution(
+    private async handleFailedExecution(
         requestName: string,
         variables: Record<string, string> | undefined,
         result: rqClient.ExecuteRequestResult
@@ -213,12 +213,7 @@ export class RequestRunner {
             : `No results returned for request: ${requestName}`;
 
         this.logOutput(`Request Failed: ${requestName}`, fullError, variables);
-
-        vscode.window.showErrorMessage(`Request '${requestName}' failed. Check the output for details.`, 'Show Output').then(selection => {
-            if (selection === 'Show Output') {
-                this.outputChannel.show(true);
-            }
-        });
+        await this.showErrorPanel(requestName, fullError);
     }
 
     private createWebviewPanel(requestName: string) {
@@ -283,7 +278,7 @@ export class RequestRunner {
         this.outputChannel.appendLine(`${'='.repeat(80)}\n`);
     }
 
-    private handleError(error: unknown) {
+    private async handleError(error: unknown) {
         let errorMessage: string;
         const asAggregate = error as { errors?: unknown[] };
         const unwrapped = Array.isArray(asAggregate?.errors) && asAggregate.errors.length > 0
@@ -304,12 +299,33 @@ export class RequestRunner {
             return;
         }
         this.outputChannel.appendLine(`\nERROR: ${errorMessage}\n`);
-        const shortMsg = errorMessage.length > 100 ? errorMessage.substring(0, 100) + '\u2026' : errorMessage;
-        vscode.window.showErrorMessage(shortMsg, 'Show Output').then(selection => {
-            if (selection === 'Show Output') {
-                this.outputChannel.show(true);
-            }
-        });
+        const requestName = this.lastExecutionContext?.requestName ?? 'Request';
+        await this.showErrorPanel(requestName, errorMessage);
+    }
+
+    private async showErrorPanel(requestName: string, errorMessage: string) {
+        if (this.resultsPanel) {
+            this.resultsPanel.title = `RQ: ${requestName}`;
+            this.resultsPanel.reveal(vscode.ViewColumn.One);
+        } else {
+            this.createWebviewPanel(requestName);
+        }
+
+        let requestDetails: rqClient.RequestShowOutput | undefined;
+        try {
+            requestDetails = await rqClient.showRequest(
+                requestName,
+                this.lastExecutionContext?.sourceDirectory,
+                this.lastExecutionContext?.environment,
+                true
+            );
+        } catch {
+            // best-effort: show error panel without request details
+        }
+
+        if (this.resultsPanel) {
+            this.resultsPanel.webview.html = getErrorWebviewContent(requestName, errorMessage, requestDetails);
+        }
     }
 
     private cleanErrorMessage(stderr: string): string {

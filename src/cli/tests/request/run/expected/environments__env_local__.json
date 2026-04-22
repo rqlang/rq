@@ -11,7 +11,7 @@
     "cookies": {},
     "body": {},
     "headers": {
-      "user-agent": "rq/0.1.0",
+      "user-agent": "{{*}}",
       "authorization": "Bearer local-token-123",
       "accept": "*/*",
       "host": "localhost:8080"

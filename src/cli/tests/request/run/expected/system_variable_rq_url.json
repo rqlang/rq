@@ -11,7 +11,7 @@
         "cookies": {},
         "body": {},
         "headers": {
-            "user-agent": "rq/0.1.0",
+            "user-agent": "{{*}}",
             "x-original-url": "http://localhost:8080/api/users",
             "accept": "*/*",
             "host": "localhost:8080"

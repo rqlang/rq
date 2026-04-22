@@ -11,7 +11,7 @@
         "cookies": {},
         "body": {"endpoint": "api", "key": "secret-api-key"},
         "headers": {
-            "user-agent": "rq/0.1.0",
+            "user-agent": "{{*}}",
             "authorization": "Bearer secret-api-key",
             "content-length": "66",
             "content-type": "application/json",

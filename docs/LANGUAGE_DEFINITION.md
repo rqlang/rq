@@ -359,7 +359,7 @@ Unknown function namespaces or names, or invalid arguments (for example calling 
 
 ## Attributes
 
-Attributes are annotations written in square brackets that modify how a request behaves. They are placed immediately above an `rq` statement:
+Attributes are annotations written in square brackets that modify how a request behaves. They are placed immediately above an `rq` or `ep` statement:
 
 ```
 [method(POST)]
@@ -377,6 +377,7 @@ The following attributes are currently supported:
 - `method`
 - `timeout`
 - `auth`
+- `required`
 
 ### `method` attribute
 
@@ -413,6 +414,29 @@ If the request does not complete within the configured timeout, the execution en
 ### `auth` attribute
 
 The `auth` attribute associates an authentication configuration with a request. Its exact behavior and supported providers are described in the [Auth](#auth) section.
+
+### `required` attribute
+
+The `required` attribute declares that a named variable **must be supplied at runtime** before the request can be executed. If the variable is missing when the request runs, execution is stopped and an error is reported.
+
+```
+[required(user_id)]
+rq get("http://localhost:8080/users/{{user_id}}");
+```
+
+You can apply `required` multiple times on the same request, once per variable:
+
+```
+[method(POST)]
+[required(user_name)]
+[required(user_role)]
+rq create(body: ${"name": "{{user_name}}", "role": "{{user_role}}"});
+```
+
+The exact enforcement behaviour differs by tool:
+
+- **CLI** — see [`rq request run` and required variables](CLI.md#required-variables) for how to supply values via `--var` and what error code is returned when they are missing.
+- **VS Code extension** — see [Required variables](VSCODE_EXTENSION.md#required-variables) for how the extension prompts you for missing values before executing.
 
 ## Environments
 
@@ -596,7 +620,16 @@ This produces a request to `/api/users?api-version=1`.
 
 ### Attributes inside endpoints
 
-The `rq` requests defined inside an endpoint block support the same attributes as any other `rq` statement (such as `timeout` or `auth`). These attributes are attached to each action and are evaluated together with the endpoint configuration.
+Not all attributes are valid on both `ep` and `rq` statements. The table below shows what is supported where:
+
+| Attribute | `ep` | `rq` |
+|-----------|------|------|
+| `timeout` | yes  | yes  |
+| `auth`    | yes  | yes  |
+| `method`  | no   | yes  |
+| `required`| no   | yes  |
+
+When an attribute is placed on an `ep` statement, it applies as a default to all `rq` requests inside that endpoint block. An `rq` statement can override or extend those defaults with its own attributes.
 
 ```
 [timeout(20)]
@@ -609,7 +642,9 @@ ep users("http://localhost:8080/api/users") {
 }
 ```
 
-In this example, the endpoint `users` defines a base timeout of `20` seconds. The `rq list` action overrides that timeout with `10` seconds, while `rq get` does not specify a timeout and therefore uses the endpoint-level timeout of `20` seconds. Both actions still share the same base URL, and `get` also applies the `auth` configuration.
+In this example, the endpoint `users` defines a base timeout of `20` seconds. The `rq list` action overrides that timeout with `10` seconds, while `rq get` does not specify a timeout and therefore inherits the endpoint-level `20` seconds. Both actions share the same base URL, and `get` also applies the `auth` configuration.
+
+Using `method` or `required` on an `ep` statement is a parse error.
 
 ### Templated endpoints
 

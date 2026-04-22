@@ -38,8 +38,13 @@ Key capabilities:
 
 	- **Run**: Click the "Run" icon next to a request to execute it immediately with the currently selected environment.
 	- **Run with variables**: Click the "Run with Variables" icon to provide runtime overrides for variables.
-		- The extension prompts for variables in `key=value` format (for example `userId=123`).
-		- You can provide multiple pairs one after another; they are passed to the engine as execution-time variables with the highest precedence.
+		- The extension prompts for variables in `variable=value` format (for example `user_id=123`).
+		- You can provide multiple pairs one after another; leave the prompt empty to stop and execute.
+		- All provided variables are passed to the engine as execution-time variables with the highest precedence.
+
+#### Required variables
+
+If a request declares one or more `[required(var_name)]` attributes (see [Language Definition — `required` attribute](LANGUAGE_DEFINITION.md#required-attribute)), the extension checks for missing required variables **before** execution. For each missing variable, an input prompt appears so you can supply the value inline — no need to use "Run with Variables" separately. If you cancel any prompt, the execution is aborted.
 
 3. **Navigation & browsing**
 

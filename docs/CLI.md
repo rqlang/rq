@@ -158,6 +158,22 @@ Error handling:
 - If `--source` points to a non-existent path, the command exits with code `2` and prints `Path does not exist`.
 - If a variable override does not follow `NAME=VALUE`, or the variable name is invalid, the command fails with clear validation messages.
 
+#### Required variables
+
+If a request declares one or more `[required(var_name)]` attributes (see [Language Definition — `required` attribute](LANGUAGE_DEFINITION.md#required-attribute)), the CLI validates that every required variable has been supplied at runtime via `-v` before sending the request. `let` bindings, environment blocks, and secrets do not satisfy a `required` declaration.
+
+If one or more required variables are missing, the CLI exits with code `3` and prints:
+
+```
+Error: Validation error: Required variable(s) not set: var_name
+```
+
+To supply the missing values, pass them with `-v`:
+
+```bash
+rq request run -s api.rq -n users/create -v user_name=Alice -v user_role=admin
+```
+
 ## Managing environments: `rq env`
 
 The `env` subcommand helps you discover available environments in your `.rq` files.

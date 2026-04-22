@@ -56,11 +56,11 @@ jobs:
         shell: bash
         run: |
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            sed -i "s/^version = \".*\"/version = \"${{ steps.read_version.outputs.version }}\"/" src/cli/Cargo.toml
+            sed -i "s/^version = \".*\"/version = \"${{ steps.read_version.outputs.version }}\"/" Cargo.toml
           else
-            sed -i.bak "s/^version = \".*\"/version = \"${{ steps.read_version.outputs.version }}\"/" src/cli/Cargo.toml
+            sed -i.bak "s/^version = \".*\"/version = \"${{ steps.read_version.outputs.version }}\"/" Cargo.toml
           fi
-          cat src/cli/Cargo.toml | grep "^version"
+          cat Cargo.toml | grep "^version"
 
       - name: Install Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -144,6 +144,9 @@ jobs:
       - name: Install dependencies
         working-directory: ./src/vscode-extension
         run: npm ci
+
+      - name: Update Cargo.toml version
+        run: sed -i.bak "s/^version = \".*\"/version = \"${{ steps.read_version.outputs.version }}\"/" Cargo.toml
 
       - name: Install wasm-pack
         run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh

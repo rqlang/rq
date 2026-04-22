@@ -81,7 +81,8 @@ describe('runRequest Commands', () => {
             headers: {},
             file: 'test.rq',
             line: 1,
-            character: 0
+            character: 0,
+            requiredVariables: []
         });
         (cliService as any).executeRequest.mockResolvedValue({
             results: [{
@@ -110,7 +111,7 @@ describe('runRequest Commands', () => {
             const request = { name: 'test-req', endpoint: 'GET /', file: 'test.rq' };
             const item = new RequestTreeItem('test-req', request, 0);
 
-            (cliService.showRequest as jest.Mock).mockResolvedValue({ name: 'test-req' });
+            (cliService.showRequest as jest.Mock).mockResolvedValue({ name: 'test-req', requiredVariables: [] });
             (cliService.executeRequest as jest.Mock).mockResolvedValue({
                 results: [{ 
                     status: 200, 
@@ -144,7 +145,8 @@ describe('runRequest Commands', () => {
 
             (cliService.showRequest as jest.Mock).mockResolvedValue({
                 name: 'auth-req',
-                auth: { name: 'my-auth', type: 'oauth2_authorization_code' }
+                auth: { name: 'my-auth', type: 'oauth2_authorization_code' },
+                requiredVariables: []
             });
             (cliService.showAuthConfig as jest.Mock).mockResolvedValue({ name: 'my-auth' });
             (auth.performOAuth2Flow as jest.Mock).mockResolvedValue('mock-token');
@@ -221,16 +223,13 @@ describe('runRequest Commands', () => {
             const request = { name: 'var-req', endpoint: 'GET /', file: 'test.rq' };
             const item = new RequestTreeItem('var-req', request, 0);
 
-            (cliService.showRequest as jest.Mock).mockResolvedValue({ name: 'var-req' });
+            (cliService.showRequest as jest.Mock).mockResolvedValue({ name: 'var-req', requiredVariables: [] });
 
-            // Mock user input: var1=val1 -> Add another -> var2=val2 -> Execute
+            // Mock user input: var1=val1, var2=val2, then empty string to stop
             (vscode.window.showInputBox as jest.Mock)
                 .mockResolvedValueOnce('var1=val1')
-                .mockResolvedValueOnce('var2=val2');
-
-            (vscode.window.showQuickPick as jest.Mock)
-                .mockResolvedValueOnce('Add another variable')
-                .mockResolvedValueOnce('Execute request');
+                .mockResolvedValueOnce('var2=val2')
+                .mockResolvedValueOnce('');
 
             (cliService.executeRequest as jest.Mock).mockResolvedValue({ results: [{}] });
 
@@ -248,7 +247,7 @@ describe('runRequest Commands', () => {
             const request = { name: 'cancel-req', endpoint: 'GET /', file: 'test.rq' };
             const item = new RequestTreeItem('cancel-req', request, 0);
 
-            (cliService.showRequest as jest.Mock).mockResolvedValue({ name: 'cancel-req' });
+            (cliService.showRequest as jest.Mock).mockResolvedValue({ name: 'cancel-req', requiredVariables: [] });
             (vscode.window.showInputBox as jest.Mock).mockResolvedValue(undefined);
 
             await requestRunner.runRequestWithVariables(item, provider);

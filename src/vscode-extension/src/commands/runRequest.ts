@@ -68,6 +68,7 @@ export class RequestRunner {
 
             const variables = await this.handleOAuth2(requestName, sourceDirectory, environment) || {};
             await this.collectUserVariables(variables);
+            await this.collectRequiredVariables(requestName, sourceDirectory, environment, variables);
 
             await this.executeRequestLogic(requestName, sourceDirectory, environment, Object.keys(variables).length > 0 ? variables : undefined);
 

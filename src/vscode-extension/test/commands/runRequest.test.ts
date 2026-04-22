@@ -258,10 +258,31 @@ describe('runRequest Commands', () => {
             expect(provider.setItemLoading).toHaveBeenNthCalledWith(2, item, false);
         });
 
+        test('prompts for required variables not yet supplied', async () => {
+            const request = { name: 'req-req', endpoint: 'GET /', file: 'test.rq' };
+            const item = new RequestTreeItem('req-req', request, 0);
+
+            (cliService.showRequest as jest.Mock).mockResolvedValue({ name: 'req-req', requiredVariables: ['user_id'] });
+
+            // user input flow: empty string stops collectUserVariables, then required prompt supplies user_id
+            (vscode.window.showInputBox as jest.Mock)
+                .mockResolvedValueOnce('')       // collectUserVariables: stop immediately
+                .mockResolvedValueOnce('42');    // collectRequiredVariables: user_id
+
+            (cliService.executeRequest as jest.Mock).mockResolvedValue({ results: [{}] });
+
+            await requestRunner.runRequestWithVariables(item, provider);
+
+            expect(cliService.executeRequest).toHaveBeenCalledWith(expect.objectContaining({
+                variables: { user_id: '42' }
+            }));
+        });
+
         test('clears loading state when execution throws', async () => {
             const request = { name: 'throw-req', endpoint: 'GET /', file: 'test.rq' };
             const item = new RequestTreeItem('throw-req', request, 0);
 
+            (cliService.showRequest as jest.Mock).mockResolvedValue({ name: 'throw-req', requiredVariables: [] });
             (vscode.window.showInputBox as jest.Mock).mockResolvedValue('');
             (cliService.executeRequest as jest.Mock).mockRejectedValue(new Error('CLI crashed'));
 

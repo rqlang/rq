@@ -124,10 +124,21 @@ export function findRequiredAttributeLineInScope(
     cursorLine: number,
     varName: string
 ): number {
+    let rqLine = -1;
+    for (let i = cursorLine; i >= 0; i--) {
+        if (/^\s*rq\s+/.test(document.lineAt(i).text)) {
+            rqLine = i;
+            break;
+        }
+    }
+    if (rqLine === -1) {
+        return -1;
+    }
+
     const pattern = new RegExp(`\\[\\s*required\\s*\\(\\s*${escapeRegex(varName)}\\s*\\)`);
-    for (let i = cursorLine - 1; i >= 0; i--) {
+    for (let i = rqLine - 1; i >= 0; i--) {
         const text = document.lineAt(i).text;
-        if (/^\s*ep\s+/.test(text)) {
+        if (!/^\s*\[/.test(text)) {
             break;
         }
         if (pattern.test(text)) {

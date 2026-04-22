@@ -108,9 +108,9 @@ jobs:
         shell: bash
         run: |
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            sed -i "s/^version = \".*\"/version = \"${{ needs.version.outputs.version }}\"/" src/cli/Cargo.toml
+            sed -i "s/^version = \".*\"/version = \"${{ needs.version.outputs.version }}\"/" Cargo.toml
           else
-            sed -i.bak "s/^version = \".*\"/version = \"${{ needs.version.outputs.version }}\"/" src/cli/Cargo.toml
+            sed -i.bak "s/^version = \".*\"/version = \"${{ needs.version.outputs.version }}\"/" Cargo.toml
           fi
 
       - name: Install system OpenSSL (Linux)

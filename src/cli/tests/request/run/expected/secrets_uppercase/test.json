@@ -11,7 +11,7 @@
       "cookies": {},
       "body": {},
       "headers": {
-        "user-agent": "{{regex:rq/.*}}",
+        "user-agent": "{{*}}",
         "accept": "*/*",
         "host": "localhost:8080",
         "x-secret": "from_uppercase_env_file"

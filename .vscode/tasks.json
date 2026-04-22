@@ -42,6 +42,8 @@
 			"command": "/usr/bin/env",
 			"args": ["bash", "-c", "npm ci && npm run compile"],
 			"options": {"cwd": "${workspaceFolder}/src/vscode-extension"},
+			"dependsOn": ["Build WASM"],
+			"dependsOrder": "sequence",
 			"problemMatcher": ["$tsc"],
 			"group": {"kind": "build", "isDefault": true}
 		},

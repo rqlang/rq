@@ -13,7 +13,7 @@
     "cookies": {},
     "body": {},
     "headers": {
-      "user-agent": "rq/0.1.0",
+      "user-agent": "{{*}}",
       "accept": "*/*",
       "authorization": "Bearer oauth-bearer-fallback-token-123",
       "host": "localhost:8080"

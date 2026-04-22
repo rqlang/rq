@@ -13,7 +13,7 @@
         "cookies": {},
         "body": {},
         "headers": {
-            "user-agent": "rq/0.1.0",
+            "user-agent": "{{*}}",
             "authorization": "Bearer test-token-123",
             "x-test": "variable-resolution",
             "accept": "*/*",

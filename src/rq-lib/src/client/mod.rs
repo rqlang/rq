@@ -366,8 +366,17 @@ impl RqClient {
         let mut working = req_with_vars.request;
 
         if interpolate_variables && skip_required_variables {
+            let defined: std::collections::HashSet<String> = loaded_variables
+                .iter()
+                .chain(env_vars.iter())
+                .chain(secret_vars.iter())
+                .chain(endpoint_variables.iter())
+                .chain(request_variables.iter())
+                .chain(cli_vars.iter())
+                .map(|v| v.name.clone())
+                .collect();
             for name in &working.required_variables {
-                if !cli_vars.iter().any(|v| v.name == *name) {
+                if !defined.contains(name) {
                     cli_vars.push(crate::syntax::variable_context::Variable {
                         name: name.clone(),
                         value: crate::syntax::variable_context::VariableValue::String(

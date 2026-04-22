@@ -88,28 +88,31 @@ export class RequestRunner {
         sourceDirectory: string | undefined,
         environment: string | undefined
     ): Promise<Record<string, string> | undefined> {
+        let requestDetails: rqClient.RequestShowOutput;
         try {
-            const requestDetails = await rqClient.showRequest(requestName, sourceDirectory, environment, true);
-            this.outputChannel.appendLine(`Auth for '${requestName}': ${JSON.stringify(requestDetails.auth ?? null)}`);
-
-            if (requestDetails.auth && (requestDetails.auth.type === 'oauth2_authorization_code' || requestDetails.auth.type === 'oauth2_implicit')) {
-                this.outputChannel.appendLine(`Detected OAuth2 auth: ${requestDetails.auth.name} (${requestDetails.auth.type})`);
-
-                const authConfig = await rqClient.showAuthConfig(
-                    requestDetails.auth.name,
-                    sourceDirectory,
-                    environment
-                );
-
-                this.outputChannel.appendLine(`Performing OAuth2 flow...`);
-                const accessToken = await performOAuth2Flow(authConfig, this.context, this.outputChannel);
-                this.outputChannel.appendLine(`OAuth2 token obtained, injecting as auth_token variable`);
-
-                return { auth_token: accessToken };
-            }
+            requestDetails = await rqClient.showRequest(requestName, sourceDirectory, environment, true, true);
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
             this.outputChannel.appendLine(`Warning: Failed to check/apply auth for request: ${errorMessage}`);
+            return undefined;
+        }
+
+        this.outputChannel.appendLine(`Auth for '${requestName}': ${JSON.stringify(requestDetails.auth ?? null)}`);
+
+        if (requestDetails.auth && (requestDetails.auth.type === 'oauth2_authorization_code' || requestDetails.auth.type === 'oauth2_implicit')) {
+            this.outputChannel.appendLine(`Detected OAuth2 auth: ${requestDetails.auth.name} (${requestDetails.auth.type})`);
+
+            const authConfig = await rqClient.showAuthConfig(
+                requestDetails.auth.name,
+                sourceDirectory,
+                environment
+            );
+
+            this.outputChannel.appendLine(`Performing OAuth2 flow...`);
+            const accessToken = await performOAuth2Flow(authConfig, this.context, this.outputChannel);
+            this.outputChannel.appendLine(`OAuth2 token obtained, injecting as auth_token variable`);
+
+            return { auth_token: accessToken };
         }
         return undefined;
     }

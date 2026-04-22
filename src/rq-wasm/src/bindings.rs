@@ -195,6 +195,7 @@ pub fn get_request_details(
     name: &str,
     env: Option<String>,
     interpolate: bool,
+    skip_required_variables: bool,
     variables_json: Option<String>,
 ) -> Result<String, JsError> {
     let variables: Vec<String> = match variables_json.as_deref() {
@@ -203,7 +204,7 @@ pub fn get_request_details(
         None => vec![],
     };
     let details = make_client(parse_files(files_json)?, parse_secrets(secrets_json))
-        .get_request_details(Path::new(source), name, env.as_deref(), interpolate, &variables)?;
+        .get_request_details(Path::new(source), name, env.as_deref(), interpolate, skip_required_variables, &variables)?;
 
     let headers: HashMap<String, String> = details.headers.into_iter().collect();
     let auth = details.auth_name.map(|n| AuthRef {

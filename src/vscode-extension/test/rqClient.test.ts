@@ -72,6 +72,7 @@ describe('executeRequest', () => {
                 'test-req',
                 undefined,
                 true,
+                false,
                 JSON.stringify(['userId=123', 'name=Alice']),
             );
         });
@@ -92,6 +93,7 @@ describe('executeRequest', () => {
                 'test-req',
                 undefined,
                 true,
+                false,
                 undefined,
             );
         });
@@ -113,6 +115,7 @@ describe('executeRequest', () => {
                 'test-req',
                 'production',
                 true,
+                false,
                 undefined,
             );
         });

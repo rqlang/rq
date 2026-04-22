@@ -108,11 +108,13 @@ impl RqClient {
 
                 let mut working = req_with_vars.request;
 
+                let mut seen = std::collections::HashSet::new();
                 let missing: Vec<&str> = working
                     .required_variables
                     .iter()
                     .filter(|name| !cli_vars.iter().any(|v| &v.name == *name))
                     .map(String::as_str)
+                    .filter(|name| seen.insert(*name))
                     .collect();
                 if !missing.is_empty() {
                     return Err(RqError::Validation(format!(

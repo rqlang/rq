@@ -64,6 +64,8 @@ struct RequestDetailsJson {
     body: Option<String>,
     #[serde(rename = "Auth", skip_serializing_if = "Option::is_none")]
     auth: Option<AuthRef>,
+    #[serde(rename = "RequiredVariables", skip_serializing_if = "Vec::is_empty")]
+    required_variables: Vec<String>,
     file: String,
     line: usize,
     character: usize,
@@ -216,6 +218,7 @@ pub fn get_request_details(
         headers,
         body: details.body,
         auth,
+        required_variables: details.required_variables,
         file: details.file,
         line: details.line,
         character: details.character,

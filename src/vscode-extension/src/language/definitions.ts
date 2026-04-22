@@ -114,3 +114,36 @@ export function parseVariables(document: vscode.TextDocument): Variable[] {
 
     return variables;
 }
+
+function escapeRegex(s: string): string {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+export function findRequiredAttributeLineInScope(
+    document: vscode.TextDocument,
+    cursorLine: number,
+    varName: string
+): number {
+    let rqLine = -1;
+    for (let i = cursorLine; i >= 0; i--) {
+        if (/^\s*rq\s+/.test(document.lineAt(i).text)) {
+            rqLine = i;
+            break;
+        }
+    }
+    if (rqLine === -1) {
+        return -1;
+    }
+
+    const pattern = new RegExp(`\\[\\s*required\\s*\\(\\s*${escapeRegex(varName)}\\s*\\)`);
+    for (let i = rqLine - 1; i >= 0; i--) {
+        const text = document.lineAt(i).text;
+        if (!/^\s*\[/.test(text)) {
+            break;
+        }
+        if (pattern.test(text)) {
+            return i;
+        }
+    }
+    return -1;
+}

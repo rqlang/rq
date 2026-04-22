@@ -1,0 +1,4 @@
+[required(user_id)]
+ep api("http://localhost:8080") {
+    rq get_user("/user");
+}

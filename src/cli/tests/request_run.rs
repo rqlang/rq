@@ -53,6 +53,10 @@ fn main() {
             "request_run_connection_refused",
             test_request_run_connection_refused,
         ),
+        Trial::test(
+            "request_required_variable_satisfied_by_cli",
+            test_request_required_variable_satisfied_by_cli,
+        ),
     ];
 
     // Discover tests from organized directories
@@ -407,6 +411,30 @@ fn test_request_run_connection_refused() -> Result<(), Failed> {
     if !message.contains("Connection refused") && !message.contains("connection refused") {
         return Err(format!(
             "Expected error message to contain 'Connection refused', got: {message}"
+        )
+        .into());
+    }
+
+    Ok(())
+}
+
+fn test_request_required_variable_satisfied_by_cli() -> Result<(), Failed> {
+    let output = rq_cmd()
+        .args([
+            "request",
+            "run",
+            "-s",
+            "tests/request/run/input/required/missing__code_3__.rq",
+            "-v",
+            "user_id=42",
+        ])
+        .output()
+        .map_err(|e| format!("Failed to execute command: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!(
+            "Expected success when required variable is supplied via CLI, got: {stderr}"
         )
         .into());
     }

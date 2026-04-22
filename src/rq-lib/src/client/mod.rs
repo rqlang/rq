@@ -108,6 +108,21 @@ impl RqClient {
 
                 let mut working = req_with_vars.request;
 
+                let mut seen = std::collections::HashSet::new();
+                let missing: Vec<&str> = working
+                    .required_variables
+                    .iter()
+                    .filter(|name| !cli_vars.iter().any(|v| &v.name == *name))
+                    .map(String::as_str)
+                    .filter(|name| seen.insert(*name))
+                    .collect();
+                if !missing.is_empty() {
+                    return Err(RqError::Validation(format!(
+                        "Required variable(s) not set: {}",
+                        missing.join(", ")
+                    )));
+                }
+
                 let search_paths = Self::build_search_paths(
                     &working,
                     &rq_file.path,
@@ -379,6 +394,7 @@ impl RqClient {
                 headers: working.headers,
                 method: working.method.as_str().to_string(),
                 body: working.body,
+                required_variables: working.required_variables,
                 file: request_file,
                 line: request_line,
                 character: request_character,
@@ -429,6 +445,7 @@ impl RqClient {
             headers: resolved.headers,
             method: resolved.method.as_str().to_string(),
             body: resolved.body,
+            required_variables: resolved.required_variables,
             file: request_file,
             line: request_line,
             character: request_character,
@@ -844,6 +861,18 @@ impl RqClient {
                         });
                     }
                 }
+                for (var_name, (file, line, character)) in &rq_file.required_variable_locations {
+                    if seen.insert(var_name.clone()) {
+                        entries.push(crate::client::models::VariableEntry {
+                            name: var_name.clone(),
+                            value: String::new(),
+                            file: crate::paths::clean_path_str(file).to_string(),
+                            line: *line,
+                            character: *character,
+                            source: "required".to_string(),
+                        });
+                    }
+                }
             }
         }
 
@@ -1204,6 +1233,9 @@ impl RqClient {
             errors.push(RqError::Syntax(e));
         }
 
+        let mut endpoint_reported: std::collections::HashSet<(Option<String>, String)> =
+            std::collections::HashSet::new();
+
         for req_with_vars in &rq_file.requests {
             let scoped_vars: Vec<_> = req_with_vars
                 .endpoint_variables
@@ -1231,12 +1263,25 @@ impl RqClient {
                 }
                 errors.push(RqError::Syntax(e));
             }
+            let required_placeholders: Vec<crate::syntax::variable_context::Variable> =
+                req_with_vars
+                    .request
+                    .required_variables
+                    .iter()
+                    .map(|name| crate::syntax::variable_context::Variable {
+                        name: name.clone(),
+                        value: crate::syntax::variable_context::VariableValue::String(
+                            String::new(),
+                        ),
+                    })
+                    .collect();
             let context = crate::syntax::variable_context::VariableContext::builder()
                 .file_variables(rq_file.file_variables.clone())
                 .environment_variables(env_vars.clone())
                 .secret_variables(secret_vars.clone())
                 .endpoint_variables(req_with_vars.endpoint_variables.clone())
                 .request_variables(req_with_vars.request_variables.clone())
+                .cli_variables(required_placeholders)
                 .build();
 
             let search_paths = Self::build_search_paths(
@@ -1256,6 +1301,10 @@ impl RqClient {
                     .map(|n| broken_var_names.contains(&n))
                     .unwrap_or(false)
                 {
+                    continue;
+                }
+                let ep_key = (req_with_vars.request.endpoint.clone(), e.message.clone());
+                if req_with_vars.request.endpoint.is_some() && !endpoint_reported.insert(ep_key) {
                     continue;
                 }
                 errors.push(RqError::Syntax(e));

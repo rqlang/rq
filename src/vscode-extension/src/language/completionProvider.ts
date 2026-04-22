@@ -683,7 +683,12 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
                     authItem.insertText = new vscode.SnippetString('auth("$1")');
                     authItem.command = { command: 'editor.action.triggerSuggest', title: 'Re-trigger completions' };
 
-                    return [methodItem, timeoutItem, authItem];
+                    const requiredItem = new vscode.CompletionItem('required', vscode.CompletionItemKind.Keyword);
+                    requiredItem.detail = 'Require variable at runtime';
+                    requiredItem.documentation = new vscode.MarkdownString('Marks a variable as required — must be provided via `--var` at runtime.\n\n**Example:** `[required(user_id)]`');
+                    requiredItem.insertText = new vscode.SnippetString('required(${1:var_name})');
+
+                    return [methodItem, timeoutItem, authItem, requiredItem];
                 }
             }
 

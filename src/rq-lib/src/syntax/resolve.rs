@@ -816,7 +816,7 @@ pub fn collect_variable_errors(
     let mut error_index = 0usize;
     let mut try_resolve = |s: &str| {
         if let Err(mut e) = check_string(s, context, source_files, fs) {
-            if e.line == 0 {
+            if e.line == 0 || e.line < request_line_1 {
                 e.line = request_line_1;
                 e.column = request_col_1 + error_index;
                 if let Some(ref path) = request.source_path {

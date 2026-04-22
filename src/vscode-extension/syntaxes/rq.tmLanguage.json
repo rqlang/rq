@@ -344,6 +344,30 @@
               "include": "source.rq.basic#string-type"
             }
           ]
+        },
+        {
+          "name": "meta.attribute.required.rq",
+          "begin": "\\b(required)\\s*(\\()",
+          "beginCaptures": {
+            "1": {
+              "name": "entity.name.function.attribute.rq"
+            },
+            "2": {
+              "name": "punctuation.definition.arguments.rq"
+            }
+          },
+          "end": "\\)",
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.definition.arguments.rq"
+            }
+          },
+          "patterns": [
+            {
+              "name": "variable.other.rq",
+              "match": "[a-zA-Z_][a-zA-Z0-9_]*"
+            }
+          ]
         }
       ]
     }

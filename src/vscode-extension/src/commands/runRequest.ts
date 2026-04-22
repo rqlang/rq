@@ -42,8 +42,10 @@ export class RequestRunner {
 
             this.outputChannel.appendLine(`Selected environment: ${environment || '(none)'}`);
 
-            const variables = await this.handleOAuth2(requestName, sourceDirectory, environment);
-            await this.executeRequestLogic(requestName, sourceDirectory, environment, variables);
+            const variables = await this.handleOAuth2(requestName, sourceDirectory, environment) || {};
+            await this.collectRequiredVariables(requestName, sourceDirectory, environment, variables);
+
+            await this.executeRequestLogic(requestName, sourceDirectory, environment, Object.keys(variables).length > 0 ? variables : undefined);
 
         } catch (error) {
             await this.handleError(error);
@@ -66,6 +68,7 @@ export class RequestRunner {
 
             const variables = await this.handleOAuth2(requestName, sourceDirectory, environment) || {};
             await this.collectUserVariables(variables);
+            await this.collectRequiredVariables(requestName, sourceDirectory, environment, variables);
 
             await this.executeRequestLogic(requestName, sourceDirectory, environment, Object.keys(variables).length > 0 ? variables : undefined);
 
@@ -111,12 +114,45 @@ export class RequestRunner {
         return undefined;
     }
 
+    private async collectRequiredVariables(
+        requestName: string,
+        sourceDirectory: string | undefined,
+        environment: string | undefined,
+        variables: Record<string, string>
+    ) {
+        let requestDetails: rqClient.RequestShowOutput;
+        try {
+            requestDetails = await rqClient.showRequest(requestName, sourceDirectory, environment, false);
+        } catch {
+            return;
+        }
+
+        const missing = requestDetails.requiredVariables.filter(name => !(name in variables));
+        for (const varName of missing) {
+            const value = await vscode.window.showInputBox({
+                prompt: `Enter value for required variable: ${varName}`,
+                placeHolder: varName,
+                validateInput: (v) => v.trim() ? null : 'Value cannot be empty'
+            });
+
+            if (value === undefined) {
+                throw new Error('Cancelled by user');
+            }
+
+            variables[varName] = value;
+        }
+    }
+
     private async collectUserVariables(variables: Record<string, string>) {
-        let addingVariables = true;
-        while (addingVariables) {
+        while (true) {
+            const count = Object.keys(variables).length;
+            const prompt = count === 0
+                ? 'Enter variable (variable=value), or leave empty to execute without variables'
+                : `${count} variable(s) set. Enter another (variable=value), or leave empty to execute`;
+
             const variableInput = await vscode.window.showInputBox({
-                prompt: 'Enter variable in format: variable=value (or leave empty to execute)',
-                placeHolder: 'e.g., color=red or userId=123',
+                prompt,
+                placeHolder: 'e.g., user_id=123',
                 validateInput: this.validateVariableInput
             });
 
@@ -125,28 +161,24 @@ export class RequestRunner {
             }
 
             if (!variableInput) {
-                addingVariables = false;
-            } else {
-                const [varName, varValue] = variableInput.split('=').map(s => s.trim());
-                variables[varName] = varValue;
-
-                const addMore = await vscode.window.showQuickPick(['Add another variable', 'Execute request'], {
-                    placeHolder: `Added: ${varName}=${varValue}. What would you like to do?`
-                });
-
-                if (addMore === undefined || addMore === 'Execute request') {
-                    addingVariables = false;
-                }
+                break;
             }
+
+            const eqIndex = variableInput.indexOf('=');
+            const varName = variableInput.slice(0, eqIndex).trim();
+            const varValue = variableInput.slice(eqIndex + 1).trim();
+            variables[varName] = varValue;
         }
     }
 
     private validateVariableInput(value: string): string | null {
         if (!value) { return null; }
-        if (!value.includes('=')) { return 'Variable must be in format: variable=value'; }
-        const parts = value.split('=');
-        if (parts.length !== 2 || !parts[0].trim() || !parts[1].trim()) { return 'Invalid format. Use: variable=value'; }
-        if (parts[0].includes('"') || parts[1].includes('"')) { return 'Double quotes (") are not allowed in variable names or values'; }
+        const eqIndex = value.indexOf('=');
+        if (eqIndex === -1) { return 'Variable must be in format: variable=value'; }
+        const name = value.slice(0, eqIndex).trim();
+        const val = value.slice(eqIndex + 1).trim();
+        if (!name || !val) { return 'Invalid format. Use: variable=value'; }
+        if (name.includes('"') || val.includes('"')) { return 'Double quotes (") are not allowed in variable names or values'; }
         return null;
     }
 

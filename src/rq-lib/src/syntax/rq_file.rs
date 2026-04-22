@@ -18,6 +18,7 @@ pub struct RqFile {
     pub imported_files: Vec<PathBuf>,
     pub let_variable_locations: HashMap<String, (String, usize, usize)>,
     pub env_variable_locations: HashMap<String, HashMap<String, (String, usize, usize)>>,
+    pub required_variable_locations: HashMap<String, (String, usize, usize)>,
 }
 
 impl RqFile {
@@ -57,6 +58,7 @@ impl RqFile {
                 imported_files: Vec::new(),
                 let_variable_locations: HashMap::new(),
                 env_variable_locations: HashMap::new(),
+                required_variable_locations: HashMap::new(),
             },
         )
     }
@@ -73,6 +75,7 @@ impl RqFile {
             imported_files: parse_result.imported_files,
             let_variable_locations: parse_result.let_variable_locations,
             env_variable_locations: parse_result.env_variable_locations,
+            required_variable_locations: parse_result.required_variable_locations,
         }
     }
 }

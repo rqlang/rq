@@ -95,6 +95,12 @@ impl Parse for ImportParser {
         result
             .let_variable_locations
             .extend(imported_result.let_variable_locations);
+        for (name, loc) in imported_result.required_variable_locations {
+            result
+                .required_variable_locations
+                .entry(name)
+                .or_insert(loc);
+        }
         for (env_name, key_map) in imported_result.env_variable_locations {
             result
                 .env_variable_locations

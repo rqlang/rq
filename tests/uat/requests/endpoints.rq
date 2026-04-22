@@ -11,7 +11,11 @@ ep api(url: base, headers: default_headers, qs: "v=1");
      that spans multiple
      lines */
 
-ep users<api>("{{base}}/users") {
+ep users<api>("/users") {
     rq list();
     rq get(user_id);
+    [method(POST)]
+    [required(user_name)]
+    [required(user_role)]
+    rq create(body: ${"name": "{{user_name}}", "role": "{{user_role}}"});
 }

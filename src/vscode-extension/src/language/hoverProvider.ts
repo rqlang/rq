@@ -5,7 +5,8 @@ import {
     IO_FUNCTIONS,
     REQUEST_PROPERTIES,
     ENDPOINT_PROPERTIES,
-    parseVariables
+    parseVariables,
+    findRequiredAttributeLineInScope
 } from './definitions';
 
 let environmentProvider: { getSelectedEnvironment(): string | undefined } | undefined;
@@ -252,6 +253,14 @@ export const hoverProvider = vscode.languages.registerHoverProvider('rq', {
                 return undefined;
             }
 
+            const requiredLine = findRequiredAttributeLineInScope(document, position.line, word);
+            if (requiredLine !== -1) {
+                const contents = new vscode.MarkdownString();
+                contents.appendMarkdown(`**Variable: \`${word}\`** *(required)*\n\n`);
+                contents.appendMarkdown('Must be provided at runtime via `--var`.');
+                return new vscode.Hover(contents);
+            }
+
             const environment = environmentProvider?.getSelectedEnvironment();
 
             if (environment) {
@@ -259,9 +268,14 @@ export const hoverProvider = vscode.languages.registerHoverProvider('rq', {
                     const sourceDirectory = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
                     const result = await rqClient.showVariable(word, sourceDirectory, environment);
                     const contents = new vscode.MarkdownString();
-                    contents.appendMarkdown(`**Variable: \`${result.name}\`** *(${result.source})*\n\n`);
-                    contents.appendMarkdown('**Value:**\n');
-                    contents.appendCodeblock(result.value, 'rq');
+                    if (result.source === 'required') {
+                        contents.appendMarkdown(`**Variable: \`${result.name}\`** *(required)*\n\n`);
+                        contents.appendMarkdown('Must be provided at runtime via `--var`.');
+                    } else {
+                        contents.appendMarkdown(`**Variable: \`${result.name}\`** *(${result.source})*\n\n`);
+                        contents.appendMarkdown('**Value:**\n');
+                        contents.appendCodeblock(result.value, 'rq');
+                    }
                     return new vscode.Hover(contents);
                 } catch {
                     // fall through to local variable hover

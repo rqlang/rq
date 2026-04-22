@@ -557,6 +557,22 @@ fn test_check_error_ref_to_renamed_var_points_to_import_source() {
 }
 
 #[test]
+fn test_check_error_required_attribute_on_ep() {
+    let (success, json) = run_check(&["check", "-s", "tests/check/input/err_required_on_ep.rq"]);
+    assert!(
+        !success,
+        "expected exit 1 for [required] attribute on ep statement"
+    );
+    assert_eq!(error_count(&json), 1);
+    let msgs = error_messages(&json);
+    assert!(
+        msgs[0].contains("required") && msgs[0].contains("ep"),
+        "expected error about 'required' not being supported on ep, got: {}",
+        msgs[0]
+    );
+}
+
+#[test]
 fn test_check_nonexistent_source_exits_nonzero() {
     let output = rq_cmd()
         .args(["check", "-s", "tests/check/input/nonexistent.rq"])

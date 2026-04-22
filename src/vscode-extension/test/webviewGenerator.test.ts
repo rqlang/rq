@@ -92,7 +92,8 @@ describe('webviewGenerator', () => {
                 headers: {},
                 file: 'test.rq',
                 line: 1,
-                character: 0
+                character: 0,
+                requiredVariables: []
             };
 
             const html = await getErrorWebviewContent(mockContext, 'my-request', 'Connection refused', details);
@@ -109,7 +110,8 @@ describe('webviewGenerator', () => {
                 headers: { 'Authorization': 'Bearer token', 'Accept': 'application/json' },
                 file: 'test.rq',
                 line: 1,
-                character: 0
+                character: 0,
+                requiredVariables: []
             };
 
             const html = await getErrorWebviewContent(mockContext, 'my-request', 'error', details);
@@ -129,7 +131,8 @@ describe('webviewGenerator', () => {
                 headers: {},
                 file: 'test.rq',
                 line: 1,
-                character: 0
+                character: 0,
+                requiredVariables: []
             };
 
             const html = await getErrorWebviewContent(mockContext, 'my-request', 'error', details);

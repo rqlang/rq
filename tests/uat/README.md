@@ -187,7 +187,29 @@ Expected:
 - The first execution uses the default value `user_id = 123` and the URL is `http://localhost:8080/users/123?v=1`.
 - The second execution uses the overridden value `user_id = 321` and the URL is `http://localhost:8080/users/321?v=1`.
 
-### B4. Execute a request when the echo server is not running
+### B4. Execute a request with required variables
+
+Steps:
+
+1. With the `tests/uat` folder open in VS Code, go to the RQ Request Explorer view.
+2. Locate the `users.create` request under `requests/endpoints.rq`.
+3. Run the request **without** providing any variables.
+
+Expected:
+
+- The request fails with a validation error: `Required variable(s) not set: user_name, user_role`.
+- A VS Code error notification appears and the output channel shows the error.
+- No HTTP request is sent.
+
+4. Run `users.create` again, this time providing both required variables — for example `user_name=Alice` and `user_role=admin` — when prompted.
+
+Expected:
+
+- The request executes successfully as a `POST` to `http://localhost:8080/users?v=1`.
+- The request body is `{"name": "Alice", "role": "admin"}`.
+- Hovering over `user_name` or `user_role` in the editor shows `*(required)* — Must be provided at runtime via --var`.
+
+### B5. Execute a request when the echo server is not running
 
 Steps:
 

@@ -3,4 +3,8 @@ import "shared";
 let base_url = "http://localhost:8080";
 
 [auth("{{auth_name}}")]
-rq auth_basic("{{base_url}}/{{auth_name}}");
+rq basic("{{base_url}}/{{auth_name}}");
+
+[auth("{{auth_name}}")]
+[required(foo)]
+rq basic_with_required("{{base_url}}/{{auth_name}}/{{foo}}");

@@ -163,6 +163,28 @@ describe('runRequest Commands', () => {
             expect(provider.setItemLoading).toHaveBeenNthCalledWith(2, item, false);
         });
 
+        test('handles OAuth2 auth with required variables', async () => {
+            const request = { name: 'auth-req', endpoint: 'GET /', file: 'test.rq' };
+            const item = new RequestTreeItem('auth-req', request, 0);
+
+            (cliService.showRequest as jest.Mock).mockResolvedValue({
+                name: 'auth-req',
+                auth: { name: 'my-auth', type: 'oauth2_authorization_code' },
+                requiredVariables: ['user_id']
+            });
+            (cliService.showAuthConfig as jest.Mock).mockResolvedValue({ name: 'my-auth' });
+            (auth.performOAuth2Flow as jest.Mock).mockResolvedValue('mock-token');
+            (vscode.window.showInputBox as jest.Mock).mockResolvedValueOnce('42');
+            (cliService.executeRequest as jest.Mock).mockResolvedValue({ results: [{}] });
+
+            await requestRunner.runRequest(item, provider);
+
+            expect(auth.performOAuth2Flow).toHaveBeenCalled();
+            expect(cliService.executeRequest).toHaveBeenCalledWith(expect.objectContaining({
+                variables: { auth_token: 'mock-token', user_id: '42' }
+            }));
+        });
+
         test('handles execution error', async () => {
             const request = { name: 'error-req', endpoint: 'GET /', file: 'test.rq' };
             const item = new RequestTreeItem('error-req', request, 0);

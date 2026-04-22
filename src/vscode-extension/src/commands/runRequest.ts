@@ -89,7 +89,8 @@ export class RequestRunner {
         environment: string | undefined
     ): Promise<Record<string, string> | undefined> {
         try {
-            const requestDetails = await rqClient.showRequest(requestName, sourceDirectory, environment, true);
+            const requestDetails = await rqClient.showRequest(requestName, sourceDirectory, environment, true, true);
+
             this.outputChannel.appendLine(`Auth for '${requestName}': ${JSON.stringify(requestDetails.auth ?? null)}`);
 
             if (requestDetails.auth && (requestDetails.auth.type === 'oauth2_authorization_code' || requestDetails.auth.type === 'oauth2_implicit')) {
@@ -107,11 +108,12 @@ export class RequestRunner {
 
                 return { auth_token: accessToken };
             }
+            return undefined;
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
             this.outputChannel.appendLine(`Warning: Failed to check/apply auth for request: ${errorMessage}`);
+            return undefined;
         }
-        return undefined;
     }
 
     private async collectRequiredVariables(

@@ -290,6 +290,7 @@ impl RqClient {
         request_name: &str,
         environment: Option<&str>,
         interpolate_variables: bool,
+        skip_required_variables: bool,
         variables: &[String],
     ) -> Result<RequestDetails, RqError> {
         let (rq_files, _) = self.get_rq_files_to_process(source_path, Some(request_name))?;
@@ -358,18 +359,42 @@ impl RqClient {
         };
 
         let secret_vars = self.collect_secrets_for_env(source_path, environment);
-        let cli_vars = Self::parse_cli_variables(variables)?;
+        let mut cli_vars = Self::parse_cli_variables(variables)?;
+
+        let endpoint_variables = req_with_vars.endpoint_variables;
+        let request_variables = req_with_vars.request_variables;
+        let mut working = req_with_vars.request;
+
+        if interpolate_variables && skip_required_variables {
+            let defined: std::collections::HashSet<String> = loaded_variables
+                .iter()
+                .chain(env_vars.iter())
+                .chain(secret_vars.iter())
+                .chain(endpoint_variables.iter())
+                .chain(request_variables.iter())
+                .chain(cli_vars.iter())
+                .map(|v| v.name.clone())
+                .collect();
+            for name in &working.required_variables {
+                if !defined.contains(name) {
+                    cli_vars.push(crate::syntax::variable_context::Variable {
+                        name: name.clone(),
+                        value: crate::syntax::variable_context::VariableValue::String(
+                            String::new(),
+                        ),
+                    });
+                }
+            }
+        }
 
         let context = crate::syntax::variable_context::VariableContext::builder()
             .file_variables(loaded_variables)
             .environment_variables(env_vars)
             .secret_variables(secret_vars)
-            .endpoint_variables(req_with_vars.endpoint_variables.clone())
-            .request_variables(req_with_vars.request_variables.clone())
+            .endpoint_variables(endpoint_variables)
+            .request_variables(request_variables)
             .cli_variables(cli_vars)
             .build();
-
-        let mut working = req_with_vars.request;
 
         if !interpolate_variables {
             let (auth_name, auth_type) = if let Some(auth_name) = working.auth.as_deref() {

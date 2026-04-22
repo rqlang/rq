@@ -42,8 +42,10 @@ export class RequestRunner {
 
             this.outputChannel.appendLine(`Selected environment: ${environment || '(none)'}`);
 
-            const variables = await this.handleOAuth2(requestName, sourceDirectory, environment);
-            await this.executeRequestLogic(requestName, sourceDirectory, environment, variables);
+            const variables = await this.handleOAuth2(requestName, sourceDirectory, environment) || {};
+            await this.collectRequiredVariables(requestName, sourceDirectory, environment, variables);
+
+            await this.executeRequestLogic(requestName, sourceDirectory, environment, Object.keys(variables).length > 0 ? variables : undefined);
 
         } catch (error) {
             await this.handleError(error);
@@ -109,6 +111,35 @@ export class RequestRunner {
             this.outputChannel.appendLine(`Warning: Failed to check/apply auth for request: ${errorMessage}`);
         }
         return undefined;
+    }
+
+    private async collectRequiredVariables(
+        requestName: string,
+        sourceDirectory: string | undefined,
+        environment: string | undefined,
+        variables: Record<string, string>
+    ) {
+        let requestDetails: rqClient.RequestShowOutput;
+        try {
+            requestDetails = await rqClient.showRequest(requestName, sourceDirectory, environment, false);
+        } catch {
+            return;
+        }
+
+        const missing = requestDetails.requiredVariables.filter(name => !(name in variables));
+        for (const varName of missing) {
+            const value = await vscode.window.showInputBox({
+                prompt: `Enter value for required variable: ${varName}`,
+                placeHolder: varName,
+                validateInput: (v) => v.trim() ? null : 'Value cannot be empty'
+            });
+
+            if (value === undefined) {
+                throw new Error('Cancelled by user');
+            }
+
+            variables[varName] = value;
+        }
     }
 
     private async collectUserVariables(variables: Record<string, string>) {

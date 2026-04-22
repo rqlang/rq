@@ -15,6 +15,7 @@ pub struct RequestDetails {
     pub headers: Vec<(String, String)>,
     pub method: String,
     pub body: Option<String>,
+    pub required_variables: Vec<String>,
     pub file: String,
     pub line: usize,
     pub character: usize,

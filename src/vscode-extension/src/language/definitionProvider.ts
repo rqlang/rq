@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as rqClient from '../rqClient';
-import { parseVariables } from './definitions';
+import { parseVariables, findRequiredAttributeLineInScope } from './definitions';
 
 const EP_TEMPLATE_PATTERN = /^\s*ep\s+[a-zA-Z_][a-zA-Z0-9_-]*\s*<\s*([a-zA-Z_][a-zA-Z0-9_-]*)\s*>/;
 const VAR_NAME_PATTERN = /[a-zA-Z_][a-zA-Z0-9_-]*/;
@@ -41,6 +41,11 @@ export const definitionProvider = vscode.languages.registerDefinitionProvider('r
             return null;
         }
         const word = document.getText(wordRange);
+
+        const requiredLine = findRequiredAttributeLineInScope(document, position.line, word);
+        if (requiredLine !== -1) {
+            return new vscode.Location(document.uri, new vscode.Position(requiredLine, 0));
+        }
 
         const sourceDirectory = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
         const environment = environmentProvider?.getSelectedEnvironment();

@@ -32,6 +32,7 @@ pub struct Request {
     pub endpoint: Option<String>,
     pub auth: Option<String>,
     pub timeout: Option<String>,
+    pub required_variables: Vec<String>,
     pub source_path: Option<String>,
     pub related_files: Vec<String>,
     pub line: usize,
@@ -59,4 +60,5 @@ pub struct ParseResult {
         String,
         std::collections::HashMap<String, (String, usize, usize)>,
     >,
+    pub required_variable_locations: std::collections::HashMap<String, (String, usize, usize)>,
 }

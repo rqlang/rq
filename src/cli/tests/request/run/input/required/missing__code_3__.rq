@@ -1,0 +1,2 @@
+[required(user_id)]
+rq get_user("http://localhost:8080/get");

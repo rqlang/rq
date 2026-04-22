@@ -36,6 +36,7 @@ pub fn analyze_lenient(
         imported_files: Vec::new(),
         let_variable_locations: std::collections::HashMap::new(),
         env_variable_locations: std::collections::HashMap::new(),
+        required_variable_locations: std::collections::HashMap::new(),
     })
 }
 
@@ -89,6 +90,7 @@ fn analyze_impl(
         imported_files: Vec::new(),
         let_variable_locations: std::collections::HashMap::new(),
         env_variable_locations: std::collections::HashMap::new(),
+        required_variable_locations: std::collections::HashMap::new(),
     };
 
     let parsers: Vec<Box<dyn Parse>> = vec![

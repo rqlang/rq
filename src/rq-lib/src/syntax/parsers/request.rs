@@ -1,7 +1,7 @@
 use super::{
     attributes::{
         parse_attributes, AttributeContext, AttributeParser, AuthAttributeParser,
-        MethodAttributeParser, TimeoutAttributeParser,
+        MethodAttributeParser, RequiredAttributeParser, TimeoutAttributeParser,
     },
     parse_trait::Parse,
     utils::{
@@ -34,13 +34,19 @@ impl Parse for RequestParser {
         result: &mut ParseResult,
         _fs: &dyn Fs,
     ) -> Result<(), SyntaxError> {
-        let (req, req_vars) = parse_request_with_context(
+        let (req, req_vars, req_locs) = parse_request_with_context(
             r,
             &result.file_variables,
             &Vec::new(),
             None,
             &result.requests,
         )?;
+        for (name, file, line, character) in req_locs {
+            result
+                .required_variable_locations
+                .entry(name)
+                .or_insert((file, line, character));
+        }
         result
             .requests
             .push(crate::syntax::parse_result::RequestWithVariables {
@@ -255,18 +261,21 @@ pub fn parse_constructor_params(
     Ok((url, headers, body, headers_var, request_variables))
 }
 
+type RequiredVarLocation = (String, String, usize, usize);
+
 pub(crate) fn parse_request_with_context(
     r: &mut TokenReader,
     file_vars: &[Variable],
     _endpoint_vars: &[Variable],
     endpoint_name: Option<&str>,
     existing_requests: &[crate::syntax::parse_result::RequestWithVariables],
-) -> Result<(Request, Vec<Variable>), SyntaxError> {
+) -> Result<(Request, Vec<Variable>, Vec<RequiredVarLocation>), SyntaxError> {
     let mut ctx = AttributeContext::default();
     let parsers: Vec<&dyn AttributeParser> = vec![
         &MethodAttributeParser,
         &AuthAttributeParser,
         &TimeoutAttributeParser,
+        &RequiredAttributeParser,
     ];
     parse_attributes(r, &parsers, &[], &mut ctx)?;
 
@@ -336,6 +345,12 @@ pub(crate) fn parse_request_with_context(
     )?;
     r.advance();
 
+    let file = r.file_path.to_string_lossy().to_string();
+    let required_locations: Vec<(String, String, usize, usize)> = ctx
+        .required_variables
+        .iter()
+        .map(|v| (v.name.clone(), file.clone(), v.line, v.character))
+        .collect();
     let request = Request {
         name,
         url: url.clone(),
@@ -347,10 +362,11 @@ pub(crate) fn parse_request_with_context(
         endpoint: endpoint_name.map(|s| s.to_string()),
         auth: ctx.auth,
         timeout: ctx.timeout,
-        source_path: Some(r.file_path.to_string_lossy().to_string()),
+        required_variables: ctx.required_variables.into_iter().map(|v| v.name).collect(),
+        source_path: Some(file),
         related_files: Vec::new(),
         line: req_line,
         character: req_character,
     };
-    Ok((request, vars))
+    Ok((request, vars, required_locations))
 }

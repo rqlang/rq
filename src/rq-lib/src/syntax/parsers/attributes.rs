@@ -6,11 +6,18 @@ use crate::syntax::{
     token::TokenType,
 };
 
+pub struct RequiredVariable {
+    pub name: String,
+    pub line: usize,
+    pub character: usize,
+}
+
 #[derive(Default)]
 pub struct AttributeContext {
     pub method: Option<HttpMethod>,
     pub auth: Option<String>,
     pub timeout: Option<String>,
+    pub required_variables: Vec<RequiredVariable>,
 }
 
 impl AttributeContext {
@@ -34,6 +41,13 @@ impl AttributeContext {
         }
         self.timeout = Some(timeout);
         Ok(())
+    }
+    pub fn add_required_variable(&mut self, name: String, line: usize, character: usize) {
+        self.required_variables.push(RequiredVariable {
+            name,
+            line,
+            character,
+        });
     }
 }
 
@@ -304,6 +318,67 @@ impl AttributeParser for TimeoutAttributeParser {
 
         ctx.set_timeout(timeout_str)
             .map_err(|msg| r.create_error_with_file(msg, start_token.span.clone()))?;
+        Ok(())
+    }
+}
+
+pub struct RequiredAttributeParser;
+impl AttributeParser for RequiredAttributeParser {
+    fn name(&self) -> &str {
+        "required"
+    }
+
+    fn parse(&self, r: &mut TokenReader, ctx: &mut AttributeContext) -> Result<(), SyntaxError> {
+        r.advance(); // consume '['
+
+        r.skip_ignorable();
+        let _ = expect(
+            r,
+            |t| {
+                (t.token_type == TokenType::Identifier || t.token_type == TokenType::Keyword)
+                    && t.value == "required"
+            },
+            "Expected 'required'",
+        )?;
+        r.advance();
+
+        r.skip_ignorable();
+        expect(
+            r,
+            |t| t.token_type == TokenType::Punctuation && t.value == PUNC_LPAREN,
+            "Expected '('",
+        )?;
+        r.advance();
+
+        r.skip_ignorable();
+        let name_tok = expect(
+            r,
+            |t| t.token_type == TokenType::Identifier,
+            "Expected variable name",
+        )?
+        .clone();
+        let (line_1, col_1) = r.get_line_col(name_tok.span.start);
+        let line = line_1.saturating_sub(1);
+        let character = col_1.saturating_sub(1);
+        r.advance();
+
+        r.skip_ignorable();
+        expect(
+            r,
+            |t| t.token_type == TokenType::Punctuation && t.value == PUNC_RPAREN,
+            "Expected ')'",
+        )?;
+        r.advance();
+
+        r.skip_ignorable();
+        expect(
+            r,
+            |t| t.token_type == TokenType::Punctuation && t.value == PUNC_RBRACKET,
+            "Expected ']'",
+        )?;
+        r.advance();
+
+        ctx.add_required_variable(name_tok.value, line, character);
         Ok(())
     }
 }

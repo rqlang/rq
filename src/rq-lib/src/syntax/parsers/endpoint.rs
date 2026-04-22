@@ -36,12 +36,18 @@ impl Parse for EndpointParser {
         result: &mut ParseResult,
         _fs: &dyn Fs,
     ) -> Result<(), SyntaxError> {
-        let (mut ep, ep_def) = parse_endpoint_with_context(
+        let (mut ep, ep_def, ep_locs) = parse_endpoint_with_context(
             r,
             &result.file_variables,
             &result.requests,
             &result.endpoints,
         )?;
+        for (name, file, line, character) in ep_locs {
+            result
+                .required_variable_locations
+                .entry(name)
+                .or_insert((file, line, character));
+        }
         result.requests.append(&mut ep);
         result.endpoints.insert(ep_def.name.clone(), ep_def);
         Ok(())
@@ -215,21 +221,21 @@ pub fn parse_endpoint_constructor_params(
     Ok((url, headers, headers_var, qs))
 }
 
+type EndpointParseResult = (
+    Vec<crate::syntax::parse_result::RequestWithVariables>,
+    EndpointDefinition,
+    Vec<(String, String, usize, usize)>,
+);
+
 pub(crate) fn parse_endpoint_with_context(
     r: &mut TokenReader,
     file_vars: &[crate::syntax::variable_context::Variable],
     existing_requests: &[crate::syntax::parse_result::RequestWithVariables],
     existing_endpoints: &std::collections::HashMap<String, EndpointDefinition>,
-) -> Result<
-    (
-        Vec<crate::syntax::parse_result::RequestWithVariables>,
-        EndpointDefinition,
-    ),
-    SyntaxError,
-> {
+) -> Result<EndpointParseResult, SyntaxError> {
     let mut ctx = AttributeContext::default();
     let parsers: Vec<&dyn AttributeParser> = vec![&AuthAttributeParser, &TimeoutAttributeParser];
-    parse_attributes(r, &parsers, &["method"], &mut ctx)?;
+    parse_attributes(r, &parsers, &["method", "required"], &mut ctx)?;
 
     expect(
         r,
@@ -378,6 +384,7 @@ pub(crate) fn parse_endpoint_with_context(
     }
 
     let mut children = Vec::new();
+    let mut required_locations: Vec<(String, String, usize, usize)> = Vec::new();
 
     if let Some(t) = r.cur() {
         if t.token_type == TokenType::Punctuation && t.value == PUNC_SEMI {
@@ -399,7 +406,7 @@ pub(crate) fn parse_endpoint_with_context(
                 line: ep_line,
                 character: ep_character,
             };
-            return Ok((children, ep_def));
+            return Ok((children, ep_def, required_locations));
         }
     }
 
@@ -434,13 +441,16 @@ pub(crate) fn parse_endpoint_with_context(
             let mut all_requests = existing_requests.to_vec();
             all_requests.extend(children.clone());
 
-            let (mut req, req_vars) = parse_request_with_context(
+            let (mut req, req_vars, req_locs) = parse_request_with_context(
                 r,
                 file_vars,
                 &endpoint_variables,
                 Some(&ep_name),
                 &all_requests,
             )?;
+            for loc in req_locs {
+                required_locations.push(loc);
+            }
             if req.url.is_empty() {
                 req.url = base_url.clone();
             } else if !req.url.starts_with("http://")
@@ -545,5 +555,5 @@ pub(crate) fn parse_endpoint_with_context(
         character: ep_character,
     };
 
-    Ok((children, ep_def))
+    Ok((children, ep_def, required_locations))
 }

@@ -262,14 +262,14 @@ interface EnvironmentEntry {
 
 export async function listEnvironments(sourceDirectory?: string): Promise<string[]> {
     const source = resolveSource(sourceDirectory);
-    const result = getWasm().list_environments(await await buildFilesMap(source), await await buildSecretsMap(source), source);
+    const result = getWasm().list_environments(await buildFilesMap(source), await buildSecretsMap(source), source);
     const entries = JSON.parse(result) as EnvironmentEntry[];
     return entries.map(e => e.name);
 }
 
 export async function listAuthConfigs(sourceDirectory?: string): Promise<AuthListEntry[]> {
     const source = resolveSource(sourceDirectory);
-    const result = getWasm().list_auth(await await buildFilesMap(source), await await buildSecretsMap(source), source);
+    const result = getWasm().list_auth(await buildFilesMap(source), await buildSecretsMap(source), source);
     return JSON.parse(result) as AuthListEntry[];
 }
 
@@ -282,7 +282,7 @@ export async function showEnvironment(name: string, sourceDirectory?: string): P
 
 export async function listEndpoints(sourceDirectory?: string): Promise<EndpointShowOutput[]> {
     const source = resolveSource(sourceDirectory);
-    const result = getWasm().list_endpoints(await await buildFilesMap(source), await await buildSecretsMap(source), source);
+    const result = getWasm().list_endpoints(await buildFilesMap(source), await buildSecretsMap(source), source);
     const raw = JSON.parse(result) as EndpointShowOutput[];
     return raw.map(e => ({ ...e, file: normalizePath(e.file) }));
 }
@@ -339,7 +339,7 @@ export async function showAuthConfig(name: string, sourceDirectory?: string, env
 
 export async function listRequests(sourceDirectory?: string): Promise<ListRequestsResult> {
     const source = resolveSource(sourceDirectory);
-    const result = getWasm().list_requests(await await buildFilesMap(source), await await buildSecretsMap(source), source);
+    const result = getWasm().list_requests(await buildFilesMap(source), await buildSecretsMap(source), source);
     const requests = JSON.parse(result) as RequestInfo[];
     requests.forEach(r => {
         r.file = normalizePath(r.file);

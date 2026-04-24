@@ -4,8 +4,13 @@ import * as rqClient from '../src/rqClient';
 
 jest.mock('../src/rqClient');
 
-// Jest will automatically swap 'vscode' with our mock because of jest.config.js
-// We don't even need to import it here unless we want to check types
+async function getRequestSectionChildren(target: RequestExplorerProvider): Promise<RequestTreeItem[]> {
+    const root = await target.getChildren() as RequestTreeItem[];
+    const section = root.find(c => c.contextValue === 'section-requests')!;
+    await target.getChildren(section);
+    await new Promise(r => setImmediate(r));
+    return target.getChildren(section) as RequestTreeItem[];
+}
 
 describe('RequestExplorerProvider', () => {
     let target: RequestExplorerProvider;
@@ -33,7 +38,8 @@ describe('RequestExplorerProvider', () => {
         expect(target.getSelectedEnvironment()).toBeUndefined();
     });
 
-    test('setSelectedEnvironment() updates environment and triggers refresh', () => {
+    test('setSelectedEnvironment() updates environment and triggers refresh', async () => {
+        await target.getChildren(); // initializes envItem
         const eventSpy = jest.fn();
         target.onDidChangeTreeData(eventSpy);
 
@@ -70,6 +76,15 @@ describe('RequestExplorerProvider', () => {
         expect(vscode.window.showInformationMessage).toHaveBeenCalledWith('No workspace folder open');
     });
 
+    test('getChildren() returns section structure at root level', async () => {
+        const root = await target.getChildren() as RequestTreeItem[];
+        expect(root.length).toBe(4);
+        expect(root[0].contextValue).toBe('environment-info');
+        expect(root[1].contextValue).toBe('section-requests');
+        expect(root[2].contextValue).toBe('section-environments');
+        expect(root[3].contextValue).toBe('section-auth');
+    });
+
     test('getChildren() calls CLI and returns grouped items', async () => {
         const mockOutput = [
             { name: 'req1', endpoint: 'GET /api', file: '/root/req1.http' },
@@ -78,19 +93,14 @@ describe('RequestExplorerProvider', () => {
 
         (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: mockOutput });
 
-        const children = await target.getChildren();
+        const children = await getRequestSectionChildren(target);
 
-        // Expect: Environment item + 1 endpoint group + 1 top-level request
-        // Environment item is always first
-        expect(children.length).toBe(3);
-        expect(children[0].contextValue).toBe('environment-info');
+        expect(children.length).toBe(2);
 
-        // Check for endpoint group
         const endpointItem = children.find(c => c.label === 'GET /api');
         expect(endpointItem).toBeDefined();
         expect(endpointItem?.contextValue).toBe('endpoint');
 
-        // Check for top-level request
         const reqItem = children.find(c => c.label === 'req2');
         expect(reqItem).toBeDefined();
         expect(reqItem?.contextValue).toBe('request');
@@ -99,53 +109,35 @@ describe('RequestExplorerProvider', () => {
     });
 
     test('getChildren() handles CLI errors gracefully', async () => {
-        const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => { });
+        (rqClient.listRequests as jest.Mock).mockRejectedValue(new Error('CLI Error'));
 
-        try {
-            (rqClient.listRequests as jest.Mock).mockRejectedValue(new Error('CLI Error'));
+        const children = await getRequestSectionChildren(target);
 
-            const children = await target.getChildren();
+        expect(children.length).toBe(1);
+        expect(children[0].contextValue).toBe('error');
+        expect(children[0].label).toBe('Error loading requests');
 
-            // Should return Environment item + Error item
-            expect(children.length).toBe(2);
-            expect(children[0].contextValue).toBe('environment-info');
-            expect(children[1].contextValue).toBe('error');
-            expect(children[1].label).toBe('Error loading requests');
-
-            expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(expect.stringContaining('Failed to list requests'));
-        } finally {
-            consoleErrorSpy.mockRestore();
-        }
+        expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(expect.stringContaining('Failed to list requests'));
     });
 
     test('getChildren() shows parse errors item when CLI reports warnings', async () => {
-        const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation(() => { });
+        const mockOutput = [
+            { name: 'req1', endpoint: null, file: '/root/req1.http' }
+        ];
+        const errors = ['Warning: Failed to parse file1.rq: Syntax error', 'Warning: Failed to parse file2.rq: Syntax error'];
+        (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: mockOutput, errors });
 
-        try {
-            const mockOutput = [
-                { name: 'req1', endpoint: null, file: '/root/req1.http' }
-            ];
-            const errors = ['Warning: Failed to parse file1.rq: Syntax error', 'Warning: Failed to parse file2.rq: Syntax error'];
-            (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: mockOutput, errors });
+        const children = await getRequestSectionChildren(target);
 
-            const children = await target.getChildren();
+        expect(children.length).toBe(2);
 
-            // Expect: Environment item + Parse Errors item + 1 request
-            expect(children.length).toBe(3);
+        const errorItem = children.find(c => c.contextValue === 'error')!;
+        expect(errorItem.label).toContain('Parse Errors (2)');
+        expect(errorItem.tooltip).toContain('file1.rq');
+        expect(errorItem.tooltip).toContain('file2.rq');
 
-            expect(children[0].contextValue).toBe('environment-info');
-
-            const errorItem = children[1];
-            expect(errorItem.contextValue).toBe('error');
-            expect(errorItem.label).toContain('Parse Errors (2)');
-            expect(errorItem.tooltip).toContain('file1.rq');
-            expect(errorItem.tooltip).toContain('file2.rq');
-
-            const reqItem = children[2];
-            expect(reqItem.label).toBe('req1');
-        } finally {
-            consoleWarnSpy.mockRestore();
-        }
+        const reqItem = children.find(c => c.label === 'req1');
+        expect(reqItem).toBeDefined();
     });
 
     test('setItemLoading(true) saves original icon and sets spinner', () => {
@@ -188,15 +180,11 @@ describe('RequestExplorerProvider', () => {
 
         (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: mockOutput });
 
-        const children = await target.getChildren();
+        const children = await getRequestSectionChildren(target);
 
-        // Expect: Environment item + 1 request (at root level, not in .. folder)
-        expect(children.length).toBe(2);
-        expect(children[0].contextValue).toBe('environment-info');
-
-        const reqItem = children[1];
-        expect(reqItem.label).toBe('req1');
-        expect(reqItem.contextValue).toBe('request');
+        expect(children.length).toBe(1);
+        expect(children[0].label).toBe('req1');
+        expect(children[0].contextValue).toBe('request');
     });
 
     test('endpoint item has rq.openEndpoint command when endpoint_file is present', async () => {
@@ -213,7 +201,7 @@ describe('RequestExplorerProvider', () => {
 
         (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: mockOutput });
 
-        const children = await target.getChildren();
+        const children = await getRequestSectionChildren(target);
 
         const endpointItem = children.find(c => c.label === 'api');
         expect(endpointItem).toBeDefined();
@@ -237,10 +225,70 @@ describe('RequestExplorerProvider', () => {
 
         (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: mockOutput });
 
-        const children = await target.getChildren();
+        const children = await getRequestSectionChildren(target);
 
         const endpointItem = children.find(c => c.label === 'api');
         expect(endpointItem).toBeDefined();
         expect(endpointItem?.command).toBeUndefined();
+    });
+
+    test('getChildren(section-environments) returns environment items', async () => {
+        (rqClient.listEnvironments as jest.Mock).mockResolvedValue(['local', 'prod']);
+
+        const root = await target.getChildren() as RequestTreeItem[];
+        const section = root.find(c => c.contextValue === 'section-environments')!;
+        const children = await target.getChildren(section) as RequestTreeItem[];
+
+        expect(children.length).toBe(2);
+        expect(children[0].label).toBe('local');
+        expect(children[0].contextValue).toBe('environment');
+        expect(children[0].command?.command).toBe('rq.openConfigurationFile');
+        expect(children[0].command?.arguments?.[0]).toBe('env');
+        expect(children[0].command?.arguments?.[1]).toBe('local');
+        expect(children[0].command?.arguments?.[2]).toBe(children[0]);
+        expect(children[1].label).toBe('prod');
+    });
+
+    test('getChildren(section-auth) returns auth config items', async () => {
+        (rqClient.listAuthConfigs as jest.Mock).mockResolvedValue([
+            { name: 'my-token', auth_type: 'Bearer' },
+            { name: 'api-key', auth_type: 'ApiKey' }
+        ]);
+
+        const root = await target.getChildren() as RequestTreeItem[];
+        const section = root.find(c => c.contextValue === 'section-auth')!;
+        const children = await target.getChildren(section) as RequestTreeItem[];
+
+        expect(children.length).toBe(2);
+        expect(children[0].label).toBe('my-token');
+        expect(children[0].contextValue).toBe('auth-config');
+        expect(children[0].description).toBe('Bearer');
+        expect(children[0].command?.command).toBe('rq.openConfigurationFile');
+        expect(children[0].command?.arguments?.[0]).toBe('auth');
+        expect(children[0].command?.arguments?.[1]).toBe('my-token');
+        expect(children[0].command?.arguments?.[2]).toBe(children[0]);
+        expect(children[1].label).toBe('api-key');
+    });
+
+    test('getChildren(section-environments) handles CLI error gracefully', async () => {
+        (rqClient.listEnvironments as jest.Mock).mockRejectedValue(new Error('CLI Error'));
+
+        const root = await target.getChildren() as RequestTreeItem[];
+        const section = root.find(c => c.contextValue === 'section-environments')!;
+        const children = await target.getChildren(section) as RequestTreeItem[];
+
+        expect(children).toEqual([]);
+        expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(expect.stringContaining('Failed to load environments'));
+    });
+
+    test('getChildren(section-auth) handles CLI error gracefully', async () => {
+        (rqClient.listAuthConfigs as jest.Mock).mockRejectedValue(new Error('CLI Error'));
+
+        const root = await target.getChildren() as RequestTreeItem[];
+        const section = root.find(c => c.contextValue === 'section-auth')!;
+        const children = await target.getChildren(section) as RequestTreeItem[];
+
+        expect(children).toEqual([]);
+        expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(expect.stringContaining('Failed to load auth configs'));
     });
 });

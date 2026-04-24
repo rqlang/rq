@@ -1,17 +1,16 @@
 import * as vscode from 'vscode';
 import * as cliService from '../../src/rqClient';
 import { registerOpenConfigurationFileCommand } from '../../src/commands/openConfigurationFile';
-import { ConfigurationExplorerProvider, ConfigurationTreeItem } from '../../src/configurationExplorer';
+import { RequestExplorerProvider, RequestTreeItem } from '../../src/requestExplorer';
 
 jest.mock('../../src/rqClient');
-jest.mock('../../src/configurationExplorer');
 
 describe('openConfigurationFile Command', () => {
     let context: vscode.ExtensionContext;
     let commandCallback: Function;
     let mockEditor: any;
     let mockDocument: any;
-    let mockProvider: jest.Mocked<ConfigurationExplorerProvider>;
+    let mockProvider: jest.Mocked<RequestExplorerProvider>;
 
     beforeEach(() => {
         jest.clearAllMocks();
@@ -22,7 +21,7 @@ describe('openConfigurationFile Command', () => {
 
         mockProvider = {
             setItemLoading: jest.fn()
-        } as unknown as jest.Mocked<ConfigurationExplorerProvider>;
+        } as unknown as jest.Mocked<RequestExplorerProvider>;
 
         mockDocument = {};
         mockEditor = {
@@ -122,7 +121,7 @@ describe('openConfigurationFile Command', () => {
             line: 0,
             character: 0
         });
-        const item = new ConfigurationTreeItem('dev', 'environment', vscode.TreeItemCollapsibleState.None);
+        const item = new RequestTreeItem('dev', null, vscode.TreeItemCollapsibleState.None);
 
         await commandCallback('env', 'dev', item);
 
@@ -133,7 +132,7 @@ describe('openConfigurationFile Command', () => {
 
     test('clears loading state even when lookup fails', async () => {
         (cliService.showEnvironment as jest.Mock).mockRejectedValue(new Error('Environment not found'));
-        const item = new ConfigurationTreeItem('missing', 'environment', vscode.TreeItemCollapsibleState.None);
+        const item = new RequestTreeItem('missing', null, vscode.TreeItemCollapsibleState.None);
 
         await commandCallback('env', 'missing', item);
 

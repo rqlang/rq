@@ -36,6 +36,24 @@ export function collectAllFiles(dir: string): string[] {
     return results;
 }
 
+export async function collectAllFilesAsync(dir: string): Promise<string[]> {
+    const results: string[] = [];
+    try {
+        const entries = await fs.promises.readdir(dir, { withFileTypes: true });
+        for (const entry of entries) {
+            const full = path.join(dir, entry.name);
+            if (entry.isDirectory()) {
+                results.push(...await collectAllFilesAsync(full));
+            } else if (entry.isFile()) {
+                results.push(full);
+            }
+        }
+    } catch {
+        // skip unreadable dirs
+    }
+    return results;
+}
+
 export function mirrorToTemp(folderPath: string, overrides: Map<string, string>): string {
     const tempDir = normalizePath(fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'rq-check-'))));
     try {

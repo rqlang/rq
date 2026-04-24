@@ -40,14 +40,14 @@ export async function collectAllFilesAsync(dir: string): Promise<string[]> {
     const results: string[] = [];
     try {
         const entries = await fs.promises.readdir(dir, { withFileTypes: true });
-        await Promise.all(entries.map(async entry => {
+        for (const entry of entries) {
             const full = path.join(dir, entry.name);
             if (entry.isDirectory()) {
                 results.push(...await collectAllFilesAsync(full));
             } else if (entry.isFile()) {
                 results.push(full);
             }
-        }));
+        }
     } catch {
         // skip unreadable dirs
     }

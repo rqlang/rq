@@ -190,15 +190,14 @@ async function getSourceDir(source: string): Promise<string> {
 async function buildFilesMap(source: string): Promise<string> {
     const dir = await getSourceDir(source);
     const files: Record<string, string> = {};
-    const allFiles = await collectAllFilesAsync(dir);
-    await Promise.all(allFiles.map(async filePath => {
+    for (const filePath of await collectAllFilesAsync(dir)) {
         const normalized = filePath.replace(/\\/g, '/');
         try {
             files[normalized] = await fs.promises.readFile(filePath, 'utf8');
         } catch {
             // skip unreadable files
         }
-    }));
+    }
     return JSON.stringify(files);
 }
 

@@ -27,6 +27,6 @@ Want the full tour? Check out the [VS Code Extension docs](https://www.rqlang.co
 - **Navigation** — go to definition, find all references, and rename symbol across the workspace.
 - **Format document** — format the current `.rq` file via the **Format Document** command (`Shift+Alt+F` on Windows/Linux, `Shift+Option+F` on macOS).
 - **Request Explorer** sidebar to browse and run requests, with environment selection and run/run-with-variables actions.
-- **Configuration view** — a dedicated sidebar view listing the environments and auth providers defined across your workspace.
+- **Environments and auth** — ENVIRONMENTS and AUTH sections inside the Request Explorer list all environments and auth providers defined across your workspace; clicking an item opens the file at the definition.
 - **Response panel** — view response status, headers, and formatted body; copy the body with one click.
 - **Integration with rq auth providers, including interactive OAuth flows (Authorization Code with PKCE and Implicit).**

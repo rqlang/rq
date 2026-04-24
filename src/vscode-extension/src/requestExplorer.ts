@@ -25,6 +25,8 @@ export class RequestExplorerProvider implements vscode.TreeDataProvider<RequestT
     private selectedEnvironment: string | undefined;
     private envItem: RequestTreeItem | undefined;
     private readonly originalIcons = new WeakMap<RequestTreeItem, vscode.TreeItem['iconPath']>();
+    private cachedRootItems: RequestTreeItem[] | null = null;
+    private loadingRootItems = false;
 
     constructor(private workspaceRoot: string | undefined) {}
 
@@ -51,10 +53,18 @@ export class RequestExplorerProvider implements vscode.TreeDataProvider<RequestT
     setSelectedEnvironment(environment: string | undefined): void {
         this.selectedEnvironment = environment;
         this._onDidChangeEnvironment.fire(environment);
-        this.refresh();
+        if (this.envItem) {
+            this.envItem.iconPath = new vscode.ThemeIcon(environment ? 'server-environment' : 'circle-slash');
+            this.envItem.description = environment || 'None';
+            this.envItem.tooltip = environment
+                ? `Current environment: ${environment}\n\nClick the environment icon in the toolbar to change.`
+                : 'No environment selected.\n\nClick the environment icon in the toolbar to select one.';
+            this._onDidChangeTreeData.fire(this.envItem);
+        }
     }
 
     refresh(): void {
+        this.cachedRootItems = null;
         this._onDidChangeTreeData.fire();
     }
 
@@ -62,52 +72,121 @@ export class RequestExplorerProvider implements vscode.TreeDataProvider<RequestT
         return element;
     }
 
-    async getChildren(element?: RequestTreeItem): Promise<RequestTreeItem[]> {
+    getChildren(element?: RequestTreeItem): RequestTreeItem[] | Promise<RequestTreeItem[]> {
         if (!this.workspaceRoot) {
             vscode.window.showInformationMessage('No workspace folder open');
             return [];
         }
 
-        if (element) {
-            // Return requests for this endpoint
-            return element.children || [];
-        } else {
-            // Root level - get all requests and group by endpoint
-            return this.getRootItems();
+        if (!element) {
+            return [this.buildEnvInfoItem(), ...this.getSectionItems()];
+        }
+
+        if (element.contextValue === 'section-requests') {
+            if (this.cachedRootItems !== null) {
+                return this.cachedRootItems;
+            }
+            this.startLoadingRootItems();
+            return [this.makeLoadingItem()];
+        }
+
+        if (element.contextValue === 'section-environments') {
+            return this.loadEnvironments();
+        }
+
+        if (element.contextValue === 'section-auth') {
+            return this.loadAuthConfigs();
+        }
+
+        return element.children || [];
+    }
+
+    private buildEnvInfoItem(): RequestTreeItem {
+        const item = new RequestTreeItem('Environment', null, vscode.TreeItemCollapsibleState.None);
+        item.contextValue = 'environment-info';
+        item.iconPath = new vscode.ThemeIcon(this.selectedEnvironment ? 'server-environment' : 'circle-slash');
+        item.description = this.selectedEnvironment || 'None';
+        item.tooltip = this.selectedEnvironment
+            ? `Current environment: ${this.selectedEnvironment}\n\nClick the environment icon in the toolbar to change.`
+            : 'No environment selected.\n\nClick the environment icon in the toolbar to select one.';
+        this.envItem = item;
+        return item;
+    }
+
+    private getSectionItems(): RequestTreeItem[] {
+        const requestsSection = new RequestTreeItem('REQUESTS', null, vscode.TreeItemCollapsibleState.Expanded);
+        requestsSection.contextValue = 'section-requests';
+        requestsSection.iconPath = undefined;
+        requestsSection.tooltip = undefined;
+
+        const envsSection = new RequestTreeItem('ENVIRONMENTS', null, vscode.TreeItemCollapsibleState.Collapsed);
+        envsSection.contextValue = 'section-environments';
+        envsSection.iconPath = undefined;
+        envsSection.tooltip = undefined;
+
+        const authSection = new RequestTreeItem('AUTH', null, vscode.TreeItemCollapsibleState.Collapsed);
+        authSection.contextValue = 'section-auth';
+        authSection.iconPath = undefined;
+        authSection.tooltip = undefined;
+
+        return [requestsSection, envsSection, authSection];
+    }
+
+    private async loadEnvironments(): Promise<RequestTreeItem[]> {
+        try {
+            const names = await rqClient.listEnvironments(this.workspaceRoot);
+            return names.map(name => {
+                const item = new RequestTreeItem(name, null, vscode.TreeItemCollapsibleState.None);
+                item.contextValue = 'environment';
+                item.iconPath = new vscode.ThemeIcon('server-environment');
+                item.tooltip = name;
+                item.command = { command: 'rq.openConfigurationFile', title: 'Open File', arguments: ['env', name, item] };
+                return item;
+            });
+        } catch (error) {
+            vscode.window.showErrorMessage(`Failed to load environments: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            return [];
         }
     }
 
-    private async getRootItems(): Promise<RequestTreeItem[]> {
-        const items: RequestTreeItem[] = [];
-        
-        // Add environment info item at the top
-        const envLabel = this.selectedEnvironment 
-            ? `Environment`
-            : 'Environment';
-        
-        const envItem = new RequestTreeItem(
-            envLabel,
-            null,
-            vscode.TreeItemCollapsibleState.None
-        );
-        envItem.contextValue = 'environment-info';
-        envItem.iconPath = new vscode.ThemeIcon(
-            this.selectedEnvironment ? 'server-environment' : 'circle-slash'
-        );
-        envItem.description = this.selectedEnvironment || 'None';
-        envItem.tooltip = this.selectedEnvironment
-            ? `Current environment: ${this.selectedEnvironment}\n\nClick the environment icon in the toolbar to change.`
-            : 'No environment selected.\n\nClick the environment icon in the toolbar to select one.';
-        this.envItem = envItem;
-
-        items.push(envItem);
-
+    private async loadAuthConfigs(): Promise<RequestTreeItem[]> {
         try {
-            // Get and group requests
+            const entries = await rqClient.listAuthConfigs(this.workspaceRoot);
+            return entries.map(e => {
+                const item = new RequestTreeItem(e.name, null, vscode.TreeItemCollapsibleState.None);
+                item.contextValue = 'auth-config';
+                item.iconPath = new vscode.ThemeIcon('key');
+                item.description = e.auth_type;
+                item.tooltip = `${e.name} (${e.auth_type})`;
+                item.command = { command: 'rq.openConfigurationFile', title: 'Open File', arguments: ['auth', e.name, item] };
+                return item;
+            });
+        } catch (error) {
+            vscode.window.showErrorMessage(`Failed to load auth configs: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            return [];
+        }
+    }
+
+    private makeLoadingItem(): RequestTreeItem {
+        const item = new RequestTreeItem('Loading…', null, vscode.TreeItemCollapsibleState.None);
+        item.contextValue = 'loading';
+        item.iconPath = new vscode.ThemeIcon('sync~spin');
+        return item;
+    }
+
+    private async startLoadingRootItems(): Promise<void> {
+        if (this.loadingRootItems) { return; }
+        this.loadingRootItems = true;
+        const items = await this.getRootItems();
+        this.loadingRootItems = false;
+        this.cachedRootItems = items;
+        this._onDidChangeTreeData.fire();
+    }
+
+    private async getRootItems(): Promise<RequestTreeItem[]> {
+        try {
             const result = await rqClient.listRequests(this.workspaceRoot);
             const requestItems = this.groupRequestsByFolder(result.requests);
-            
-            const finalItems = [...items, ...requestItems];
 
             if (result.errors && result.errors.length > 0) {
                 const errorItem = new RequestTreeItem(
@@ -119,16 +198,14 @@ export class RequestExplorerProvider implements vscode.TreeDataProvider<RequestT
                 errorItem.iconPath = new vscode.ThemeIcon('error');
                 errorItem.tooltip = result.errors.join('\n');
                 errorItem.description = 'Check Output panel';
-                
-                // Insert after environment item
-                finalItems.splice(1, 0, errorItem);
+                return [errorItem, ...requestItems];
             }
-            
-            return finalItems;
+
+            return requestItems;
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
             vscode.window.showErrorMessage(`Failed to list requests: ${errorMessage}`);
-            
+
             const errorItem = new RequestTreeItem(
                 'Error loading requests',
                 null,
@@ -138,9 +215,7 @@ export class RequestExplorerProvider implements vscode.TreeDataProvider<RequestT
             errorItem.iconPath = new vscode.ThemeIcon('error');
             errorItem.tooltip = errorMessage;
             errorItem.description = 'Check Output panel for details';
-            
-            items.push(errorItem);
-            return items;
+            return [errorItem];
         }
     }
 

@@ -144,13 +144,8 @@
       "rq-explorer": [
         {
           "id": "rqRequestExplorer",
-          "name": "Requests",
+          "name": "RQ",
           "icon": "$(globe)"
-        },
-        {
-          "id": "rqConfigurationExplorer",
-          "name": "Configuration",
-          "icon": "$(symbol-misc)"
         }
       ]
     },
@@ -164,11 +159,6 @@
         {
           "command": "rq.refreshRequests",
           "when": "view == rqRequestExplorer",
-          "group": "navigation"
-        },
-        {
-          "command": "rq.refreshConfiguration",
-          "when": "view == rqConfigurationExplorer",
           "group": "navigation"
         }
       ],

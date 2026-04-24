@@ -1,10 +1,10 @@
 import * as vscode from 'vscode';
 import * as rqClient from '../rqClient';
 import { normalizePath } from '../utils';
-import { ConfigurationExplorerProvider, ConfigurationTreeItem } from '../configurationExplorer';
+import { RequestExplorerProvider, RequestTreeItem } from '../requestExplorer';
 
-export function registerOpenConfigurationFileCommand(context: vscode.ExtensionContext, provider: ConfigurationExplorerProvider) {
-    const command = vscode.commands.registerCommand('rq.openConfigurationFile', async (artifactType: 'env' | 'auth', name: string, item?: ConfigurationTreeItem) => {
+export function registerOpenConfigurationFileCommand(context: vscode.ExtensionContext, provider: RequestExplorerProvider) {
+    const command = vscode.commands.registerCommand('rq.openConfigurationFile', async (artifactType: 'env' | 'auth', name: string, item?: RequestTreeItem) => {
         if (item) { provider.setItemLoading(item, true); }
         try {
             const sourceDirectory = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;

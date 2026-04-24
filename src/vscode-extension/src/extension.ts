@@ -1,6 +1,5 @@
 import * as vscode from 'vscode';
 import { RequestExplorerProvider } from './requestExplorer';
-import { ConfigurationExplorerProvider } from './configurationExplorer';
 import { completionProvider, insideArrayLiteral, setEnvironmentProvider as setCompletionEnvironmentProvider } from './language/completionProvider';
 import { hoverProvider, setEnvironmentProvider as setHoverEnvironmentProvider } from './language/hoverProvider';
 import { definitionProvider, setEnvironmentProvider } from './language/definitionProvider';
@@ -41,24 +40,20 @@ export function activate(context: vscode.ExtensionContext) {
     });
     context.subscriptions.push(requestExplorerView);
 
-    const configurationExplorerProvider = new ConfigurationExplorerProvider(workspaceRoot);
-    const configurationExplorerView = vscode.window.createTreeView('rqConfigurationExplorer', {
-        treeDataProvider: configurationExplorerProvider,
-        showCollapseAll: true
+    requestExplorerView.onDidChangeVisibility(({ visible }) => {
+        if (visible) { setTimeout(() => requestExplorerProvider.refresh(), 0); }
     });
-    context.subscriptions.push(configurationExplorerView);
 
     requestExplorerProvider.refresh();
-    configurationExplorerProvider.refresh();
     diagnosticsProvider.validateAllFolders();
 
     // Register commands
     registerRefreshRequestsCommand(context, requestExplorerProvider);
     registerOpenRequestFileCommand(context, requestExplorerProvider);
-    registerOpenConfigurationFileCommand(context, configurationExplorerProvider);
+    registerOpenConfigurationFileCommand(context, requestExplorerProvider);
     registerOpenEndpointCommand(context, requestExplorerProvider);
     context.subscriptions.push(
-        vscode.commands.registerCommand('rq.refreshConfiguration', () => configurationExplorerProvider.refresh())
+        vscode.commands.registerCommand('rq.refreshConfiguration', () => requestExplorerProvider.refresh())
     );
     registerSelectEnvironmentCommand(context, requestExplorerProvider);
     context.subscriptions.push(

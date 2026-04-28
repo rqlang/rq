@@ -635,7 +635,7 @@ describe('auth keyword snippets', () => {
         const kwItems = items.filter((i: any) => i.label === 'rq');
         const kw = kwItems.find((i: any) => i.kind === vscode.CompletionItemKind.Keyword);
         expect(kw).toBeDefined();
-        expect(kw.insertText).toBe('rq');
+        expect(kw.insertText).toBe('rq ');
     });
 
     test('suggests rq snippet item with Module kind when typing rq', async () => {
@@ -700,7 +700,7 @@ describe('auth keyword snippets', () => {
 
         const kw = items.filter((i: any) => i.label === 'auth').find((i: any) => i.kind === vscode.CompletionItemKind.Keyword);
         expect(kw).toBeDefined();
-        expect(kw.insertText).toBe('auth');
+        expect(kw.insertText).toBe('auth ');
     });
 
     test('suggests let keyword item with Keyword kind in top-level section', async () => {

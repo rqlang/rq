@@ -821,7 +821,7 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
                     const kw = (label: string, detail: string, sort: string) => {
                         const i = new vscode.CompletionItem(label, vscode.CompletionItemKind.Keyword);
                         i.detail = detail;
-                        i.insertText = label;
+                        i.insertText = label + ' ';
                         i.sortText = sort;
                         return i;
                     };

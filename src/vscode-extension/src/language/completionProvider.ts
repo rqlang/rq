@@ -255,9 +255,8 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
             // Endpoint template completion: ep name< -> list existing endpoints
             const epTemplateMatch = linePrefix.match(/^\s*ep\s+[a-zA-Z_][a-zA-Z0-9_-]*\s*<$/);
             if (epTemplateMatch) {
-                const sourceDirectory = document.uri.fsPath;
                 try {
-                    const endpoints = await rqClient.listEndpoints(sourceDirectory);
+                    const endpoints = await rqClient.listEndpoints(await getCliFilePath());
                     return endpoints.filter(ep => ep.is_template).map(ep => {
                         const item = new vscode.CompletionItem(ep.name, vscode.CompletionItemKind.Reference);
                         item.detail = 'Endpoint template';

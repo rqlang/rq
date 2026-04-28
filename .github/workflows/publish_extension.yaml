@@ -40,8 +40,4 @@ jobs:
           echo "vsix_path=$VSIX_PATH" >> $GITHUB_OUTPUT
 
       - name: Publish to VS Code Marketplace
-        uses: HaaLeo/publish-vscode-extension@v1
-        with:
-          pat: ${{ secrets.MARKETPLACE_PAT }}
-          registryUrl: https://marketplace.visualstudio.com
-          extensionFile: ${{ steps.find_vsix.outputs.vsix_path }}
+        run: npx @vscode/vsce publish --pat ${{ secrets.MARKETPLACE_PAT }} --packagePath ${{ steps.find_vsix.outputs.vsix_path }}

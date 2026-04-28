@@ -98,8 +98,12 @@ export function registerGetTokenCommand(context: vscode.ExtensionContext, output
             );
 
             if (action === 'Copy Token') {
-                await vscode.env.clipboard.writeText(accessToken);
-                vscode.window.showInformationMessage('Access token copied to clipboard');
+                try {
+                    await vscode.env.clipboard.writeText(accessToken);
+                    vscode.window.showInformationMessage('Access token copied to clipboard');
+                } catch {
+                    vscode.window.showErrorMessage('Failed to copy token to clipboard');
+                }
             }
             
         } catch (error) {

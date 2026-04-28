@@ -77,31 +77,30 @@ export function registerGetTokenCommand(context: vscode.ExtensionContext, output
             
             // Step 5: Perform OAuth2 flow
             console.log(`Starting OAuth2 flow for auth type: ${authConfig.auth_type}`);
-            
-            await vscode.window.withProgress({
-                location: vscode.ProgressLocation.Notification,
-                title: 'Getting OAuth2 access token...',
-                cancellable: false
-            }, async () => {
-                try {
-                    const accessToken = await performOAuth2Flow(authConfig, context, outputChannel);
-                    
-                    // Step 7: Show success and offer to copy token
-                    const action = await vscode.window.showInformationMessage(
-                        `OAuth2 authentication successful! Access token obtained.`,
-                        'Copy Token'
-                    );
-                    
-                    if (action === 'Copy Token') {
-                        await vscode.env.clipboard.writeText(accessToken);
-                        vscode.window.showInformationMessage('Access token copied to clipboard');
-                    }
-                } catch (error) {
-                    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-                    console.error('OAuth2 flow failed:', errorMessage);
-                    vscode.window.showErrorMessage(`OAuth2 authentication failed: ${errorMessage}`);
-                }
-            });
+
+            let accessToken: string;
+            try {
+                accessToken = await vscode.window.withProgress({
+                    location: vscode.ProgressLocation.Notification,
+                    title: 'Getting OAuth2 access token...',
+                    cancellable: false
+                }, () => performOAuth2Flow(authConfig, context, outputChannel));
+            } catch (error) {
+                const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+                console.error('OAuth2 flow failed:', errorMessage);
+                vscode.window.showErrorMessage(`OAuth2 authentication failed: ${errorMessage}`);
+                return;
+            }
+
+            const action = await vscode.window.showInformationMessage(
+                `OAuth2 authentication successful! Access token obtained.`,
+                'Copy Token'
+            );
+
+            if (action === 'Copy Token') {
+                await vscode.env.clipboard.writeText(accessToken);
+                vscode.window.showInformationMessage('Access token copied to clipboard');
+            }
             
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';

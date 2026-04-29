@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { RequestExplorerProvider } from './requestExplorer';
-import { completionProvider, insideArrayLiteral, setEnvironmentProvider as setCompletionEnvironmentProvider } from './language/completionProvider';
+import { completionProvider, setEnvironmentProvider as setCompletionEnvironmentProvider } from './language/completionProvider';
+import { insideArrayLiteral } from './language/completionHelpers';
 import { hoverProvider, setEnvironmentProvider as setHoverEnvironmentProvider } from './language/hoverProvider';
 import { definitionProvider, setEnvironmentProvider } from './language/definitionProvider';
 import { referenceProvider } from './language/referenceProvider';

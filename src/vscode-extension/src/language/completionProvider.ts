@@ -54,6 +54,29 @@ export const insideArrayLiteral = (text: string): boolean => {
     return depth > 0;
 };
 
+export const insideHeadersLiteral = (text: string): boolean => {
+    const stack: ('headers' | 'array')[] = [];
+    let inString = false;
+    let stringChar = '';
+    for (let i = 0; i < text.length; i++) {
+        const ch = text[i];
+        if (inString) {
+            if (ch === stringChar) { inString = false; }
+        } else {
+            if (ch === '"' || ch === "'") { inString = true; stringChar = ch; }
+            else if (ch === '$' && i + 1 < text.length && text[i + 1] === '[') {
+                stack.push('headers');
+                i++;
+            } else if (ch === '[') {
+                stack.push('array');
+            } else if (ch === ']') {
+                stack.pop();
+            }
+        }
+    }
+    return stack.length > 0 && stack[stack.length - 1] === 'headers';
+};
+
 const AUTH_PROPERTIES: Record<string, { name: string; required: boolean }[]> = {
     bearer: [
         { name: 'token', required: true },
@@ -365,7 +388,7 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
                     new vscode.Position(Math.max(0, position.line - 30), 0),
                     position
                 ));
-                if (insideEnvOrAuthBlock(blockText) || insideArrayLiteral(blockText)) {
+                if (insideEnvOrAuthBlock(blockText) || insideHeadersLiteral(blockText)) {
                     const suggestions: vscode.CompletionItem[] = [...builtinFunctionItems()];
                     let gotRemoteVars = false;
                     try {
@@ -698,7 +721,7 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
                     new vscode.Position(Math.max(0, position.line - 30), 0),
                     position
                 ));
-                if (insideArrayLiteral(blockText)) {
+                if (insideHeadersLiteral(blockText)) {
                     const partial = headerKeyMatch[1];
                     const hasOpenQuote = /["'][a-zA-Z0-9_-]*$/.test(linePrefix);
                     const afterLine = document.lineAt(position.line).text.substring(position.character);

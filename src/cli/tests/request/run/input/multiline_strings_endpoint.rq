@@ -1,7 +1,7 @@
 ep multiline_ep(
     url: "http://localhost:8080
     /api",
-    headers: [
+    headers: $[
         "X-Ep-Multiline": "Ep Line 1
 Ep Line 2",
         "Content-Type": "text/plain"

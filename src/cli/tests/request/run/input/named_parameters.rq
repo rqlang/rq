@@ -1,7 +1,7 @@
 // Test file demonstrating named parameter syntax
 rq named_params_request(
     url: "http://localhost:8080/get", 
-    headers: [
+    headers: $[
         "Accept": "application/json",
         "X-Test": "named-params"
     ],
@@ -10,13 +10,13 @@ rq named_params_request(
 
 rq named_partial(url: "http://localhost:8080/simple");
 
-rq mixed_params("http://localhost:8080/mixed", headers: [
+rq mixed_params("http://localhost:8080/mixed", headers: $[
     "X-Mixed": "positional-url-named-headers"
 ]);
 
 ep named_endpoint(
     url: "http://localhost:8080/api",
-    headers: [
+    headers: $[
         "Authorization": "Bearer token123",
         "Content-Type": "application/json"
     ]
@@ -24,5 +24,5 @@ ep named_endpoint(
     let endpoint_var = "from_endpoint";
     
     rq child_request("/users");
-    rq child_named(url: "/posts", headers: ["X-Child": "overrides"]);
+    rq child_named(url: "/posts", headers: $["X-Child": "overrides"]);
 }

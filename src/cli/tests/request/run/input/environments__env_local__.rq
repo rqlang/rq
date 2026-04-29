@@ -12,6 +12,6 @@ auth local_auth(auth_type.bearer) {
     token: "{{auth_token}}"
 }
 
-rq env_local_demo("{{base_url}}/api/env-test", [
+rq env_local_demo("{{base_url}}/api/env-test", $[
     "Authorization": "Bearer {{auth_token}}"
 ]);

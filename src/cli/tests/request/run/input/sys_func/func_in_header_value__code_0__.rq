@@ -1,1 +1,1 @@
-rq get("http://localhost:8080/api/echo", ["X-Custom": io.read_file("data.txt")]);
+rq get("http://localhost:8080/api/echo", $["X-Custom": io.read_file("data.txt")]);

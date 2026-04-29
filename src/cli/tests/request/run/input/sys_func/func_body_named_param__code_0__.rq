@@ -1,1 +1,1 @@
-rq post("http://localhost:8080/api/upload", ["Content-Type": "text/plain"], body: io.read_file("data.txt"));
+rq post("http://localhost:8080/api/upload", $["Content-Type": "text/plain"], body: io.read_file("data.txt"));

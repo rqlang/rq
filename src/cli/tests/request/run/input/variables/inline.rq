@@ -2,7 +2,7 @@
 let base = "http://localhost:8080";
 let path = "/get";
 let inline = "yes";
-let h = [
+let h = $[
     "Accept": "application/json", 
     "X-Inline": "{{ inline }}"
 ];

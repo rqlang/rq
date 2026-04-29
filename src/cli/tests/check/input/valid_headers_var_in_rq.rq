@@ -1,3 +1,3 @@
-let my_headers = ["Accept": "application/json"];
+let my_headers = $["Accept": "application/json"];
 
 rq get("http://localhost:8080/users", my_headers);

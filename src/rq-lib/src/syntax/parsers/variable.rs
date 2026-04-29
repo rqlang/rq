@@ -95,14 +95,31 @@ fn parse_variable_value(r: &mut TokenReader) -> Result<VariableValue, SyntaxErro
             r.advance();
             Ok(VariableValue::String(s))
         }
-        TokenType::Punctuation if token.value == PUNC_LBRACKET => parse_array_or_headers(r),
-        TokenType::Punctuation if token.value == PUNC_DOLLAR => parse_json_value(r),
+        TokenType::Punctuation if token.value == PUNC_LBRACKET => parse_array_variable(r),
+        TokenType::Punctuation if token.value == PUNC_DOLLAR => {
+            let mut lookahead = 1;
+            while let Some(next) = r.peek(lookahead) {
+                if matches!(
+                    next.token_type,
+                    TokenType::Whitespace | TokenType::Newline | TokenType::Comment
+                ) {
+                    lookahead += 1;
+                    continue;
+                }
+                if next.token_type == TokenType::Punctuation && next.value == PUNC_LBRACKET {
+                    return parse_headers_variable(r);
+                }
+                break;
+            }
+            parse_json_value(r)
+        }
         TokenType::Punctuation if token.value == PUNC_LBRACE => Err(r.create_error_with_file(
             "Bare '{' syntax is not supported. Use '${' prefix.".into(),
             token.span.clone(),
         )),
         _ => Err(r.create_error(
-            "Expected identifier, string, array, or JSON object for variable value".into(),
+            "Expected identifier, string, array, JSON object, or headers map for variable value"
+                .into(),
             token.span.clone(),
         )),
     }
@@ -133,37 +150,15 @@ fn parse_identifier_value(
     }
 }
 
-fn parse_array_or_headers(r: &mut TokenReader) -> Result<VariableValue, SyntaxError> {
-    // lookahead to decide if this is a headers style array ["Name": "Val", ...] or a simple array of strings
-    r.advance();
-    r.skip_ignorable();
-    let mut is_headers = false;
-    if let Some(first) = r.cur() {
-        if first.token_type == TokenType::String {
-            let save_idx = r.idx; // no need for mut; single assignment
-            r.advance();
-            r.skip_ignorable();
-            if let Some(col) = r.cur() {
-                if col.token_type == TokenType::Punctuation && col.value == PUNC_COLON {
-                    is_headers = true;
-                }
-            }
-            r.idx = save_idx - 1; // because we advanced once after '['
-            r.advance();
-        }
-    }
-    let is_empty = r
-        .cur()
-        .map(|t| t.token_type == TokenType::Punctuation && t.value == PUNC_RBRACKET)
-        .unwrap_or(false);
-    if is_headers || is_empty {
-        parse_headers_variable(r)
-    } else {
-        parse_array_variable(r)
-    }
-}
-
 fn parse_headers_variable(r: &mut TokenReader) -> Result<VariableValue, SyntaxError> {
+    r.advance(); // consume $
+    r.skip_ignorable();
+    expect(
+        r,
+        |t| t.token_type == TokenType::Punctuation && t.value == PUNC_LBRACKET,
+        format!("Expected '{PUNC_LBRACKET}'"),
+    )?;
+    r.advance(); // consume [
     let mut headers = Vec::new();
     loop {
         r.skip_ignorable();
@@ -214,6 +209,7 @@ fn parse_headers_variable(r: &mut TokenReader) -> Result<VariableValue, SyntaxEr
 }
 
 fn parse_array_variable(r: &mut TokenReader) -> Result<VariableValue, SyntaxError> {
+    r.advance(); // consume [
     let mut arr = Vec::new();
     loop {
         r.skip_ignorable();

@@ -1,1 +1,1 @@
-ep my_endpoint ( "http://example.com", [], "qs", "extra" ) { }
+ep my_endpoint ( "http://example.com", $[], "qs", "extra" ) { }

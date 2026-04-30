@@ -30,5 +30,5 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
             }
         },
     },
-    '.', '{', '[', ',', ' ', 'v', 'e', 'p', 'q', ')', '<', '=', '"', ':', '(', '\n', '$'
+    '.', '{', '[', ' ', 'v', 'e', 'p', 'q', ')', '<', '=', '"', ':', '(', '\n', '$'
 );

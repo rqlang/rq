@@ -48,7 +48,7 @@ export const importHandler: CompletionHandler = {
     canHandle: ({ linePrefix }) =>
         /^\s*import$/.test(linePrefix) || /^\s*import\s+$/.test(linePrefix),
     async provide(ctx) {
-        const { linePrefix, documentPrefix, document, position } = ctx;
+        const { linePrefix, documentPrefix, document } = ctx;
         const hasNonImportContentBefore = /^\s*(let|rq|ep|env|auth)\b/m.test(documentPrefix);
         const inRqOrEp = /\b(rq|ep)\s+\w+\s*\(/.test(documentPrefix);
         if (inRqOrEp || hasNonImportContentBefore) { return undefined; }
@@ -151,12 +151,11 @@ export const codeChallengeMethodHandler: CompletionHandler = {
 };
 
 export const propertyValueHandler: CompletionHandler = {
-    canHandle: ({ linePrefix }) => /^\s*"?[a-zA-Z_][a-zA-Z0-9_-]*"?\s*:\s*"?$/.test(linePrefix),
+    canHandle: ({ linePrefix, documentPrefix }) => {
+        if (!/^\s*"?[a-zA-Z_][a-zA-Z0-9_-]*"?\s*:\s*"?$/.test(linePrefix)) { return false; }
+        return insideEnvOrAuthBlock(documentPrefix) || insideHeadersLiteral(documentPrefix);
+    },
     async provide(ctx) {
-        const { documentPrefix } = ctx;
-        if (!insideEnvOrAuthBlock(documentPrefix) && !insideHeadersLiteral(documentPrefix)) {
-            return undefined;
-        }
         const suggestions: vscode.CompletionItem[] = [...builtinFunctionItems()];
         const varItems = await listVariablesWithFallback(ctx);
         suggestions.push(...varItems);
@@ -230,11 +229,12 @@ function buildRqEpHandler(
     return {
         canHandle({ documentPrefix, linePrefix }) {
             if (!blockPattern.test(documentPrefix)) { return false; }
+            if (insideHeadersLiteral(documentPrefix)) { return false; }
             const atStartOfParams = isRq
                 ? /\brq\s+\w+\s*\(\s*$/.test(linePrefix)
                 : /\bep\s+\w+\s*\(\s*$/.test(linePrefix);
             const afterComma = /,\s*$/.test(linePrefix);
-            const onNewLine = /^\s*$/.test(linePrefix);
+            const onNewLine = /^\s*\w*$/.test(linePrefix);
             const atNamedValue = new RegExp(`\\b(${propNames.join('|')})\\s*:\\s*$`).test(linePrefix);
             return atStartOfParams || afterComma || onNewLine || atNamedValue;
         },
@@ -257,13 +257,9 @@ function buildRqEpHandler(
             propNames.slice(0, positionalCount).forEach(p => existingNamed.add(p));
 
             const hasNamedParams = props.some(p => existingNamed.has(p.name));
-            if (hasNamedParams) {
-                return propertyItems(props, existingNamed, false);
-            }
-
             const suggestions: vscode.CompletionItem[] = [
                 ...builtinFunctionItems(),
-                ...propertyItems(props, existingNamed, true),
+                ...propertyItems(props, existingNamed, !hasNamedParams),
             ];
             try {
                 const variables = await rqClient.listVariables(await ctx.getCliFilePath(), ctx.getEnvironment());
@@ -358,15 +354,19 @@ export const attributeHandler: CompletionHandler = {
 
 export const headerKeyHandler: CompletionHandler = {
     canHandle: ({ linePrefix, documentPrefix }) => {
+        if (linePrefix.endsWith('$[')) { return true; }
+        if (/,\s*$/.test(linePrefix)) { return insideHeadersLiteral(documentPrefix); }
         if (!/^\s*"?([a-zA-Z0-9_-]*)$/.test(linePrefix)) { return false; }
         return insideHeadersLiteral(documentPrefix);
     },
     async provide(ctx) {
         const { linePrefix, document, position } = ctx;
-        const headerKeyMatch = linePrefix.match(/^\s*"?([a-zA-Z0-9_-]*)$/);
-        if (!headerKeyMatch) { return undefined; }
-        const partial = headerKeyMatch[1];
-        const hasOpenQuote = /["'][a-zA-Z0-9_-]*$/.test(linePrefix);
+        const isFreshOpen = linePrefix.endsWith('$[');
+        const isAfterComma = !isFreshOpen && /,\s*$/.test(linePrefix);
+        const headerKeyMatch = (isFreshOpen || isAfterComma) ? null : linePrefix.match(/^\s*"?([a-zA-Z0-9_-]*)$/);
+        if (!isFreshOpen && !isAfterComma && !headerKeyMatch) { return undefined; }
+        const partial = headerKeyMatch?.[1] ?? '';
+        const hasOpenQuote = !isFreshOpen && !isAfterComma && /["'][a-zA-Z0-9_-]*$/.test(linePrefix);
         const afterLine = document.lineAt(position.line).text.substring(position.character);
         const trailingKey = afterLine.match(/^([a-zA-Z0-9_-]*)/)?.[1] ?? '';
         const trailingQuote = hasOpenQuote && afterLine.charAt(trailingKey.length) === '"' ? 1 : 0;

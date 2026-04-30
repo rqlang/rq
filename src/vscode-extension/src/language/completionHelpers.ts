@@ -90,6 +90,7 @@ export function propertyItems(
                 `${prop.description}\n\n**Example:**\n\`\`\`rq\n${prop.example}\n\`\`\``
             );
             item.insertText = prop.name + ': ';
+            item.command = { command: 'editor.action.triggerSuggest', title: 'Trigger value completions' };
             return item;
         });
 }

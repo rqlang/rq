@@ -10,6 +10,7 @@ import {
     insideEpBody,
     insideArrayLiteral,
     insideHeadersLiteral,
+    insideJsonLiteral,
     getActiveAuthBlock,
     collectNamedProps,
     countPositionalArgs,
@@ -231,10 +232,11 @@ function buildRqEpHandler(
         canHandle({ documentPrefix, linePrefix }) {
             if (!blockPattern.test(documentPrefix)) { return false; }
             if (insideHeadersLiteral(documentPrefix)) { return false; }
+            if (insideJsonLiteral(documentPrefix)) { return false; }
             const atStartOfParams = isRq
                 ? /\brq\s+\w+\s*\(\s*$/.test(linePrefix)
                 : /\bep\s+\w+\s*\(\s*$/.test(linePrefix);
-            const afterComma = /,\s*$/.test(linePrefix);
+            const afterComma = /,\s+$/.test(linePrefix);
             const onNewLine = /^\s*\w*$/.test(linePrefix);
             const atNamedValue = new RegExp(`\\b(${propNames.join('|')})\\s*:\\s*$`).test(linePrefix);
             return atStartOfParams || afterComma || onNewLine || atNamedValue;
@@ -356,14 +358,14 @@ export const attributeHandler: CompletionHandler = {
 export const headerKeyHandler: CompletionHandler = {
     canHandle: ({ linePrefix, documentPrefix }) => {
         if (linePrefix.endsWith('$[')) { return true; }
-        if (/,\s*$/.test(linePrefix)) { return insideHeadersLiteral(documentPrefix); }
+        if (/,\s+$/.test(linePrefix)) { return insideHeadersLiteral(documentPrefix); }
         if (!/^\s*"?([a-zA-Z0-9_-]*)$/.test(linePrefix)) { return false; }
         return insideHeadersLiteral(documentPrefix);
     },
     async provide(ctx) {
         const { linePrefix, document, position } = ctx;
         const isFreshOpen = linePrefix.endsWith('$[');
-        const isAfterComma = !isFreshOpen && /,\s*$/.test(linePrefix);
+        const isAfterComma = !isFreshOpen && /,\s+$/.test(linePrefix);
         const headerKeyMatch = (isFreshOpen || isAfterComma) ? null : linePrefix.match(/^\s*"?([a-zA-Z0-9_-]*)$/);
         if (!isFreshOpen && !isAfterComma && !headerKeyMatch) { return undefined; }
         const partial = headerKeyMatch?.[1] ?? '';

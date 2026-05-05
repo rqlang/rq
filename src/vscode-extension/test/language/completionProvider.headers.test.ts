@@ -73,6 +73,35 @@ describe('header key completion', () => {
         expect(items === undefined || !items.some((i: any) => i.label === 'Content-Type')).toBe(true);
     });
 
+    test('does not suggest headers immediately after bare comma inside $[...]', async () => {
+        const lines = [
+            'rq my_rq(',
+            '    $[',
+            '        "Accept": "application/json",',
+        ];
+        const doc = makeDocument(lines);
+        const position = new vscode.Position(2, lines[2].length);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items === undefined || !items.some((i: any) => i.label === 'Content-Type')).toBe(true);
+    });
+
+    test('suggests headers after comma + space inside $[...]', async () => {
+        const lines = [
+            'rq my_rq(',
+            '    $[',
+            '        "Accept": "application/json", ',
+        ];
+        const doc = makeDocument(lines);
+        const position = new vscode.Position(2, lines[2].length);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items).not.toBeUndefined();
+        expect(items.some((i: any) => i.label === 'Content-Type')).toBe(true);
+    });
+
     test('falls back to local variables when CLI is unavailable', async () => {
         (cliService.listVariables as jest.Mock).mockRejectedValue(new Error('CLI error'));
 

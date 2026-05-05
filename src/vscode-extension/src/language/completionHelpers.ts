@@ -140,6 +140,30 @@ export const insideArrayLiteral = (text: string): boolean => {
     return depth > 0;
 };
 
+export const insideJsonLiteral = (text: string): boolean => {
+    const stack: ('json' | 'other')[] = [];
+    let inString = false;
+    let stringChar = '';
+    for (let i = 0; i < text.length; i++) {
+        const ch = text[i];
+        if (inString) {
+            if (ch === '\\') { i++; continue; }
+            if (ch === stringChar) { inString = false; }
+        } else {
+            if (ch === '"' || ch === "'") { inString = true; stringChar = ch; }
+            else if (ch === '$' && i + 1 < text.length && text[i + 1] === '{') {
+                stack.push('json');
+                i++;
+            } else if (ch === '{') {
+                stack.push('other');
+            } else if (ch === '}') {
+                stack.pop();
+            }
+        }
+    }
+    return stack.includes('json');
+};
+
 export const insideHeadersLiteral = (text: string): boolean => {
     const stack: ('headers' | 'array')[] = [];
     let inString = false;

@@ -246,7 +246,7 @@ fn parse_json_value(r: &mut TokenReader) -> Result<VariableValue, SyntaxError> {
     let _ = expect(
         r,
         |tk| tk.token_type == TokenType::Punctuation && tk.value == PUNC_LBRACE,
-        format!("Expected '{PUNC_LBRACE}' or '{PUNC_LBRACKET}'"),
+        format!("Expected '{PUNC_LBRACE}'"),
     )?;
     let mut depth = 0;
     let mut collected = String::new();

@@ -1,1 +1,1 @@
-Error: Syntax error in tests/request/run/input/invalid_syntax__code_2/variable/missing_value.rq at line 1, column 13: Expected identifier, string, array, or JSON object for variable value
+Error: Syntax error in tests/request/run/input/invalid_syntax__code_2/variable/missing_value.rq at line 1, column 13: Expected identifier, string, array, JSON object, or headers map for variable value

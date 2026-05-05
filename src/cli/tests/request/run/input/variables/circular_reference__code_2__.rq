@@ -2,6 +2,6 @@
 let var_a = var_b;
 let var_b = var_a;  // This should create a circular reference
 
-rq test_circular_ref("http://localhost:8080/get", [
+rq test_circular_ref("http://localhost:8080/get", $[
     "Test": "{{var_a}}"
 ]);

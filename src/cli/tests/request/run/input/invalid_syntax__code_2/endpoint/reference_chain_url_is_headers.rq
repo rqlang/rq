@@ -1,4 +1,4 @@
-let my_headers = ["Content-Type": "application/json"];
+let my_headers = $["Content-Type": "application/json"];
 let h = my_headers;
 ep api(url: h) {
     rq get();

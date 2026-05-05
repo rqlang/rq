@@ -102,7 +102,7 @@ The positional form is concise and works well for simple cases:
 rq basic("http://localhost:8080/get");
 
 // URL + headers
-rq get("http://localhost:8080/get", [
+rq get("http://localhost:8080/get", $[
   "header-1": "value-1",
   "header-2": "value 2",
 ]);
@@ -110,7 +110,7 @@ rq get("http://localhost:8080/get", [
 // URL + headers + JSON body (object)
 rq post(
   "http://localhost:8080/post-obj",
-  [
+  $[
     "X-Example-Header": "example-value",
   ],
   ${"greeting":"hello","value":123}
@@ -118,7 +118,7 @@ rq post(
 
 // URL + headers + string body
 [method(POST)]
-rq post_string("http://localhost:8080/post-string", [
+rq post_string("http://localhost:8080/post-string", $[
   "Content-Type": "text/plain"
 ], "hello world");
 ```
@@ -141,7 +141,7 @@ For more complex requests, you can use named parameters, which make the role of 
 // Fully named
 rq named_params_request(
   url: "http://localhost:8080/get",
-  headers: [
+  headers: $[
     "X-Test": "named-params",
   ],
   body: ${"test": "named_parameters"}
@@ -151,7 +151,7 @@ rq named_params_request(
 rq named_partial(url: "http://localhost:8080/simple");
 
 // Mix: positional URL + named headers
-rq mixed_params("http://localhost:8080/mixed", headers: [
+rq mixed_params("http://localhost:8080/mixed", headers: $[
   "X-Mixed": "positional-url-named-headers",
 ]);
 ```
@@ -181,7 +181,7 @@ let host = "http://127.0.0.1:8080";
 rq get("{{ host }}");
 
 let inline = "yes";
-let h = [
+let h = $[
   "Accept": "application/json",
   "X-Inline": "{{ inline }}",
 ];
@@ -213,7 +213,7 @@ Line 2";
 rq multiline_strings(
   url: "http://localhost:8080
   /post",
-  headers: [
+  headers: $[
     "Content-Type": "text/plain",
     "X-Multiline": "Line 1
 Line 2",
@@ -227,12 +227,12 @@ Line 2",
 
 In this example the line breaks in `var_body`, the URL, headers, and body are all kept as-is when the request is sent.
 
-#### Dictionaries with `[...]`
+#### Dictionaries with `$[...]`
 
-The `headers` parameter in `rq` and `ep` uses a dictionary-like literal written with square brackets and `"key": "value"` pairs. These values can also be stored in variables:
+The `headers` parameter in `rq` and `ep` uses a dictionary-like literal introduced with `$[` and written with `"key": "value"` pairs. These values can also be stored in variables:
 
 ```
-let default_headers = [
+let default_headers = $[
   "Accept": "application/json",
   "X-App": "rq-demo",
 ];
@@ -252,7 +252,7 @@ let payload = ${"greeting": "hello", "value": 123};
 [method(POST)]
 rq send_json(
   "http://localhost:8080/post-obj",
-  [],
+  $[],
   payload,
 );
 ```
@@ -337,7 +337,7 @@ The path argument can be relative; its base context is always the directory of t
 // data.txt lives next to this .rq file
 rq sys_body(
   "http://localhost:8080/api/upload",
-  ["Content-Type": "text/plain"],
+  $["Content-Type": "text/plain"],
   io.read_file("data.txt"),
 );
 ```
@@ -350,7 +350,7 @@ let my_file = base_filename;
 
 rq test_import_reference(
   "http://localhost:8080/api/upload",
-  ["Content-Type": "text/plain"],
+  $["Content-Type": "text/plain"],
   io.read_file("{{my_file}}"),
 );
 ```
@@ -533,7 +533,7 @@ The choice of `.env` and the `ENV__<ENV_NAME>__<VAR>` convention is intentional:
 Inside rq files you can then use these names with interpolation:
 
 ```
-rq get("{{api_url}}/status", [
+rq get("{{api_url}}/status", $[
   "Authorization": "Bearer {{api_key}}",
 ]);
 ```
@@ -588,7 +588,7 @@ An endpoint can take the same kinds of parameters as an `rq` request (except bod
 
 ```
 let u = "http://localhost:8080";
-let h = ["X-Test": "true"];
+let h = $["X-Test": "true"];
 let q = "foo=bar";
 
 ep e1(u, h, q) {
@@ -652,7 +652,7 @@ Endpoints can be used as **templates** and extended by other endpoints using a s
 
 ```
 let user_id = 123;
-ep base(url: "http://localhost:8080", headers: ["X-Base": "1"], qs: "v=1");
+ep base(url: "http://localhost:8080", headers: $["X-Base": "1"], qs: "v=1");
 
 ep users<base>("/users") {
   rq get("/{{user_id}}");

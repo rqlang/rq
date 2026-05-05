@@ -1,1 +1,1 @@
-rq get ( "http://example.com", [], "body", "extra" );
+rq get ( "http://example.com", $[], "body", "extra" );

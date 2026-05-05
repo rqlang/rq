@@ -97,7 +97,7 @@ impl VariableValue {
                     .map(|(k, v)| format!("\"{k}\": \"{v}\""))
                     .collect::<Vec<_>>()
                     .join(", ");
-                format!("[{inner}]")
+                format!("$[{inner}]")
             }
             VariableValue::SystemFunction { name, args } => {
                 if args.is_empty() {

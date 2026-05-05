@@ -1,2 +1,2 @@
-let headers = [];
+let headers = $[];
 rq get("http://localhost:8080/get", headers);

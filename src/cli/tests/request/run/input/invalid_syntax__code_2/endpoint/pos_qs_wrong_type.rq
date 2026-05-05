@@ -1,1 +1,1 @@
-ep test ( "http://example.com", [], [ ] ) { }
+ep test ( "http://example.com", $[], [ ] ) { }

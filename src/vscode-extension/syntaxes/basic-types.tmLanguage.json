@@ -7,6 +7,9 @@
       "include": "#string-type"
     },
     {
+      "include": "#headers-type"
+    },
+    {
       "include": "#array-type"
     },
     {
@@ -32,6 +35,39 @@
         },
         {
           "include": "#variable-interpolation"
+        }
+      ]
+    },
+    "headers-type": {
+      "patterns": [
+        {
+          "name": "meta.variable.headers.rq",
+          "begin": "(\\$)(\\[)",
+          "beginCaptures": {
+            "1": {
+              "name": "keyword.operator.headers.rq"
+            },
+            "2": {
+              "name": "punctuation.definition.headers.begin.rq"
+            }
+          },
+          "end": "\\]",
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.definition.headers.end.rq"
+            }
+          },
+          "patterns": [
+            {
+              "include": "#string-type"
+            },
+            {
+              "include": "#variable-name"
+            },
+            {
+              "include": "#punctuation"
+            }
+          ]
         }
       ]
     },

@@ -2,4 +2,4 @@
 let payload = ${"inline":true,"answer":42};
 
 [method(POST)]
-rq json_prefix("http://localhost:8080/post-json-prefix", [], payload);
+rq json_prefix("http://localhost:8080/post-json-prefix", $[], payload);

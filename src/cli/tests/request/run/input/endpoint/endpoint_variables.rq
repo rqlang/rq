@@ -1,5 +1,5 @@
 let u = "http://localhost:8080";
-let h = ["X-Test": "true"];
+let h = $["X-Test": "true"];
 let q = "foo=bar";
 
 ep e1 ( u, h, q ) {

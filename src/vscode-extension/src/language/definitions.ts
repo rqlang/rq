@@ -52,9 +52,9 @@ export const REQUEST_PROPERTIES = [
     },
     {
         name: 'headers',
-        signature: 'headers: [string: string]',
+        signature: 'headers: $[string: string]',
         description: 'HTTP headers as key-value pairs',
-        example: 'headers: ["Authorization": "Bearer {{token}}", "Content-Type": "application/json"]'
+        example: 'headers: $["Authorization": "Bearer {{token}}", "Content-Type": "application/json"]'
     },
     {
         name: 'body',
@@ -74,9 +74,9 @@ export const ENDPOINT_PROPERTIES = [
     },
     {
         name: 'headers',
-        signature: 'headers: [string: string]',
+        signature: 'headers: $[string: string]',
         description: 'HTTP headers that will be inherited by all child requests',
-        example: 'headers: ["Authorization": "Bearer {{token}}"]'
+        example: 'headers: $["Authorization": "Bearer {{token}}"]'
     },
     {
         name: 'qs',

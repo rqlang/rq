@@ -1,3 +1,3 @@
-rq post("http://localhost:8080/post-string", [
+rq post("http://localhost:8080/post-string", $[
     "Content-Type": "text/plain"
 ], "hello world");

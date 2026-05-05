@@ -1,5 +1,5 @@
-ep base(url: "http://localhost:8080", headers: ["X-Base": "base"], qs: "base=1");
+ep base(url: "http://localhost:8080", headers: $["X-Base": "base"], qs: "base=1");
 
-ep child<base>("child", headers: ["X-Child": "child"], qs: "child=1") {
+ep child<base>("child", headers: $["X-Child": "child"], qs: "child=1") {
     rq get("get");
 }

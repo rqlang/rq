@@ -8,7 +8,7 @@ rq shared_with_env("{{base_url}}{{api_path}}");
 [timeout(2)]
 rq get_with_headers(
     "{{base}}/test",
-    [
+    $[
         "Accept": "application/json",
         "X-Uat": "basic",
     ]
@@ -17,7 +17,7 @@ rq get_with_headers(
 [method(POST)]
 rq post_json(
     "{{base}}/test",
-    [
+    $[
         "X-Uat": "post-json",
     ],
     ${"hello":"world","n":123}
@@ -25,7 +25,7 @@ rq post_json(
 
 rq post_text(
     url: "{{base}}/test",
-    headers: [
+    headers: $[
         "Content-Type": "text/plain",
         "X-Uat": "post-text",
     ],

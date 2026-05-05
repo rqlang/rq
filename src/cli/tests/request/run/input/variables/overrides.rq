@@ -8,7 +8,7 @@ ep api("http://localhost:8080") {
     let content_type = "application/json";
     let user_id = "123";
 
-    rq get("/users?timeout={{default_timeout}}", [
+    rq get("/users?timeout={{default_timeout}}", $[
         "Authorization": "Bearer {{api_key}}",
         "Content-Type": "{{ content_type }}",
         "X-Global": "{{global_header}}",

@@ -1,6 +1,8 @@
 use crate::syntax::{
     error::SyntaxError,
-    keywords::{PUNC_COLON, PUNC_COMMA, PUNC_LBRACKET, PUNC_LPAREN, PUNC_RBRACKET, PUNC_RPAREN},
+    keywords::{
+        PUNC_COLON, PUNC_COMMA, PUNC_DOLLAR, PUNC_LBRACKET, PUNC_LPAREN, PUNC_RBRACKET, PUNC_RPAREN,
+    },
     reader::{expect, make_error, TokenReader},
     token::TokenType,
     variable_context::{Variable, VariableValue},
@@ -215,6 +217,13 @@ pub fn parse_string_value(r: &mut TokenReader, separator: &str) -> Result<String
 }
 
 pub fn parse_headers_array(r: &mut TokenReader) -> Result<Vec<(String, String)>, SyntaxError> {
+    expect(
+        r,
+        |t| t.token_type == TokenType::Punctuation && t.value == PUNC_DOLLAR,
+        format!("Expected '{PUNC_DOLLAR}'"),
+    )?;
+    r.advance();
+    r.skip_ignorable();
     expect(
         r,
         |t| t.token_type == TokenType::Punctuation && t.value == PUNC_LBRACKET,

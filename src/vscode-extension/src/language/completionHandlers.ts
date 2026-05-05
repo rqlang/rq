@@ -71,8 +71,9 @@ export const importHandler: CompletionHandler = {
 
 export const dollarPrefixHandler: CompletionHandler = {
     canHandle: ({ linePrefix }) => linePrefix.endsWith('$'),
-    async provide(_ctx) {
-        return dollarPrefixItems();
+    async provide({ documentPrefix }) {
+        const inline = /\b(rq|ep)\s+\w+\s*\([^;]*$/s.test(documentPrefix);
+        return dollarPrefixItems(inline);
     },
 };
 

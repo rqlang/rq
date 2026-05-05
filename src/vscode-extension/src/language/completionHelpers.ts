@@ -61,16 +61,20 @@ export function builtinFunctionItems(): vscode.CompletionItem[] {
     ];
 }
 
-export function dollarPrefixItems(): vscode.CompletionItem[] {
+export function dollarPrefixItems(inline = false): vscode.CompletionItem[] {
     const jsonItem = new vscode.CompletionItem('${ }', vscode.CompletionItemKind.Module);
     jsonItem.detail = 'JSON object literal';
     jsonItem.documentation = new vscode.MarkdownString('Inline JSON object literal.\n\n**Example:**\n```rq\nlet body = ${\n\t"key": "value"\n};\n```');
-    jsonItem.insertText = new vscode.SnippetString('\\${\n\t${1:}\n};');
+    jsonItem.insertText = inline
+        ? new vscode.SnippetString('\\${${1:}}')
+        : new vscode.SnippetString('\\${\n\t${1:}\n};');
 
     const headersItem = new vscode.CompletionItem('$[ ]', vscode.CompletionItemKind.Module);
     headersItem.detail = 'Headers dictionary';
     headersItem.documentation = new vscode.MarkdownString('Inline headers dictionary.\n\n**Example:**\n```rq\nlet h = $[];\n```');
-    headersItem.insertText = new vscode.SnippetString('\\$[\n\t${1:}\n];');
+    headersItem.insertText = inline
+        ? new vscode.SnippetString('\\$[${1:}]')
+        : new vscode.SnippetString('\\$[\n\t${1:}\n];');
     headersItem.command = { command: 'editor.action.triggerSuggest', title: 'Trigger header completions' };
 
     return [jsonItem, headersItem];

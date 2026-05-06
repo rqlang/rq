@@ -77,8 +77,9 @@ export function buildContext(
 
 export async function listVariablesWithFallback(ctx: CompletionContext): Promise<vscode.CompletionItem[]> {
     try {
-        const raw = await rqClient.listVariables(await ctx.getCliFilePath(), ctx.getEnvironment());
-        const variables = filterRequiredVars(raw, ctx.documentPrefix, ctx.document.uri.fsPath);
+        const cliFilePath = await ctx.getCliFilePath();
+        const raw = await rqClient.listVariables(cliFilePath, ctx.getEnvironment());
+        const variables = filterRequiredVars(raw, ctx.documentPrefix, cliFilePath);
         if (variables.length > 0) {
             return variables.map(v => {
                 const item = new vscode.CompletionItem(v.name, vscode.CompletionItemKind.Variable);

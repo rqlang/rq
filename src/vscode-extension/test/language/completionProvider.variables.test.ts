@@ -124,7 +124,7 @@ describe('variable reference completion', () => {
 });
 
 describe('variable interpolation completion', () => {
-    test('suggests variables with closing braces when typing "{{"', async () => {
+    test('suggests builtin functions and variables when typing "{{"', async () => {
         (cliService.listVariables as jest.Mock).mockResolvedValue([
             { name: 'base_url', value: 'http://localhost', file: '/workspace/shared.rq', line: 0, character: 0, source: 'let' },
             { name: 'token', value: 'abc123', file: '/workspace/shared.rq', line: 1, character: 0, source: 'let' }
@@ -136,13 +136,14 @@ describe('variable interpolation completion', () => {
         const items = await provideCompletionItems(doc, position);
 
         expect(cliService.listVariables).toHaveBeenCalledWith('/workspace/current.rq', undefined);
-        expect(items).toHaveLength(2);
-        expect(items[0].label).toBe('base_url');
-        expect(items[0].insertText).toBe('base_url');
-        expect(items[0].detail).toBe('= http://localhost');
+        expect(items.some((i: any) => i.label === 'random.guid()')).toBe(true);
+        const baseUrl = items.find((i: any) => i.label === 'base_url');
+        expect(baseUrl).toBeDefined();
+        expect(baseUrl.insertText).toBe('base_url');
+        expect(baseUrl.detail).toBe('= http://localhost');
     });
 
-    test('returns undefined when no variables exist anywhere', async () => {
+    test('returns builtin functions when no variables exist', async () => {
         (cliService.listVariables as jest.Mock).mockResolvedValue([]);
 
         const doc = makeDocument(['rq req("{{']);
@@ -150,10 +151,11 @@ describe('variable interpolation completion', () => {
 
         const items = await provideCompletionItems(doc, position);
 
-        expect(items).toBeUndefined();
+        expect(items.some((i: any) => i.label === 'random.guid()')).toBe(true);
+        expect(items.every((i: any) => i.kind === 2)).toBe(true);
     });
 
-    test('returns undefined when listVariables throws and no local variables exist', async () => {
+    test('returns builtin functions when listVariables throws and no local variables exist', async () => {
         (cliService.listVariables as jest.Mock).mockRejectedValue(new Error('CLI error'));
 
         const doc = makeDocument(['rq req("{{']);
@@ -161,7 +163,8 @@ describe('variable interpolation completion', () => {
 
         const items = await provideCompletionItems(doc, position);
 
-        expect(items).toBeUndefined();
+        expect(items.some((i: any) => i.label === 'random.guid()')).toBe(true);
+        expect(items.every((i: any) => i.kind === 2)).toBe(true);
     });
 
     test('also triggers inside rq property values', async () => {
@@ -174,8 +177,10 @@ describe('variable interpolation completion', () => {
 
         const items = await provideCompletionItems(doc, position);
 
-        expect(items).toHaveLength(1);
-        expect(items[0].insertText).toBe('token');
+        expect(items.some((i: any) => i.label === 'random.guid()')).toBe(true);
+        const token = items.find((i: any) => i.label === 'token');
+        expect(token).toBeDefined();
+        expect(token.insertText).toBe('token');
     });
 });
 

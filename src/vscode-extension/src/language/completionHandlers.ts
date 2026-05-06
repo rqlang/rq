@@ -14,6 +14,7 @@ import {
     getActiveAuthBlock,
     collectNamedProps,
     countPositionalArgs,
+    filterRequiredVars,
     COMMON_HEADERS,
     AUTH_PROPERTIES,
 } from './completionHelpers';
@@ -29,14 +30,23 @@ export interface CompletionHandler {
 }
 
 export const epTemplateHandler: CompletionHandler = {
-    canHandle: ({ linePrefix }) => /^\s*ep\s+[a-zA-Z_][a-zA-Z0-9_-]*\s*<$/.test(linePrefix),
+    canHandle: ({ linePrefix }) => /^\s*ep\s+[a-zA-Z_][a-zA-Z0-9_-]*\s*<[a-zA-Z0-9_-]*$/.test(linePrefix),
     async provide(ctx) {
+        const { linePrefix, position, document } = ctx;
+        const partial = linePrefix.match(/<([a-zA-Z0-9_-]*)$/)?.[1] ?? '';
+        let replaceRange: vscode.Range | undefined;
+        if (partial.length > 0) {
+            const afterCursor = document.lineAt(position.line).text.substring(position.character);
+            const trailingWord = afterCursor.match(/^([a-zA-Z0-9_-]*)/)?.[1] ?? '';
+            replaceRange = new vscode.Range(position.line, position.character - partial.length, position.line, position.character + trailingWord.length);
+        }
         try {
             const endpoints = await rqClient.listEndpoints(await ctx.getCliFilePath());
             return endpoints.filter(ep => ep.is_template).map(ep => {
                 const item = new vscode.CompletionItem(ep.name, vscode.CompletionItemKind.Reference);
                 item.detail = 'Endpoint template';
                 item.insertText = ep.name;
+                if (replaceRange) { item.range = replaceRange; }
                 return item;
             });
         } catch {
@@ -80,21 +90,39 @@ export const dollarPrefixHandler: CompletionHandler = {
 
 export const letAssignmentHandler: CompletionHandler = {
     canHandle: ({ linePrefix }) =>
-        /^\s*let\s+[a-zA-Z_][a-zA-Z0-9_-]*\s*=\s*$/.test(linePrefix),
+        /^\s*let\s+[a-zA-Z_][a-zA-Z0-9_-]*\s*=\s*[a-zA-Z0-9_-]*$/.test(linePrefix),
     async provide(ctx) {
+        const { linePrefix, position, document } = ctx;
+        const partial = linePrefix.match(/=\s*([a-zA-Z0-9_-]*)$/)?.[1] ?? '';
+        let replaceRange: vscode.Range | undefined;
+        if (partial.length > 0) {
+            const afterCursor = document.lineAt(position.line).text.substring(position.character);
+            const trailingWord = afterCursor.match(/^([a-zA-Z0-9_-]*)/)?.[1] ?? '';
+            replaceRange = new vscode.Range(position.line, position.character - partial.length, position.line, position.character + trailingWord.length);
+        }
+
         const jsonItem = new vscode.CompletionItem('${', vscode.CompletionItemKind.Snippet);
         jsonItem.detail = 'JSON object literal';
         jsonItem.sortText = '0${';
         jsonItem.insertText = new vscode.SnippetString('\\${\n\t${1:}\n}');
+        if (replaceRange) { jsonItem.range = replaceRange; }
 
         const headersItem = new vscode.CompletionItem('$[', vscode.CompletionItemKind.Snippet);
         headersItem.detail = 'Headers dictionary';
         headersItem.sortText = '0$[';
         headersItem.insertText = new vscode.SnippetString('\\$["${1:Header-Name}": "${2:value}"]');
+        if (replaceRange) { headersItem.range = replaceRange; }
 
-        const suggestions: vscode.CompletionItem[] = [jsonItem, headersItem, ...builtinFunctionItems()];
+        const builtins = builtinFunctionItems();
+        if (replaceRange) { builtins.forEach(i => { i.range = replaceRange; }); }
+
+        const suggestions: vscode.CompletionItem[] = [jsonItem, headersItem, ...builtins];
         const varItems = await listVariablesWithFallback(ctx);
-        varItems.forEach(v => { v.insertText = `${v.label};`; suggestions.push(v); });
+        varItems.forEach(v => {
+            v.insertText = `${v.label};`;
+            if (replaceRange) { v.range = replaceRange; }
+            suggestions.push(v);
+        });
         return suggestions;
     },
 };
@@ -102,7 +130,7 @@ export const letAssignmentHandler: CompletionHandler = {
 export const interpolationHandler: CompletionHandler = {
     canHandle: ({ linePrefix }) => /\{\{([a-zA-Z0-9_-]*)$/.test(linePrefix),
     async provide(ctx) {
-        const { linePrefix, document, position } = ctx;
+        const { linePrefix, document, position, documentPrefix } = ctx;
         const interpolationMatch = linePrefix.match(/\{\{([a-zA-Z0-9_-]*)$/);
         if (!interpolationMatch) { return undefined; }
         const partial = interpolationMatch[1];
@@ -116,7 +144,9 @@ export const interpolationHandler: CompletionHandler = {
             );
         }
         try {
-            const variables = await rqClient.listVariables(await ctx.getCliFilePath(), ctx.getEnvironment());
+            const cliFilePath = await ctx.getCliFilePath();
+            const raw = await rqClient.listVariables(cliFilePath, ctx.getEnvironment());
+            const variables = filterRequiredVars(raw, documentPrefix, cliFilePath);
             if (variables.length > 0) {
                 return variables.map(v => {
                     const item = new vscode.CompletionItem(v.name, vscode.CompletionItemKind.Variable);
@@ -154,13 +184,22 @@ export const codeChallengeMethodHandler: CompletionHandler = {
 
 export const propertyValueHandler: CompletionHandler = {
     canHandle: ({ linePrefix, documentPrefix }) => {
-        if (!/^\s*"?[a-zA-Z_][a-zA-Z0-9_-]*"?\s*:\s*"?$/.test(linePrefix)) { return false; }
+        if (!/^\s*"?[a-zA-Z_][a-zA-Z0-9_-]*"?\s*:\s*"?[a-zA-Z0-9_-]*$/.test(linePrefix)) { return false; }
         return insideEnvOrAuthBlock(documentPrefix) || insideHeadersLiteral(documentPrefix);
     },
     async provide(ctx) {
+        const { linePrefix, position, document } = ctx;
+        const partial = linePrefix.match(/:\s*"?([a-zA-Z0-9_-]*)$/)?.[1] ?? '';
+        let replaceRange: vscode.Range | undefined;
+        if (partial.length > 0) {
+            const afterCursor = document.lineAt(position.line).text.substring(position.character);
+            const trailingWord = afterCursor.match(/^([a-zA-Z0-9_-]*)/)?.[1] ?? '';
+            replaceRange = new vscode.Range(position.line, position.character - partial.length, position.line, position.character + trailingWord.length);
+        }
         const suggestions: vscode.CompletionItem[] = [...builtinFunctionItems()];
         const varItems = await listVariablesWithFallback(ctx);
         suggestions.push(...varItems);
+        if (replaceRange) { suggestions.forEach(item => { item.range = replaceRange; }); }
         return suggestions;
     },
 };
@@ -238,21 +277,39 @@ function buildRqEpHandler(
                 : /\bep\s+\w+\s*\(\s*$/.test(linePrefix);
             const afterComma = /,\s+$/.test(linePrefix);
             const onNewLine = /^\s*\w*$/.test(linePrefix);
-            const atNamedValue = new RegExp(`\\b(${propNames.join('|')})\\s*:\\s*$`).test(linePrefix);
-            return atStartOfParams || afterComma || onNewLine || atNamedValue;
+            const atNamedValue = new RegExp(`\\b(${propNames.join('|')})\\s*:\\s*[a-zA-Z0-9_-]*$`).test(linePrefix);
+            const partialInArgs = /[,(]\s*[a-zA-Z0-9_-]+$/.test(linePrefix);
+            return atStartOfParams || afterComma || onNewLine || atNamedValue || partialInArgs;
         },
         async provide(ctx) {
-            const { documentPrefix, linePrefix } = ctx;
+            const { documentPrefix, linePrefix, position, document } = ctx;
             const matchResult = documentPrefix.match(blockPattern);
             if (!matchResult) { return undefined; }
             const matchedText = matchResult[0];
 
-            const atNamedValue = new RegExp(`\\b(${propNames.join('|')})\\s*:\\s*$`).test(linePrefix);
+            const atNamedValue = new RegExp(`\\b(${propNames.join('|')})\\s*:\\s*[a-zA-Z0-9_-]*$`).test(linePrefix);
             if (atNamedValue) {
+                const partial = linePrefix.match(/[a-zA-Z0-9_-]+$/)?.[0] ?? '';
+                let replaceRange: vscode.Range | undefined;
+                if (partial.length > 0) {
+                    const afterCursor = document.lineAt(position.line).text.substring(position.character);
+                    const trailingWord = afterCursor.match(/^([a-zA-Z0-9_-]*)/)?.[1] ?? '';
+                    replaceRange = new vscode.Range(position.line, position.character - partial.length, position.line, position.character + trailingWord.length);
+                }
                 const suggestions: vscode.CompletionItem[] = [...builtinFunctionItems()];
                 const varItems = await listVariablesWithFallback(ctx);
                 suggestions.push(...varItems);
+                if (replaceRange) { suggestions.forEach(item => { item.range = replaceRange; }); }
                 return suggestions;
+            }
+
+            const argPartialMatch = linePrefix.match(/[,(]\s*([a-zA-Z0-9_-]+)$/) ?? linePrefix.match(/^\s*([a-zA-Z0-9_-]+)$/);
+            const argPartial = argPartialMatch?.[1] ?? '';
+            let replaceRange: vscode.Range | undefined;
+            if (argPartial.length > 0) {
+                const afterCursor = document.lineAt(position.line).text.substring(position.character);
+                const trailingWord = afterCursor.match(/^([a-zA-Z0-9_-]*)/)?.[1] ?? '';
+                replaceRange = new vscode.Range(position.line, position.character - argPartial.length, position.line, position.character + trailingWord.length);
             }
 
             const existingNamed = collectNamedProps(matchedText, propNames);
@@ -265,7 +322,12 @@ function buildRqEpHandler(
                 ...propertyItems(props, existingNamed, !hasNamedParams),
             ];
             try {
-                const variables = await rqClient.listVariables(await ctx.getCliFilePath(), ctx.getEnvironment());
+                const cliFilePath = await ctx.getCliFilePath();
+                const variables = filterRequiredVars(
+                    await rqClient.listVariables(cliFilePath, ctx.getEnvironment()),
+                    documentPrefix,
+                    cliFilePath
+                );
                 variables.forEach(v => {
                     const item = new vscode.CompletionItem(v.name, vscode.CompletionItemKind.Variable);
                     item.detail = v.value ? `= ${v.value}` : v.source;
@@ -273,6 +335,7 @@ function buildRqEpHandler(
                     suggestions.push(item);
                 });
             } catch { /* ignore */ }
+            if (replaceRange) { suggestions.forEach(item => { item.range = replaceRange; }); }
             return suggestions;
         },
     };
@@ -388,36 +451,48 @@ export const headerKeyHandler: CompletionHandler = {
 };
 
 export const namespaceHandler: CompletionHandler = {
-    canHandle: ({ linePrefix }) =>
-        linePrefix.endsWith('io.') ||
-        linePrefix.endsWith('random.') ||
-        linePrefix.endsWith('datetime.') ||
-        linePrefix.endsWith('sys.'),
-    async provide({ linePrefix }) {
-        if (linePrefix.endsWith('io.')) {
-            return [
-                (() => {
-                    const i = new vscode.CompletionItem('read_file', vscode.CompletionItemKind.Function);
-                    i.detail = 'io.read_file(path: string)';
-                    i.documentation = new vscode.MarkdownString('Imports the contents of a file relative to the current .rq file\n\n**Parameters:**\n- path: string - Relative or absolute path to the file to import');
-                    i.insertText = new vscode.SnippetString('read_file("${1:path}")');
-                    return i;
-                })(),
-            ];
+    canHandle: ({ linePrefix }) => /\b(io|random|datetime)\.[a-zA-Z_]*$/.test(linePrefix),
+    async provide({ linePrefix, position, document }) {
+        const match = linePrefix.match(/\b(io|random|datetime)\.([a-zA-Z_]*)$/);
+        if (!match) { return undefined; }
+        const ns = match[1];
+        const partial = match[2];
+        let replaceRange: vscode.Range | undefined;
+        if (partial.length > 0) {
+            const afterCursor = document.lineAt(position.line).text.substring(position.character);
+            const trailingWord = afterCursor.match(/^([a-zA-Z_]*)/)?.[1] ?? '';
+            replaceRange = new vscode.Range(position.line, position.character - partial.length, position.line, position.character + trailingWord.length);
         }
-        if (linePrefix.endsWith('random.')) {
-            const i = new vscode.CompletionItem('guid', vscode.CompletionItemKind.Function);
-            i.detail = 'random.guid() → string';
-            i.documentation = new vscode.MarkdownString('Generates a random GUID (UUID v4)');
-            i.insertText = new vscode.SnippetString('guid();');
-            return [i];
+        const applyRange = (item: vscode.CompletionItem): vscode.CompletionItem => {
+            if (replaceRange) { item.range = replaceRange; }
+            return item;
+        };
+        if (ns === 'io') {
+            return [applyRange((() => {
+                const i = new vscode.CompletionItem('read_file', vscode.CompletionItemKind.Function);
+                i.detail = 'io.read_file(path: string)';
+                i.documentation = new vscode.MarkdownString('Imports the contents of a file relative to the current .rq file\n\n**Parameters:**\n- path: string - Relative or absolute path to the file to import');
+                i.insertText = new vscode.SnippetString('read_file("${1:path}")');
+                return i;
+            })())];
         }
-        if (linePrefix.endsWith('datetime.')) {
-            const i = new vscode.CompletionItem('now', vscode.CompletionItemKind.Function);
-            i.detail = 'datetime.now(format?: string) → string';
-            i.documentation = new vscode.MarkdownString('Returns the current date and time.\n\n**Parameters:**\n- format: string (optional) - The format string (e.g. "%Y-%m-%d")');
-            i.insertText = new vscode.SnippetString('now(${1:});');
-            return [i];
+        if (ns === 'random') {
+            return [applyRange((() => {
+                const i = new vscode.CompletionItem('guid', vscode.CompletionItemKind.Function);
+                i.detail = 'random.guid() → string';
+                i.documentation = new vscode.MarkdownString('Generates a random GUID (UUID v4)');
+                i.insertText = new vscode.SnippetString('guid();');
+                return i;
+            })())];
+        }
+        if (ns === 'datetime') {
+            return [applyRange((() => {
+                const i = new vscode.CompletionItem('now', vscode.CompletionItemKind.Function);
+                i.detail = 'datetime.now(format?: string) → string';
+                i.documentation = new vscode.MarkdownString('Returns the current date and time.\n\n**Parameters:**\n- format: string (optional) - The format string (e.g. "%Y-%m-%d")');
+                i.insertText = new vscode.SnippetString('now(${1:});');
+                return i;
+            })())];
         }
         return [];
     },

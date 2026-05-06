@@ -213,6 +213,56 @@ export function getActiveAuthBlock(text: string): { authType: string; definedPro
     return { authType: lastMatch.authType, definedProps };
 }
 
+export function getCurrentEpBlockStartLine(documentPrefix: string): number {
+    const re = /\bep\s+\w+[^{;]*\{/g;
+    const epOpenerPositions: number[] = [];
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(documentPrefix)) !== null) {
+        epOpenerPositions.push(m.index + m[0].length - 1);
+    }
+    if (epOpenerPositions.length === 0) { return 0; }
+
+    let depth = 0;
+    let line = 0;
+    let epIdx = 0;
+    const epStack: Array<{ depth: number; line: number }> = [];
+    for (let i = 0; i < documentPrefix.length; i++) {
+        const ch = documentPrefix[i];
+        if (ch === '\n') {
+            line++;
+        } else if (ch === '{') {
+            depth++;
+            if (epIdx < epOpenerPositions.length && epOpenerPositions[epIdx] === i) {
+                epStack.push({ depth, line });
+                epIdx++;
+            }
+        } else if (ch === '}') {
+            if (depth > 0) {
+                if (epStack.length > 0 && epStack[epStack.length - 1].depth === depth) {
+                    epStack.pop();
+                }
+                depth--;
+            }
+        }
+    }
+    return epStack.length > 0 ? epStack[epStack.length - 1].line : 0;
+}
+
+export function filterRequiredVars<T extends { source: string; line: number; file: string }>(
+    variables: T[],
+    documentPrefix: string,
+    currentFile: string
+): T[] {
+    if (!insideEpBody(documentPrefix)) {
+        return variables.filter(v => v.source !== 'required');
+    }
+    const epStartLine = getCurrentEpBlockStartLine(documentPrefix);
+    return variables.filter(v =>
+        v.source !== 'required' ||
+        (v.file === currentFile && v.line >= epStartLine)
+    );
+}
+
 export function collectNamedProps(text: string, propNames: string[]): Set<string> {
     const names = new Set<string>();
     const pattern = propNames.join('|');

@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as rqClient from '../rqClient';
 import { normalizePath, mirrorToTemp } from '../utils';
+import { filterRequiredVars } from './completionHelpers';
 
 export interface CompletionContext {
     document: vscode.TextDocument;
@@ -76,7 +77,9 @@ export function buildContext(
 
 export async function listVariablesWithFallback(ctx: CompletionContext): Promise<vscode.CompletionItem[]> {
     try {
-        const variables = await rqClient.listVariables(await ctx.getCliFilePath(), ctx.getEnvironment());
+        const cliFilePath = await ctx.getCliFilePath();
+        const raw = await rqClient.listVariables(cliFilePath, ctx.getEnvironment());
+        const variables = filterRequiredVars(raw, ctx.documentPrefix, cliFilePath);
         if (variables.length > 0) {
             return variables.map(v => {
                 const item = new vscode.CompletionItem(v.name, vscode.CompletionItemKind.Variable);

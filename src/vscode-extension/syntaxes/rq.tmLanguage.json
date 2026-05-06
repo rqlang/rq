@@ -37,10 +37,10 @@
       "include": "source.rq.basic#number-type"
     },
     {
-      "include": "source.rq.basic#variable-name"
+      "include": "source.rq.basic#system-functions"
     },
     {
-      "include": "source.rq.basic#system-functions"
+      "include": "source.rq.basic#variable-name"
     },
     {
       "include": "source.rq.basic#operators"
@@ -99,6 +99,9 @@
           "patterns": [
             {
               "include": "source.rq.basic#string-type"
+            },
+            {
+              "include": "source.rq.basic#system-functions"
             },
             {
               "include": "source.rq.basic#variable-name"
@@ -215,6 +218,9 @@
               "include": "source.rq.basic#named-parameter-type"
             },
             {
+              "include": "source.rq.basic#system-functions"
+            },
+            {
               "include": "source.rq.basic#variable-name"
             }
           ]
@@ -267,6 +273,9 @@
         },
         {
           "include": "source.rq.basic#string-type"
+        },
+        {
+          "include": "source.rq.basic#system-functions"
         },
         {
           "include": "source.rq.basic#variable-name"

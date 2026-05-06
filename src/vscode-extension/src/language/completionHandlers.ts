@@ -449,9 +449,9 @@ export const headerKeyHandler: CompletionHandler = {
 };
 
 export const namespaceHandler: CompletionHandler = {
-    canHandle: ({ linePrefix }) => /\b(io|random|datetime|sys)\.[a-zA-Z_]*$/.test(linePrefix),
+    canHandle: ({ linePrefix }) => /\b(io|random|datetime)\.[a-zA-Z_]*$/.test(linePrefix),
     async provide({ linePrefix, position, document }) {
-        const match = linePrefix.match(/\b(io|random|datetime|sys)\.([a-zA-Z_]*)$/);
+        const match = linePrefix.match(/\b(io|random|datetime)\.([a-zA-Z_]*)$/);
         if (!match) { return undefined; }
         const ns = match[1];
         const partial = match[2];

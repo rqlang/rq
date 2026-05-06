@@ -300,6 +300,90 @@ describe('env/auth block property value completion', () => {
     });
 });
 
+describe('required variable scope filtering', () => {
+    test('excludes required vars when cursor is outside any ep block', async () => {
+        (cliService.listVariables as jest.Mock).mockResolvedValue([
+            { name: 'user_id', value: '', file: '/workspace/current.rq', line: 0, character: 0, source: 'required' },
+            { name: 'token', value: 'abc', file: '/workspace/current.rq', line: 1, character: 0, source: 'let' },
+        ]);
+
+        const lines = ['let x = "{{'];
+        const doc = makeDocument(lines);
+        const position = new vscode.Position(0, lines[0].length);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items?.find((i: any) => i.label === 'user_id')).toBeUndefined();
+        expect(items?.find((i: any) => i.label === 'token')).toBeDefined();
+    });
+
+    test('includes required vars from current file when cursor is inside their ep block', async () => {
+        (cliService.listVariables as jest.Mock).mockResolvedValue([
+            { name: 'user_id', value: '', file: '/workspace/current.rq', line: 0, character: 0, source: 'required' },
+        ]);
+
+        const lines = ['ep my_ep() {', '  rq req("{{'];
+        const doc = makeDocument(lines);
+        const position = new vscode.Position(1, lines[1].length);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items?.find((i: any) => i.label === 'user_id')).toBeDefined();
+    });
+
+    test('excludes required vars from other files even when cursor is inside an ep block', async () => {
+        (cliService.listVariables as jest.Mock).mockResolvedValue([
+            { name: 'user_id', value: '', file: '/workspace/other.rq', line: 0, character: 0, source: 'required' },
+        ]);
+
+        const lines = ['ep my_ep() {', '  rq req("{{'];
+        const doc = makeDocument(lines);
+        const position = new vscode.Position(1, lines[1].length);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items?.find((i: any) => i.label === 'user_id')).toBeUndefined();
+    });
+
+    test('excludes required vars declared in a different ep block (wrong scope)', async () => {
+        (cliService.listVariables as jest.Mock).mockResolvedValue([
+            { name: 'first_var', value: '', file: '/workspace/current.rq', line: 0, character: 0, source: 'required' },
+        ]);
+
+        const lines = [
+            'ep first_ep() {',
+            '}',
+            'ep second_ep() {',
+            '  rq req("{{',
+        ];
+        const doc = makeDocument(lines);
+        const position = new vscode.Position(3, lines[3].length);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items?.find((i: any) => i.label === 'first_var')).toBeUndefined();
+    });
+
+    test('includes required vars declared inside the current ep block when multiple ep blocks exist', async () => {
+        (cliService.listVariables as jest.Mock).mockResolvedValue([
+            { name: 'second_var', value: '', file: '/workspace/current.rq', line: 2, character: 0, source: 'required' },
+        ]);
+
+        const lines = [
+            'ep first_ep() {',
+            '}',
+            'ep second_ep() {',
+            '  rq req("{{',
+        ];
+        const doc = makeDocument(lines);
+        const position = new vscode.Position(3, lines[3].length);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items?.find((i: any) => i.label === 'second_var')).toBeDefined();
+    });
+});
+
 describe('namespace function completion', () => {
     test('suggests io.read_file when typing "io."', async () => {
         const doc = makeDocument(['let body = io.']);

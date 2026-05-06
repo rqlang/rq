@@ -237,10 +237,12 @@ export function getCurrentEpBlockStartLine(documentPrefix: string): number {
                 epIdx++;
             }
         } else if (ch === '}') {
-            if (epStack.length > 0 && epStack[epStack.length - 1].depth === depth) {
-                epStack.pop();
+            if (depth > 0) {
+                if (epStack.length > 0 && epStack[epStack.length - 1].depth === depth) {
+                    epStack.pop();
+                }
+                depth--;
             }
-            depth--;
         }
     }
     return epStack.length > 0 ? epStack[epStack.length - 1].line : 0;

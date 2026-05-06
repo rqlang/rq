@@ -109,16 +109,17 @@ describe('ep block param completion — comma trigger', () => {
 
 describe('rq block param completion — partial word typed', () => {
     test('suggests params when partial word typed after ( on same line', async () => {
-        const doc = makeDocument(['rq my_rq(ur']);
-        const position = new vscode.Position(0, 12);
+        const lines = ['rq my_rq(ur'];
+        const doc = makeDocument(lines);
+        const position = new vscode.Position(0, lines[0].length);
 
         const items = await provideCompletionItems(doc, position);
 
         expect(items).toBeDefined();
         expect(items.some((i: any) => i.label === 'url')).toBe(true);
         const target = items.find((i: any) => i.label === 'url');
-        expect(target.range.start.character).toBe(10);
-        expect(target.range.end.character).toBe(12);
+        expect(target.range.start.character).toBe(9);
+        expect(target.range.end.character).toBe(11);
     });
 
     test('suggests variables when partial word typed after named param colon', async () => {

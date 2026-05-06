@@ -98,4 +98,21 @@ describe('ep template completion', () => {
 
         expect(cliService.listEndpoints).not.toHaveBeenCalled();
     });
+
+    test('suggests templates when partial name already typed after <', async () => {
+        (cliService.listEndpoints as jest.Mock).mockResolvedValue([
+            { name: 'api', file: '/workspace/api.rq', line: 0, character: 0, is_template: true },
+            { name: 'base', file: '/workspace/base.rq', line: 0, character: 0, is_template: true }
+        ]);
+
+        const doc = makeDocument(['ep my_ep<ap']);
+        const position = new vscode.Position(0, 11);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items).toHaveLength(2);
+        const target = items[0];
+        expect(target.range.start.character).toBe(9);
+        expect(target.range.end.character).toBe(11);
+    });
 });

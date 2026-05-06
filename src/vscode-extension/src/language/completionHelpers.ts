@@ -213,6 +213,35 @@ export function getActiveAuthBlock(text: string): { authType: string; definedPro
     return { authType: lastMatch.authType, definedProps };
 }
 
+export function getCurrentEpBlockStartLine(documentPrefix: string): number {
+    const re = /\bep\s+\w+[^{;]*\{/g;
+    let line = 0;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(documentPrefix)) !== null) {
+        const textAfter = documentPrefix.slice(m.index + m[0].length);
+        let depth = 1;
+        for (const ch of textAfter) {
+            if (ch === '{') { depth++; }
+            else if (ch === '}') { depth--; if (depth === 0) break; }
+        }
+        if (depth > 0) {
+            line = documentPrefix.slice(0, m.index).split('\n').length - 1;
+        }
+    }
+    return line;
+}
+
+export function filterRequiredVars<T extends { source: string; line: number }>(
+    variables: T[],
+    documentPrefix: string
+): T[] {
+    if (!insideEpBody(documentPrefix)) {
+        return variables.filter(v => v.source !== 'required');
+    }
+    const epStartLine = getCurrentEpBlockStartLine(documentPrefix);
+    return variables.filter(v => v.source !== 'required' || v.line >= epStartLine);
+}
+
 export function collectNamedProps(text: string, propNames: string[]): Set<string> {
     const names = new Set<string>();
     const pattern = propNames.join('|');

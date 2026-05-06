@@ -204,7 +204,17 @@ export class Position {
 }
 
 export class Range {
-    constructor(public start: Position, public end: Position) {}
+    start: Position;
+    end: Position;
+    constructor(startOrLine: Position | number, endOrChar: Position | number, endLine?: number, endChar?: number) {
+        if (typeof startOrLine === 'number') {
+            this.start = new Position(startOrLine, endOrChar as number);
+            this.end = new Position(endLine!, endChar!);
+        } else {
+            this.start = startOrLine as Position;
+            this.end = endOrChar as Position;
+        }
+    }
 }
 
 export class Selection extends Range {

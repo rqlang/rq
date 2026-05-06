@@ -215,20 +215,35 @@ export function getActiveAuthBlock(text: string): { authType: string; definedPro
 
 export function getCurrentEpBlockStartLine(documentPrefix: string): number {
     const re = /\bep\s+\w+[^{;]*\{/g;
-    let line = 0;
+    const epOpenerPositions: number[] = [];
     let m: RegExpExecArray | null;
     while ((m = re.exec(documentPrefix)) !== null) {
-        const textAfter = documentPrefix.slice(m.index + m[0].length);
-        let depth = 1;
-        for (const ch of textAfter) {
-            if (ch === '{') { depth++; }
-            else if (ch === '}') { depth--; if (depth === 0) break; }
-        }
-        if (depth > 0) {
-            line = documentPrefix.slice(0, m.index).split('\n').length - 1;
+        epOpenerPositions.push(m.index + m[0].length - 1);
+    }
+    if (epOpenerPositions.length === 0) { return 0; }
+
+    let depth = 0;
+    let line = 0;
+    let epIdx = 0;
+    const epStack: Array<{ depth: number; line: number }> = [];
+    for (let i = 0; i < documentPrefix.length; i++) {
+        const ch = documentPrefix[i];
+        if (ch === '\n') {
+            line++;
+        } else if (ch === '{') {
+            depth++;
+            if (epIdx < epOpenerPositions.length && epOpenerPositions[epIdx] === i) {
+                epStack.push({ depth, line });
+                epIdx++;
+            }
+        } else if (ch === '}') {
+            if (epStack.length > 0 && epStack[epStack.length - 1].depth === depth) {
+                epStack.pop();
+            }
+            depth--;
         }
     }
-    return line;
+    return epStack.length > 0 ? epStack[epStack.length - 1].line : 0;
 }
 
 export function filterRequiredVars<T extends { source: string; line: number }>(

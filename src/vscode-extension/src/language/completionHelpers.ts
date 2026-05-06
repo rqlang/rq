@@ -246,15 +246,19 @@ export function getCurrentEpBlockStartLine(documentPrefix: string): number {
     return epStack.length > 0 ? epStack[epStack.length - 1].line : 0;
 }
 
-export function filterRequiredVars<T extends { source: string; line: number }>(
+export function filterRequiredVars<T extends { source: string; line: number; file: string }>(
     variables: T[],
-    documentPrefix: string
+    documentPrefix: string,
+    currentFile: string
 ): T[] {
     if (!insideEpBody(documentPrefix)) {
         return variables.filter(v => v.source !== 'required');
     }
     const epStartLine = getCurrentEpBlockStartLine(documentPrefix);
-    return variables.filter(v => v.source !== 'required' || v.line >= epStartLine);
+    return variables.filter(v =>
+        v.source !== 'required' ||
+        (v.file === currentFile && v.line >= epStartLine)
+    );
 }
 
 export function collectNamedProps(text: string, propNames: string[]): Set<string> {

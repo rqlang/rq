@@ -145,7 +145,7 @@ export const interpolationHandler: CompletionHandler = {
         }
         try {
             const raw = await rqClient.listVariables(await ctx.getCliFilePath(), ctx.getEnvironment());
-            const variables = filterRequiredVars(raw, documentPrefix);
+            const variables = filterRequiredVars(raw, documentPrefix, document.uri.fsPath);
             if (variables.length > 0) {
                 return variables.map(v => {
                     const item = new vscode.CompletionItem(v.name, vscode.CompletionItemKind.Variable);
@@ -323,7 +323,8 @@ function buildRqEpHandler(
             try {
                 const variables = filterRequiredVars(
                     await rqClient.listVariables(await ctx.getCliFilePath(), ctx.getEnvironment()),
-                    documentPrefix
+                    documentPrefix,
+                    document.uri.fsPath
                 );
                 variables.forEach(v => {
                     const item = new vscode.CompletionItem(v.name, vscode.CompletionItemKind.Variable);

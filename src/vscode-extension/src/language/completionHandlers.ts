@@ -90,7 +90,7 @@ export const dollarPrefixHandler: CompletionHandler = {
 
 export const letAssignmentHandler: CompletionHandler = {
     canHandle: ({ linePrefix }) =>
-        /^\s*let\s+[a-zA-Z_][a-zA-Z0-9_-]*\s*=\s*[a-zA-Z0-9_-]*$/.test(linePrefix),
+        /^\s*let\s+[a-zA-Z_][a-zA-Z0-9_-]*\s*=\s+[a-zA-Z0-9_-]*$/.test(linePrefix),
     async provide(ctx) {
         const { linePrefix, position, document } = ctx;
         const partial = linePrefix.match(/=\s*([a-zA-Z0-9_-]*)$/)?.[1] ?? '';
@@ -128,10 +128,10 @@ export const letAssignmentHandler: CompletionHandler = {
 };
 
 export const interpolationHandler: CompletionHandler = {
-    canHandle: ({ linePrefix }) => /\{\{([a-zA-Z0-9_-]*)$/.test(linePrefix),
+    canHandle: ({ linePrefix }) => /\{\{\s*([a-zA-Z0-9_-]*)$/.test(linePrefix),
     async provide(ctx) {
         const { linePrefix, document, position, documentPrefix } = ctx;
-        const interpolationMatch = linePrefix.match(/\{\{([a-zA-Z0-9_-]*)$/);
+        const interpolationMatch = linePrefix.match(/\{\{\s*([a-zA-Z0-9_-]*)$/);
         if (!interpolationMatch) { return undefined; }
         const partial = interpolationMatch[1];
         let replaceRange: vscode.Range | undefined;
@@ -143,23 +143,25 @@ export const interpolationHandler: CompletionHandler = {
                 position.line, position.character + trailingName.length
             );
         }
+        const builtins = builtinFunctionItems();
+        if (replaceRange) { builtins.forEach(i => { i.range = replaceRange; }); }
         try {
             const cliFilePath = await ctx.getCliFilePath();
             const raw = await rqClient.listVariables(cliFilePath, ctx.getEnvironment());
             const variables = filterRequiredVars(raw, documentPrefix, cliFilePath);
             if (variables.length > 0) {
-                return variables.map(v => {
+                const varItems = variables.map(v => {
                     const item = new vscode.CompletionItem(v.name, vscode.CompletionItemKind.Variable);
                     item.detail = v.value ? `= ${v.value}` : v.source;
                     item.insertText = v.name;
                     if (replaceRange) { item.range = replaceRange; }
                     return item;
                 });
+                return [...builtins, ...varItems];
             }
         } catch { /* fall through */ }
         const localVars = parseVariables(document);
-        if (localVars.length === 0) { return undefined; }
-        return localVars.map(v => {
+        const varItems = localVars.map(v => {
             const item = new vscode.CompletionItem(v.name, vscode.CompletionItemKind.Variable);
             item.detail = `Variable (line ${v.line + 1})`;
             item.documentation = new vscode.MarkdownString(`Value: \`${v.value}\``);
@@ -167,6 +169,7 @@ export const interpolationHandler: CompletionHandler = {
             if (replaceRange) { item.range = replaceRange; }
             return item;
         });
+        return [...builtins, ...varItems];
     },
 };
 

@@ -3,6 +3,9 @@ import * as rqClient from '../rqClient';
 import {
     SYSTEM_FUNCTIONS,
     IO_FUNCTIONS,
+    RANDOM_FUNCTIONS,
+    DATETIME_FUNCTIONS,
+    FunctionDefinition,
     REQUEST_PROPERTIES,
     ENDPOINT_PROPERTIES,
     parseVariables,
@@ -69,6 +72,17 @@ function parseEnvVariables(document: vscode.TextDocument, startLine: number): st
         }
     }
     return vars;
+}
+
+function buildFunctionHover(func: FunctionDefinition): vscode.MarkdownString {
+    const contents = new vscode.MarkdownString();
+    contents.appendCodeblock(func.signature, 'rq');
+    contents.appendMarkdown(`\n${func.description}\n\n`);
+    if (func.parameters.length > 0) {
+        contents.appendMarkdown('**Parameters:**\n');
+        func.parameters.forEach(p => contents.appendMarkdown(`- ${p}\n`));
+    }
+    return contents;
 }
 
 export const hoverProvider = vscode.languages.registerHoverProvider('rq', {
@@ -205,42 +219,28 @@ export const hoverProvider = vscode.languages.registerHoverProvider('rq', {
             }
         }
         
-        // Check for io functions
         const ioRange = document.getWordRangeAtPosition(position, /io\.\w+/);
         if (ioRange) {
-            const word = document.getText(ioRange);
-            const funcName = word.replace('io.', '');
-            const func = IO_FUNCTIONS.find(f => f.name === funcName);
-            
-            if (func) {
-                const contents = new vscode.MarkdownString();
-                contents.appendCodeblock(func.signature, 'rq');
-                contents.appendMarkdown(`\n${func.description}\n\n`);
-                contents.appendMarkdown('**Parameters:**\n');
-                func.parameters.forEach(p => {
-                    contents.appendMarkdown(`- ${p}\n`);
-                });
-                return new vscode.Hover(contents);
-            }
+            const func = IO_FUNCTIONS.find(f => f.name === document.getText(ioRange).replace('io.', ''));
+            if (func) { return new vscode.Hover(buildFunctionHover(func)); }
         }
 
-        // Check for system functions
+        const randomRange = document.getWordRangeAtPosition(position, /random\.\w+/);
+        if (randomRange) {
+            const func = RANDOM_FUNCTIONS.find(f => f.name === document.getText(randomRange).replace('random.', ''));
+            if (func) { return new vscode.Hover(buildFunctionHover(func)); }
+        }
+
+        const datetimeRange = document.getWordRangeAtPosition(position, /datetime\.\w+/);
+        if (datetimeRange) {
+            const func = DATETIME_FUNCTIONS.find(f => f.name === document.getText(datetimeRange).replace('datetime.', ''));
+            if (func) { return new vscode.Hover(buildFunctionHover(func)); }
+        }
+
         const sysRange = document.getWordRangeAtPosition(position, /sys\.\w+/);
         if (sysRange) {
-            const word = document.getText(sysRange);
-            const funcName = word.replace('sys.', '');
-            const func = SYSTEM_FUNCTIONS.find(f => f.name === funcName);
-            
-            if (func) {
-                const contents = new vscode.MarkdownString();
-                contents.appendCodeblock(func.signature, 'rq');
-                contents.appendMarkdown(`\n${func.description}\n\n`);
-                contents.appendMarkdown('**Parameters:**\n');
-                func.parameters.forEach(p => {
-                    contents.appendMarkdown(`- ${p}\n`);
-                });
-                return new vscode.Hover(contents);
-            }
+            const func = SYSTEM_FUNCTIONS.find(f => f.name === document.getText(sysRange).replace('sys.', ''));
+            if (func) { return new vscode.Hover(buildFunctionHover(func)); }
         }
         
         // Check for variable references (in {{ }} or standalone)

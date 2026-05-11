@@ -1,0 +1,4 @@
+let fmt = "%Y-%m-%d";
+let d = datetime.now(fmt);
+
+rq get("http://localhost:8080?d={{d}}");

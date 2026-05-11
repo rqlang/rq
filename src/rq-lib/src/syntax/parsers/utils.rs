@@ -116,10 +116,22 @@ pub fn parse_system_function(
                         r.skip_ignorable();
                     }
                 }
+            } else if t.token_type == TokenType::Identifier {
+                let var_name = t.value.clone();
+                args.push(format!("{{{{{var_name}}}}}"));
+                r.advance();
+                r.skip_ignorable();
+                if let Some(comma) = r.cur() {
+                    if comma.token_type == TokenType::Punctuation && comma.value == PUNC_COMMA {
+                        r.advance();
+                        r.skip_ignorable();
+                    }
+                }
             } else {
-                return Err(
-                    r.create_error_no_file("Expected string literal".into(), t.span.clone())
-                );
+                return Err(r.create_error_no_file(
+                    "Expected string literal or variable name".into(),
+                    t.span.clone(),
+                ));
             }
         } else {
             return Err(r.create_error(

@@ -50,12 +50,14 @@ export function builtinFunctionItems(): vscode.CompletionItem[] {
             const i = new vscode.CompletionItem('datetime.now()', vscode.CompletionItemKind.Function);
             i.detail = 'datetime.now(format?: string) → string';
             i.insertText = new vscode.SnippetString('datetime.now(${1:})');
+            i.command = { command: 'editor.action.triggerParameterHints', title: 'Trigger parameter hints' };
             return i;
         })(),
         (() => {
             const i = new vscode.CompletionItem('io.read_file()', vscode.CompletionItemKind.Function);
             i.detail = 'io.read_file(path: string) → string';
-            i.insertText = new vscode.SnippetString('io.read_file("${1:path}")');
+            i.insertText = new vscode.SnippetString('io.read_file($1)');
+            i.command = { command: 'editor.action.triggerParameterHints', title: 'Trigger parameter hints' };
             return i;
         })(),
     ];

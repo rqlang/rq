@@ -13,19 +13,55 @@
       "include": "#import"
     },
     {
+      "match": "^\\s*(import)\\b",
+      "captures": {
+        "1": { "name": "keyword.control.import.rq" }
+      }
+    },
+    {
       "include": "#auth"
+    },
+    {
+      "match": "^\\s*(auth)\\b",
+      "captures": {
+        "1": { "name": "storage.type.rq" }
+      }
     },
     {
       "include": "#environment"
     },
     {
+      "match": "^\\s*(env)\\b",
+      "captures": {
+        "1": { "name": "storage.type.rq" }
+      }
+    },
+    {
       "include": "#request"
+    },
+    {
+      "match": "^\\s*(rq)\\b",
+      "captures": {
+        "1": { "name": "storage.type.rq" }
+      }
     },
     {
       "include": "#endpoint"
     },
     {
+      "match": "^\\s*(ep)\\b",
+      "captures": {
+        "1": { "name": "storage.type.rq" }
+      }
+    },
+    {
       "include": "#variable-assignment"
+    },
+    {
+      "match": "^\\s*(let)\\b",
+      "captures": {
+        "1": { "name": "storage.type.rq" }
+      }
     },
     {
       "include": "source.rq.basic#json-type"

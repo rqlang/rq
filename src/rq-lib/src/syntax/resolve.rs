@@ -396,7 +396,15 @@ fn resolve_variable_value(
                 if dry_run {
                     ResolutionStatus::Resolved(String::new())
                 } else {
-                    match execute_system_function(name, args, source_files, fs) {
+                    let mut resolved_args = Vec::new();
+                    for arg in args {
+                        let mut s = arg.clone();
+                        if let Err(e) = resolve_vars_in_string(&mut s, map, source_files, false, fs) {
+                            return ResolutionStatus::Error(e.message, None);
+                        }
+                        resolved_args.push(s);
+                    }
+                    match execute_system_function(name, &resolved_args, source_files, fs) {
                         Ok(res) => ResolutionStatus::Resolved(res),
                         Err(e) => ResolutionStatus::Error(e, None),
                     }

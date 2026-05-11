@@ -308,18 +308,26 @@ fn find_sys_call_location(
     args: &[String],
 ) -> (usize, usize, PathBuf) {
     let escaped = regex::escape(full_func_name);
-    let pattern = if let Some(first_arg) = args.first() {
+    let name_only_pattern = format!(r"({escaped}|\{{\{{\s*\${escaped})");
+
+    let patterns: Vec<String> = if let Some(first_arg) = args.first() {
         let escaped_arg = regex::escape(first_arg);
-        format!(r#"{escaped}\s*\(\s*["']{escaped_arg}["']"#)
+        vec![
+            format!(r#"{escaped}\s*\(\s*["']{escaped_arg}["']"#),
+            name_only_pattern,
+        ]
     } else {
-        format!(r"({escaped}|\{{\{{\s*\${escaped})")
+        vec![name_only_pattern]
     };
-    if let Ok(re) = regex::Regex::new(&pattern) {
-        for path in paths {
-            if let Ok(content) = fs.read(path) {
-                for (index, line) in content.lines().enumerate() {
-                    if let Some(mat) = re.find(line) {
-                        return (index + 1, mat.start() + 1, path.clone());
+
+    for pattern in &patterns {
+        if let Ok(re) = regex::Regex::new(pattern) {
+            for path in paths {
+                if let Ok(content) = fs.read(path) {
+                    for (index, line) in content.lines().enumerate() {
+                        if let Some(mat) = re.find(line) {
+                            return (index + 1, mat.start() + 1, path.clone());
+                        }
                     }
                 }
             }
@@ -396,7 +404,15 @@ fn resolve_variable_value(
                 if dry_run {
                     ResolutionStatus::Resolved(String::new())
                 } else {
-                    match execute_system_function(name, args, source_files, fs) {
+                    let mut resolved_args = Vec::new();
+                    for arg in args {
+                        let mut s = arg.clone();
+                        if let Err(e) = resolve_vars_in_string(&mut s, map, source_files, false, fs) {
+                            return ResolutionStatus::Error(e.message, None);
+                        }
+                        resolved_args.push(s);
+                    }
+                    match execute_system_function(name, &resolved_args, source_files, fs) {
                         Ok(res) => ResolutionStatus::Resolved(res),
                         Err(e) => ResolutionStatus::Error(e, None),
                     }

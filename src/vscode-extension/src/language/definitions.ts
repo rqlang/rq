@@ -38,7 +38,7 @@ export const DATETIME_FUNCTIONS = [
         name: 'now',
         signature: 'datetime.now(format?: string)',
         description: 'Returns the current date and time. If format is provided, it formats the date according to the format string. Otherwise it returns ISO 8601 format.',
-        parameters: ['format: string (optional) - The format string (e.g. "%Y-%m-%d")']
+        parameters: ['format: string (optional) - The format string (e.g. "yyyy-MM-dd HH:mm:ss")']
     }
 ];
 

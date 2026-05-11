@@ -59,6 +59,19 @@ function buildSignature(keyword: string, name: string, params: string[]): vscode
     return sig;
 }
 
+function buildFunctionSignature(fullLabel: string, params: string[]): vscode.SignatureInformation {
+    const sig = new vscode.SignatureInformation(fullLabel);
+    const parenIdx = fullLabel.indexOf('(') + 1;
+    let offset = parenIdx;
+    sig.parameters = params.map((p, i) => {
+        const start = offset;
+        const end = start + p.length;
+        offset = end + (i < params.length - 1 ? 2 : 0);
+        return new vscode.ParameterInformation([start, end] as [number, number]);
+    });
+    return sig;
+}
+
 export const signatureHelpProvider = vscode.languages.registerSignatureHelpProvider(
     'rq',
     {
@@ -95,6 +108,26 @@ export const signatureHelpProvider = vscode.languages.registerSignatureHelpProvi
                 help.signatures = [sig];
                 help.activeSignature = 0;
                 help.activeParameter = getActiveParam(authMatch[2], AUTH_PARAM_NAMES);
+                return help;
+            }
+
+            const ioMatch = textBeforeCursor.match(/\bio\.read_file\(([^)]*)$/s);
+            if (ioMatch) {
+                const sig = buildFunctionSignature('io.read_file(path: string)', ['path: string']);
+                const help = new vscode.SignatureHelp();
+                help.signatures = [sig];
+                help.activeSignature = 0;
+                help.activeParameter = 0;
+                return help;
+            }
+
+            const datetimeMatch = textBeforeCursor.match(/\bdatetime\.now\(([^)]*)$/s);
+            if (datetimeMatch) {
+                const sig = buildFunctionSignature('datetime.now(format?: string)', ['format?: string']);
+                const help = new vscode.SignatureHelp();
+                help.signatures = [sig];
+                help.activeSignature = 0;
+                help.activeParameter = 0;
                 return help;
             }
 

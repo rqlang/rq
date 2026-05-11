@@ -1,0 +1,1 @@
+Error: Syntax error in tests/request/run/input/invalid_syntax__code_2/sys_func/read_file_var_arg_missing__code_2__.rq at line 2, column 5: Error reading file nonexistent_file.txt: No such file or directory (os error 2)

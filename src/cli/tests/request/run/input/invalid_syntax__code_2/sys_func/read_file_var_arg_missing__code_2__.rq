@@ -1,0 +1,4 @@
+let path = "nonexistent_file.txt";
+let content = io.read_file(path);
+
+rq post("http://localhost:8080", body: content);

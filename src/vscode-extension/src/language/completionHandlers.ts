@@ -493,7 +493,7 @@ export const namespaceHandler: CompletionHandler = {
                 const i = new vscode.CompletionItem('read_file', vscode.CompletionItemKind.Function);
                 i.detail = 'io.read_file(path: string)';
                 i.documentation = new vscode.MarkdownString('Imports the contents of a file relative to the current .rq file\n\n**Parameters:**\n- path: string - Relative or absolute path to the file to import');
-                i.insertText = new vscode.SnippetString('read_file($1);');
+                i.insertText = new vscode.SnippetString('read_file($1)');
                 i.command = { command: 'editor.action.triggerParameterHints', title: 'Trigger parameter hints' };
                 return i;
             })())];
@@ -503,7 +503,7 @@ export const namespaceHandler: CompletionHandler = {
                 const i = new vscode.CompletionItem('guid', vscode.CompletionItemKind.Function);
                 i.detail = 'random.guid() → string';
                 i.documentation = new vscode.MarkdownString('Generates a random GUID (UUID v4)');
-                i.insertText = new vscode.SnippetString('guid();');
+                i.insertText = new vscode.SnippetString('guid()');
                 return i;
             })())];
         }
@@ -512,7 +512,7 @@ export const namespaceHandler: CompletionHandler = {
                 const i = new vscode.CompletionItem('now', vscode.CompletionItemKind.Function);
                 i.detail = 'datetime.now(format?: string) → string';
                 i.documentation = new vscode.MarkdownString('Returns the current date and time.\n\n**Parameters:**\n- format: string (optional) - The format string (e.g. "yyyy-MM-dd HH:mm:ss"). Supports yyyy, MM, dd, HH, mm, ss aliases as well as strftime specifiers.');
-                i.insertText = new vscode.SnippetString('now(${1:});');
+                i.insertText = new vscode.SnippetString('now(${1:})');
                 i.command = { command: 'editor.action.triggerParameterHints', title: 'Trigger parameter hints' };
                 return i;
             })())];

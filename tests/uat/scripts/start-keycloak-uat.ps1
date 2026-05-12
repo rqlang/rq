@@ -1,11 +1,14 @@
 #Requires -Version 5.1
 [CmdletBinding()]
 param(
-    [string]$KeycloakImage = $env:KEYCLOAK_IMAGE ?? "quay.io/keycloak/keycloak:latest",
-    [int]$HostPort = if ($env:KEYCLOAK_PORT) { [int]$env:KEYCLOAK_PORT } else { 9090 }
+    [string]$KeycloakImage,
+    [int]$HostPort
 )
 
 $ErrorActionPreference = "Stop"
+
+if (-not $KeycloakImage) { $KeycloakImage = if ($env:KEYCLOAK_IMAGE) { $env:KEYCLOAK_IMAGE } else { "quay.io/keycloak/keycloak:latest" } }
+if (-not $HostPort)      { $HostPort      = if ($env:KEYCLOAK_PORT)  { [int]$env:KEYCLOAK_PORT  } else { 9090 } }
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ImportDir = Join-Path $ScriptDir "keycloak\uat"

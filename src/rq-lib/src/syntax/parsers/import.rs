@@ -1,4 +1,5 @@
 use super::parse_trait::Parse;
+use super::utils::unescape_string;
 use crate::syntax::{
     error::SyntaxError,
     fs::Fs,
@@ -41,7 +42,7 @@ impl Parse for ImportParser {
             "Expected string literal or identifier",
         )?;
         let path = if path_tok.token_type == TokenType::String {
-            path_tok.value.trim_matches('"').to_string()
+            unescape_string(&path_tok.value[1..path_tok.value.len() - 1])
         } else {
             path_tok.value.clone()
         };

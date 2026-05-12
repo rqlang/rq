@@ -105,8 +105,8 @@ pub fn parse_system_function(
                 break;
             }
             if t.token_type == TokenType::String {
-                let raw = t.value.trim_matches('"').trim_matches('\'');
-                let arg = normalize_multiline_string(raw, " ");
+                let raw = &t.value[1..t.value.len() - 1];
+                let arg = unescape_string(&normalize_multiline_string(raw, " "));
                 args.push(arg);
                 r.advance();
                 r.skip_ignorable();
@@ -150,6 +150,31 @@ pub fn parse_system_function(
     })
 }
 
+fn unescape_string(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            match chars.next() {
+                Some('"') => result.push('"'),
+                Some('\'') => result.push('\''),
+                Some('\\') => result.push('\\'),
+                Some('n') => result.push('\n'),
+                Some('t') => result.push('\t'),
+                Some('r') => result.push('\r'),
+                Some(other) => {
+                    result.push('\\');
+                    result.push(other);
+                }
+                None => result.push('\\'),
+            }
+        } else {
+            result.push(c);
+        }
+    }
+    result
+}
+
 pub fn normalize_multiline_string(s: &str, separator: &str) -> String {
     if !s.contains('\n') {
         return s.to_string();
@@ -175,8 +200,8 @@ pub fn parse_string_value(r: &mut TokenReader, separator: &str) -> Result<String
     if let Some(t) = r.cur() {
         match t.token_type {
             TokenType::String => {
-                let raw = t.value.trim_matches('"').trim_matches('\'');
-                let value = normalize_multiline_string(raw, separator);
+                let raw = &t.value[1..t.value.len() - 1];
+                let value = unescape_string(&normalize_multiline_string(raw, separator));
                 r.advance();
                 Ok(value)
             }
@@ -251,7 +276,7 @@ pub fn parse_headers_array(r: &mut TokenReader) -> Result<Vec<(String, String)>,
                 break;
             }
             if ct.token_type == TokenType::String {
-                let key_raw = ct.value.trim_matches('"').trim_matches('\'');
+                let key_raw = &ct.value[1..ct.value.len() - 1];
                 let key = normalize_multiline_string(key_raw, " ");
                 r.advance();
                 r.skip_ignorable();
@@ -342,4 +367,62 @@ pub fn can_parse_attributed(r: &TokenReader, keyword: &str) -> bool {
         }
     }
     false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unescape_double_quote() {
+        assert_eq!(unescape_string(r#"hello \"world\""#), r#"hello "world""#);
+    }
+
+    #[test]
+    fn unescape_single_quote() {
+        assert_eq!(unescape_string(r"it\'s"), "it's");
+    }
+
+    #[test]
+    fn unescape_backslash() {
+        assert_eq!(unescape_string(r"a\\b"), r"a\b");
+    }
+
+    #[test]
+    fn unescape_newline_sequence() {
+        assert_eq!(unescape_string(r"a\nb"), "a\nb");
+    }
+
+    #[test]
+    fn unescape_tab_sequence() {
+        assert_eq!(unescape_string(r"a\tb"), "a\tb");
+    }
+
+    #[test]
+    fn unescape_carriage_return_sequence() {
+        assert_eq!(unescape_string(r"a\rb"), "a\rb");
+    }
+
+    #[test]
+    fn unescape_unknown_sequence_preserved() {
+        assert_eq!(unescape_string(r"\x41"), r"\x41");
+    }
+
+    #[test]
+    fn unescape_trailing_backslash_preserved() {
+        assert_eq!(unescape_string(r"end\"), r"end\");
+    }
+
+    #[test]
+    fn unescape_plain_string_unchanged() {
+        assert_eq!(unescape_string("hello world"), "hello world");
+    }
+
+    #[test]
+    fn unescape_multiple_sequences() {
+        assert_eq!(
+            unescape_string(r#"\"key\": \"value\""#),
+            r#""key": "value""#
+        );
+    }
 }

@@ -227,6 +227,23 @@ Line 2",
 
 In this example the line breaks in `var_body`, the URL, headers, and body are all kept as-is when the request is sent.
 
+String literals also support the following escape sequences:
+
+| Sequence | Character |
+|----------|-----------|
+| `\"` | Double quote `"` |
+| `\'` | Single quote `'` |
+| `\\` | Backslash `\` |
+| `\n` | Newline |
+| `\t` | Tab |
+| `\r` | Carriage return |
+
+```
+rq post_escaped("http://localhost:8080/post-string", $[
+  "Content-Type": "text/plain"
+], "This is the \"body\"");
+```
+
 #### Dictionaries with `$[...]`
 
 The `headers` parameter in `rq` and `ep` uses a dictionary-like literal introduced with `$[` and written with `"key": "value"` pairs. These values can also be stored in variables:

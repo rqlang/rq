@@ -183,10 +183,10 @@
   "scripts": {
     "build-wasm": "wasm-pack build ../rq-wasm --target nodejs --out-dir ./src/wasm",
     "copy-wasm": "node -e \"const fs=require('fs');const src='../rq-wasm/src/wasm';if(fs.existsSync(src+'/rq_wasm.js')){fs.mkdirSync('out/wasm',{recursive:true});['rq_wasm.js','rq_wasm_bg.wasm'].forEach(f=>fs.copyFileSync(src+'/'+f,'out/wasm/'+f));}else{console.log('WASM not built, skipping wasm copy');}\"",
-    "vscode:prepublish": "npm run build-wasm && npm run compile",
-    "compile": "tsc -p ./ && npm run copy-wasm",
-    "watch": "tsc -watch -p ./",
-    "pretest": "npm run compile",
+    "vscode:prepublish": "npm run build-wasm && node esbuild.js --production && npm run copy-wasm",
+    "compile": "node esbuild.js && npm run copy-wasm",
+    "watch": "node esbuild.js --watch",
+    "pretest": "tsc -p tsconfig.test.json --noEmit",
     "lint": "eslint src",
     "test": "jest"
   },
@@ -197,6 +197,7 @@
     "@types/vscode": "^1.110.0",
     "@typescript-eslint/eslint-plugin": "^8.58.0",
     "@typescript-eslint/parser": "^8.58.0",
+    "esbuild": "^0.25.0",
     "eslint": "^10.2.0",
     "jest": "^30.3.0",
     "ts-jest": "^29.4.9",

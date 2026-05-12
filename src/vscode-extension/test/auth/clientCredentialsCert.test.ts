@@ -121,7 +121,8 @@ function makeP12File(password: string): { p12Path: string; expectedCertDer: Buff
     const p12Asn1 = forge.pkcs12.toPkcs12Asn1(keys.privateKey, [cert], password);
     const p12Buffer = Buffer.from(forge.asn1.toDer(p12Asn1).getBytes(), 'binary');
 
-    const p12Path = path.join(os.tmpdir(), `rq-test-${Date.now()}.p12`);
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rq-test-'));
+    const p12Path = path.join(tmpDir, 'client.p12');
     fs.writeFileSync(p12Path, p12Buffer);
 
     const expectedCertDer = Buffer.from(forge.asn1.toDer(forge.pki.certificateToAsn1(cert)).getBytes(), 'binary');
@@ -139,7 +140,7 @@ describe('extractPemFromP12', () => {
         ({ p12Path, expectedCertDer, expectedKeyPem } = makeP12File('secret'));
     });
 
-    afterAll(() => { fs.rmSync(p12Path, { force: true }); });
+    afterAll(() => { if (p12Path) { fs.rmSync(path.dirname(p12Path), { recursive: true, force: true }); } });
 
     it('extracts cert DER matching the certificate in the P12', () => {
         const { certDer } = extractPemFromP12(p12Path, 'secret');

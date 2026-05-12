@@ -13,8 +13,10 @@ No real credentials are stored here. Provide values through a local `.env` file.
 
 Keycloak:
 
-- Start: [scripts/start-keycloak-uat.sh](scripts/start-keycloak-uat.sh)
-- Stop: [scripts/stop-keycloak-uat.sh](scripts/stop-keycloak-uat.sh)
+- Start (macOS/Linux): [scripts/start-keycloak-uat.sh](scripts/start-keycloak-uat.sh)
+- Start (Windows): [scripts/start-keycloak-uat.ps1](scripts/start-keycloak-uat.ps1)
+- Stop (macOS/Linux): [scripts/stop-keycloak-uat.sh](scripts/stop-keycloak-uat.sh)
+- Stop (Windows): [scripts/stop-keycloak-uat.ps1](scripts/stop-keycloak-uat.ps1)
 
 ---
 
@@ -41,8 +43,10 @@ Keycloak in Docker (localhost:9090)
 
 If you don’t already have a Keycloak instance, use the repo scripts to start a local Keycloak configured for this test plan (port `9090` so `8080` remains available for the echo server):
 
-- Start: [scripts/start-keycloak-uat.sh](scripts/start-keycloak-uat.sh)
-- Stop: [scripts/stop-keycloak-uat.sh](scripts/stop-keycloak-uat.sh)
+- Start (macOS/Linux): [scripts/start-keycloak-uat.sh](scripts/start-keycloak-uat.sh)
+- Start (Windows): [scripts/start-keycloak-uat.ps1](scripts/start-keycloak-uat.ps1)
+- Stop (macOS/Linux): [scripts/stop-keycloak-uat.sh](scripts/stop-keycloak-uat.sh)
+- Stop (Windows): [scripts/stop-keycloak-uat.ps1](scripts/stop-keycloak-uat.ps1)
 
 The start script imports a realm named `rq-uat` and creates clients for Authorization Code, Implicit, and Client Credentials.
 

@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import * as http from 'http';
 import * as https from 'https';
 import * as crypto from 'crypto';
-import { execFileSync } from 'child_process';
+import * as forge from 'node-forge';
 import { normalizePath, collectAllFilesAsync } from './utils';
 
 // ---------------------------------------------------------------------------
@@ -566,20 +566,53 @@ export function parsePemCert(content: Buffer): { certDer: Buffer; privateKeyPem:
 }
 
 export function extractPemFromP12(p12Path: string, password: string): { certDer: Buffer; privateKeyPem: Buffer } {
-    const baseArgs = ['-in', p12Path, '-passin', `pass:${password}`];
-    const run = (extra: string[]) => execFileSync('openssl', ['pkcs12', ...baseArgs, ...extra]);
+    const p12Buffer = fs.readFileSync(p12Path);
+    const p12Der = forge.util.binary.raw.encode(new Uint8Array(p12Buffer));
+    const p12Asn1 = forge.asn1.fromDer(p12Der);
+    let p12: forge.pkcs12.Pkcs12Pfx;
     try {
-        const combined = Buffer.concat([run(['-nokeys']), run(['-nocerts', '-nodes'])]);
-        return parsePemCert(combined);
+        p12 = forge.pkcs12.pkcs12FromAsn1(p12Asn1, password);
     } catch {
+        if (password !== '') {
+            throw new Error('Failed to parse .p12 certificate. Ensure the password is correct.');
+        }
         try {
-            const combined = Buffer.concat([run(['-nokeys', '-legacy']), run(['-nocerts', '-nodes', '-legacy'])]);
-            return parsePemCert(combined);
+            p12 = forge.pkcs12.pkcs12FromAsn1(p12Asn1, false as unknown as string);
         } catch (e: unknown) {
             const msg = e instanceof Error ? e.message : String(e);
-            throw new Error(`Failed to parse .p12 certificate. Ensure openssl is installed and the password is correct. ${msg}`);
+            throw new Error(`Failed to parse .p12 certificate. Ensure the password is correct. ${msg}`);
         }
     }
+
+    const allCertBags = p12.getBags({ bagType: forge.pki.oids.certBag })[forge.pki.oids.certBag] ?? [];
+    const allKeyBags = [
+        ...(p12.getBags({ bagType: forge.pki.oids.pkcs8ShroudedKeyBag })[forge.pki.oids.pkcs8ShroudedKeyBag] ?? []),
+        ...(p12.getBags({ bagType: forge.pki.oids.keyBag })[forge.pki.oids.keyBag] ?? []),
+    ];
+
+    if (allCertBags.length === 0) { throw new Error('No certificate found in P12'); }
+    if (allKeyBags.length === 0)  { throw new Error('No private key found in P12'); }
+
+    const localKeyId = (bag: forge.pkcs12.Bag) => bag.attributes?.localKeyId?.[0];
+
+    let certBag = allCertBags[0];
+    let keyBag  = allKeyBags[0];
+
+    if (allCertBags.length > 1 || allKeyBags.length > 1) {
+        for (const kb of allKeyBags) {
+            const kid = localKeyId(kb);
+            const matched = kid ? allCertBags.find(cb => localKeyId(cb) === kid) : undefined;
+            if (matched) { certBag = matched; keyBag = kb; break; }
+        }
+    }
+
+    if (!certBag.cert) { throw new Error('No certificate found in P12'); }
+    if (!keyBag.key)   { throw new Error('No private key found in P12'); }
+
+    const certDer = Buffer.from(forge.asn1.toDer(forge.pki.certificateToAsn1(certBag.cert)).getBytes(), 'binary');
+    const privateKeyPem = Buffer.from(forge.pki.privateKeyToPem(keyBag.key));
+
+    return { certDer, privateKeyPem };
 }
 
 export function createJwtAssertion(privateKeyPem: Buffer, certDer: Buffer, clientId: string, tokenUrl: string): string {

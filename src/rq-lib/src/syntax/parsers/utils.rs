@@ -152,7 +152,7 @@ pub fn parse_system_function(
 
 fn unescape_string(s: &str) -> String {
     let mut result = String::with_capacity(s.len());
-    let mut chars = s.chars().peekable();
+    let mut chars = s.chars();
     while let Some(c) = chars.next() {
         if c == '\\' {
             match chars.next() {

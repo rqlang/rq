@@ -277,7 +277,7 @@ pub fn parse_headers_array(r: &mut TokenReader) -> Result<Vec<(String, String)>,
             }
             if ct.token_type == TokenType::String {
                 let key_raw = &ct.value[1..ct.value.len() - 1];
-                let key = normalize_multiline_string(key_raw, " ");
+                let key = unescape_string(&normalize_multiline_string(key_raw, " "));
                 r.advance();
                 r.skip_ignorable();
                 expect(
@@ -424,5 +424,10 @@ mod tests {
             unescape_string(r#"\"key\": \"value\""#),
             r#""key": "value""#
         );
+    }
+
+    #[test]
+    fn unescape_header_key_with_escape() {
+        assert_eq!(unescape_string(r#"X-My\"Header"#), r#"X-My"Header"#);
     }
 }

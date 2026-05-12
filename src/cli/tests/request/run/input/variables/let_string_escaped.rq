@@ -1,0 +1,8 @@
+let body = "say \"hello\"";
+
+[method(POST)]
+rq let_string_escaped(
+    url: "http://localhost:8080/post-string",
+    headers: $["Content-Type": "text/plain"],
+    body: body
+);

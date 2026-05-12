@@ -1,4 +1,5 @@
 use super::parse_trait::Parse;
+use super::utils::unescape_string;
 use crate::syntax::fs::Fs;
 use crate::syntax::{
     auth::{AuthType, Config as AuthConfig},
@@ -175,7 +176,7 @@ pub(crate) fn parse_auth_definition(
             "Expected string literal or identifier",
         )?;
         let value = if value_tok.token_type == TokenType::String {
-            value_tok.value.trim_matches('"').to_string()
+            unescape_string(&value_tok.value[1..value_tok.value.len() - 1])
         } else {
             format!("{{{{{}}}}}", value_tok.value)
         };

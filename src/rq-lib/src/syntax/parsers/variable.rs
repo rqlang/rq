@@ -1,6 +1,6 @@
 use super::{
     parse_trait::Parse,
-    utils::{normalize_multiline_string, parse_system_function},
+    utils::{normalize_multiline_string, parse_system_function, unescape_string},
 };
 use crate::syntax::fs::Fs;
 use crate::syntax::{
@@ -90,8 +90,8 @@ fn parse_variable_value(r: &mut TokenReader) -> Result<VariableValue, SyntaxErro
     match token.token_type {
         TokenType::Identifier => parse_identifier_value(r, &token),
         TokenType::String => {
-            let raw = token.value.trim_matches('"').trim_matches('\'');
-            let s = normalize_multiline_string(raw, " ");
+            let raw = &token.value[1..token.value.len() - 1];
+            let s = unescape_string(&normalize_multiline_string(raw, " "));
             r.advance();
             Ok(VariableValue::String(s))
         }
@@ -168,7 +168,7 @@ fn parse_headers_variable(r: &mut TokenReader) -> Result<VariableValue, SyntaxEr
                 break;
             }
             if ct.token_type == TokenType::String {
-                let key = ct.value.trim_matches('"').to_string();
+                let key = unescape_string(&ct.value[1..ct.value.len() - 1]);
                 r.advance();
                 r.skip_ignorable();
                 expect(
@@ -184,7 +184,7 @@ fn parse_headers_variable(r: &mut TokenReader) -> Result<VariableValue, SyntaxEr
                     "Expected string literal or identifier",
                 )?;
                 let val = if val_tok.token_type == TokenType::String {
-                    val_tok.value.trim_matches('"').to_string()
+                    unescape_string(&val_tok.value[1..val_tok.value.len() - 1])
                 } else {
                     val_tok.value.clone()
                 };
@@ -219,7 +219,7 @@ fn parse_array_variable(r: &mut TokenReader) -> Result<VariableValue, SyntaxErro
                 break;
             }
             if ct.token_type == TokenType::String {
-                let sv = ct.value.trim_matches('"').to_string();
+                let sv = unescape_string(&ct.value[1..ct.value.len() - 1]);
                 arr.push(sv);
                 r.advance();
                 r.skip_ignorable();

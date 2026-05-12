@@ -1,0 +1,5 @@
+let h = $[
+    "X-Custom": "val with \"quotes\""
+];
+
+rq headers_var_escaped("http://localhost:8080/get", h);

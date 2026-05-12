@@ -1,3 +1,4 @@
+use super::utils::unescape_string;
 use crate::syntax::{
     error::SyntaxError,
     http_method::HttpMethod,
@@ -213,11 +214,7 @@ impl AttributeParser for AuthAttributeParser {
         let auth_name = if auth_name_tok.token_type == TokenType::Identifier {
             format!("{{{{{}}}}}", auth_name_tok.value)
         } else {
-            auth_name_tok
-                .value
-                .trim_matches('"')
-                .trim_matches('\'')
-                .to_string()
+            unescape_string(&auth_name_tok.value[1..auth_name_tok.value.len() - 1])
         };
         r.advance();
 

@@ -1,0 +1,7 @@
+env local {
+    custom_value: "env \"value\""
+}
+
+rq env_value_escaped("http://localhost:8080/get", $[
+    "X-Custom": "{{custom_value}}"
+]);

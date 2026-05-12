@@ -1,9 +1,9 @@
 import * as crypto from 'crypto';
-import { execFileSync } from 'child_process';
+import * as forge from 'node-forge';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
 import { parsePemCert, createJwtAssertion, extractPemFromP12, base64url } from '../../src/rqClient';
-
-jest.mock('child_process', () => ({ execFileSync: jest.fn() }));
-const mockExecFileSync = execFileSync as jest.MockedFunction<typeof execFileSync>;
 
 function makeTestPem(): { certDer: Buffer; privateKeyPem: Buffer; publicKey: crypto.KeyObject; combinedPem: Buffer } {
     const { privateKey, publicKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
@@ -105,45 +105,55 @@ describe('createJwtAssertion', () => {
     });
 });
 
+function makeP12File(password: string): { p12Path: string; expectedCertDer: Buffer; expectedKeyPem: string } {
+    const keys = forge.pki.rsa.generateKeyPair(1024);
+    const cert = forge.pki.createCertificate();
+    cert.publicKey = keys.publicKey;
+    cert.serialNumber = '01';
+    cert.validity.notBefore = new Date();
+    cert.validity.notAfter = new Date();
+    cert.validity.notAfter.setFullYear(cert.validity.notBefore.getFullYear() + 1);
+    const attrs = [{ name: 'commonName', value: 'test' }];
+    cert.setSubject(attrs);
+    cert.setIssuer(attrs);
+    cert.sign(keys.privateKey, forge.md.sha256.create());
+
+    const p12Asn1 = forge.pkcs12.toPkcs12Asn1(keys.privateKey, [cert], password);
+    const p12Buffer = Buffer.from(forge.asn1.toDer(p12Asn1).getBytes(), 'binary');
+
+    const p12Path = path.join(os.tmpdir(), `rq-test-${Date.now()}.p12`);
+    fs.writeFileSync(p12Path, p12Buffer);
+
+    const expectedCertDer = Buffer.from(forge.asn1.toDer(forge.pki.certificateToAsn1(cert)).getBytes(), 'binary');
+    const expectedKeyPem = forge.pki.privateKeyToPem(keys.privateKey);
+
+    return { p12Path, expectedCertDer, expectedKeyPem };
+}
+
 describe('extractPemFromP12', () => {
-    const certPemOutput = Buffer.from('-----BEGIN CERTIFICATE-----\nZmFrZQ==\n-----END CERTIFICATE-----');
-    const keyPemOutput = Buffer.from('-----BEGIN PRIVATE KEY-----\nZmFrZQ==\n-----END PRIVATE KEY-----');
+    let p12Path: string;
+    let expectedCertDer: Buffer;
+    let expectedKeyPem: string;
 
-    beforeEach(() => { mockExecFileSync.mockReset(); });
-
-    it('calls openssl with correct args and returns parsed PEM', () => {
-        mockExecFileSync
-            .mockReturnValueOnce(certPemOutput)
-            .mockReturnValueOnce(keyPemOutput);
-
-        extractPemFromP12('/certs/client.p12', 'secret');
-
-        expect(mockExecFileSync).toHaveBeenCalledWith(
-            'openssl',
-            expect.arrayContaining(['-in', '/certs/client.p12', '-passin', 'pass:secret', '-nokeys']),
-        );
-        expect(mockExecFileSync).toHaveBeenCalledWith(
-            'openssl',
-            expect.arrayContaining(['-in', '/certs/client.p12', '-passin', 'pass:secret', '-nocerts', '-nodes']),
-        );
+    beforeAll(() => {
+        ({ p12Path, expectedCertDer, expectedKeyPem } = makeP12File('secret'));
     });
 
-    it('retries with -legacy flag when first attempt fails', () => {
-        mockExecFileSync
-            .mockImplementationOnce(() => { throw new Error('unsupported'); })
-            .mockReturnValueOnce(certPemOutput)
-            .mockReturnValueOnce(keyPemOutput);
+    afterAll(() => { fs.rmSync(p12Path, { force: true }); });
 
-        extractPemFromP12('/certs/client.p12', '');
-
-        const lastCalls = mockExecFileSync.mock.calls.slice(1);
-        expect(lastCalls.some(args => (args[1] as string[]).includes('-legacy'))).toBe(true);
+    it('extracts cert DER matching the certificate in the P12', () => {
+        const { certDer } = extractPemFromP12(p12Path, 'secret');
+        expect(certDer).toEqual(expectedCertDer);
     });
 
-    it('throws a helpful error when both attempts fail', () => {
-        mockExecFileSync.mockImplementation(() => { throw new Error('openssl not found'); });
+    it('extracts private key PEM containing a PRIVATE KEY block', () => {
+        const { privateKeyPem } = extractPemFromP12(p12Path, 'secret');
+        expect(privateKeyPem.toString()).toContain('PRIVATE KEY');
+        expect(privateKeyPem.toString()).toBe(expectedKeyPem);
+    });
 
-        expect(() => extractPemFromP12('/certs/client.p12', 'pass'))
+    it('throws a helpful error when the password is wrong', () => {
+        expect(() => extractPemFromP12(p12Path, 'wrong-password'))
             .toThrow('Failed to parse .p12 certificate');
     });
 });

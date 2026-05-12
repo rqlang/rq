@@ -157,4 +157,25 @@ describe('extractPemFromP12', () => {
         expect(() => extractPemFromP12(p12Path, 'wrong-password'))
             .toThrow('Failed to parse .p12 certificate');
     });
+
+    it('extracts key from unencrypted keyBag (no password)', () => {
+        const { p12Path: unencryptedPath, expectedCertDer: uCertDer } = makeP12File(null as unknown as string);
+        try {
+            const { certDer, privateKeyPem } = extractPemFromP12(unencryptedPath, '');
+            expect(certDer).toEqual(uCertDer);
+            expect(privateKeyPem.toString()).toContain('PRIVATE KEY');
+        } finally {
+            fs.rmSync(path.dirname(unencryptedPath), { recursive: true, force: true });
+        }
+    });
+
+    it('throws a helpful error when both password attempts fail', () => {
+        const { p12Path: encryptedPath } = makeP12File('correct-password');
+        try {
+            expect(() => extractPemFromP12(encryptedPath, 'wrong-password'))
+                .toThrow('Failed to parse .p12 certificate');
+        } finally {
+            fs.rmSync(path.dirname(encryptedPath), { recursive: true, force: true });
+        }
+    });
 });

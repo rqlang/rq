@@ -567,24 +567,47 @@ export function parsePemCert(content: Buffer): { certDer: Buffer; privateKeyPem:
 
 export function extractPemFromP12(p12Path: string, password: string): { certDer: Buffer; privateKeyPem: Buffer } {
     const p12Buffer = fs.readFileSync(p12Path);
+    const p12Der = forge.util.binary.raw.encode(new Uint8Array(p12Buffer));
+    const p12Asn1 = forge.asn1.fromDer(p12Der);
     let p12: forge.pkcs12.Pkcs12Pfx;
     try {
-        const p12Der = forge.util.binary.raw.encode(new Uint8Array(p12Buffer));
-        const p12Asn1 = forge.asn1.fromDer(p12Der);
         p12 = forge.pkcs12.pkcs12FromAsn1(p12Asn1, password);
-    } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : String(e);
-        throw new Error(`Failed to parse .p12 certificate. Ensure the password is correct. ${msg}`);
+    } catch {
+        if (password !== '') {
+            throw new Error('Failed to parse .p12 certificate. Ensure the password is correct.');
+        }
+        try {
+            p12 = forge.pkcs12.pkcs12FromAsn1(p12Asn1, false as unknown as string);
+        } catch (e: unknown) {
+            const msg = e instanceof Error ? e.message : String(e);
+            throw new Error(`Failed to parse .p12 certificate. Ensure the password is correct. ${msg}`);
+        }
     }
 
-    const certBags = p12.getBags({ bagType: forge.pki.oids.certBag });
-    const keyBags = p12.getBags({ bagType: forge.pki.oids.pkcs8ShroudedKeyBag });
+    const allCertBags = p12.getBags({ bagType: forge.pki.oids.certBag })[forge.pki.oids.certBag] ?? [];
+    const allKeyBags = [
+        ...(p12.getBags({ bagType: forge.pki.oids.pkcs8ShroudedKeyBag })[forge.pki.oids.pkcs8ShroudedKeyBag] ?? []),
+        ...(p12.getBags({ bagType: forge.pki.oids.keyBag })[forge.pki.oids.keyBag] ?? []),
+    ];
 
-    const certBag = certBags[forge.pki.oids.certBag]?.[0];
-    const keyBag = keyBags[forge.pki.oids.pkcs8ShroudedKeyBag]?.[0];
+    if (allCertBags.length === 0) { throw new Error('No certificate found in P12'); }
+    if (allKeyBags.length === 0)  { throw new Error('No private key found in P12'); }
 
-    if (!certBag?.cert) { throw new Error('No certificate found in P12'); }
-    if (!keyBag?.key) { throw new Error('No private key found in P12'); }
+    const localKeyId = (bag: forge.pkcs12.Bag) => bag.attributes?.localKeyId?.[0];
+
+    let certBag = allCertBags[0];
+    let keyBag  = allKeyBags[0];
+
+    if (allCertBags.length > 1 || allKeyBags.length > 1) {
+        for (const kb of allKeyBags) {
+            const kid = localKeyId(kb);
+            const matched = kid ? allCertBags.find(cb => localKeyId(cb) === kid) : undefined;
+            if (matched) { certBag = matched; keyBag = kb; break; }
+        }
+    }
+
+    if (!certBag.cert) { throw new Error('No certificate found in P12'); }
+    if (!keyBag.key)   { throw new Error('No private key found in P12'); }
 
     const certDer = Buffer.from(forge.asn1.toDer(forge.pki.certificateToAsn1(certBag.cert)).getBytes(), 'binary');
     const privateKeyPem = Buffer.from(forge.pki.privateKeyToPem(keyBag.key));

@@ -242,6 +242,7 @@ interface RequestShowRaw {
     Method: string;
     Headers: Record<string, string>;
     Body?: string;
+    Timeout?: string;
     Auth?: { name: string; type: string };
     RequiredVariables?: string[];
     file: string;
@@ -402,6 +403,7 @@ export async function executeRequest(options: ExecuteRequestOptions): Promise<Ex
     const method = raw.Method;
     const body = raw.Body;
     const headers: Record<string, string> = { ...raw.Headers };
+    const timeoutMs = raw.Timeout ? parseFloat(raw.Timeout) * 1000 : undefined;
 
     const existingHeaders = new Set(Object.keys(headers).map(k => k.toLowerCase()));
 
@@ -434,7 +436,7 @@ export async function executeRequest(options: ExecuteRequestOptions): Promise<Ex
     }
 
     const startTime = Date.now();
-    const response = await nodeHttpRequest(url, method, headers, body);
+    const response = await nodeHttpRequest(url, method, headers, body, timeoutMs);
     const elapsed = Date.now() - startTime;
 
     return {
@@ -458,7 +460,7 @@ interface NodeHttpResponse {
     body: string;
 }
 
-function nodeHttpRequest(url: string, method: string, reqHeaders: Record<string, string>, body?: string): Promise<NodeHttpResponse> {
+function nodeHttpRequest(url: string, method: string, reqHeaders: Record<string, string>, body?: string, timeoutMs?: number): Promise<NodeHttpResponse> {
     return new Promise((resolve, reject) => {
         const parsed = new URL(url);
         const isHttps = parsed.protocol === 'https:';
@@ -493,6 +495,11 @@ function nodeHttpRequest(url: string, method: string, reqHeaders: Record<string,
         });
 
         req.on('error', reject);
+        if (timeoutMs) {
+            req.setTimeout(timeoutMs, () => {
+                req.destroy(new Error(`Request timed out after ${timeoutMs}ms`));
+            });
+        }
         if (body) { req.write(body, 'utf8'); }
         req.end();
     });

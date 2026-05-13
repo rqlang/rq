@@ -62,6 +62,8 @@ struct RequestDetailsJson {
     headers: HashMap<String, String>,
     #[serde(rename = "Body", skip_serializing_if = "Option::is_none")]
     body: Option<String>,
+    #[serde(rename = "Timeout", skip_serializing_if = "Option::is_none")]
+    timeout: Option<String>,
     #[serde(rename = "Auth", skip_serializing_if = "Option::is_none")]
     auth: Option<AuthRef>,
     #[serde(rename = "RequiredVariables", skip_serializing_if = "Vec::is_empty")]
@@ -218,6 +220,7 @@ pub fn get_request_details(
         method: details.method,
         headers,
         body: details.body,
+        timeout: details.timeout,
         auth,
         required_variables: details.required_variables,
         file: details.file,

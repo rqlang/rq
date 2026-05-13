@@ -3,6 +3,7 @@ import * as rqClient from '../rqClient';
 import { RequestExplorerProvider, RequestTreeItem } from '../requestExplorer';
 import { performOAuth2Flow } from '../auth';
 import { getWebviewContent, getErrorWebviewContent } from '../ui/webviewGenerator';
+import { Logger } from '../logger';
 
 interface RequestExecutionContext {
     requestName: string;
@@ -15,6 +16,7 @@ export class RequestRunner {
     private resultsPanel: vscode.WebviewPanel | undefined;
     private lastExecutionContext: RequestExecutionContext | undefined;
     private lastBody: string | undefined;
+    private logger!: Logger;
 
     constructor(
         private context: vscode.ExtensionContext,
@@ -34,13 +36,14 @@ export class RequestRunner {
             return;
         }
 
+        this.logger = Logger.init(this.outputChannel);
         provider.setItemLoading(requestItem, true);
         try {
             const requestName = requestItem.request.name;
             const sourceDirectory = this.getSourceDirectory();
             const environment = provider.getSelectedEnvironment();
 
-            this.outputChannel.appendLine(`Selected environment: ${environment || '(none)'}`);
+            this.logger.log(`Selected environment: ${environment || '(none)'}`);
 
             const variables = await this.handleOAuth2(requestName, sourceDirectory, environment) || {};
             await this.collectRequiredVariables(requestName, sourceDirectory, environment, variables);
@@ -60,6 +63,7 @@ export class RequestRunner {
             return;
         }
 
+        this.logger = Logger.init(this.outputChannel);
         provider.setItemLoading(requestItem, true);
         try {
             const requestName = requestItem.request.name;
@@ -91,10 +95,10 @@ export class RequestRunner {
         try {
             const requestDetails = await rqClient.showRequest(requestName, sourceDirectory, environment, true, true);
 
-            this.outputChannel.appendLine(`Auth for '${requestName}': ${JSON.stringify(requestDetails.auth ?? null)}`);
+            this.logger.debug(`Auth for '${requestName}': ${JSON.stringify(requestDetails.auth ?? null)}`);
 
             if (requestDetails.auth && (requestDetails.auth.type === 'oauth2_authorization_code' || requestDetails.auth.type === 'oauth2_implicit')) {
-                this.outputChannel.appendLine(`Detected OAuth2 auth: ${requestDetails.auth.name} (${requestDetails.auth.type})`);
+                this.logger.debug(`Detected OAuth2 auth: ${requestDetails.auth.name} (${requestDetails.auth.type})`);
 
                 const authConfig = await rqClient.showAuthConfig(
                     requestDetails.auth.name,
@@ -102,16 +106,16 @@ export class RequestRunner {
                     environment
                 );
 
-                this.outputChannel.appendLine(`Performing OAuth2 flow...`);
+                this.logger.log(`Performing OAuth2 flow...`);
                 const accessToken = await performOAuth2Flow(authConfig, this.context, this.outputChannel);
-                this.outputChannel.appendLine(`OAuth2 token obtained, injecting as auth_token variable`);
+                this.logger.log(`OAuth2 token obtained, injecting as auth_token variable`);
 
                 return { auth_token: accessToken };
             }
             return undefined;
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
-            this.outputChannel.appendLine(`Warning: Failed to check/apply auth for request: ${errorMessage}`);
+            this.logger.log(`Warning: Failed to check/apply auth for request: ${errorMessage}`);
             return undefined;
         }
     }
@@ -212,15 +216,10 @@ export class RequestRunner {
         variables: Record<string, string> | undefined,
         result: rqClient.ExecuteRequestResult
     ) {
-        // Log the successful response to the output channel
-        if (result.results.length > 0) {
-            const responseData = result.results[0];
-            const logContent = this.formatResponseForLog(responseData);
-            this.logOutput(`Request: ${requestName}`, logContent, variables);
-        }
+        this.logOutput(`Request: ${requestName}`, result.results[0], variables);
 
         if (result.stderr) {
-            this.outputChannel.appendLine(`STDERR output:\n${result.stderr}`);
+            this.logger.log(`STDERR output:\n${result.stderr}`);
         }
 
         if (this.resultsPanel) {
@@ -246,7 +245,14 @@ export class RequestRunner {
             ? this.cleanErrorMessage(result.stderr)
             : `No results returned for request: ${requestName}`;
 
-        this.logOutput(`Request Failed: ${requestName}`, fullError, variables);
+        this.logger.log(`\n${'='.repeat(80)}`);
+        this.logger.log(`Request Failed: ${requestName}`);
+        if (variables) { this.logger.log(`Variables: ${JSON.stringify(variables)}`); }
+        this.logger.log(`Time: ${new Date().toISOString()}`);
+        this.logger.log(`${'='.repeat(80)}`);
+        this.logger.log(fullError);
+        this.logger.log(`${'='.repeat(80)}\n`);
+
         await this.showErrorPanel(requestName, fullError);
     }
 
@@ -278,38 +284,24 @@ export class RequestRunner {
         }, undefined, this.context.subscriptions);
     }
 
-    private formatResponseForLog(result: rqClient.RequestExecutionResult): string {
-        let output = `Status: ${result.status}\n`;
-        output += `Time: ${result.elapsed_ms}ms\n`;
-        output += `Method: ${result.method}\n`;
-        output += `URL: ${result.url}\n\n`;
-        
-        output += `Response Headers:\n`;
+    private logOutput(title: string, result: rqClient.RequestExecutionResult, variables?: Record<string, string>) {
+        this.logger.log(`\n${'='.repeat(80)}`);
+        this.logger.log(title);
+        if (variables) { this.logger.log(`Variables: ${JSON.stringify(variables)}`); }
+        this.logger.log(`Time: ${new Date().toISOString()}`);
+        this.logger.log(`${'='.repeat(80)}`);
+        this.logger.log(`${result.method} ${result.url} → ${result.status} (${result.elapsed_ms}ms)`);
+        this.logger.debug(`\nRequest Headers:`);
+        for (const [key, value] of Object.entries(result.request_headers)) {
+            const display = key.toLowerCase() === 'authorization' ? Logger.redactAuthValue(value) : value;
+            this.logger.debug(`  ${key}: ${display}`);
+        }
+        if (result.request_body) { this.logger.debug(`\nRequest Body:\n${result.request_body}`); }
+        this.logger.debug(`\nResponse Headers:`);
         for (const [key, value] of Object.entries(result.response_headers)) {
-            output += `${key}: ${value}\n`;
+            this.logger.debug(`  ${key}: ${value}`);
         }
-        
-        output += `\nBody:\n`;
-        try {
-            const bodyJson = JSON.parse(result.body);
-            output += JSON.stringify(bodyJson, null, 2);
-        } catch (e) {
-            output += result.body;
-        }
-        output += `\n`;
-        return output;
-    }
-
-    private logOutput(title: string, content: string, variables?: Record<string, string>) {
-        this.outputChannel.appendLine(`\n${'='.repeat(80)}`);
-        this.outputChannel.appendLine(title);
-        if (variables) {
-            this.outputChannel.appendLine(`Variables: ${JSON.stringify(variables)}`);
-        }
-        this.outputChannel.appendLine(`Time: ${new Date().toISOString()}`);
-        this.outputChannel.appendLine(`${'='.repeat(80)}`);
-        this.outputChannel.appendLine(content);
-        this.outputChannel.appendLine(`${'='.repeat(80)}\n`);
+        this.logger.log(`${'='.repeat(80)}\n`);
     }
 
     private async handleError(error: unknown) {
@@ -332,7 +324,7 @@ export class RequestRunner {
         if (errorMessage === 'Cancelled by user') {
             return;
         }
-        this.outputChannel.appendLine(`\nERROR: ${errorMessage}\n`);
+        this.logger.log(`\nERROR: ${errorMessage}\n`);
         const requestName = this.lastExecutionContext?.requestName ?? 'Request';
         await this.showErrorPanel(requestName, errorMessage);
     }

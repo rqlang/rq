@@ -118,6 +118,16 @@
         "icon": "$(run-with-deps)"
       }
     ],
+    "configuration": {
+      "title": "RQ",
+      "properties": {
+        "rq.debugLogging": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show debug logs in the RQ output window when executing requests."
+        }
+      }
+    },
     "configurationDefaults": {
       "[rq]": {
         "editor.snippetSuggestions": "none",

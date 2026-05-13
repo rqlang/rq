@@ -247,7 +247,7 @@ export class RequestRunner {
 
         this.logger.log(`\n${'='.repeat(80)}`);
         this.logger.log(`Request Failed: ${requestName}`);
-        if (variables) { this.logger.log(`Variables: ${JSON.stringify(variables)}`); }
+        if (variables) { this.logger.debug(`Variables: ${JSON.stringify(variables)}`); }
         this.logger.log(`Time: ${new Date().toISOString()}`);
         this.logger.log(`${'='.repeat(80)}`);
         this.logger.log(fullError);
@@ -287,7 +287,7 @@ export class RequestRunner {
     private logOutput(title: string, result: rqClient.RequestExecutionResult, variables?: Record<string, string>) {
         this.logger.log(`\n${'='.repeat(80)}`);
         this.logger.log(title);
-        if (variables) { this.logger.log(`Variables: ${JSON.stringify(variables)}`); }
+        if (variables) { this.logger.debug(`Variables: ${JSON.stringify(variables)}`); }
         this.logger.log(`Time: ${new Date().toISOString()}`);
         this.logger.log(`${'='.repeat(80)}`);
         this.logger.log(`${result.method} ${result.url} → ${result.status} (${result.elapsed_ms}ms)`);

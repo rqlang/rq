@@ -24,8 +24,7 @@ export class Logger {
         const spaceIdx = value.indexOf(' ');
         if (spaceIdx !== -1) {
             const scheme = value.slice(0, spaceIdx);
-            const token = value.slice(spaceIdx + 1);
-            return `${scheme} ${token.slice(0, 8)}...[REDACTED]`;
+            return `${scheme} [REDACTED]`;
         }
         return '[REDACTED]';
     }

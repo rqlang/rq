@@ -8,6 +8,7 @@ This document lists the prerequisites and how to install them to develop RQ loca
 - Node.js (LTS recommended) + npm
 - GitHub CLI (`gh`) (required by `install-rq-dev*` scripts)
 - Rust (`cargo`) (stable toolchain)
+- `wasm-pack` (≥ 0.14.0)
 - Docker (Docker Desktop or equivalent engine)
 
 ## Install prerequisites
@@ -50,6 +51,14 @@ Verify:
 
 - `rustc --version`
 - `cargo --version`
+
+### wasm-pack
+
+- Install via cargo: `cargo install wasm-pack`
+
+Verify:
+
+- `wasm-pack --version`
 
 ### Docker
 

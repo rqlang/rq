@@ -202,16 +202,16 @@
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",
-    "@types/node": "^25.5.2",
+    "@types/node": "^25.7.0",
     "@types/node-forge": "^1.3.14",
     "@types/vscode": "^1.110.0",
-    "@typescript-eslint/eslint-plugin": "^8.58.0",
-    "@typescript-eslint/parser": "^8.58.0",
-    "esbuild": "^0.25.0",
-    "eslint": "^10.2.0",
-    "jest": "^30.3.0",
+    "@typescript-eslint/eslint-plugin": "^8.59.3",
+    "@typescript-eslint/parser": "^8.59.3",
+    "esbuild": "^0.28.0",
+    "eslint": "^10.3.0",
+    "jest": "^30.4.2",
     "ts-jest": "^29.4.9",
-    "typescript": "^6.0.2"
+    "typescript": "^6.0.3"
   },
   "license": "MIT",
   "overrides": {

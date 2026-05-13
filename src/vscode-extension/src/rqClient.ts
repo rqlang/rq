@@ -117,6 +117,7 @@ export interface RequestExecutionResult {
     status: number;
     elapsed_ms: number;
     request_headers: Record<string, string>;
+    request_body?: string;
     response_headers: Record<string, string>;
     body: string;
 }
@@ -444,6 +445,7 @@ export async function executeRequest(options: ExecuteRequestOptions): Promise<Ex
             status: response.status,
             elapsed_ms: elapsed,
             request_headers: headers,
+            request_body: body,
             response_headers: response.headers,
             body: response.body,
         }],

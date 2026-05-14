@@ -32,8 +32,9 @@ impl HttpClient for WasmHttpClient {
         let method = request.method.as_str().to_string();
         let headers = request.headers.clone();
         let body = request.body.clone();
+        let timeout = request.timeout.clone();
         Box::pin(SendFuture(async move {
-            fetch(&url, &method, &headers, body.as_deref()).await
+            fetch(&url, &method, &headers, body.as_deref(), timeout.as_deref()).await
         }))
     }
 }
@@ -43,6 +44,7 @@ async fn fetch(
     method: &str,
     headers: &[(String, String)],
     body: Option<&str>,
+    timeout: Option<&str>,
 ) -> Result<HttpResponse, RqError> {
     let global = js_sys::global();
     let fetch_val = Reflect::get(&global, &JsValue::from_str("fetch"))
@@ -53,6 +55,16 @@ async fn fetch(
             "fetch is not available. Node.js 18+ or a browser environment is required.".to_string(),
         ));
     }
+
+    let abort_controller = timeout
+        .and_then(|t| t.parse::<f64>().ok())
+        .filter(|secs| secs.is_finite() && *secs >= 0.0)
+        .map(|secs| {
+            let controller = js_sys::eval("new AbortController()")
+                .ok()
+                .filter(|v| !v.is_undefined() && !v.is_null());
+            (controller, (secs * 1000.0) as i32)
+        });
 
     let opts = Object::new();
     Reflect::set(
@@ -73,6 +85,34 @@ async fn fetch(
     if let Some(b) = body {
         Reflect::set(&opts, &JsValue::from_str("body"), &JsValue::from_str(b))
             .map_err(|_| RqError::Generic("Failed to set request body".to_string()))?;
+    }
+
+    if let Some((Some(ref controller), ms)) = abort_controller {
+        let signal = Reflect::get(controller, &JsValue::from_str("signal"))
+            .map_err(|_| RqError::Generic("Failed to get AbortController signal".to_string()))?;
+        Reflect::set(&opts, &JsValue::from_str("signal"), &signal)
+            .map_err(|_| RqError::Generic("Failed to set fetch signal".to_string()))?;
+
+        let abort_fn = Reflect::get(controller, &JsValue::from_str("abort"))
+            .ok()
+            .and_then(|v| v.dyn_into::<Function>().ok());
+        if let Some(abort) = abort_fn {
+            let controller_clone = controller.clone();
+            let cb = wasm_bindgen::closure::Closure::once(move || {
+                let _ = abort.call0(&controller_clone);
+            });
+            let set_timeout = Reflect::get(&global, &JsValue::from_str("setTimeout"))
+                .ok()
+                .and_then(|v| v.dyn_into::<Function>().ok());
+            if let Some(set_timeout_fn) = set_timeout {
+                let _ = set_timeout_fn.call2(
+                    &JsValue::UNDEFINED,
+                    cb.as_ref(),
+                    &JsValue::from_f64(ms as f64),
+                );
+                cb.forget();
+            }
+        }
     }
 
     let fetch_fn = Function::from(fetch_val);

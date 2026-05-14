@@ -421,6 +421,68 @@ fn test_request_show_unresolved_no_var_interpolation() -> Result<(), Box<dyn std
 }
 
 #[test]
+fn test_request_show_timeout_text() -> Result<(), Box<dyn std::error::Error>> {
+    let output = rq_cmd()
+        .args([
+            "request",
+            "show",
+            "-s",
+            "tests/request/run/input/timeout_success.rq",
+            "-n",
+            "get",
+        ])
+        .output()?;
+
+    if !output.status.success() {
+        return Err(format!(
+            "Command failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    if !stdout.contains("Timeout: 10") {
+        return Err(format!("Output missing timeout, got: {stdout}").into());
+    }
+
+    Ok(())
+}
+
+#[test]
+fn test_request_show_timeout_json() -> Result<(), Box<dyn std::error::Error>> {
+    let output = rq_cmd()
+        .args([
+            "request",
+            "show",
+            "-s",
+            "tests/request/run/input/timeout_success.rq",
+            "-n",
+            "get",
+            "-o",
+            "json",
+        ])
+        .output()?;
+
+    if !output.status.success() {
+        return Err(format!(
+            "Command failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout)?;
+
+    if json.get("Timeout").and_then(|v| v.as_str()) != Some("10") {
+        return Err(format!("Expected Timeout '10', got: {json}").into());
+    }
+
+    Ok(())
+}
+
+#[test]
 fn test_request_show_resolved_variables_json() -> Result<(), Box<dyn std::error::Error>> {
     let output = rq_cmd()
         .args([

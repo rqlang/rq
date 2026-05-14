@@ -26,6 +26,8 @@ pub struct RequestDetailsView {
     pub headers: HashMap<String, String>,
     #[serde(rename = "Body", skip_serializing_if = "Option::is_none")]
     pub body: Option<String>,
+    #[serde(rename = "Timeout", skip_serializing_if = "Option::is_none")]
+    pub timeout: Option<String>,
     #[serde(rename = "Auth", skip_serializing_if = "Option::is_none")]
     pub auth: Option<AuthConfigView>,
 }
@@ -42,6 +44,8 @@ struct RequestDetailsJsonView {
     headers: HashMap<String, String>,
     #[serde(rename = "Body", skip_serializing_if = "Option::is_none")]
     body: Option<String>,
+    #[serde(rename = "Timeout", skip_serializing_if = "Option::is_none")]
+    timeout: Option<String>,
     #[serde(rename = "Auth", skip_serializing_if = "Option::is_none")]
     auth: Option<AuthConfigView>,
     file: String,
@@ -198,6 +202,7 @@ pub fn execute_show(args: &ShowArgs) -> Result<(), Box<dyn std::error::Error>> {
                 method: details.method,
                 headers: headers_map,
                 body: details.body,
+                timeout: details.timeout,
                 auth,
                 file: details.file,
                 line: details.line,
@@ -216,6 +221,7 @@ pub fn execute_show(args: &ShowArgs) -> Result<(), Box<dyn std::error::Error>> {
                 method: details.method,
                 headers: headers_map,
                 body: details.body,
+                timeout: details.timeout,
                 auth,
             };
             print!("{}", formatter.format(&view));

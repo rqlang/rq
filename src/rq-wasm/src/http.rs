@@ -32,8 +32,9 @@ impl HttpClient for WasmHttpClient {
         let method = request.method.as_str().to_string();
         let headers = request.headers.clone();
         let body = request.body.clone();
+        let timeout = request.timeout.clone();
         Box::pin(SendFuture(async move {
-            fetch(&url, &method, &headers, body.as_deref()).await
+            fetch(&url, &method, &headers, body.as_deref(), timeout.as_deref()).await
         }))
     }
 }
@@ -43,6 +44,7 @@ async fn fetch(
     method: &str,
     headers: &[(String, String)],
     body: Option<&str>,
+    timeout: Option<&str>,
 ) -> Result<HttpResponse, RqError> {
     let global = js_sys::global();
     let fetch_val = Reflect::get(&global, &JsValue::from_str("fetch"))
@@ -51,6 +53,22 @@ async fn fetch(
     if fetch_val.is_undefined() || fetch_val.is_null() {
         return Err(RqError::Generic(
             "fetch is not available. Node.js 18+ or a browser environment is required.".to_string(),
+        ));
+    }
+
+    let abort_controller = timeout
+        .and_then(|t| t.parse::<f64>().ok())
+        .filter(|secs| secs.is_finite() && *secs >= 0.0)
+        .map(|secs| {
+            let controller = js_sys::eval("new AbortController()")
+                .ok()
+                .filter(|v| !v.is_undefined() && !v.is_null());
+            (controller, (secs * 1000.0) as i32)
+        });
+
+    if matches!(&abort_controller, Some((None, _))) {
+        return Err(RqError::Generic(
+            "Timeout was configured but AbortController is not available".to_string(),
         ));
     }
 
@@ -75,13 +93,49 @@ async fn fetch(
             .map_err(|_| RqError::Generic("Failed to set request body".to_string()))?;
     }
 
+    let mut timer_id: Option<JsValue> = None;
+    if let Some((Some(ref controller), ms)) = abort_controller {
+        let signal = Reflect::get(controller, &JsValue::from_str("signal"))
+            .map_err(|_| RqError::Generic("Failed to get AbortController signal".to_string()))?;
+        Reflect::set(&opts, &JsValue::from_str("signal"), &signal)
+            .map_err(|_| RqError::Generic("Failed to set fetch signal".to_string()))?;
+
+        let abort_fn = Reflect::get(controller, &JsValue::from_str("abort"))
+            .ok()
+            .and_then(|v| v.dyn_into::<Function>().ok())
+            .ok_or_else(|| {
+                RqError::Generic("Failed to get AbortController.abort function".to_string())
+            })?;
+        let set_timeout_fn = Reflect::get(&global, &JsValue::from_str("setTimeout"))
+            .ok()
+            .and_then(|v| v.dyn_into::<Function>().ok())
+            .ok_or_else(|| RqError::Generic("setTimeout is not available".to_string()))?;
+        let controller_clone = controller.clone();
+        let cb_js = wasm_bindgen::closure::Closure::once(move || {
+            let _ = abort_fn.call0(&controller_clone);
+        })
+        .into_js_value();
+        let id = set_timeout_fn
+            .call2(&JsValue::UNDEFINED, &cb_js, &JsValue::from_f64(ms as f64))
+            .map_err(|_| RqError::Generic("Failed to schedule timeout abort".to_string()))?;
+        timer_id = Some(id);
+    }
+
     let fetch_fn = Function::from(fetch_val);
     let promise_val = fetch_fn
         .call2(&JsValue::UNDEFINED, &JsValue::from_str(url), &opts)
         .map_err(|e| RqError::Generic(format!("fetch() call failed: {}", js_val_str(&e))))?;
 
-    let response = JsFuture::from(Promise::from(promise_val))
-        .await
+    let response_result = JsFuture::from(Promise::from(promise_val)).await;
+    if let Some(ref id) = timer_id {
+        if let Some(clear_fn) = Reflect::get(&global, &JsValue::from_str("clearTimeout"))
+            .ok()
+            .and_then(|v| v.dyn_into::<Function>().ok())
+        {
+            let _ = clear_fn.call1(&JsValue::UNDEFINED, id);
+        }
+    }
+    let response = response_result
         .map_err(|e| RqError::Generic(format!("HTTP request failed: {}", js_val_str(&e))))?;
 
     let status = Reflect::get(&response, &JsValue::from_str("status"))

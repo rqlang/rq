@@ -403,7 +403,14 @@ export async function executeRequest(options: ExecuteRequestOptions): Promise<Ex
     const method = raw.Method;
     const body = raw.Body;
     const headers: Record<string, string> = { ...raw.Headers };
-    const timeoutMs = raw.Timeout ? parseFloat(raw.Timeout) * 1000 : undefined;
+    const timeoutMs = (() => {
+        if (!raw.Timeout) { return undefined; }
+        const secs = Number(raw.Timeout);
+        if (!Number.isFinite(secs) || secs < 0) {
+            throw new Error(`Timeout value '${raw.Timeout}' must be a non-negative finite number`);
+        }
+        return secs * 1000;
+    })();
 
     const existingHeaders = new Set(Object.keys(headers).map(k => k.toLowerCase()));
 

@@ -211,4 +211,85 @@ describe('executeRequest', () => {
             });
         });
     });
+
+    describe('timeout', () => {
+        test('triggers req.destroy with timeout error when request exceeds configured timeout', async () => {
+            mockGetRequestDetails.mockReturnValue(JSON.stringify({ ...BASE_DETAILS, Timeout: '0.01' }));
+
+            let errorHandler: ((err: Error) => void) | undefined;
+            const mockRequest = {
+                on: jest.fn().mockImplementation((event: string, cb: (err: Error) => void) => {
+                    if (event === 'error') errorHandler = cb;
+                    return mockRequest;
+                }),
+                write: jest.fn(),
+                end: jest.fn(),
+                destroy: jest.fn().mockImplementation((err: Error) => { errorHandler?.(err); }),
+            };
+            (https.request as jest.Mock).mockReturnValue(mockRequest);
+
+            await expect(executeRequest({
+                requestName: 'test-req',
+                sourceDirectory: '/tmp/project',
+            })).rejects.toThrow('Request timed out after 10ms');
+
+            expect(mockRequest.destroy).toHaveBeenCalledWith(
+                expect.objectContaining({ message: 'Request timed out after 10ms' }),
+            );
+        });
+
+        test('cancels timeout timer on successful response so destroy is not called', async () => {
+            mockGetRequestDetails.mockReturnValue(JSON.stringify({ ...BASE_DETAILS, Timeout: '1' }));
+
+            const mockResponse = {
+                statusCode: 200,
+                headers: {},
+                on: jest.fn().mockImplementation((event: string, cb: (...args: any[]) => void) => {
+                    if (event === 'data') cb(Buffer.from('{}'));
+                    if (event === 'end') cb();
+                    return mockResponse;
+                }),
+            };
+            const mockRequest = {
+                on: jest.fn().mockReturnThis(),
+                write: jest.fn().mockReturnThis(),
+                end: jest.fn(),
+                destroy: jest.fn(),
+            };
+            (https.request as jest.Mock).mockImplementation((_opts: any, cb: (res: any) => void) => {
+                process.nextTick(() => cb(mockResponse));
+                return mockRequest;
+            });
+
+            await executeRequest({ requestName: 'test-req', sourceDirectory: '/tmp/project' });
+
+            expect(mockRequest.destroy).not.toHaveBeenCalled();
+        });
+
+        test('cancels timeout timer on request error so timeout does not fire additionally', async () => {
+            mockGetRequestDetails.mockReturnValue(JSON.stringify({ ...BASE_DETAILS, Timeout: '1' }));
+
+            let reqErrorHandler: ((err: Error) => void) | undefined;
+            const mockRequest = {
+                on: jest.fn().mockImplementation((event: string, cb: (err: Error) => void) => {
+                    if (event === 'error') reqErrorHandler = cb;
+                    return mockRequest;
+                }),
+                write: jest.fn(),
+                end: jest.fn(),
+                destroy: jest.fn(),
+            };
+            (https.request as jest.Mock).mockImplementation(() => {
+                process.nextTick(() => reqErrorHandler?.(new Error('connection refused')));
+                return mockRequest;
+            });
+
+            await expect(executeRequest({
+                requestName: 'test-req',
+                sourceDirectory: '/tmp/project',
+            })).rejects.toThrow('connection refused');
+
+            expect(mockRequest.destroy).not.toHaveBeenCalled();
+        });
+    });
 });

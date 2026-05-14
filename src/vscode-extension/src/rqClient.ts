@@ -478,6 +478,9 @@ function nodeHttpRequest(url: string, method: string, reqHeaders: Record<string,
             outHeaders['content-length'] = String(Buffer.byteLength(body, 'utf8'));
         }
 
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const cleanup = () => { if (timer !== undefined) { clearTimeout(timer); timer = undefined; } };
+
         const req = mod.request({
             hostname: parsed.hostname,
             port: parsed.port || (isHttps ? 443 : 80),
@@ -493,19 +496,22 @@ function nodeHttpRequest(url: string, method: string, reqHeaders: Record<string,
             }
             const chunks: Buffer[] = [];
             res.on('data', (chunk: Buffer) => chunks.push(chunk));
-            res.on('end', () => resolve({
-                status: res.statusCode ?? 0,
-                headers: responseHeaders,
-                body: Buffer.concat(chunks).toString('utf8'),
-            }));
-            res.on('error', reject);
+            res.on('end', () => {
+                cleanup();
+                resolve({
+                    status: res.statusCode ?? 0,
+                    headers: responseHeaders,
+                    body: Buffer.concat(chunks).toString('utf8'),
+                });
+            });
+            res.on('error', (err) => { cleanup(); reject(err); });
         });
 
-        req.on('error', reject);
+        req.on('error', (err) => { cleanup(); reject(err); });
         if (timeoutMs !== undefined) {
-            req.setTimeout(timeoutMs, () => {
+            timer = setTimeout(() => {
                 req.destroy(new Error(`Request timed out after ${timeoutMs}ms`));
-            });
+            }, timeoutMs);
         }
         if (body) { req.write(body, 'utf8'); }
         req.end();

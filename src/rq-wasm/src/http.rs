@@ -66,6 +66,12 @@ async fn fetch(
             (controller, (secs * 1000.0) as i32)
         });
 
+    if matches!(&abort_controller, Some((None, _))) {
+        return Err(RqError::Generic(
+            "Timeout was configured but AbortController is not available".to_string(),
+        ));
+    }
+
     let opts = Object::new();
     Reflect::set(
         &opts,
@@ -96,26 +102,23 @@ async fn fetch(
 
         let abort_fn = Reflect::get(controller, &JsValue::from_str("abort"))
             .ok()
-            .and_then(|v| v.dyn_into::<Function>().ok());
-        if let Some(abort) = abort_fn {
-            let controller_clone = controller.clone();
-            let cb_js = wasm_bindgen::closure::Closure::once(move || {
-                let _ = abort.call0(&controller_clone);
-            })
-            .into_js_value();
-            let set_timeout_fn = Reflect::get(&global, &JsValue::from_str("setTimeout"))
-                .ok()
-                .and_then(|v| v.dyn_into::<Function>().ok());
-            if let Some(set_timeout_fn) = set_timeout_fn {
-                if let Ok(id) = set_timeout_fn.call2(
-                    &JsValue::UNDEFINED,
-                    &cb_js,
-                    &JsValue::from_f64(ms as f64),
-                ) {
-                    timer_id = Some(id);
-                }
-            }
-        }
+            .and_then(|v| v.dyn_into::<Function>().ok())
+            .ok_or_else(|| {
+                RqError::Generic("Failed to get AbortController.abort function".to_string())
+            })?;
+        let set_timeout_fn = Reflect::get(&global, &JsValue::from_str("setTimeout"))
+            .ok()
+            .and_then(|v| v.dyn_into::<Function>().ok())
+            .ok_or_else(|| RqError::Generic("setTimeout is not available".to_string()))?;
+        let controller_clone = controller.clone();
+        let cb_js = wasm_bindgen::closure::Closure::once(move || {
+            let _ = abort_fn.call0(&controller_clone);
+        })
+        .into_js_value();
+        let id = set_timeout_fn
+            .call2(&JsValue::UNDEFINED, &cb_js, &JsValue::from_f64(ms as f64))
+            .map_err(|_| RqError::Generic("Failed to schedule timeout abort".to_string()))?;
+        timer_id = Some(id);
     }
 
     let fetch_fn = Function::from(fetch_val);

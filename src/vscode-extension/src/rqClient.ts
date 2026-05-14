@@ -502,7 +502,7 @@ function nodeHttpRequest(url: string, method: string, reqHeaders: Record<string,
         });
 
         req.on('error', reject);
-        if (timeoutMs) {
+        if (timeoutMs !== undefined) {
             req.setTimeout(timeoutMs, () => {
                 req.destroy(new Error(`Request timed out after ${timeoutMs}ms`));
             });

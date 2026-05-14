@@ -87,6 +87,7 @@ async fn fetch(
             .map_err(|_| RqError::Generic("Failed to set request body".to_string()))?;
     }
 
+    let mut timer_id: Option<JsValue> = None;
     if let Some((Some(ref controller), ms)) = abort_controller {
         let signal = Reflect::get(controller, &JsValue::from_str("signal"))
             .map_err(|_| RqError::Generic("Failed to get AbortController signal".to_string()))?;
@@ -98,19 +99,21 @@ async fn fetch(
             .and_then(|v| v.dyn_into::<Function>().ok());
         if let Some(abort) = abort_fn {
             let controller_clone = controller.clone();
-            let cb = wasm_bindgen::closure::Closure::once(move || {
+            let cb_js = wasm_bindgen::closure::Closure::once(move || {
                 let _ = abort.call0(&controller_clone);
-            });
-            let set_timeout = Reflect::get(&global, &JsValue::from_str("setTimeout"))
+            })
+            .into_js_value();
+            let set_timeout_fn = Reflect::get(&global, &JsValue::from_str("setTimeout"))
                 .ok()
                 .and_then(|v| v.dyn_into::<Function>().ok());
-            if let Some(set_timeout_fn) = set_timeout {
-                let _ = set_timeout_fn.call2(
+            if let Some(set_timeout_fn) = set_timeout_fn {
+                if let Ok(id) = set_timeout_fn.call2(
                     &JsValue::UNDEFINED,
-                    cb.as_ref(),
+                    &cb_js,
                     &JsValue::from_f64(ms as f64),
-                );
-                cb.forget();
+                ) {
+                    timer_id = Some(id);
+                }
             }
         }
     }
@@ -120,8 +123,16 @@ async fn fetch(
         .call2(&JsValue::UNDEFINED, &JsValue::from_str(url), &opts)
         .map_err(|e| RqError::Generic(format!("fetch() call failed: {}", js_val_str(&e))))?;
 
-    let response = JsFuture::from(Promise::from(promise_val))
-        .await
+    let response_result = JsFuture::from(Promise::from(promise_val)).await;
+    if let Some(ref id) = timer_id {
+        if let Some(clear_fn) = Reflect::get(&global, &JsValue::from_str("clearTimeout"))
+            .ok()
+            .and_then(|v| v.dyn_into::<Function>().ok())
+        {
+            let _ = clear_fn.call1(&JsValue::UNDEFINED, id);
+        }
+    }
+    let response = response_result
         .map_err(|e| RqError::Generic(format!("HTTP request failed: {}", js_val_str(&e))))?;
 
     let status = Reflect::get(&response, &JsValue::from_str("status"))

@@ -320,9 +320,11 @@ function buildRqEpHandler(
             propNames.slice(0, positionalCount).forEach(p => existingNamed.add(p));
 
             const hasNamedParams = props.some(p => existingNamed.has(p.name));
+            const remainingProps = propertyItems(props, existingNamed, !hasNamedParams);
+            if (remainingProps.length === 0 && /^\s*$/.test(linePrefix)) { return undefined; }
             const suggestions: vscode.CompletionItem[] = [
                 ...builtinFunctionItems(),
-                ...propertyItems(props, existingNamed, !hasNamedParams),
+                ...remainingProps,
             ];
             try {
                 const cliFilePath = await ctx.getCliFilePath();

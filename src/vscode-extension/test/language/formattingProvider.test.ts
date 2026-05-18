@@ -141,6 +141,14 @@ describe('formatRqDocument', () => {
             expect(fmt('let x = [\n"Accept": ""\n];')).not.toContain('\n\n');
         });
 
+        test('moves inline content after $[ opener to next line', () => {
+            expect(fmt('let h = $[    "Accept": "pp"\n];')).toBe('let h = $[\n    "Accept": "pp"\n];\n');
+        });
+
+        test('splits multiple inline entries after $[ opener onto individual lines', () => {
+            expect(fmt('let h = $[    "Accept": "pp", "Content-Type": "text/plain"\n];')).toBe('let h = $[\n    "Accept": "pp",\n    "Content-Type": "text/plain"\n];\n');
+        });
+
         test('splits ]; onto its own line when attached to last entry', () => {
             expect(fmt('let x = [\n    "Accept": "",\n    "pepito": ""];')).toBe('let x = [\n    "Accept": "",\n    "pepito": ""\n];\n');
         });
@@ -173,6 +181,15 @@ describe('formatRqDocument', () => {
 
         test('does not split { inside string', () => {
             expect(fmt('let s = "a{b}";')).toBe('let s = "a{b}";\n');
+        });
+
+        test('does not split { or } inside string containing escaped quotes', () => {
+            expect(fmt('let s = "a\\"b{c}d\\"e";')).toBe('let s = "a\\"b{c}d\\"e";\n');
+        });
+
+        test('does not split braces in escaped-quote JSON body string', () => {
+            const line = String.raw`rq post(body: "\"{\"actions\":[{\"id\":\"read\"}],\"resource\":{\"id\":\"document:12345\"}}\"");`;
+            expect(fmt(line)).toBe(line + '\n');
         });
 
         test('does not split ${ in json body', () => {
@@ -349,6 +366,91 @@ describe('formatRqDocument', () => {
 
         test('does not alter = inside string value of let', () => {
             expect(fmt('let url="http://example.com?key=value";')).toBe('let url = "http://example.com?key=value";\n');
+        });
+    });
+
+    describe('multiline call normalization', () => {
+        test('normalizes multiline rq call with params on continuation lines', () => {
+            const input = [
+                'rq check_access(url: "http://localhost:8080",',
+                'headers: $["Content-Type": "application/json"],',
+                'body: "value");',
+            ].join('\n');
+            const expected = [
+                'rq check_access(',
+                '    url: "http://localhost:8080",',
+                '    headers: $["Content-Type": "application/json"],',
+                '    body: "value"',
+                ');',
+                '',
+            ].join('\n');
+            expect(fmt(input)).toBe(expected);
+        });
+
+        test('normalizes multiline rq with escaped-quote JSON body', () => {
+            const line = String.raw`rq check_access(url: "http://localhost:8080",`;
+            const line2 = String.raw`headers: $["Content-Type": "application/json"],`;
+            const line3 = String.raw`body: "\"{\"actions\":[{\"id\":\"read\"}],\"resource\":{\"id\":\"document:12345\"}}\"");`;
+            const input = [line, line2, line3].join('\n');
+            const bodyVal = String.raw`"\"{\"actions\":[{\"id\":\"read\"}],\"resource\":{\"id\":\"document:12345\"}}\""`;
+            const expected = [
+                'rq check_access(',
+                '    url: "http://localhost:8080",',
+                '    headers: $["Content-Type": "application/json"],',
+                `    body: ${bodyVal}`,
+                ');',
+                '',
+            ].join('\n');
+            expect(fmt(input)).toBe(expected);
+        });
+
+        test('is idempotent on already-normalized multiline call', () => {
+            const input = 'rq check_access(\n    url: "http://localhost:8080",\n    body: "value"\n);\n';
+            expect(fmt(input)).toBe(input);
+        });
+
+        test('normalizes multiline ep declaration', () => {
+            const input = 'ep my_ep(url: base_url,\nheaders: my_headers) {\nrq list();\n}';
+            const expected = 'ep my_ep(\n    url: base_url,\n    headers: my_headers\n) {\n    rq list();\n}\n';
+            expect(fmt(input)).toBe(expected);
+        });
+
+        test('normalizes multiline rq nested inside ep', () => {
+            const input = 'ep my_ep() {\nrq post(url: "http://example.com",\nbody: "");\n}';
+            const expected = 'ep my_ep() {\n    rq post(\n        url: "http://example.com",\n        body: ""\n    );\n}\n';
+            expect(fmt(input)).toBe(expected);
+        });
+
+        test('does not reformat rq with multiline array argument', () => {
+            const input = 'ep ep_name() {\n    rq my("", [\n        "hello": "",\n        "h": ""\n    ]\n    );\n}';
+            const expected = 'ep ep_name() {\n    rq my("", [\n        "hello": "",\n        "h": ""\n    ]);\n}\n';
+            expect(fmt(input)).toBe(expected);
+        });
+    });
+
+    describe('multiline artifact indentation', () => {
+        test('indents params in multiline rq call', () => {
+            expect(fmt('rq post(\nurl: "http://example.com",\nbody: ""\n);')).toBe('rq post(\n    url: "http://example.com",\n    body: ""\n);\n');
+        });
+
+        test('indents params in multiline ep declaration', () => {
+            expect(fmt('ep my_ep(\nurl: base_url,\nheaders: my_headers\n) {\nrq list();\n}')).toBe('ep my_ep(\n    url: base_url,\n    headers: my_headers\n) {\n    rq list();\n}\n');
+        });
+
+        test('indents params in multiline auth declaration', () => {
+            expect(fmt('auth bearer(\ntoken: "xxx"\n) {\nclient_id: "id",\n}')).toBe('auth bearer(\n    token: "xxx"\n) {\n    client_id: "id",\n}\n');
+        });
+
+        test('indents nested multiline rq call inside ep', () => {
+            expect(fmt('ep my_ep() {\nrq post(\nurl: "...",\nbody: ""\n);\n}')).toBe('ep my_ep() {\n    rq post(\n        url: "...",\n        body: ""\n    );\n}\n');
+        });
+
+        test('does not indent params in single-line call', () => {
+            expect(fmt('rq post(url: "http://example.com", body: "");')).toBe('rq post(url: "http://example.com", body: "");\n');
+        });
+
+        test('respects custom tab size for multiline params', () => {
+            expect(formatRqDocument('rq post(\nurl: "http://example.com"\n);', 2)).toBe('rq post(\n  url: "http://example.com"\n);\n');
         });
     });
 

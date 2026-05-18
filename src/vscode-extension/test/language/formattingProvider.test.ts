@@ -170,6 +170,10 @@ describe('formatRqDocument', () => {
             const expected = 'ep ep_name() {\n    rq my("", [\n        "h": "v"\n    ]);\n    rq other();\n}\n';
             expect(fmt(input)).toBe(expected);
         });
+
+        test('does not split on comma inside single-quoted array entry', () => {
+            expect(fmt('let x = [\n    \'a,b\': ""\n];')).toBe('let x = [\n    \'a,b\': ""\n];\n');
+        });
     });
 
     describe('brace splitting', () => {

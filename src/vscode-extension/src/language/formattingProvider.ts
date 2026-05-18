@@ -110,15 +110,17 @@ function splitArrayEntries(lines: string[]): string[] {
 
 function parenDepthDelta(line: string): number {
     let depth = 0;
-    let inString = false;
+    let stringChar: string | null = null;
     for (let i = 0; i < line.length; i++) {
         const ch = line[i];
-        if (inString && ch === '\\') { i++; continue; }
-        if (ch === '"') { inString = !inString; continue; }
-        if (!inString) {
-            if (ch === '(') { depth++; }
-            else if (ch === ')') { depth--; }
+        if (stringChar !== null) {
+            if (ch === '\\') { i++; continue; }
+            if (ch === stringChar) { stringChar = null; }
+            continue;
         }
+        if (ch === '"' || ch === "'") { stringChar = ch; continue; }
+        if (ch === '(') { depth++; }
+        else if (ch === ')') { depth--; }
     }
     return depth;
 }
@@ -126,17 +128,20 @@ function parenDepthDelta(line: string): number {
 function splitTopLevelCommas(content: string): string[] {
     const parts: string[] = [];
     let current = '';
-    let inString = false;
+    let stringChar: string | null = null;
     let depth = 0;
     for (let i = 0; i < content.length; i++) {
         const ch = content[i];
-        if (inString && ch === '\\') { current += ch; i++; if (i < content.length) { current += content[i]; } continue; }
-        if (ch === '"') { inString = !inString; }
-        if (!inString) {
-            if (ch === '(' || ch === '[' || ch === '{') { depth++; }
-            if (ch === ')' || ch === ']' || ch === '}') { depth--; }
+        if (stringChar !== null) {
+            current += ch;
+            if (ch === '\\') { i++; if (i < content.length) { current += content[i]; } continue; }
+            if (ch === stringChar) { stringChar = null; }
+            continue;
         }
-        if (ch === ',' && !inString && depth === 0) {
+        if (ch === '"' || ch === "'") { stringChar = ch; current += ch; continue; }
+        if (ch === '(' || ch === '[' || ch === '{') { depth++; }
+        if (ch === ')' || ch === ']' || ch === '}') { depth--; }
+        if (ch === ',' && depth === 0) {
             parts.push(current.trim() + ',');
             current = '';
         } else {
@@ -150,19 +155,21 @@ function splitTopLevelCommas(content: string): string[] {
 
 function reformatMultilineCall(lines: string[]): string[] {
     const joined = lines.map(l => l.trim()).join(' ');
-    let inString = false;
+    let stringChar: string | null = null;
     let depth = 0;
     let openIdx = -1;
     let closeIdx = -1;
     for (let i = 0; i < joined.length; i++) {
         const ch = joined[i];
-        if (inString && ch === '\\') { i++; continue; }
-        if (ch === '"') { inString = !inString; continue; }
-        if (!inString) {
-            if (ch === '(' && depth === 0) { openIdx = i; depth++; }
-            else if (ch === '(') { depth++; }
-            else if (ch === ')') { depth--; if (depth === 0) { closeIdx = i; break; } }
+        if (stringChar !== null) {
+            if (ch === '\\') { i++; continue; }
+            if (ch === stringChar) { stringChar = null; }
+            continue;
         }
+        if (ch === '"' || ch === "'") { stringChar = ch; continue; }
+        if (ch === '(' && depth === 0) { openIdx = i; depth++; }
+        else if (ch === '(') { depth++; }
+        else if (ch === ')') { depth--; if (depth === 0) { closeIdx = i; break; } }
     }
     if (openIdx < 0 || closeIdx < 0) { return lines; }
     const prefix = joined.slice(0, openIdx + 1);
@@ -247,17 +254,20 @@ function normalizeMultilineArrayLiterals(lines: string[]): string[] {
 function splitLineOnCommas(line: string): string[] {
     const parts: string[] = [];
     let current = '';
-    let inString = false;
+    let stringChar: string | null = null;
     let depth = 0;
     for (let i = 0; i < line.length; i++) {
         const ch = line[i];
-        if (inString && ch === '\\') { current += ch; i++; if (i < line.length) { current += line[i]; } continue; }
-        if (ch === '"') {inString = !inString;}
-        if (!inString) {
-            if (ch === '(' || ch === '[' || ch === '{') {depth++;}
-            if (ch === ')' || ch === ']' || ch === '}') {depth--;}
+        if (stringChar !== null) {
+            current += ch;
+            if (ch === '\\') { i++; if (i < line.length) { current += line[i]; } continue; }
+            if (ch === stringChar) { stringChar = null; }
+            continue;
         }
-        if (ch === ',' && !inString && depth === 0) {
+        if (ch === '"' || ch === "'") { stringChar = ch; current += ch; continue; }
+        if (ch === '(' || ch === '[' || ch === '{') {depth++;}
+        if (ch === ')' || ch === ']' || ch === '}') {depth--;}
+        if (ch === ',' && depth === 0) {
             parts.push(current + ',');
             current = '';
         } else {
@@ -271,48 +281,51 @@ function splitLineOnCommas(line: string): string[] {
 function splitOnBraces(line: string): string[] {
     const parts: string[] = [];
     let current = '';
-    let inString = false;
+    let stringChar: string | null = null;
     let jsonDepth = 0;
     let bracketDepth = 0;
     for (let i = 0; i < line.length; i++) {
         const ch = line[i];
-        if (inString && ch === '\\') { current += ch; i++; if (i < line.length) { current += line[i]; } continue; }
-        if (ch === '"') {inString = !inString;}
-        if (!inString) {
-            if (ch === '[') {
-                bracketDepth++;
-                current += ch;
-                continue;
-            }
-            if (ch === ']') {
-                if (bracketDepth > 0) { bracketDepth--; current += ch; continue; }
-                if (current.trim()) {parts.push(current);}
-                let closer = ']';
-                if (i + 1 < line.length && (line[i + 1] === ';' || line[i + 1] === ',')) { closer += line[i + 1]; i++; }
-                parts.push(closer);
-                current = '';
-                continue;
-            }
-            if (ch === '{' && i > 0 && line[i - 1] === '$') {
-                jsonDepth++;
-                current += ch;
-                continue;
-            }
-            if (ch === '{' && jsonDepth === 0) {
-                current += ch;
-                parts.push(current);
-                current = '';
-                continue;
-            }
-            if (ch === '}') {
-                if (jsonDepth > 0) { jsonDepth--; current += ch; continue; }
-                if (current.trim()) {parts.push(current);}
-                let closer = '}';
-                if (i + 1 < line.length && line[i + 1] === ';') { closer = '};'; i++; }
-                parts.push(closer);
-                current = '';
-                continue;
-            }
+        if (stringChar !== null) {
+            current += ch;
+            if (ch === '\\') { i++; if (i < line.length) { current += line[i]; } continue; }
+            if (ch === stringChar) { stringChar = null; }
+            continue;
+        }
+        if (ch === '"' || ch === "'") { stringChar = ch; current += ch; continue; }
+        if (ch === '[') {
+            bracketDepth++;
+            current += ch;
+            continue;
+        }
+        if (ch === ']') {
+            if (bracketDepth > 0) { bracketDepth--; current += ch; continue; }
+            if (current.trim()) {parts.push(current);}
+            let closer = ']';
+            if (i + 1 < line.length && (line[i + 1] === ';' || line[i + 1] === ',')) { closer += line[i + 1]; i++; }
+            parts.push(closer);
+            current = '';
+            continue;
+        }
+        if (ch === '{' && i > 0 && line[i - 1] === '$') {
+            jsonDepth++;
+            current += ch;
+            continue;
+        }
+        if (ch === '{' && jsonDepth === 0) {
+            current += ch;
+            parts.push(current);
+            current = '';
+            continue;
+        }
+        if (ch === '}') {
+            if (jsonDepth > 0) { jsonDepth--; current += ch; continue; }
+            if (current.trim()) {parts.push(current);}
+            let closer = '}';
+            if (i + 1 < line.length && line[i + 1] === ';') { closer = '};'; i++; }
+            parts.push(closer);
+            current = '';
+            continue;
         }
         current += ch;
     }
@@ -323,13 +336,18 @@ function splitOnBraces(line: string): string[] {
 function splitOnSemicolons(line: string): string[] {
     const result: string[] = [];
     let current = '';
-    let inString = false;
+    let stringChar: string | null = null;
     for (let i = 0; i < line.length; i++) {
         const ch = line[i];
-        if (inString && ch === '\\') { current += ch; i++; if (i < line.length) { current += line[i]; } continue; }
-        if (ch === '"') {inString = !inString;}
+        if (stringChar !== null) {
+            current += ch;
+            if (ch === '\\') { i++; if (i < line.length) { current += line[i]; } continue; }
+            if (ch === stringChar) { stringChar = null; }
+            continue;
+        }
+        if (ch === '"' || ch === "'") { stringChar = ch; current += ch; continue; }
         current += ch;
-        if (ch === ';' && !inString) {
+        if (ch === ';') {
             result.push(current);
             current = '';
         }

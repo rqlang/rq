@@ -180,6 +180,20 @@ function reformatMultilineCall(lines: string[]): string[] {
     return [prefix, ...args, ')' + suffix];
 }
 
+function hasUnterminatedString(line: string): boolean {
+    let stringChar: string | null = null;
+    for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (stringChar !== null) {
+            if (ch === '\\') { i++; continue; }
+            if (ch === stringChar) { stringChar = null; }
+        } else if (ch === '"' || ch === "'") {
+            stringChar = ch;
+        }
+    }
+    return stringChar !== null;
+}
+
 function normalizeMultilineCalls(lines: string[]): string[] {
     const result: string[] = [];
     let i = 0;
@@ -196,7 +210,8 @@ function normalizeMultilineCalls(lines: string[]): string[] {
                 block.push(lines[i]);
                 i++;
             }
-            result.push(...(block.length > 1 ? reformatMultilineCall(block) : block));
+            const canReformat = block.length > 1 && !block.some(hasUnterminatedString);
+            result.push(...(canReformat ? reformatMultilineCall(block) : block));
         } else {
             result.push(lines[i]);
             i++;

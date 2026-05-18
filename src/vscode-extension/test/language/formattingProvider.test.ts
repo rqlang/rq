@@ -436,6 +436,13 @@ describe('formatRqDocument', () => {
             const expected = 'ep ep_name() {\n    rq my("", [\n        "hello": "",\n        "h": ""\n    ]);\n}\n';
             expect(fmt(input)).toBe(expected);
         });
+
+        test('does not collapse multiline string literal into single line', () => {
+            const input = 'rq post(\n    body: "line1\nline2",\n    other: ""\n);';
+            const result = fmt(input);
+            expect(result).not.toContain('"line1 line2"');
+            expect(result).toContain('"line1\n');
+        });
     });
 
     describe('multiline artifact indentation', () => {

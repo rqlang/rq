@@ -164,6 +164,12 @@ describe('formatRqDocument', () => {
         test('keeps ], together when comma immediately follows ]', () => {
             expect(fmt('ep ep_name() {\n    rq my("", [\n        "h": ""\n    ],\n    "");\n}')).toBe('ep ep_name() {\n    rq my("", [\n        "h": ""\n    ],\n    "");\n}\n');
         });
+
+        test('correctly indents statement after rq call with joined ]) closer', () => {
+            const input = 'ep ep_name() {\n    rq my("", [\n        "h": "v"\n    ]\n    );\n    rq other();\n}';
+            const expected = 'ep ep_name() {\n    rq my("", [\n        "h": "v"\n    ]);\n    rq other();\n}\n';
+            expect(fmt(input)).toBe(expected);
+        });
     });
 
     describe('brace splitting', () => {

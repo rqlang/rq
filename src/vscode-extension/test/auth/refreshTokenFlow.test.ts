@@ -85,7 +85,7 @@ describe('RefreshTokenFlow', () => {
         fetchMock.mockResponse({ error: 'invalid_grant' }, 400, false);
 
         await expect(refreshTokenFlow.execute(mockConfig, 'invalid-refresh-token'))
-            .rejects.toThrow('Token refresh failed: undefined - {"error":"invalid_grant"}');
+            .rejects.toThrow('Token refresh failed: 400 (https://auth.example.com/token) - invalid_grant');
     });
 
     test('should handle network error', async () => {

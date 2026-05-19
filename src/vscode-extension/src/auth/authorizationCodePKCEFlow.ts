@@ -186,7 +186,14 @@ export class AuthorizationCodePKCEFlow implements IOAuth2Flow {
         if (!response.ok) {
             const errorText = await response.text();
             console.error('Token exchange failed:', response.status, errorText);
-            throw new Error(`Token exchange failed: ${response.status} ${response.statusText}\n${errorText}`);
+            let errorDetail: string;
+            try {
+                const parsed = JSON.parse(errorText);
+                errorDetail = parsed.error_description || parsed.error_message || parsed.error || parsed.message || errorText;
+            } catch {
+                errorDetail = errorText;
+            }
+            throw new Error(`Token exchange failed: ${response.status} (${config.tokenUrl}) - ${errorDetail}`);
         }
 
         const tokenResponse = await response.json() as TokenResponse;

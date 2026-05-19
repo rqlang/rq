@@ -121,7 +121,7 @@ export class RequestRunner {
             return { auth_token: accessToken };
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
-            if (errorMessage.toLowerCase().includes('cancel')) {
+            if (errorMessage.startsWith('Authentication cancelled')) {
                 throw new Error('Cancelled by user');
             }
             throw error;

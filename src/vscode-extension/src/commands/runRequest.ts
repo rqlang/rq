@@ -92,31 +92,38 @@ export class RequestRunner {
         sourceDirectory: string | undefined,
         environment: string | undefined
     ): Promise<Record<string, string> | undefined> {
+        let requestDetails: rqClient.RequestShowOutput;
         try {
-            const requestDetails = await rqClient.showRequest(requestName, sourceDirectory, environment, true, true);
-
-            this.logger.debug(`Auth for '${requestName}': ${JSON.stringify(requestDetails.auth ?? null)}`);
-
-            if (requestDetails.auth && (requestDetails.auth.type === 'oauth2_authorization_code' || requestDetails.auth.type === 'oauth2_implicit')) {
-                this.logger.debug(`Detected OAuth2 auth: ${requestDetails.auth.name} (${requestDetails.auth.type})`);
-
-                const authConfig = await rqClient.showAuthConfig(
-                    requestDetails.auth.name,
-                    sourceDirectory,
-                    environment
-                );
-
-                this.logger.log(`Performing OAuth2 flow...`);
-                const accessToken = await performOAuth2Flow(authConfig, this.context, this.outputChannel);
-                this.logger.log(`OAuth2 token obtained, injecting as auth_token variable`);
-
-                return { auth_token: accessToken };
-            }
+            requestDetails = await rqClient.showRequest(requestName, sourceDirectory, environment, true, true);
+        } catch {
             return undefined;
+        }
+
+        this.logger.debug(`Auth for '${requestName}': ${JSON.stringify(requestDetails.auth ?? null)}`);
+
+        if (!requestDetails.auth || (requestDetails.auth.type !== 'oauth2_authorization_code' && requestDetails.auth.type !== 'oauth2_implicit')) {
+            return undefined;
+        }
+
+        this.logger.debug(`Detected OAuth2 auth: ${requestDetails.auth.name} (${requestDetails.auth.type})`);
+
+        const authConfig = await rqClient.showAuthConfig(
+            requestDetails.auth.name,
+            sourceDirectory,
+            environment
+        );
+
+        this.logger.log(`Performing OAuth2 flow...`);
+        try {
+            const accessToken = await performOAuth2Flow(authConfig, this.context, this.outputChannel);
+            this.logger.log(`OAuth2 token obtained, injecting as auth_token variable`);
+            return { auth_token: accessToken };
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
-            this.logger.log(`Warning: Failed to check/apply auth for request: ${errorMessage}`);
-            return undefined;
+            if (errorMessage.toLowerCase().includes('cancel')) {
+                throw new Error('Cancelled by user');
+            }
+            throw error;
         }
     }
 

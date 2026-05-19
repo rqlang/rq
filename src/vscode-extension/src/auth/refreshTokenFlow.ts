@@ -37,7 +37,14 @@ export class RefreshTokenFlow {
             if (!response.ok) {
                 const errorText = await response.text();
                 console.error('Token refresh failed:', response.status, response.statusText, errorText);
-                throw new Error(`Token refresh failed: ${response.statusText} - ${errorText}`);
+                let errorDetail: string;
+                try {
+                    const parsed = JSON.parse(errorText);
+                    errorDetail = parsed.error_description || parsed.error_message || parsed.error || parsed.message || errorText;
+                } catch {
+                    errorDetail = errorText;
+                }
+                throw new Error(`Token refresh failed: ${response.status} (${config.tokenUrl}) - ${errorDetail}`);
             }
 
             const tokenResponse = await response.json() as TokenResponse;

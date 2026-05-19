@@ -95,7 +95,8 @@ export class RequestRunner {
         let requestDetails: rqClient.RequestShowOutput;
         try {
             requestDetails = await rqClient.showRequest(requestName, sourceDirectory, environment, true, true);
-        } catch {
+        } catch (error) {
+            this.logger.debug(`Could not fetch request details for auth check: ${error instanceof Error ? error.message : String(error)}`);
             return undefined;
         }
 

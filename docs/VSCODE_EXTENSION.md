@@ -106,6 +106,16 @@ Errors are surfaced in two places depending on their nature:
 - **Problems panel**: Parse and semantic errors (missing braces, invalid attributes, unknown auth fields, duplicate identifiers, missing variables, etc.) are reported with file, line, and column as you type. These are detected by the language server in real time — no need to trigger a request to see them.
 - **Output panel**: Errors that occur at execution time (for example, a failed HTTP request, a runtime interpolation error, or an auth flow problem) are written to the **RQ** output channel. Open it via **View → Output** and select **RQ** from the dropdown to see execution logs and error details.
 
+## Debug logging
+
+Enable `rq.debugLogging` in VS Code settings (**Code → Settings → Settings**, search for `rq debug`) to write detailed request and authentication traces to the **RQ** output channel.
+
+With debug logging on, the output channel shows the full token exchange (request and response bodies for token endpoints), the headers sent with each request, and step-by-step auth flow events. This is the fastest way to diagnose auth misconfigurations, unexpected token errors, and scope issues.
+
+To view the output: **View → Output**, then select **RQ** from the dropdown.
+
+Disable `rq.debugLogging` when not actively debugging — it logs full token and header values.
+
 ## Interactive OAuth authentication
 
 The extension deeply integrates with rq's auth providers to support interactive OAuth-based flows.

@@ -55,6 +55,10 @@ See [Vs Code extension](docs/VSCODE_EXTENSION.md) for details about the Visual S
 
 See [CLI](docs/CLI.md) for documentation of the rq command-line interface.
 
+## Auth
+
+See [Auth](docs/AUTH.md) for how to configure authentication providers, including bearer tokens, OAuth2 client credentials, and authorization code flows.
+
 <br><br>
 
 

@@ -736,6 +736,8 @@ rq public_request("http://localhost:8080/public");
 
 In this example, because `auth_provider` is empty, `rq public_request` will be sent without any authentication headers. If `auth_provider` were set to a valid provider name (e.g., `"my_auth"`), the request would be authenticated using that provider.
 
+For a comprehensive guide on configuring your `auth` artifact — including how to find provider-specific values, OAuth2 flows, redirect URIs, and troubleshooting — see [Auth](./AUTH.md).
+
 ### Supported auth types
 
 rq currently supports several auth types, each with its own set of required and optional fields.

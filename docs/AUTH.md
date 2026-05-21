@@ -82,19 +82,6 @@ Register the URL in your provider's app settings.
 
 ## Runtime overrides
 
-### Disabling auth conditionally
-
-If the name passed to `[auth("...")]` resolves to an empty string, no auth is applied:
-
-```
-let auth_provider = "";
-
-[auth("{{auth_provider}}")]
-rq public_endpoint("https://api.example.com/public");
-```
-
-This is useful for endpoints that are public in some environments and protected in others.
-
 ### Injecting a precomputed token
 
 For `oauth2_authorization_code` and `oauth2_implicit` flows, the reserved variable `auth_token` short-circuits the interactive browser step:

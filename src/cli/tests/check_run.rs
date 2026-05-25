@@ -10,10 +10,7 @@ fn main() {
     let args = Arguments::from_args();
 
     let mut trials: Vec<Trial> = vec![
-        Trial::test(
-            "check_nonexistent_source",
-            test_check_nonexistent_source,
-        ),
+        Trial::test("check_nonexistent_source", test_check_nonexistent_source),
         Trial::test(
             "check_endpoint_shared_url_var_deduped",
             test_check_endpoint_shared_url_var_deduped,
@@ -57,7 +54,9 @@ fn test_check_endpoint_shared_url_var_deduped() -> Result<(), Failed> {
     let stdout = String::from_utf8_lossy(&output.stdout);
     let actual: Value = serde_json::from_str(stdout.trim())
         .map_err(|e| format!("stdout is not valid JSON: {e}\n{stdout}"))?;
-    let errors = actual["errors"].as_array().ok_or("Missing 'errors' array")?;
+    let errors = actual["errors"]
+        .as_array()
+        .ok_or("Missing 'errors' array")?;
     if errors.len() != 1 {
         return Err(format!(
             "Expected 1 error (deduped), got {}: {:?}",
@@ -75,11 +74,7 @@ fn test_check_endpoint_shared_url_var_deduped() -> Result<(), Failed> {
 
 fn discover_check_tests() -> Vec<Trial> {
     let mut trials = Vec::new();
-    collect_check_tests(
-        Path::new("tests/check/input"),
-        Path::new(""),
-        &mut trials,
-    );
+    collect_check_tests(Path::new("tests/check/input"), Path::new(""), &mut trials);
     trials
 }
 

@@ -90,6 +90,65 @@ fn find_in_file(fs: &dyn Fs, path: &Path, var_name: &str) -> (usize, usize) {
     (0, 0)
 }
 
+fn find_rhs_identifier_in_file(fs: &dyn Fs, path: &Path, var_name: &str) -> (usize, usize) {
+    let Ok(content) = fs.read(path) else {
+        return (0, 0);
+    };
+    let Ok(tokens) = tokenize(&content) else {
+        return (0, 0);
+    };
+
+    let get_line_col = |pos: usize| -> (usize, usize) {
+        if pos > content.len() {
+            return (1, 1);
+        }
+        let prefix = &content[..pos];
+        let line = prefix.matches('\n').count() + 1;
+        let last_line_start = prefix.rfind('\n').map(|i| i + 1).unwrap_or(0);
+        let column = prefix[last_line_start..].chars().count() + 1;
+        (line, column)
+    };
+
+    let mut seen = 0usize;
+    for (i, token) in tokens.iter().enumerate() {
+        if token.token_type != TokenType::Identifier || token.value != var_name {
+            continue;
+        }
+        let mut is_key = false;
+        for next in tokens.iter().skip(i + 1) {
+            match next.token_type {
+                TokenType::Whitespace | TokenType::Newline | TokenType::Comment => continue,
+                TokenType::Punctuation if next.value == ":" => {
+                    is_key = true;
+                    break;
+                }
+                _ => break,
+            }
+        }
+        if !is_key {
+            seen += 1;
+            if seen == 2 {
+                return get_line_col(token.span.start);
+            }
+        }
+    }
+    (0, 0)
+}
+
+fn find_rhs_identifier_in_files(
+    fs: &dyn Fs,
+    source_files: &[PathBuf],
+    var_name: &str,
+) -> (usize, usize, PathBuf) {
+    for path in source_files {
+        let (line, col) = find_rhs_identifier_in_file(fs, path, var_name);
+        if line > 0 {
+            return (line, col, path.clone());
+        }
+    }
+    (0, 0, source_files.first().cloned().unwrap_or_default())
+}
+
 pub fn find_variable_location(
     fs: &dyn Fs,
     paths: &[PathBuf],
@@ -927,7 +986,7 @@ pub fn collect_declared_variable_errors(
             crate::syntax::variable_context::VariableValue::Reference(ref_name)
                 if var.name == *ref_name =>
             {
-                let (line, col, path) = find_variable_location(fs, source_files, &var.name);
+                let (line, col, path) = find_rhs_identifier_in_files(fs, source_files, &var.name);
                 errors.push(SyntaxError::with_file(
                     format!("Variable '{ref_name}' references itself (circular reference)"),
                     line,

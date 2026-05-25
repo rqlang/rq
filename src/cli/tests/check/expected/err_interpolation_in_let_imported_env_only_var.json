@@ -1,0 +1,10 @@
+{
+  "errors": [
+    {
+      "file": "{{regex:.*_shared.*}}",
+      "line": "{{*}}",
+      "column": "{{*}}",
+      "message": "Unresolved variable: 'base_url'"
+    }
+  ]
+}

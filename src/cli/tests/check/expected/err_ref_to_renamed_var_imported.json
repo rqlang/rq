@@ -1,0 +1,10 @@
+{
+  "errors": [
+    {
+      "file": "{{regex:.*_shared.*}}",
+      "line": "{{*}}",
+      "column": "{{*}}",
+      "message": "Variable 'api_version_ga' is not defined"
+    }
+  ]
+}

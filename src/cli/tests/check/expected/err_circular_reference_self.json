@@ -1,0 +1,10 @@
+{
+  "errors": [
+    {
+      "file": "{{*}}",
+      "line": "{{*}}",
+      "column": "{{*}}",
+      "message": "Variable 'base' references itself (circular reference)"
+    }
+  ]
+}

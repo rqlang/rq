@@ -1,0 +1,10 @@
+{
+  "errors": [
+    {
+      "file": "{{*}}",
+      "line": "{{*}}",
+      "column": "{{*}}",
+      "message": "Attribute 'required' is not supported on ep statements; use it on rq statements instead"
+    }
+  ]
+}

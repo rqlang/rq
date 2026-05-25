@@ -1,0 +1,16 @@
+{
+  "errors": [
+    {
+      "file": "{{*}}",
+      "line": "{{*}}",
+      "column": "{{*}}",
+      "message": "Variable 'undefined_one' is not defined"
+    },
+    {
+      "file": "{{*}}",
+      "line": "{{*}}",
+      "column": "{{*}}",
+      "message": "Variable 'undefined_two' is not defined"
+    }
+  ]
+}

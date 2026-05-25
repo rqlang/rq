@@ -1,0 +1,10 @@
+{
+  "errors": [
+    {
+      "file": "{{*}}",
+      "line": "{{*}}",
+      "column": "{{*}}",
+      "message": "io.read_file() requires a file path argument"
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+import "err_interpolation_in_let_imported_env_only_var_shared";
+
+ep widgets(widgets_url) {
+    rq list();
+}

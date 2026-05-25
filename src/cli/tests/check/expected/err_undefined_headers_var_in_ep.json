@@ -1,0 +1,10 @@
+{
+  "errors": [
+    {
+      "file": "{{*}}",
+      "line": "{{*}}",
+      "column": "{{*}}",
+      "message": "Unresolved variable: 'missing_headers'"
+    }
+  ]
+}

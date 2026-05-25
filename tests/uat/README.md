@@ -162,7 +162,37 @@ Expected:
 - The “RQ” output channel shows the executed command and the response.
 - No new errors appear in the Problems view related to this execution.
 
-### B2. Execute a request with an environment
+### B2. Re-run a request using the "Run Again" button
+
+Steps:
+
+1. Complete B1 so that `get_basic` has already been executed and its response is visible in the "RQ" output channel.
+2. In the output channel header (or the inline result panel), locate the **Run Again** button.
+3. Click **Run Again**.
+
+Expected:
+
+- The same `get_basic` request executes again without any additional navigation.
+- A fresh response block appears in the "RQ" output channel.
+- The response is identical to the one produced in B1.
+- No errors appear in the Problems view.
+
+### B3. Copy the response body using the "Copy Body" button
+
+Steps:
+
+1. Complete B2 so that `get_basic` has been re-run and its response is visible in the "RQ" output channel.
+2. In the result panel for that response, locate the **Copy Body** button.
+3. Click **Copy Body**.
+4. Paste the clipboard contents into a text editor.
+
+Expected:
+
+- The clipboard contains the raw response body returned by the request.
+- The pasted content matches the body shown in the "RQ" output channel.
+- No error notification appears after clicking the button.
+
+### B4. Execute a request with an environment
 
 Steps:
 
@@ -177,7 +207,7 @@ Expected:
 - The URL used respects the environment values (for example `base_url` and `api_path`).
 - The “RQ” output channel reflects the environment used and the execution completes without errors.
 
-### B3. Execute a request with variables
+### B5. Execute a request with variables
 
 Steps:
 
@@ -191,7 +221,7 @@ Expected:
 - The first execution uses the default value `user_id = 123` and the URL is `http://localhost:8080/users/123?v=1`.
 - The second execution uses the overridden value `user_id = 321` and the URL is `http://localhost:8080/users/321?v=1`.
 
-### B4. Execute a request with required variables
+### B6. Execute a request with required variables
 
 Steps:
 
@@ -213,7 +243,7 @@ Expected:
 - The request body is `{"name": "Alice", "role": "admin"}`.
 - Hovering over `user_name` or `user_role` in the editor shows `*(required)* — Must be provided at runtime via --var`.
 
-### B5. Execute a request when the echo server is not running
+### B7. Execute a request when the echo server is not running
 
 Steps:
 
@@ -227,6 +257,23 @@ Expected:
 - The request fails immediately.
 - A VS Code error notification appears indicating the request failed, with a "Show Output" action.
 - Opening the "RQ" output channel shows a `Request Failed: get_basic` block with a human-readable message such as `error sending request for url (http://localhost:8080/test): ... Connection refused`.
+- The error message is plain text — not raw JSON.
+- No crash or unhandled exception occurs in the extension.
+
+### B8. Execute a request that exceeds the timeout
+
+Steps:
+
+1. With the `tests/uat` folder open in VS Code, go to the RQ Request Explorer view.
+2. Locate the `get_timeout` request defined in `requests/basic.rq`.
+3. Execute the request from the explorer.
+
+Expected:
+
+- The request is sent to `https://httpbin.org/delay/5`, which deliberately holds the connection open for 5 seconds.
+- The extension cancels the request after 2 seconds (the `[timeout(2)]` attribute).
+- A VS Code error notification appears indicating the request timed out, with a "Show Output" action.
+- The "RQ" output channel shows a `Request Failed: get_timeout` block with a human-readable timeout message.
 - The error message is plain text — not raw JSON.
 - No crash or unhandled exception occurs in the extension.
 
@@ -292,7 +339,26 @@ Expected:
 - After successful login, the request is executed automatically.
 - The **Authorization** header is present with a `Bearer` access token obtained from the OAuth provider.
 
-### C3. OAuth2 authorization code (custom localhost redirect) (oauth_ac_custom)
+### C3. OAuth2 authorization code with required variable (oauth_ac_default)
+
+This scenario reuses the same `oauth_ac_default` auth and `oauth_ac_default_env` environment as C2, but runs the `basic_with_required` request which requires the variable `foo` to be provided at runtime.
+
+Steps:
+
+1. In the RQ Request Explorer, select the `oauth_ac_default_env` environment.
+2. Locate the `basic_with_required` request under `auth/basic.rq`.
+3. Run the `basic_with_required` request from the explorer.
+4. When prompted for the required variable, provide a value for `foo` (for example `foo=bar`).
+5. Complete the OAuth2 browser login flow if a token is not already cached from C2.
+6. After the request completes, inspect the executed URL and the **Request headers**.
+
+Expected:
+
+- The request is sent to `http://localhost:8080/oauth_ac_default/bar` (substituting the `foo` value provided).
+- The **Authorization** header is present with a `Bearer` access token obtained via the `oauth_ac_default` auth configuration.
+- The request completes successfully with no errors in the Problems view.
+
+### C4. OAuth2 authorization code (custom localhost redirect) (oauth_ac_custom)
 
 This auth performs an OAuth2 Authorization Code flow with PKCE using a custom `redirect_uri` pointing to a localhost HTTP endpoint.
 
@@ -311,7 +377,7 @@ Expected:
 - After successful login, the listener captures the authorization code and the extension exchanges it for a token.
 - The **Authorization** header is present with a `Bearer` access token obtained from the OAuth provider.
 
-### C4. OAuth2 authorization code (external redirect) (oauth_ac_external)
+### C5. OAuth2 authorization code (external redirect) (oauth_ac_external)
 
 This auth performs an OAuth2 Authorization Code flow with PKCE using an external HTTPS redirect URI hosted by your identity provider (for example `https://example.com/callback`). The extension cannot listen on this domain, so the final redirect URL must be copied manually from the browser.
 
@@ -334,7 +400,7 @@ Expected:
 - The request to `http://localhost:8080/test` completes successfully.
 - The **Authorization** header is present with a `Bearer` access token obtained from the OAuth provider.
 
-### C5. OAuth2 client credentials (shared secret) (oauth_cc)
+### C6. OAuth2 client credentials (shared secret) (oauth_cc)
 
 This auth uses the OAuth2 Client Credentials flow with a client secret (no interactive browser).
 
@@ -351,7 +417,7 @@ Expected:
 - The request to `http://localhost:8080/test` succeeds.
 - The **Authorization** header is present with a `Bearer` access token obtained via the client credentials flow.
 
-### C6. OAuth2 client credentials with client certificate (oauth_cc_cert)
+### C7. OAuth2 client credentials with client certificate (oauth_cc_cert)
 
 This auth uses the OAuth2 Client Credentials flow with a client certificate (`.p12` file) instead of a shared secret.
 
@@ -369,7 +435,7 @@ Expected:
 - The request to `http://localhost:8080/test` succeeds.
 - The **Authorization** header is present with a `Bearer` access token obtained via the certificate-based client credentials flow.
 
-### C7. OAuth2 implicit flow (oauth_implicit_default)
+### C8. OAuth2 implicit flow (oauth_implicit_default)
 
 This auth uses the OAuth2 Implicit flow, where the access token is returned directly in the redirect.
 
@@ -388,7 +454,7 @@ Expected:
 - After successful login, the request to `http://localhost:8080/test` is executed.
 - The **Authorization** header is present with a `Bearer` access token obtained from the implicit flow.
 
-### C8. Get OAuth2 access token command (oauth_ac_default)
+### C9. Get OAuth2 access token command (oauth_ac_default)
 
 This scenario validates the `RQ: Get OAuth2 Access Token` command using the same `oauth_ac_default` configuration.
 
@@ -409,7 +475,7 @@ Expected:
 - The access token is copied to the clipboard.
 - The token is cached internally so subsequent calls can reuse it.
 
-### C9. Clear OAuth2 access tokens command
+### C10. Clear OAuth2 access tokens command
 
 This scenario validates the interaction between the `RQ: Get OAuth2 Access Token` command and the `RQ: Clear OAuth2 Access Tokens` command.
 
@@ -647,4 +713,43 @@ Expected:
 - The first tab stop is the entity name (e.g. type `widget`) — all occurrences update simultaneously: `widget_id`, `ep widgets`, `widget-post.json`, `widget-patch.json`.
 - The second tab stop (cursor `$0`) lands inside the `ep` parameter list, ready to type the base URL.
 
+### D15. Variable initializer snippets — `$[` headers dict and `${` JSON object
+
+Steps:
+
+1. On a new line type `let my_headers = $[` and trigger autocomplete (Ctrl+Space / ⌃Space).
+
+Expected:
+
+- A snippet expands to a headers dictionary scaffold:
+  ```
+  let my_headers = $[
+      "": "",
+  ];
+  ```
+- The first tab stop is the header key (inside the first `"`); the second is the value.
+- Dismiss or complete the entry with a real key/value pair, for example `"Content-Type": "application/json"`.
+
+2. On a new line type `let my_body = ${` and trigger autocomplete.
+
+Expected:
+
+- A snippet expands to a JSON object scaffold:
+  ```
+  let my_body = ${
+      "": "",
+  };
+  ```
+- The first tab stop is the JSON key; the second is the value.
+- Complete the entry with a real pair, for example `"name": "Alice"`.
+
+3. Use both variables in a request:
+   ```
+   rq with_vars("{{base}}/users", my_headers, my_body);
+   ```
+
+Expected:
+
+- No errors appear for `my_headers` or `my_body`.
+- The request is accepted by the extension as a valid `rq` statement using the declared variables.
 

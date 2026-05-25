@@ -31,3 +31,6 @@ rq post_text(
     ],
     body: "hello"
 );
+
+[timeout(2)]
+rq get_timeout("https://httpbin.org/delay/5");

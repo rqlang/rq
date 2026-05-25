@@ -106,6 +106,36 @@ tests/
 └── help.rs
 ```
 
+### Check tests — `check/run` pattern
+
+Auto-discovered from `tests/check/input/`. Each `.rq` → one test. Expected output in `tests/check/expected/` at the same relative path. Files with no matching expected `.json` are treated as fixtures/companion imports and skipped.
+
+**Filename suffixes:**
+
+| Suffix | Meaning |
+|---|---|
+| `__env_NAME__` | Pass `-e NAME` to the check command |
+| `__dir__` | Run check on the parent directory (file is an empty sentinel) |
+
+**Expected output:**
+- Always `.json` — subset-checked via `json_subset` (`{{*}}` wildcard, `{{regex:...}}`)
+- Exit code inferred from expected: empty `errors` → exit 0, non-empty → exit 1
+
+**To add a check test:**
+1. `tests/check/input/{name}{__opts__}.rq`
+2. `tests/check/expected/{name}{__opts__}.json`
+3. `cargo test --test check_run`
+
+**For directory-level check tests:**
+1. Add empty sentinel `tests/check/input/{dir}/__dir__.rq`
+2. Add `tests/check/expected/{dir}/__dir__.json`
+
+**Two tests stay manual in `check_run.rs`** (can't be expressed as files):
+- `check_nonexistent_source` — non-existent path
+- `check_endpoint_shared_url_var_deduped` — inline temp file
+
+---
+
 ### Integration tests — `request/run` pattern
 
 Auto-discovered from `tests/request/run/input/`. Each `.rq` → one test. Expected output in `tests/request/run/expected/` at the same relative path.
@@ -174,7 +204,8 @@ Add directly to `request_run.rs` using `Command::new(env!("CARGO_BIN_EXE_rq"))`.
 
 1. Identify affected crate(s): `src/rq-lib/` (core logic), `src/cli/` (commands/CLI), `src/vscode-extension/`
 2. Read the specific files before modifying
-3. Run `cargo fmt && cargo clippy --all-targets --all-features -- -D warnings && cargo test`
+3. **Always add tests** for every change — no exceptions. For new syntax errors or validation, add a fixture + test in `src/cli/tests/check.rs`. For TypeScript logic, add a test in the matching `test/language/*.test.ts` file.
+4. Run `cargo fmt && cargo clippy --all-targets --all-features -- -D warnings && cargo test`
 
 ---
 

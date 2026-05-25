@@ -925,6 +925,18 @@ pub fn collect_declared_variable_errors(
                 }
             }
             crate::syntax::variable_context::VariableValue::Reference(ref_name)
+                if var.name == *ref_name =>
+            {
+                let (line, col, path) = find_variable_location(fs, source_files, &var.name);
+                errors.push(SyntaxError::with_file(
+                    format!("Variable '{ref_name}' references itself (circular reference)"),
+                    line,
+                    col,
+                    0..0,
+                    format_path(&path),
+                ));
+            }
+            crate::syntax::variable_context::VariableValue::Reference(ref_name)
                 if !known_names.contains(ref_name.as_str()) =>
             {
                 let (line, col, path) = find_variable_location(fs, source_files, ref_name);

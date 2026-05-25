@@ -117,9 +117,12 @@ export const letAssignmentHandler: CompletionHandler = {
         if (replaceRange) { builtins.forEach(i => { i.range = replaceRange; }); }
 
         const suggestions: vscode.CompletionItem[] = [jsonItem, headersItem, ...builtins];
+        const definedVarName = linePrefix.match(/^\s*let\s+([a-zA-Z_][a-zA-Z0-9_-]*)\s*=/)?.[1] ?? '';
         const varItems = await listVariablesWithFallback(ctx);
         varItems.forEach(v => {
-            v.insertText = `${v.label};`;
+            const label = typeof v.label === 'string' ? v.label : v.label.label;
+            if (label === definedVarName) { return; }
+            v.insertText = `${label};`;
             if (replaceRange) { v.range = replaceRange; }
             suggestions.push(v);
         });

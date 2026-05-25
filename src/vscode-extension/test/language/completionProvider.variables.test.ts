@@ -104,6 +104,21 @@ describe('variable reference completion', () => {
         expect(cliService.listVariables).not.toHaveBeenCalled();
     });
 
+    test('does not suggest the variable being defined as a completion for itself', async () => {
+        (cliService.listVariables as jest.Mock).mockResolvedValue([
+            { name: 'base', value: 'http://localhost', file: '/workspace/shared.rq', line: 0, character: 0, source: 'let' },
+            { name: 'token', value: 'abc123', file: '/workspace/shared.rq', line: 1, character: 0, source: 'let' }
+        ]);
+
+        const doc = makeDocument(['let base = ']);
+        const position = new vscode.Position(0, 11);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items.find((i: any) => i.label === 'base')).toBeUndefined();
+        expect(items.find((i: any) => i.label === 'token')).toBeDefined();
+    });
+
     test('suggests variables when partial word already typed after =', async () => {
         (cliService.listVariables as jest.Mock).mockResolvedValue([
             { name: 'base_url', value: 'http://localhost', file: '/workspace/shared.rq', line: 0, character: 0, source: 'let' },

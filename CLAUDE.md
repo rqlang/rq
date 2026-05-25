@@ -204,7 +204,7 @@ Add directly to `request_run.rs` using `Command::new(env!("CARGO_BIN_EXE_rq"))`.
 
 1. Identify affected crate(s): `src/rq-lib/` (core logic), `src/cli/` (commands/CLI), `src/vscode-extension/`
 2. Read the specific files before modifying
-3. **Always add tests** for every change — no exceptions. For new syntax errors or validation, add a fixture + test in `src/cli/tests/check.rs`. For TypeScript logic, add a test in the matching `test/language/*.test.ts` file.
+3. **Always add tests** for every change — no exceptions. For new syntax errors or validation, add input/expected files following the check pattern (see below). For TypeScript logic, add a test in the matching `test/language/*.test.ts` file.
 4. Run `cargo fmt && cargo clippy --all-targets --all-features -- -D warnings && cargo test`
 
 ---

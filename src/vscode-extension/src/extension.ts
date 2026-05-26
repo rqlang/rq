@@ -25,7 +25,7 @@ export function activate(context: vscode.ExtensionContext) {
     console.log('RQ Language Extension is now active');
 
     initWasmHost();
-    context.subscriptions.push({ dispose: () => { void disposeWasmHost(); } });
+    context.subscriptions.push({ dispose: () => { disposeWasmHost().catch(err => console.error('disposeWasmHost failed', err)); } });
 
     const rqOutputChannel = vscode.window.createOutputChannel('RQ');
     context.subscriptions.push(rqOutputChannel);

@@ -51,9 +51,9 @@ If a request declares one or more `[required(var_name)]` attributes (see [Langua
 	- The tree groups requests by folder and endpoint structure (for example, endpoint-based requests appear under their `ep` name).
 	- Clicking a request opens the corresponding `.rq` file and jumps directly to the definition of that request.
 
-4. **Environments and auth**
+4. **Configuration view**
 
-	The explorer includes **ENVIRONMENTS** and **AUTH** sections that list all environments and auth providers defined across your workspace, so you can inspect them without opening the file manually. Clicking an item opens the file at the exact definition.
+	A separate **Configuration** view (also in the Activity Bar) lists all environments and auth providers defined across your workspace, so you can inspect them without opening the file manually.
 
 ## Response panel
 

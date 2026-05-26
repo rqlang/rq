@@ -6,6 +6,7 @@ import * as https from 'https';
 import * as crypto from 'crypto';
 import * as forge from 'node-forge';
 import { normalizePath, collectAllFilesAsync } from './utils';
+import { wasmCall } from './wasmHost';
 
 // ---------------------------------------------------------------------------
 // Shared types
@@ -139,38 +140,6 @@ export interface CheckResult {
 }
 
 // ---------------------------------------------------------------------------
-// WASM module
-// ---------------------------------------------------------------------------
-
-interface RqWasmModule {
-    list_requests(files_json: string, secrets_json: string, source: string): string;
-    list_auth(files_json: string, secrets_json: string, source: string): string;
-    list_environments(files_json: string, secrets_json: string, source: string): string;
-    list_endpoints(files_json: string, secrets_json: string, source: string): string;
-    list_variables(files_json: string, secrets_json: string, source: string, env: string | undefined): string;
-    check(files_json: string, secrets_json: string, source: string, env: string | undefined): string;
-    get_request_details(files_json: string, secrets_json: string, source: string, name: string, env: string | undefined, interpolate: boolean, skip_required_variables: boolean, variables_json?: string): string;
-    get_auth_details(files_json: string, secrets_json: string, source: string, name: string, env: string | undefined, interpolate: boolean): string;
-    get_environment(files_json: string, secrets_json: string, source: string, name: string): string;
-    get_endpoint(files_json: string, secrets_json: string, source: string, name: string): string;
-    get_variable(files_json: string, secrets_json: string, source: string, name: string, env: string | undefined, interpolate: boolean): string;
-    list_variable_refs(files_json: string, secrets_json: string, source: string, name: string): string;
-    list_endpoint_refs(files_json: string, secrets_json: string, source: string, name: string): string;
-    version(): string;
-    run_request(files_json: string, secrets_json: string, source: string, request_name: string, env: string | undefined, variables_json: string | undefined): Promise<string>;
-}
-
-let _wasm: RqWasmModule | null = null;
-
-function getWasm(): RqWasmModule {
-    if (!_wasm) {
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        _wasm = require('./wasm/rq_wasm') as RqWasmModule;
-    }
-    return _wasm;
-}
-
-// ---------------------------------------------------------------------------
 // File and secrets helpers
 // ---------------------------------------------------------------------------
 
@@ -263,69 +232,69 @@ interface EnvironmentEntry {
 
 export async function listEnvironments(sourceDirectory?: string): Promise<string[]> {
     const source = resolveSource(sourceDirectory);
-    const result = getWasm().list_environments(await buildFilesMap(source), await buildSecretsMap(source), source);
+    const result = await wasmCall('list_environments', [await buildFilesMap(source), await buildSecretsMap(source), source]);
     const entries = JSON.parse(result) as EnvironmentEntry[];
     return entries.map(e => e.name);
 }
 
 export async function listAuthConfigs(sourceDirectory?: string): Promise<AuthListEntry[]> {
     const source = resolveSource(sourceDirectory);
-    const result = getWasm().list_auth(await buildFilesMap(source), await buildSecretsMap(source), source);
+    const result = await wasmCall('list_auth', [await buildFilesMap(source), await buildSecretsMap(source), source]);
     return JSON.parse(result) as AuthListEntry[];
 }
 
 export async function showEnvironment(name: string, sourceDirectory?: string): Promise<EnvironmentShowOutput> {
     const source = resolveSource(sourceDirectory);
-    const result = getWasm().get_environment(await buildFilesMap(source), await buildSecretsMap(source), source, name);
+    const result = await wasmCall('get_environment', [await buildFilesMap(source), await buildSecretsMap(source), source, name]);
     const raw = JSON.parse(result) as EnvironmentShowOutput;
     return { ...raw, file: normalizePath(raw.file) };
 }
 
 export async function listEndpoints(sourceDirectory?: string): Promise<EndpointShowOutput[]> {
     const source = resolveSource(sourceDirectory);
-    const result = getWasm().list_endpoints(await buildFilesMap(source), await buildSecretsMap(source), source);
+    const result = await wasmCall('list_endpoints', [await buildFilesMap(source), await buildSecretsMap(source), source]);
     const raw = JSON.parse(result) as EndpointShowOutput[];
     return raw.map(e => ({ ...e, file: normalizePath(e.file) }));
 }
 
 export async function showEndpoint(name: string, sourceDirectory?: string): Promise<EndpointShowOutput> {
     const source = resolveSource(sourceDirectory);
-    const result = getWasm().get_endpoint(await buildFilesMap(source), await buildSecretsMap(source), source, name);
+    const result = await wasmCall('get_endpoint', [await buildFilesMap(source), await buildSecretsMap(source), source, name]);
     const raw = JSON.parse(result) as EndpointShowOutput;
     return { ...raw, file: normalizePath(raw.file) };
 }
 
 export async function showVariable(name: string, sourceDirectory?: string, environment?: string, interpolateVariables = true): Promise<VariableShowOutput> {
     const source = resolveSource(sourceDirectory);
-    const result = getWasm().get_variable(await buildFilesMap(source), await buildSecretsMap(source), source, name, environment, interpolateVariables);
+    const result = await wasmCall('get_variable', [await buildFilesMap(source), await buildSecretsMap(source), source, name, environment, interpolateVariables]);
     const raw = JSON.parse(result) as VariableShowOutput;
     return { ...raw, file: normalizePath(raw.file) };
 }
 
 export async function listVariables(sourceFile?: string, environment?: string): Promise<VariableShowOutput[]> {
     const source = resolveSource(sourceFile);
-    const result = getWasm().list_variables(await buildFilesMap(source), await buildSecretsMap(source), source, environment);
+    const result = await wasmCall('list_variables', [await buildFilesMap(source), await buildSecretsMap(source), source, environment]);
     const raw = JSON.parse(result) as VariableShowOutput[];
     return raw.map(v => ({ ...v, file: normalizePath(v.file) }));
 }
 
 export async function varRefs(name: string, sourceDirectory?: string): Promise<ReferenceLocation[]> {
     const source = resolveSource(sourceDirectory);
-    const result = getWasm().list_variable_refs(await buildFilesMap(source), await buildSecretsMap(source), source, name);
+    const result = await wasmCall('list_variable_refs', [await buildFilesMap(source), await buildSecretsMap(source), source, name]);
     const raw = JSON.parse(result) as ReferenceLocation[];
     return raw.map(r => ({ ...r, file: normalizePath(r.file) }));
 }
 
 export async function epRefs(name: string, sourceDirectory?: string): Promise<ReferenceLocation[]> {
     const source = resolveSource(sourceDirectory);
-    const result = getWasm().list_endpoint_refs(await buildFilesMap(source), await buildSecretsMap(source), source, name);
+    const result = await wasmCall('list_endpoint_refs', [await buildFilesMap(source), await buildSecretsMap(source), source, name]);
     const raw = JSON.parse(result) as ReferenceLocation[];
     return raw.map(r => ({ ...r, file: normalizePath(r.file) }));
 }
 
 export async function showAuthConfig(name: string, sourceDirectory?: string, environment?: string): Promise<AuthShowOutput> {
     const source = resolveSource(sourceDirectory);
-    const result = getWasm().get_auth_details(await buildFilesMap(source), await buildSecretsMap(source), source, name, environment, true);
+    const result = await wasmCall('get_auth_details', [await buildFilesMap(source), await buildSecretsMap(source), source, name, environment, true]);
     const raw = JSON.parse(result) as AuthShowRaw;
     return {
         name: raw['Auth Configuration'],
@@ -340,7 +309,7 @@ export async function showAuthConfig(name: string, sourceDirectory?: string, env
 
 export async function listRequests(sourceDirectory?: string): Promise<ListRequestsResult> {
     const source = resolveSource(sourceDirectory);
-    const result = getWasm().list_requests(await buildFilesMap(source), await buildSecretsMap(source), source);
+    const result = await wasmCall('list_requests', [await buildFilesMap(source), await buildSecretsMap(source), source]);
     const requests = JSON.parse(result) as RequestInfo[];
     requests.forEach(r => {
         r.file = normalizePath(r.file);
@@ -351,7 +320,7 @@ export async function listRequests(sourceDirectory?: string): Promise<ListReques
 
 export async function showRequest(requestName: string, sourceDirectory?: string, environment?: string, interpolate = false, skipRequiredVariables = false): Promise<RequestShowOutput> {
     const source = resolveSource(sourceDirectory);
-    const result = getWasm().get_request_details(await buildFilesMap(source), await buildSecretsMap(source), source, requestName, environment, interpolate, skipRequiredVariables);
+    const result = await wasmCall('get_request_details', [await buildFilesMap(source), await buildSecretsMap(source), source, requestName, environment, interpolate, skipRequiredVariables]);
     const raw = JSON.parse(result) as RequestShowRaw;
     return {
         name: raw.Request,
@@ -368,20 +337,20 @@ export async function showRequest(requestName: string, sourceDirectory?: string,
 
 export async function showAuthLocation(name: string, sourceDirectory?: string): Promise<LocationOutput> {
     const source = resolveSource(sourceDirectory);
-    const result = getWasm().get_auth_details(await buildFilesMap(source), await buildSecretsMap(source), source, name, undefined, false);
+    const result = await wasmCall('get_auth_details', [await buildFilesMap(source), await buildSecretsMap(source), source, name, undefined, false]);
     const raw = JSON.parse(result) as AuthShowRaw;
     return { file: normalizePath(raw.file), line: raw.line, character: raw.character };
 }
 
 export async function showRequestLocation(requestName: string, sourceDirectory?: string): Promise<LocationOutput> {
     const source = resolveSource(sourceDirectory);
-    const result = getWasm().get_request_details(await buildFilesMap(source), await buildSecretsMap(source), source, requestName, undefined, false, false);
+    const result = await wasmCall('get_request_details', [await buildFilesMap(source), await buildSecretsMap(source), source, requestName, undefined, false, false]);
     const raw = JSON.parse(result) as RequestShowRaw;
     return { file: normalizePath(raw.file), line: raw.line, character: raw.character };
 }
 
 export async function checkFolder(folderPath: string, envName?: string): Promise<CheckResult> {
-    const result = getWasm().check(await buildFilesMap(folderPath), await buildSecretsMap(folderPath), folderPath, envName);
+    const result = await wasmCall('check', [await buildFilesMap(folderPath), await buildSecretsMap(folderPath), folderPath, envName]);
     return JSON.parse(result) as CheckResult;
 }
 
@@ -392,11 +361,11 @@ export async function executeRequest(options: ExecuteRequestOptions): Promise<Ex
     const variablesList = options.variables
         ? Object.entries(options.variables).map(([k, v]) => `${k}=${v}`)
         : undefined;
-    const detailsRaw = getWasm().get_request_details(
+    const detailsRaw = await wasmCall('get_request_details', [
         filesJson, secretsJson, source,
         options.requestName, options.environment, true, false,
         variablesList ? JSON.stringify(variablesList) : undefined,
-    );
+    ]);
     const raw = JSON.parse(detailsRaw) as RequestShowRaw;
 
     const url = raw.URL;
@@ -415,7 +384,8 @@ export async function executeRequest(options: ExecuteRequestOptions): Promise<Ex
     const existingHeaders = new Set(Object.keys(headers).map(k => k.toLowerCase()));
 
     if (!existingHeaders.has('user-agent')) {
-        headers['user-agent'] = `rq/${getWasm().version()}`;
+        const version = await wasmCall('version', []);
+        headers['user-agent'] = `rq/${version}`;
     }
 
     if (body && !existingHeaders.has('content-type') && isJsonBody(body)) {

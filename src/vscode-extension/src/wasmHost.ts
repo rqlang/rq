@@ -93,7 +93,12 @@ export function wasmCall(method: WasmMethod, args: unknown[]): Promise<string> {
     return new Promise<string>((resolve, reject) => {
         const id = nextId++;
         pending.set(id, { resolve, reject });
-        getWorker().postMessage({ id, method, args });
+        try {
+            getWorker().postMessage({ id, method, args });
+        } catch (err) {
+            pending.delete(id);
+            reject(err instanceof Error ? err : new Error(String(err)));
+        }
     });
 }
 

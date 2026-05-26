@@ -83,8 +83,11 @@ function getWorker(): Worker {
 
 export function wasmCall(method: WasmMethod, args: unknown[]): Promise<string> {
     if (isJestEnvironment()) {
-        const result = getSyncWasm()[method](...args);
-        return Promise.resolve(result);
+        try {
+            return Promise.resolve(getSyncWasm()[method](...args));
+        } catch (err) {
+            return Promise.reject(err instanceof Error ? err : new Error(String(err)));
+        }
     }
 
     return new Promise<string>((resolve, reject) => {

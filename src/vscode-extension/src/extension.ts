@@ -1,5 +1,7 @@
 import * as vscode from 'vscode';
 import { RequestExplorerProvider } from './requestExplorer';
+import { ConfigurationExplorerProvider } from './configurationExplorer';
+import { initWasmHost, disposeWasmHost } from './wasmHost';
 import { completionProvider, setEnvironmentProvider as setCompletionEnvironmentProvider } from './language/completionProvider';
 import { insideArrayLiteral } from './language/completionHelpers';
 import { hoverProvider, setEnvironmentProvider as setHoverEnvironmentProvider } from './language/hoverProvider';
@@ -22,6 +24,9 @@ import { registerAuthUriHandler } from './auth/authUriHandler';
 export function activate(context: vscode.ExtensionContext) {
     console.log('RQ Language Extension is now active');
 
+    initWasmHost();
+    context.subscriptions.push({ dispose: () => { void disposeWasmHost(); } });
+
     const rqOutputChannel = vscode.window.createOutputChannel('RQ');
     context.subscriptions.push(rqOutputChannel);
 
@@ -41,20 +46,38 @@ export function activate(context: vscode.ExtensionContext) {
     });
     context.subscriptions.push(requestExplorerView);
 
+    let requestExplorerFirstShow = true;
     requestExplorerView.onDidChangeVisibility(({ visible }) => {
-        if (visible) { setTimeout(() => requestExplorerProvider.refresh(), 0); }
+        if (!visible) { return; }
+        if (requestExplorerFirstShow) { requestExplorerFirstShow = false; return; }
+        setTimeout(() => requestExplorerProvider.refresh(), 0);
+    });
+
+    const configurationExplorerProvider = new ConfigurationExplorerProvider(workspaceRoot);
+    const configurationExplorerView = vscode.window.createTreeView('rqConfigurationExplorer', {
+        treeDataProvider: configurationExplorerProvider,
+        showCollapseAll: true
+    });
+    context.subscriptions.push(configurationExplorerView);
+
+    let configurationExplorerFirstShow = true;
+    configurationExplorerView.onDidChangeVisibility(({ visible }) => {
+        if (!visible) { return; }
+        if (configurationExplorerFirstShow) { configurationExplorerFirstShow = false; return; }
+        setTimeout(() => configurationExplorerProvider.refresh(), 0);
     });
 
     requestExplorerProvider.refresh();
+    configurationExplorerProvider.refresh();
     diagnosticsProvider.validateAllFolders();
 
     // Register commands
     registerRefreshRequestsCommand(context, requestExplorerProvider);
     registerOpenRequestFileCommand(context, requestExplorerProvider);
-    registerOpenConfigurationFileCommand(context, requestExplorerProvider);
+    registerOpenConfigurationFileCommand(context, configurationExplorerProvider);
     registerOpenEndpointCommand(context, requestExplorerProvider);
     context.subscriptions.push(
-        vscode.commands.registerCommand('rq.refreshConfiguration', () => requestExplorerProvider.refresh())
+        vscode.commands.registerCommand('rq.refreshConfiguration', () => configurationExplorerProvider.refresh())
     );
     registerSelectEnvironmentCommand(context, requestExplorerProvider);
     context.subscriptions.push(

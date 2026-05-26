@@ -153,8 +153,15 @@
       "rq-explorer": [
         {
           "id": "rqRequestExplorer",
-          "name": "RQ",
-          "icon": "$(globe)"
+          "name": "Requests",
+          "icon": "$(globe)",
+          "visibility": "visible"
+        },
+        {
+          "id": "rqConfigurationExplorer",
+          "name": "Configuration",
+          "icon": "$(symbol-misc)",
+          "visibility": "collapsed"
         }
       ]
     },
@@ -168,6 +175,11 @@
         {
           "command": "rq.refreshRequests",
           "when": "view == rqRequestExplorer",
+          "group": "navigation"
+        },
+        {
+          "command": "rq.refreshConfiguration",
+          "when": "view == rqConfigurationExplorer",
           "group": "navigation"
         }
       ],

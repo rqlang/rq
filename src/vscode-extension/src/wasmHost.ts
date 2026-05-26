@@ -70,6 +70,14 @@ function getWorker(): Worker {
         pending.clear();
         worker = undefined;
     });
+    worker.on('exit', (code: number) => {
+        if (pending.size > 0) {
+            const err = new Error(`wasm worker exited with code ${code}`);
+            for (const call of pending.values()) { call.reject(err); }
+            pending.clear();
+        }
+        worker = undefined;
+    });
     return worker;
 }
 

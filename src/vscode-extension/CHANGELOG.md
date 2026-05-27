@@ -1,5 +1,55 @@
 # Changelog
 
+## [0.5.0]
+
+### Breaking Changes
+
+- Headers are now defined using `$[ ... ]` instead of `[ ... ]`. Existing `.rq` files using the old syntax will need to be updated.
+
+  Before:
+
+  ```
+  rq post_user(url: "...", headers: ["Content-Type": "application/json"]);
+  ```
+
+  After:
+
+  ```
+  rq post_user(url: "...", headers: $["Content-Type": "application/json"]);
+  ```
+
+### Bug Fixes
+
+- Fixed variable autocomplete not suggesting matches correctly.
+- Fixed autocomplete not working after text had already been typed at the cursor.
+- Fixed autocomplete not suggesting properties for request `headers`.
+- Fixed autocomplete not working for templated endpoints (`ep<base>(...)`).
+- Fixed autocomplete failing on multiline `rq` and `ep` blocks.
+- Fixed keyword autocompletion not appending a trailing space.
+- Fixed functions (e.g. `time.now`, `io.read_file`) not being syntax-highlighted.
+- Fixed empty JSON body (`${}`) failing when passed inline as an `rq` parameter instead of via a variable.
+- Fixed request timeout configuration not being applied.
+- Fixed incorrect version string sent in the `User-Agent` header.
+- Fixed client certificate authentication failing on Windows (now uses PFX format).
+- Fixed Run Again button not surfacing errors when the replayed request failed.
+- Fixed the OAuth "getting token" status message not hiding after the command finished.
+- Fixed typo in the "clear OAuth token" command.
+- Fixed several issues in the format document command across `let`, `rq`, `ep`, and `auth` declarations.
+- Fixed missing loading indicator in the configuration panel.
+- Resolved warnings reported by CodeQL static analysis.
+
+### Enhancements
+
+- Implemented the named parameter attribute for `rq` and `ep` definitions.
+- Added hover tooltips and autocomplete for built-in functions such as `time.now` and `io.read_file`.
+- Auth failures now stop request execution and surface a clear error instead of continuing silently.
+- Improved how logs and errors are reported in the Output window.
+- Added debug logging to aid troubleshooting from the extension host.
+- Allowed `"` and `` ` `` characters inside request body content.
+- Added documentation for configuring OAuth with specific platforms.
+- Upgraded `wasm-pack` to the latest version to remove build warnings.
+- Updated the extension publish workflow to keep pace with the Node.js 24 runner migration on GitHub Actions.
+
 ## [0.4.0]
 
 ### Enhancements

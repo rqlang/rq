@@ -32,7 +32,60 @@ rq/
 └── deployment/
 ```
 
-The VSCode extension communicates with the CLI as a subprocess — it does not re-implement parsing.
+The VSCode extension talks to `rq-wasm` in-process (worker), not a CLI subprocess — it does not re-implement parsing.
+
+---
+
+## Where things live
+
+**Core library — `src/rq-lib/src/`**
+- `syntax/` — tokenizer, parser, AST, semantic analysis
+  - `tokenizer.rs`, `token.rs`, `keywords.rs`, `reader.rs` — lexing
+  - `parsers/` — per-construct: `request.rs`, `endpoint.rs`, `environment.rs`, `variable.rs`, `import.rs`, `attributes.rs`, `auth.rs`
+  - `rq_file.rs` — top-level parsed-file model
+  - `resolve.rs` — cross-file symbol/reference resolution
+  - `analysis.rs` — semantic validation (powers `check`)
+  - `variable_context.rs` — variable precedence/scoping
+  - `auth/` — auth config AST (bearer, oauth2 variants)
+  - `functions/` — built-ins, grouped by category (`datetime/`, `io/`, `random/`, `sys/`)
+  - `secrets.rs`, `fs.rs` — syntax-side hooks into platform traits
+- `client/` — HTTP execution (`mod.rs`, `models.rs`)
+- `auth/` — runtime auth providers: `bearer.rs`, `oauth2_*.rs`, `auth_provider.rs`
+- `native/` — native (non-WASM) impls of `fs`, `http`, `secrets`
+- `http.rs`, `paths.rs`, `error.rs`, `logger.rs`, `version.rs`, `lib.rs`
+
+**CLI — `src/cli/src/`**
+- `main.rs` — entry point, arg dispatch
+- `commands/` — one file per top-level command: `auth.rs`, `check.rs`, `env.rs`, `ep.rs`, `request.rs`, `var.rs`, plus `shared.rs`, `validators.rs`
+- `core/` — CLI-only helpers: `formatter.rs`, `exit_code.rs`, `error.rs`, `logger.rs`, `version.rs`
+
+**WASM bindings — `src/rq-wasm/src/`**
+- `bindings.rs` — JS-facing API surface (add here when exposing new `rq-lib` calls)
+- `fs.rs`, `http.rs`, `secrets.rs` — WASM impls of `native/` traits
+- `wasm/` — built artifacts; do not edit
+
+**VSCode extension — `src/vscode-extension/src/`**
+- `extension.ts` — activation
+- `wasmHost.ts`, `wasmWorker.ts` — runs `rq-wasm` in a worker
+- `rqClient.ts` — typed wrapper over `wasmCall`; all extension code talks to rq through here
+- `commands/` — one file per palette command (`runRequest.ts`, `selectEnvironment.ts`, `openEndpoint.ts`, …)
+- `language/` — LSP-style providers: `completionProvider.ts`, `diagnosticsProvider.ts`, `hoverProvider.ts`, `definitionProvider.ts`, `referenceProvider.ts`, `renameProvider.ts`, `formattingProvider.ts`, `signatureHelpProvider.ts`
+- `auth/` — OAuth flows in TS (PKCE, implicit, refresh, callback handlers)
+- `requestExplorer.ts`, `configurationExplorer.ts` — tree views
+- `ui/webviewGenerator.ts` — webview HTML
+
+## Where to add new features
+
+| Change | Where |
+|---|---|
+| New syntax / keyword | `rq-lib/src/syntax/keywords.rs` + matching `parsers/*.rs` + AST node |
+| New semantic check / diagnostic | `rq-lib/src/syntax/analysis.rs` |
+| New built-in function | `rq-lib/src/syntax/functions/<category>/` + register in `functions/mod.rs` |
+| New auth provider | AST in `syntax/auth/`, runtime in `auth/` |
+| New CLI command | `cli/src/commands/<name>.rs` + dispatch in `main.rs` |
+| New JS-callable API | `rq-wasm/src/bindings.rs` + matching method in `vscode-extension/src/rqClient.ts` |
+| New VSCode command | `vscode-extension/src/commands/<name>.ts` + register in `extension.ts` + `package.json` |
+| New LSP feature | `vscode-extension/src/language/<feature>Provider.ts` |
 
 ---
 

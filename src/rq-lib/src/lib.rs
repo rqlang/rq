@@ -2,6 +2,7 @@ pub mod auth;
 pub mod client;
 pub mod error;
 pub mod http;
+pub mod lint;
 pub mod logger;
 #[cfg(feature = "native")]
 pub mod native;

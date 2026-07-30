@@ -880,13 +880,13 @@ pub fn resolve_variables(
 }
 
 fn normalize_url_slashes(url: &str) -> String {
-    let (scheme_prefix, rest) = match url.find("://") {
-        Some(idx) => url.split_at(idx + 3),
-        None => ("", url),
+    let (before_query, tail) = match url.find(['?', '#']) {
+        Some(idx) => url.split_at(idx),
+        None => (url, ""),
     };
-    let (path, tail) = match rest.find(['?', '#']) {
-        Some(idx) => rest.split_at(idx),
-        None => (rest, ""),
+    let (scheme_prefix, path) = match before_query.find("://") {
+        Some(idx) => before_query.split_at(idx + 3),
+        None => ("", before_query),
     };
     let mut collapsed = String::with_capacity(path.len());
     let mut prev_was_slash = false;
@@ -1196,5 +1196,13 @@ mod tests {
     #[test]
     fn test_normalize_url_without_scheme() {
         assert_eq!(normalize_url_slashes("//a//b"), "/a/b");
+    }
+
+    #[test]
+    fn test_normalize_url_relative_path_with_absolute_url_in_query() {
+        assert_eq!(
+            normalize_url_slashes("/get?redirect=http://other.com//x"),
+            "/get?redirect=http://other.com//x"
+        );
     }
 }

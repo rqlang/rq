@@ -289,6 +289,10 @@ export class RequestRunner {
                 vscode.env.clipboard.writeText(this.lastBody);
                 vscode.window.showInformationMessage('Body copied to clipboard');
             }
+            if (message.command === 'copy' && typeof message.text === 'string') {
+                vscode.env.clipboard.writeText(message.text);
+                vscode.window.showInformationMessage('Copied to clipboard');
+            }
         }, undefined, this.context.subscriptions);
     }
 

@@ -155,6 +155,83 @@ describe('webviewGenerator', () => {
         });
     });
 
+    describe('copy buttons', () => {
+        const baseResult: cliService.RequestExecutionResult = {
+            request_name: 'Test',
+            method: 'GET',
+            url: 'https://api.example.com/users',
+            status: 200,
+            elapsed_ms: 50,
+            request_headers: {},
+            response_headers: {},
+            body: 'plain text'
+        };
+
+        const renderWith = async (
+            mockTemplate: string,
+            overrides: Partial<cliService.RequestExecutionResult>
+        ): Promise<string> => {
+            mockFs.readFile.mockResolvedValue(new TextEncoder().encode(mockTemplate));
+            return getWebviewContent(mockContext, { ...baseResult, ...overrides });
+        };
+
+        test('URL copy button receives the real URL in data-copy', async () => {
+            const html = await renderWith(
+                '<span class="url">{{URL}}</span><button data-copy="{{URL}}"></button>{{BODY_CONTENT}}{{JSON_SCRIPT}}',
+                { url: 'https://api.example.com/users?id=1' }
+            );
+
+            expect(html).toContain('data-copy="https://api.example.com/users?id=1"');
+            expect(html).not.toContain('{{URL}}');
+        });
+
+        test('each header row has a copy button with "name: value"', async () => {
+            const html = await renderWith('{{REQUEST_HEADERS_HTML}}{{BODY_CONTENT}}{{JSON_SCRIPT}}', {
+                request_headers: { 'Content-Type': 'application/json' }
+            });
+
+            expect(html).toContain('data-copy="Content-Type: application/json"');
+        });
+
+        test('copy-all headers button joins headers by newline', async () => {
+            const html = await renderWith('{{RESPONSE_HEADERS_COPY_ALL}}{{BODY_CONTENT}}{{JSON_SCRIPT}}', {
+                response_headers: { Accept: '*/*', Server: 'nginx' }
+            });
+
+            expect(html).toContain('class="copy-btn"');
+            expect(html).toContain('data-copy="Accept: */*\nServer: nginx"');
+            expect(html).not.toContain('{{RESPONSE_HEADERS_COPY_ALL}}');
+        });
+
+        test('request headers copy-all button renders for populated headers', async () => {
+            const html = await renderWith('{{REQUEST_HEADERS_COPY_ALL}}{{BODY_CONTENT}}{{JSON_SCRIPT}}', {
+                request_headers: { 'Content-Type': 'application/json' }
+            });
+
+            expect(html).toContain('class="copy-btn"');
+            expect(html).toContain('data-copy="Content-Type: application/json"');
+            expect(html).not.toContain('{{REQUEST_HEADERS_COPY_ALL}}');
+        });
+
+        test('copy-all headers button is omitted when there are no headers', async () => {
+            const html = await renderWith('X{{REQUEST_HEADERS_COPY_ALL}}Y{{BODY_CONTENT}}{{JSON_SCRIPT}}', {
+                request_headers: {}
+            });
+
+            expect(html).toContain('XY');
+            expect(html).not.toContain('{{REQUEST_HEADERS_COPY_ALL}}');
+        });
+
+        test('escapes special characters in header copy data', async () => {
+            const html = await renderWith('{{REQUEST_HEADERS_HTML}}{{BODY_CONTENT}}{{JSON_SCRIPT}}', {
+                request_headers: { 'X-Test': '"><img src=x>' }
+            });
+
+            expect(html).toContain('X-Test: &quot;&gt;&lt;img src=x&gt;');
+            expect(html).not.toContain('<img src=x>');
+        });
+    });
+
     test('getWebviewContent handles non-JSON body', async () => {
         const mockTemplate = '{{BODY_CONTENT}} {{JSON_SCRIPT}}';
         mockFs.readFile.mockResolvedValue(new TextEncoder().encode(mockTemplate));

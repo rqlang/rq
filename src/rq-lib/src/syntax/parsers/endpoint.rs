@@ -453,6 +453,8 @@ pub(crate) fn parse_endpoint_with_context(
             }
             if req.url.is_empty() {
                 req.url = base_url.clone();
+            } else if req.url.starts_with('?') || req.url.starts_with('#') {
+                req.url = format!("{}{}", base_url, req.url);
             } else if !req.url.starts_with("http://")
                 && !req.url.starts_with("https://")
                 && !base_url.is_empty()

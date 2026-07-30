@@ -862,7 +862,7 @@ pub fn resolve_variables(
     source_files: &[PathBuf],
     fs: &dyn Fs,
 ) -> Result<Request, SyntaxError> {
-    request.url = resolve_string(&request.url, context, source_files, fs)?;
+    request.url = normalize_url_slashes(&resolve_string(&request.url, context, source_files, fs)?);
     for (k, v) in &mut request.headers {
         *k = resolve_string(k, context, source_files, fs)?;
         *v = resolve_string(v, context, source_files, fs)?;
@@ -877,6 +877,27 @@ pub fn resolve_variables(
         request.auth = Some(resolve_string(auth, context, source_files, fs)?);
     }
     Ok(request)
+}
+
+fn normalize_url_slashes(url: &str) -> String {
+    let (scheme_prefix, rest) = match url.find("://") {
+        Some(idx) => url.split_at(idx + 3),
+        None => ("", url),
+    };
+    let (path, tail) = match rest.find(['?', '#']) {
+        Some(idx) => rest.split_at(idx),
+        None => (rest, ""),
+    };
+    let mut collapsed = String::with_capacity(path.len());
+    let mut prev_was_slash = false;
+    for c in path.chars() {
+        if c == '/' && prev_was_slash {
+            continue;
+        }
+        prev_was_slash = c == '/';
+        collapsed.push(c);
+    }
+    format!("{scheme_prefix}{collapsed}{tail}")
 }
 
 pub fn collect_variable_errors(
@@ -1130,5 +1151,50 @@ mod tests {
         };
         let result = resolve_auth_provider(config, &make_context(vec![]), &[], &NoopReader);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_normalize_url_collapses_double_slash_between_base_and_path() {
+        assert_eq!(
+            normalize_url_slashes("http://localhost:8080//get"),
+            "http://localhost:8080/get"
+        );
+    }
+
+    #[test]
+    fn test_normalize_url_preserves_scheme_separator() {
+        assert_eq!(
+            normalize_url_slashes("https://api.example.com/v1/users"),
+            "https://api.example.com/v1/users"
+        );
+    }
+
+    #[test]
+    fn test_normalize_url_collapses_multiple_slashes() {
+        assert_eq!(
+            normalize_url_slashes("http://host///a////b/"),
+            "http://host/a/b/"
+        );
+    }
+
+    #[test]
+    fn test_normalize_url_preserves_query_string_slashes() {
+        assert_eq!(
+            normalize_url_slashes("http://host//get?redirect=http://other.com//x"),
+            "http://host/get?redirect=http://other.com//x"
+        );
+    }
+
+    #[test]
+    fn test_normalize_url_preserves_fragment_slashes() {
+        assert_eq!(
+            normalize_url_slashes("http://host//page#//anchor"),
+            "http://host/page#//anchor"
+        );
+    }
+
+    #[test]
+    fn test_normalize_url_without_scheme() {
+        assert_eq!(normalize_url_slashes("//a//b"), "/a/b");
     }
 }

@@ -1,0 +1,19 @@
+{
+    "http": {
+        "method": "GET",
+        "baseUrl": "",
+        "originalUrl": "/path?a=2&x=1",
+        "protocol": "http"
+    },
+    "request": {
+        "params": {"0": "/path"},
+        "query": {"a": "2", "x": "1"},
+        "cookies": {},
+        "body": {},
+        "headers": {
+            "user-agent": "{{*}}",
+            "accept": "*/*",
+            "host": "localhost:8080"
+        }
+    }
+}

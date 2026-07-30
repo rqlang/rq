@@ -240,6 +240,57 @@ describe('runRequest Commands', () => {
         });
     });
 
+    describe('webview messages', () => {
+        const runAndGetMessageHandler = async (): Promise<(message: any) => void> => {
+            const request = { name: 'test-req', endpoint: 'GET /', file: 'test.rq' };
+            const item = new RequestTreeItem('test-req', request, 0);
+
+            (cliService.executeRequest as jest.Mock).mockResolvedValue({
+                results: [{
+                    request_name: 'test-req',
+                    status: 200,
+                    body: '{"key":"value"}',
+                    elapsed_ms: 100,
+                    method: 'GET',
+                    url: 'http://localhost',
+                    response_headers: {},
+                    request_headers: {}
+                }],
+                stderr: ''
+            });
+
+            await requestRunner.runRequest(item, provider);
+
+            return mockWebviewPanel.webview.onDidReceiveMessage.mock.calls[0][0];
+        };
+
+        test('copy command writes provided text to the clipboard', async () => {
+            const handler = await runAndGetMessageHandler();
+
+            handler({ command: 'copy', text: 'Content-Type: application/json' });
+
+            expect(vscode.env.clipboard.writeText).toHaveBeenCalledWith('Content-Type: application/json');
+            expect(vscode.window.showInformationMessage).toHaveBeenCalledWith('Copied to clipboard');
+        });
+
+        test('copy command ignores messages without string text', async () => {
+            const handler = await runAndGetMessageHandler();
+
+            handler({ command: 'copy' });
+
+            expect(vscode.env.clipboard.writeText).not.toHaveBeenCalled();
+        });
+
+        test('copyBody command writes the last response body to the clipboard', async () => {
+            const handler = await runAndGetMessageHandler();
+
+            handler({ command: 'copyBody' });
+
+            expect(vscode.env.clipboard.writeText).toHaveBeenCalledWith('{"key":"value"}');
+            expect(vscode.window.showInformationMessage).toHaveBeenCalledWith('Body copied to clipboard');
+        });
+    });
+
     describe('rq.runRequestWithVariables', () => {
         test('prompts for variables and runs request', async () => {
             const request = { name: 'var-req', endpoint: 'GET /', file: 'test.rq' };

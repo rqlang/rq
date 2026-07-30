@@ -119,7 +119,7 @@ export async function getWebviewContent(context: vscode.ExtensionContext, result
     // Replace placeholders
     html = html.replace('{{REQUEST_NAME}}', escapeHtml(result.request_name))
                .replace('{{METHOD}}', escapeHtml(result.method))
-               .replaceAll('{{URL}}', escapeHtml(result.url))
+               .replace(/\{\{URL\}\}/g, escapeHtml(result.url))
                .replace('{{STATUS_CLASS}}', statusClass)
                .replace('{{STATUS}}', result.status.toString())
                .replace('{{ELAPSED_MS}}', result.elapsed_ms.toString())

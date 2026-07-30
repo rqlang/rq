@@ -1057,7 +1057,7 @@ pub fn resolve_auth_provider(
     source_files: &[PathBuf],
     fs: &dyn Fs,
 ) -> Result<crate::syntax::auth::Config, SyntaxError> {
-    for (_, token) in auth_config.fields.iter_mut() {
+    for token in auth_config.fields.values_mut() {
         token.value = resolve_string(&token.value, context, source_files, fs)?;
     }
     Ok(auth_config)

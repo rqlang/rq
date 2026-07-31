@@ -36,6 +36,7 @@ The viewer shows you the status, response time, headers, and body — JSON gets 
 
 ## Where to next
 
+- **[Advanced Example](ADVANCED_EXAMPLE.md)** — ready for more? Build a single request up into a real API suite, step by step.
 - **[Language Definition](LANGUAGE_DEFINITION.md)** — headers, bodies, variables, auth, and everything else the `.rq` syntax can do.
 - **[VS Code Extension](VSCODE_EXTENSION.md)** — environments, the request explorer, and other editor features.
 - **[CLI](CLI.md)** — prefer the terminal? Run the same file from the command line.

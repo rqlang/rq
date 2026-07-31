@@ -11,7 +11,7 @@ The project provides two main tools to work with `.rq` files:
 - **Command-Line Interface (CLI)**: A powerful command-line tool that allows you to execute HTTP requests directly from your terminal, perfect for scripting, automation, and CI/CD pipelines.
 - **VS Code Extension**: A rich, interactive experience within Visual Studio Code, featuring syntax highlighting, request execution, and a visual interface for managing your API requests. The rq VS Code extension is distributed through the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=rq-lang.rq-language)
 
-New to rq? See the [getting started guide](https://www.rqlang.com/docs/GETTING_STARTED.html).
+New to rq? See the [getting started guide](https://www.rqlang.com/docs/GETTING_STARTED.html). Ready for more? Work through the [advanced example](https://www.rqlang.com/docs/ADVANCED_EXAMPLE.html).
 
 For full documentation, visit [rqlang.com](https://www.rqlang.com).
 

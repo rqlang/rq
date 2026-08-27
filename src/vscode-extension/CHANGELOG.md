@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.6.0]
+
+### Bug Fixes
+
+- Fixed duplicated `/` when joining an endpoint base URL with a request path — repeated slashes are now collapsed while the `://` scheme separator, query string, and fragment are left untouched.
+- Fixed an unnecessary trailing `/` being added to resolved URLs when the base URL or a variable already ended with one.
+- Fixed endpoint query strings being appended after the fragment instead of before it (`?a=1#frag` instead of `#frag?a=1`).
+- Fixed request paths starting with `?` or `#` not being appended directly to the endpoint base URL.
+
+### Enhancements
+
+- Added a copy button next to the request URL in the response panel.
+- Added a copy button on every request and response header row, copying the entry as `Name: value`.
+- Added a copy-all button on the Request Headers and Response Headers section titles.
+- Copy buttons now show a checkmark confirmation after copying, and the body copy button was restyled to match.
+- Added an Advanced Example guide showing how to grow a single request into a full API suite, linked from the extension README.
+- Rewrote the Getting Started guide.
+
 ## [0.5.0]
 
 ### Breaking Changes

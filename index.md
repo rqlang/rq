@@ -39,6 +39,10 @@ This is not a promise that expires when a funding round closes or a business mod
 
 See [getting started](docs/GETTING_STARTED.md) for a guided introduction to rq and its core concepts.
 
+## Advanced Example
+
+See [advanced example](docs/ADVANCED_EXAMPLE.md) for a step-by-step walkthrough that grows a single request into a real API suite using rq's more advanced features.
+
 ## Installation
 
 See [installation](docs/INSTALLATION.md) for installation instructions.

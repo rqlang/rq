@@ -1,0 +1,5 @@
+let host = "http://localhost:8080/";
+
+ep api(host) {
+  rq get("/get");
+}

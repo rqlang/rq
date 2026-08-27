@@ -15,6 +15,7 @@ Want the full tour? Check out the [VS Code Extension docs](https://www.rqlang.co
 ## Docs
 
 - [Getting Started](https://www.rqlang.com/docs/GETTING_STARTED.html) — new here? Start here.
+- [Advanced Example](https://www.rqlang.com/docs/ADVANCED_EXAMPLE.html) — grow a single request into a real API suite.
 - [Language Definition](https://www.rqlang.com/docs/LANGUAGE_DEFINITION.html) — everything rq can do.
 - [Installation Guide](https://www.rqlang.com/docs/INSTALLATION.html) — get up and running.
 

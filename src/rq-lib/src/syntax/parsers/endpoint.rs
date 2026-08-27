@@ -453,6 +453,8 @@ pub(crate) fn parse_endpoint_with_context(
             }
             if req.url.is_empty() {
                 req.url = base_url.clone();
+            } else if req.url.starts_with('?') || req.url.starts_with('#') {
+                req.url = format!("{}{}", base_url, req.url);
             } else if !req.url.starts_with("http://")
                 && !req.url.starts_with("https://")
                 && !base_url.is_empty()
@@ -465,13 +467,12 @@ pub(crate) fn parse_endpoint_with_context(
             }
             if let Some(ref qs) = ep_qs {
                 if !qs.is_empty() {
-                    if req.url.contains('?') {
-                        req.url.push('&');
-                        req.url.push_str(qs);
-                    } else {
-                        req.url.push('?');
-                        req.url.push_str(qs);
-                    }
+                    let (base_part, fragment) = match req.url.split_once('#') {
+                        Some((base, frag)) => (base.to_string(), format!("#{frag}")),
+                        None => (req.url.clone(), String::new()),
+                    };
+                    let separator = if base_part.contains('?') { "&" } else { "?" };
+                    req.url = format!("{base_part}{separator}{qs}{fragment}");
                 }
             }
             // Note: req.name is already set to "ep_name/req_name" inside parse_request_with_context?

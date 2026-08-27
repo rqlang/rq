@@ -1,0 +1,3 @@
+ep site("http://localhost:8080/site", qs: "a=1") {
+  rq get("?b=2");
+}

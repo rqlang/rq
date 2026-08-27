@@ -4,6 +4,8 @@ title: Language Definition
 nav_order: 4
 ---
 
+{% raw %}
+
 # Language Definition
 
 This document describes the rq language. It is a work in progress and will evolve as the language stabilizes.
@@ -843,3 +845,5 @@ In both cases rq will look for a file named `shared.rq` in the same directory as
 Imports can be nested: if an imported file itself contains `import` statements, those files and their definitions will also be loaded and merged. Circular imports are not supported.
 
 From the point of view of the language model, you can think of imports as **textually merging** the imported files into a single logical rq file before executing any requests, with duplicate definitions still subject to the usual validation rules (for example, duplicate request or auth names will cause errors).
+
+{% endraw %}

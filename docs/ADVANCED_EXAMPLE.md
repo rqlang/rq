@@ -4,6 +4,8 @@ title: Advanced Example
 nav_order: 7
 ---
 
+{% raw %}
+
 # Advanced Example
 
 [Getting Started](GETTING_STARTED.md) got you running a single request. This guide picks up where that left off and grows it into a small, real-world API suite — one feature per step. Every snippet is a complete `.rq` file, so paste it in and run it as you go.
@@ -606,3 +608,5 @@ See [Imports](LANGUAGE_DEFINITION.md#imports) for path resolution and nesting ru
 That's the tour. You started with a one-line request and grew it into a full API suite: variables and environments, run-time-required inputs, endpoints with shared query strings and headers, every HTTP method, JSON bodies read from files, bearer auth backed by per-environment secrets, templated endpoints that kill duplication, and a multi-file layout via imports.
 
 For the complete reference on any of these, see the [Language Definition](LANGUAGE_DEFINITION.md).
+
+{% endraw %}

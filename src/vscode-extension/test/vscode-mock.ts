@@ -82,17 +82,52 @@ export const workspace = {
     getConfiguration: jest.fn().mockReturnValue({
         get: jest.fn().mockReturnValue(false)
     }),
-    workspaceFolders: [],
+    workspaceFolders: [] as any[],
     textDocuments: [] as any[],
     openTextDocument: jest.fn(),
     findFiles: jest.fn().mockResolvedValue([]),
-    getWorkspaceFolder: jest.fn()
+    getWorkspaceFolder: jest.fn(),
+    onDidChangeWorkspaceFolders: jest.fn().mockReturnValue({ dispose: () => {} })
+};
+
+export class McpStdioServerDefinition {
+    cwd: any;
+
+    constructor(
+        public readonly label: string,
+        public command: string,
+        public args: string[] = [],
+        public env: Record<string, string | number | null> = {},
+        public version?: string
+    ) {}
+}
+
+export const lm = {
+    registerMcpServerDefinitionProvider: jest.fn().mockReturnValue({ dispose: () => {} })
 };
 
 // Mock ViewColumn
 export enum ViewColumn {
     One = 1,
     Two = 2
+}
+
+export enum DiagnosticSeverity {
+    Error = 0,
+    Warning = 1,
+    Information = 2,
+    Hint = 3
+}
+
+export class Diagnostic {
+    source?: string;
+    code?: string | number;
+
+    constructor(
+        public range: any,
+        public message: string,
+        public severity: DiagnosticSeverity = DiagnosticSeverity.Error
+    ) {}
 }
 
 export class WorkspaceEdit {

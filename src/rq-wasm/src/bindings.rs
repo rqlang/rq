@@ -157,6 +157,34 @@ pub fn list_variables(
 }
 
 #[wasm_bindgen]
+pub fn lint(files_json: &str, source: &str, path: &str) -> Result<String, JsError> {
+    use rq_lib::lint::{lint_rq_file, WorkspaceCollector};
+    use rq_lib::syntax::rq_file::RqFile;
+
+    let files = parse_files(files_json)?;
+    let fs = WasmFs::new(files.clone());
+    let draft = RqFile::from_content_lenient(std::path::PathBuf::from(path), source, &fs);
+
+    let mut collector = WorkspaceCollector::new(&draft);
+    for (file_path, content) in files.iter() {
+        if file_path == path || !file_path.ends_with(".rq") {
+            continue;
+        }
+        collector.absorb(Path::new(file_path), content, &fs);
+    }
+    let (workspace_requests, workspace_endpoints) = collector.finish();
+
+    let result = lint_rq_file(
+        &draft,
+        source,
+        path,
+        &workspace_requests,
+        &workspace_endpoints,
+    );
+    serde_json::to_string(&result).map_err(|e| JsError::new(&e.to_string()))
+}
+
+#[wasm_bindgen]
 pub fn check(
     files_json: &str,
     secrets_json: &str,

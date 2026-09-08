@@ -11,6 +11,7 @@ const sharedOptions = {
     target: 'node18',
     sourcemap: !isProduction,
     minify: isProduction,
+    loader: { '.md': 'text' },
 };
 
 (async () => {
@@ -20,6 +21,12 @@ const sharedOptions = {
         outfile: 'out/extension.js',
     });
 
+    const mcpServerCtx = await esbuild.context({
+        ...sharedOptions,
+        entryPoints: ['src/mcp/server.ts'],
+        outfile: 'out/mcpServer.js',
+    });
+
     const workerCtx = await esbuild.context({
         ...sharedOptions,
         entryPoints: ['src/wasmWorker.ts'],
@@ -27,10 +34,10 @@ const sharedOptions = {
     });
 
     if (isWatch) {
-        await Promise.all([extensionCtx.watch(), workerCtx.watch()]);
+        await Promise.all([extensionCtx.watch(), workerCtx.watch(), mcpServerCtx.watch()]);
         console.log('Watching for changes...');
     } else {
-        await Promise.all([extensionCtx.rebuild(), workerCtx.rebuild()]);
-        await Promise.all([extensionCtx.dispose(), workerCtx.dispose()]);
+        await Promise.all([extensionCtx.rebuild(), workerCtx.rebuild(), mcpServerCtx.rebuild()]);
+        await Promise.all([extensionCtx.dispose(), workerCtx.dispose(), mcpServerCtx.dispose()]);
     }
 })();

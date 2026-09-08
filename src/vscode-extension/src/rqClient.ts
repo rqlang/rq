@@ -5,7 +5,7 @@ import * as http from 'http';
 import * as https from 'https';
 import * as crypto from 'crypto';
 import * as forge from 'node-forge';
-import { normalizePath, collectAllFilesAsync } from './utils';
+import { normalizePath, buildFilesMap, buildSecretsMap, DraftFile } from './utils';
 import { wasmCall } from './wasmHost';
 
 // ---------------------------------------------------------------------------
@@ -146,49 +146,6 @@ export interface CheckResult {
 function resolveSource(sourceDir?: string): string {
     const raw = sourceDir ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
     return raw.replace(/\\/g, '/');
-}
-
-async function getSourceDir(source: string): Promise<string> {
-    try {
-        const stat = await fs.promises.stat(source);
-        return stat.isDirectory() ? source : path.dirname(source);
-    } catch {
-        return source;
-    }
-}
-
-async function buildFilesMap(source: string): Promise<string> {
-    const dir = await getSourceDir(source);
-    const files: Record<string, string> = {};
-    for (const filePath of await collectAllFilesAsync(dir)) {
-        const normalized = filePath.replace(/\\/g, '/');
-        try {
-            files[normalized] = await fs.promises.readFile(filePath, 'utf8');
-        } catch {
-            // skip unreadable files
-        }
-    }
-    return JSON.stringify(files);
-}
-
-async function buildSecretsMap(source: string): Promise<string> {
-    const dir = await getSourceDir(source);
-
-    let envFile: string | null = null;
-    try {
-        envFile = await fs.promises.readFile(path.join(dir, '.env'), 'utf8');
-    } catch {
-        // no .env file
-    }
-
-    const osVars: [string, string][] = [];
-    for (const [key, value] of Object.entries(process.env)) {
-        if (key.startsWith('RQ__') && value !== undefined) {
-            osVars.push([key, value]);
-        }
-    }
-
-    return JSON.stringify({ env_file: envFile, os_vars: osVars });
 }
 
 // ---------------------------------------------------------------------------
@@ -347,6 +304,47 @@ export async function showRequestLocation(requestName: string, sourceDirectory?:
     const result = await wasmCall('get_request_details', [await buildFilesMap(source), await buildSecretsMap(source), source, requestName, undefined, false, false]);
     const raw = JSON.parse(result) as RequestShowRaw;
     return { file: normalizePath(raw.file), line: raw.line, character: raw.character };
+}
+
+export interface LintDiagnostic {
+    severity: string;
+    rule: string;
+    message: string;
+    line: number;
+    column: number;
+    file?: string;
+    suggested_fix?: string;
+}
+
+export interface LintResult {
+    ok: boolean;
+    diagnostics: LintDiagnostic[];
+}
+
+function draftKey(filePath: string): string {
+    return normalizePath(filePath).replace(/\\/g, '/');
+}
+
+export async function lintSources(files: DraftFile[], workspaceDirectory?: string): Promise<Map<string, LintResult>> {
+    const results = new Map<string, LintResult>();
+    if (files.length === 0) {
+        return results;
+    }
+
+    const workspace = resolveSource(workspaceDirectory);
+    const drafts = files.map(f => ({ path: draftKey(f.path), source: f.source }));
+    const filesJson = await buildFilesMap(workspace, drafts);
+
+    for (const draft of drafts) {
+        const raw = await wasmCall('lint', [filesJson, draft.source, draft.path]);
+        results.set(draft.path, JSON.parse(raw) as LintResult);
+    }
+    return results;
+}
+
+export async function lintSource(source: string, filePath: string, workspaceDirectory?: string): Promise<LintResult> {
+    const results = await lintSources([{ path: filePath, source }], workspaceDirectory);
+    return results.get(draftKey(filePath)) ?? { ok: true, diagnostics: [] };
 }
 
 export async function checkFolder(folderPath: string, envName?: string): Promise<CheckResult> {

@@ -1,5 +1,6 @@
-use crate::syntax::parse_result::Request;
+use crate::syntax::parse_result::{EndpointDefinition, Request};
 use crate::syntax::rq_file::RqFile;
+use crate::syntax::token::TokenType;
 use serde::Serialize;
 
 mod rules;
@@ -28,6 +29,28 @@ pub struct LintContext<'a> {
     pub rq_file: &'a RqFile,
     pub display_path: &'a str,
     pub workspace_requests: &'a [Request],
+    pub workspace_endpoints: &'a [EndpointSummary],
+}
+
+#[derive(Debug, Clone)]
+pub struct EndpointSummary {
+    pub name: String,
+    pub url: String,
+    pub auth: Option<String>,
+    pub own_auth: Option<String>,
+    pub qs: Option<String>,
+    pub file: String,
+    pub extends: Option<String>,
+    pub is_template: bool,
+    pub line: usize,
+    pub character: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct EndpointExtension {
+    pub child: String,
+    pub base: String,
+    pub offset: usize,
 }
 
 pub trait LintRule: Send + Sync {
@@ -48,10 +71,16 @@ pub fn lint(
     use std::path::PathBuf;
     let display_path = path.unwrap_or("<inline>");
     let rq_file = RqFile::from_content_lenient(PathBuf::from(display_path), source, &NativeFs);
-    let workspace_requests = workspace_path
-        .map(|w| collect_workspace_requests(w, path.map(std::path::Path::new), &rq_file))
+    let (workspace_requests, workspace_endpoints) = workspace_path
+        .map(|w| collect_workspace(w, path.map(std::path::Path::new), &rq_file))
         .unwrap_or_default();
-    lint_rq_file(&rq_file, source, display_path, &workspace_requests)
+    lint_rq_file(
+        &rq_file,
+        source,
+        display_path,
+        &workspace_requests,
+        &workspace_endpoints,
+    )
 }
 
 pub fn lint_rq_file(
@@ -59,12 +88,14 @@ pub fn lint_rq_file(
     source: &str,
     display_path: &str,
     workspace_requests: &[Request],
+    workspace_endpoints: &[EndpointSummary],
 ) -> LintResult {
     let ctx = LintContext {
         source,
         rq_file,
         display_path,
         workspace_requests,
+        workspace_endpoints,
     };
     let mut diagnostics = Vec::new();
     for rule in rules::all() {
@@ -76,26 +107,97 @@ pub fn lint_rq_file(
     }
 }
 
+pub struct WorkspaceCollector {
+    draft_bare_names: std::collections::HashSet<String>,
+    seen_requests: std::collections::HashSet<(std::path::PathBuf, usize, usize)>,
+    requests: Vec<Request>,
+    endpoints: Vec<EndpointSummary>,
+}
+
+impl WorkspaceCollector {
+    pub fn new(draft_rq_file: &RqFile) -> Self {
+        WorkspaceCollector {
+            draft_bare_names: draft_rq_file
+                .requests
+                .iter()
+                .map(|r| bare_request_name(&r.request.name).to_string())
+                .collect(),
+            seen_requests: std::collections::HashSet::new(),
+            requests: Vec::new(),
+            endpoints: Vec::new(),
+        }
+    }
+
+    pub fn absorb(
+        &mut self,
+        path: &std::path::Path,
+        content: &str,
+        fs: &dyn crate::syntax::fs::Fs,
+    ) {
+        use std::path::PathBuf;
+        let parsed = RqFile::from_content_lenient(path.to_path_buf(), content, fs);
+        for req_with_vars in parsed.requests {
+            let req = req_with_vars.request;
+            let bare = bare_request_name(&req.name).to_string();
+            if self.draft_bare_names.contains(&bare) {
+                continue;
+            }
+            let source_key = req
+                .source_path
+                .as_deref()
+                .map(PathBuf::from)
+                .unwrap_or_default();
+            if !self
+                .seen_requests
+                .insert((source_key, req.line, req.character))
+            {
+                continue;
+            }
+            self.requests.push(req);
+        }
+        let extensions = endpoint_extensions(content);
+        let auth_attributes = endpoint_auth_attributes(content);
+        for endpoint in parsed.endpoints.values() {
+            if !declared_in(endpoint, path) {
+                continue;
+            }
+            self.endpoints.push(EndpointSummary {
+                name: endpoint.name.clone(),
+                url: endpoint.url.clone(),
+                auth: endpoint.auth.clone(),
+                own_auth: auth_attributes
+                    .iter()
+                    .find(|a| a.endpoint == endpoint.name)
+                    .map(|a| a.provider.clone()),
+                qs: endpoint.qs.clone(),
+                file: path.display().to_string(),
+                extends: extensions
+                    .iter()
+                    .find(|e| e.child == endpoint.name)
+                    .map(|e| e.base.clone()),
+                is_template: endpoint.is_template,
+                line: endpoint.line,
+                character: endpoint.character,
+            });
+        }
+    }
+
+    pub fn finish(self) -> (Vec<Request>, Vec<EndpointSummary>) {
+        (self.requests, self.endpoints)
+    }
+}
+
 #[cfg(feature = "native")]
-fn collect_workspace_requests(
+fn collect_workspace(
     workspace_path: &std::path::Path,
     draft_path: Option<&std::path::Path>,
     draft_rq_file: &RqFile,
-) -> Vec<Request> {
+) -> (Vec<Request>, Vec<EndpointSummary>) {
     use crate::native::NativeFs;
-    use std::collections::HashSet;
-    use std::path::PathBuf;
 
-    let draft_bare_names: HashSet<String> = draft_rq_file
-        .requests
-        .iter()
-        .map(|r| bare_request_name(&r.request.name).to_string())
-        .collect();
-
-    let mut seen_requests: HashSet<(PathBuf, usize, usize)> = HashSet::new();
+    let mut collector = WorkspaceCollector::new(draft_rq_file);
     let draft_canonical = draft_path.and_then(|p| std::fs::canonicalize(p).ok());
 
-    let mut requests = Vec::new();
     walk_rq_files(workspace_path, &mut |path| {
         if let Some(draft) = &draft_canonical {
             if let Ok(canon) = std::fs::canonicalize(path) {
@@ -107,26 +209,198 @@ fn collect_workspace_requests(
         let Ok(content) = std::fs::read_to_string(path) else {
             return;
         };
-        let parsed = RqFile::from_content_lenient(path.to_path_buf(), &content, &NativeFs);
-        for req_with_vars in parsed.requests {
-            let req = req_with_vars.request;
-            let bare = bare_request_name(&req.name).to_string();
-            if draft_bare_names.contains(&bare) {
-                continue;
-            }
-            let source_key = req
-                .source_path
-                .as_deref()
-                .map(PathBuf::from)
-                .unwrap_or_default();
-            if !seen_requests.insert((source_key, req.line, req.character)) {
-                continue;
-            }
-            requests.push(req);
-        }
+        collector.absorb(path, &content, &NativeFs);
     });
 
-    requests
+    collector.finish()
+}
+
+fn declared_in(endpoint: &EndpointDefinition, path: &std::path::Path) -> bool {
+    match &endpoint.source_path {
+        Some(source) => std::path::Path::new(source) == path,
+        None => true,
+    }
+}
+
+pub fn local_endpoints<'a>(ctx: &'a LintContext) -> Vec<&'a EndpointDefinition> {
+    let mut declared: Vec<&EndpointDefinition> = ctx
+        .rq_file
+        .endpoints
+        .values()
+        .filter(|e| !e.is_template)
+        .filter(|e| declared_in(e, std::path::Path::new(ctx.display_path)))
+        .collect();
+    declared.sort_by_key(|e| (e.line, e.character));
+    declared
+}
+
+pub fn endpoint_children<'a>(
+    ctx: &'a LintContext,
+) -> Vec<(&'a EndpointDefinition, Vec<&'a Request>)> {
+    local_endpoints(ctx)
+        .into_iter()
+        .map(|endpoint| {
+            let children: Vec<&Request> = ctx
+                .rq_file
+                .requests
+                .iter()
+                .map(|r| &r.request)
+                .filter(|r| r.endpoint.as_deref() == Some(endpoint.name.as_str()))
+                .filter(|r| request_declared_in(r, std::path::Path::new(ctx.display_path)))
+                .collect();
+            (endpoint, children)
+        })
+        .collect()
+}
+
+pub fn query_params(raw_url: &str) -> Vec<(String, String)> {
+    let Some((_, query)) = raw_url.split_once('?') else {
+        return Vec::new();
+    };
+    query
+        .split('&')
+        .filter(|pair| !pair.is_empty())
+        .map(|pair| match pair.split_once('=') {
+            Some((key, value)) => (key.trim().to_string(), value.trim().to_string()),
+            None => (pair.trim().to_string(), String::new()),
+        })
+        .filter(|(key, _)| !key.is_empty())
+        .collect()
+}
+
+pub fn request_own_headers(
+    request: &Request,
+    endpoint: &EndpointDefinition,
+) -> Vec<(String, String)> {
+    request
+        .headers
+        .iter()
+        .filter(|(key, value)| {
+            !endpoint
+                .headers
+                .iter()
+                .any(|(ep_key, ep_value)| ep_key == key && ep_value == value)
+        })
+        .cloned()
+        .collect()
+}
+
+fn request_declared_in(request: &Request, path: &std::path::Path) -> bool {
+    match &request.source_path {
+        Some(source) => std::path::Path::new(source) == path,
+        None => true,
+    }
+}
+
+pub fn significant_tokens(source: &str) -> Vec<crate::syntax::token::Token> {
+    let Ok(tokens) = crate::syntax::tokenize(source) else {
+        return Vec::new();
+    };
+    tokens
+        .into_iter()
+        .filter(|t| {
+            !matches!(
+                t.token_type,
+                TokenType::Whitespace | TokenType::Newline | TokenType::Comment
+            )
+        })
+        .collect()
+}
+
+#[derive(Debug, Clone)]
+pub struct EndpointAuthAttribute {
+    pub endpoint: String,
+    pub provider: String,
+}
+
+pub fn endpoint_auth_attributes(source: &str) -> Vec<EndpointAuthAttribute> {
+    let significant = significant_tokens(source);
+    let mut found = Vec::new();
+    let mut pending: Option<String> = None;
+    let mut index = 0;
+    while index < significant.len() {
+        let token = &significant[index];
+        if let Some(provider) = read_auth_attribute(&significant, index) {
+            pending = Some(provider);
+            index += 6;
+            continue;
+        }
+        if token.token_type == TokenType::Keyword {
+            if token.value == "rq" {
+                pending = None;
+            }
+            if token.value == "ep" {
+                if let (Some(provider), Some(name)) = (pending.take(), significant.get(index + 1)) {
+                    if name.token_type == TokenType::Identifier {
+                        found.push(EndpointAuthAttribute {
+                            endpoint: name.value.clone(),
+                            provider,
+                        });
+                    }
+                }
+            }
+        }
+        index += 1;
+    }
+    found
+}
+
+fn read_auth_attribute(tokens: &[crate::syntax::token::Token], index: usize) -> Option<String> {
+    let window = tokens.get(index..index + 6)?;
+    let [open, keyword, lparen, value, rparen, close] = window else {
+        return None;
+    };
+    if open.value != "[" || close.value != "]" {
+        return None;
+    }
+    if keyword.value != "auth" || lparen.value != "(" || rparen.value != ")" {
+        return None;
+    }
+    if value.token_type != TokenType::String {
+        return None;
+    }
+    let raw = &value.value;
+    if raw.len() < 2 {
+        return None;
+    }
+    Some(raw[1..raw.len() - 1].to_string())
+}
+
+pub fn endpoint_extensions(source: &str) -> Vec<EndpointExtension> {
+    let Ok(tokens) = crate::syntax::tokenize(source) else {
+        return Vec::new();
+    };
+    let significant: Vec<&crate::syntax::token::Token> = tokens
+        .iter()
+        .filter(|t| {
+            !matches!(
+                t.token_type,
+                TokenType::Whitespace | TokenType::Newline | TokenType::Comment
+            )
+        })
+        .collect();
+
+    let mut found = Vec::new();
+    for window in significant.windows(4) {
+        let [keyword, child, angle, base] = window else {
+            continue;
+        };
+        if keyword.token_type != TokenType::Keyword || keyword.value != "ep" {
+            continue;
+        }
+        if child.token_type != TokenType::Identifier || base.token_type != TokenType::Identifier {
+            continue;
+        }
+        if angle.value != "<" {
+            continue;
+        }
+        found.push(EndpointExtension {
+            child: child.value.clone(),
+            base: base.value.clone(),
+            offset: angle.span.start,
+        });
+    }
+    found
 }
 
 #[cfg(feature = "native")]
@@ -152,4 +426,80 @@ fn walk_rq_files(root: &std::path::Path, visit: &mut dyn FnMut(&std::path::Path)
 
 fn bare_request_name(qualified: &str) -> &str {
     qualified.rsplit('/').next().unwrap_or(qualified)
+}
+
+fn line_col(source: &str, offset: usize) -> (usize, usize) {
+    if offset > source.len() {
+        return (1, 1);
+    }
+    let prefix = &source[..offset];
+    let line = prefix.matches('\n').count() + 1;
+    let last_line_start = prefix.rfind('\n').map(|i| i + 1).unwrap_or(0);
+    let column = prefix[last_line_start..].chars().count() + 1;
+    (line, column)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::lint_rq_file;
+    use crate::native::NativeFs;
+    use crate::syntax::rq_file::RqFile;
+    use std::path::PathBuf;
+
+    fn lint_source(source: &str) -> Vec<String> {
+        let rq_file = RqFile::from_content_lenient(PathBuf::from("draft.rq"), source, &NativeFs);
+        lint_rq_file(&rq_file, source, "draft.rq", &[], &[])
+            .diagnostics
+            .into_iter()
+            .map(|d| d.rule.to_string())
+            .collect()
+    }
+
+    #[test]
+    fn flags_both_defects_in_generated_endpoint() {
+        let source = "ep widgets(\"http://localhost:8080/widgets\") {\n    \
+                      rq list(\"\");\n    \
+                      rq get(\"/{widget_id}\");\n}\n";
+        let rules = lint_source(source);
+        assert!(
+            rules.contains(&"empty_url_string".to_string()),
+            "expected empty_url_string, got {rules:?}"
+        );
+        assert!(
+            rules.contains(&"single_brace_interpolation".to_string()),
+            "expected single_brace_interpolation, got {rules:?}"
+        );
+    }
+
+    #[test]
+    fn flags_a_hand_rolled_bearer_header_on_a_template_endpoint() {
+        let source =
+            "ep base(url: \"{{base_url}}\", headers: $[\"Authorization\": \"Bearer {{token}}\"]);\n";
+        let rules = lint_source(source);
+        assert_eq!(
+            rules,
+            vec!["manual_auth_header".to_string()],
+            "the header should be the only complaint, got {rules:?}"
+        );
+    }
+
+    #[test]
+    fn accepts_the_auth_provider_rewrite_of_that_endpoint() {
+        let source = "auth api_auth(auth_type.bearer) {\n    \
+                      token: \"{{api_token}}\",\n}\n\n\
+                      [auth(\"api_auth\")]\n\
+                      ep base(url: \"{{base_url}}\");\n";
+        let rules = lint_source(source);
+        assert!(rules.is_empty(), "expected no diagnostics, got {rules:?}");
+    }
+
+    #[test]
+    fn accepts_the_idiomatic_rewrite_of_that_endpoint() {
+        let source = "ep widgets(\"http://localhost:8080/widgets\") {\n    \
+                      rq list();\n\n    \
+                      [required(widget_id)]\n    \
+                      rq get(widget_id);\n}\n";
+        let rules = lint_source(source);
+        assert!(rules.is_empty(), "expected no diagnostics, got {rules:?}");
+    }
 }

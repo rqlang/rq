@@ -5,6 +5,7 @@ import * as rqClient from '../rqClient';
 import { normalizePath, mirrorToTemp } from '../utils';
 
 const DEBOUNCE_MS = 1000;
+const LINT_SETTING = 'rq.lint.enabled';
 
 interface EnvironmentProvider {
     getSelectedEnvironment(): string | undefined;
@@ -97,15 +98,57 @@ export class DiagnosticsProvider {
 
         const env = this.environmentProvider?.getSelectedEnvironment();
 
+        const lint = await this.collectLintDiagnostics(folderPath);
+
         if (openDocuments.size > 0) {
             const tempRoot = this.rebuildTempRoot(folderPath, openDocuments);
             const result = await rqClient.checkFolder(tempRoot, env);
-            this.applyDiagnostics(result, tempRoot, folderPath);
+            this.applyDiagnostics(result, tempRoot, folderPath, lint);
         } else {
             this.clearTempRoot(folderPath);
             const result = await rqClient.checkFolder(folderPath, env);
-            this.applyDiagnostics(result, folderPath, folderPath);
+            this.applyDiagnostics(result, folderPath, folderPath, lint);
         }
+    }
+
+    private lintEnabled(): boolean {
+        const [section, key] = [LINT_SETTING.slice(0, LINT_SETTING.lastIndexOf('.')), LINT_SETTING.slice(LINT_SETTING.lastIndexOf('.') + 1)];
+        return vscode.workspace.getConfiguration(section).get<boolean>(key, true);
+    }
+
+    private async collectLintDiagnostics(folderPath: string): Promise<Map<string, vscode.Diagnostic[]>> {
+        const byFile = new Map<string, vscode.Diagnostic[]>();
+        if (!this.lintEnabled()) {
+            return byFile;
+        }
+
+        const drafts = vscode.workspace.textDocuments
+            .filter(doc => doc.languageId === 'rq')
+            .filter(doc => {
+                const wsFolder = vscode.workspace.getWorkspaceFolder(doc.uri);
+                return wsFolder !== undefined && normalizePath(wsFolder.uri.fsPath) === normalizePath(folderPath);
+            })
+            .map(doc => ({ path: doc.uri.fsPath, source: doc.getText() }));
+
+        if (drafts.length === 0) {
+            return byFile;
+        }
+
+        let results: Map<string, rqClient.LintResult>;
+        try {
+            results = await rqClient.lintSources(drafts, folderPath);
+        } catch {
+            return byFile;
+        }
+
+        for (const draft of drafts) {
+            const result = results.get(normalizePath(draft.path).replace(/\\/g, '/'));
+            if (!result || result.diagnostics.length === 0) {
+                continue;
+            }
+            byFile.set(normalizePath(draft.path), result.diagnostics.map(toLintDiagnostic));
+        }
+        return byFile;
     }
 
     private rebuildTempRoot(folderPath: string, overrides: Map<string, string>): string {
@@ -127,7 +170,8 @@ export class DiagnosticsProvider {
     private applyDiagnostics(
         result: rqClient.CheckResult,
         sourcePath: string,
-        realPath: string
+        realPath: string,
+        lintDiagnostics: Map<string, vscode.Diagnostic[]> = new Map()
     ): void {
         const diagnosticsMap = new Map<string, vscode.Diagnostic[]>();
 
@@ -146,6 +190,15 @@ export class DiagnosticsProvider {
                 diagnosticsMap.set(realFile, []);
             }
             diagnosticsMap.get(realFile)!.push(diagnostic);
+        }
+
+        for (const [file, diagnostics] of lintDiagnostics) {
+            const existing = diagnosticsMap.get(file);
+            if (existing) {
+                existing.push(...diagnostics);
+            } else {
+                diagnosticsMap.set(file, [...diagnostics]);
+            }
         }
 
         const affectedFolderUris = new Set<string>();
@@ -174,4 +227,17 @@ export class DiagnosticsProvider {
             // ignore
         }
     }
+}
+
+function toLintDiagnostic(entry: rqClient.LintDiagnostic): vscode.Diagnostic {
+    const line = Math.max(0, entry.line - 1);
+    const column = Math.max(0, entry.column - 1);
+    const range = new vscode.Range(line, column, line, Number.MAX_VALUE);
+    const message = entry.suggested_fix
+        ? `${entry.message}\n\nSuggested fix: ${entry.suggested_fix}`
+        : entry.message;
+    const diagnostic = new vscode.Diagnostic(range, message, vscode.DiagnosticSeverity.Warning);
+    diagnostic.source = 'rq lint';
+    diagnostic.code = entry.rule;
+    return diagnostic;
 }

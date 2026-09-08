@@ -125,6 +125,11 @@
           "type": "boolean",
           "default": false,
           "description": "Show debug logs in the RQ output window when executing requests."
+        },
+        "rq.lint.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show rqlang idiom and style lint warnings in the editor, alongside syntax errors."
         }
       }
     },
@@ -134,6 +139,12 @@
         "editor.wordBasedSuggestions": "off"
       }
     },
+    "mcpServerDefinitionProviders": [
+      {
+        "id": "rq-lang.rq-mcp",
+        "label": "rq"
+      }
+    ],
     "authentication": [
       {
         "id": "rq-azure-oauth",
@@ -207,6 +218,7 @@
     "copy-wasm": "node -e \"const fs=require('fs');const src='../rq-wasm/src/wasm';if(fs.existsSync(src+'/rq_wasm.js')){fs.mkdirSync('out/wasm',{recursive:true});['rq_wasm.js','rq_wasm_bg.wasm'].forEach(f=>fs.copyFileSync(src+'/'+f,'out/wasm/'+f));}else{console.log('WASM not built, skipping wasm copy');}\"",
     "vscode:prepublish": "npm run build-wasm && node esbuild.js --production && npm run copy-wasm",
     "compile": "node esbuild.js && npm run copy-wasm",
+    "dev:host": "npm run compile && code --extensionDevelopmentPath=\"$PWD\" \"${RQ_SANDBOX:-$PWD/../../../rq-lint-sandbox}\"",
     "watch": "node esbuild.js --watch",
     "pretest": "tsc -p tsconfig.test.json --noEmit",
     "lint": "eslint src",
@@ -231,6 +243,8 @@
     "test-exclude": "^8.0.0"
   },
   "dependencies": {
-    "node-forge": "^1.4.0"
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "node-forge": "^1.4.0",
+    "zod": "^4.5.4"
   }
 }

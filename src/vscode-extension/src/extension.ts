@@ -20,6 +20,7 @@ import { RequestRunner } from './commands/runRequest';
 import { registerGetTokenCommand } from './commands/getToken';
 import { registerClearOAuthCacheCommand } from './commands/clearOAuthCache';
 import { registerAuthUriHandler } from './auth/authUriHandler';
+import { registerMcpServer } from './mcpServer';
 
 export function activate(context: vscode.ExtensionContext) {
     console.log('RQ Language Extension is now active');
@@ -31,6 +32,7 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(rqOutputChannel);
 
     registerAuthUriHandler(context);
+    registerMcpServer(context);
 
     const diagnosticCollection = vscode.languages.createDiagnosticCollection('rq');
     context.subscriptions.push(diagnosticCollection);

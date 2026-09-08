@@ -242,6 +242,18 @@ jobs:
           vsce package --allow-missing-repository
           ls -lh *.vsix
 
+      - name: Verify the MCP server was bundled
+        run: |
+          vsix=$(ls *.vsix | head -n 1)
+          for entry in extension/out/mcpServer.js extension/out/wasm/rq_wasm_bg.wasm; do
+            if ! unzip -l "$vsix" | grep -q "$entry"; then
+              echo "Error: $entry missing from $vsix"
+              unzip -l "$vsix"
+              exit 1
+            fi
+          done
+          echo "OK: MCP server and wasm bundled in $vsix"
+
       - name: Upload VSIX artifact
         uses: actions/upload-artifact@v7
         with:

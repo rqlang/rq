@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
 import * as rqClient from './rqClient';
 import * as path from 'path';
-import { normalizePath, applyTreeItemLoading } from './utils';
+import { normalizePath } from './utils';
+import { applyTreeItemLoading } from './vscodeUtils';
 
 export interface RequestInfo {
     name: string;

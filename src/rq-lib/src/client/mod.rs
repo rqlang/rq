@@ -1053,16 +1053,33 @@ impl RqClient {
         Ok(errors)
     }
 
+    pub fn check_source(
+        &self,
+        source: &str,
+        path: &Path,
+        env_name: Option<&str>,
+    ) -> Result<Vec<RqError>, RqError> {
+        let source_path = path.parent().unwrap_or(path);
+        let mut errors = Vec::new();
+        match RqFile::from_content(path.to_path_buf(), source, &*self.fs) {
+            Ok(rq_file) => errors.extend(self.check_variables(&rq_file, source_path, env_name)),
+            Err(e) => errors.push(Self::map_parse_error(e)),
+        }
+        Ok(errors)
+    }
+
     fn load_rq_file(&self, path: &Path) -> Result<RqFile, RqError> {
         let canonical = self.fs.canonicalize(path).map_err(RqError::Generic)?;
         let content = self.fs.read(&canonical).map_err(RqError::Generic)?;
-        RqFile::from_content(canonical, &content, &*self.fs).map_err(|e| {
-            if let Some(syntax_err) = e.downcast_ref::<crate::syntax::error::SyntaxError>() {
-                RqError::Syntax(syntax_err.clone())
-            } else {
-                RqError::Generic(e.to_string())
-            }
-        })
+        RqFile::from_content(canonical, &content, &*self.fs).map_err(Self::map_parse_error)
+    }
+
+    fn map_parse_error(error: Box<dyn std::error::Error>) -> RqError {
+        if let Some(syntax_err) = error.downcast_ref::<crate::syntax::error::SyntaxError>() {
+            RqError::Syntax(syntax_err.clone())
+        } else {
+            RqError::Generic(error.to_string())
+        }
     }
 
     fn load_rq_file_lenient(&self, path: &Path) -> Option<RqFile> {
@@ -1658,4 +1675,77 @@ fn extract_unresolved_var_name(message: &str) -> Option<String> {
         }
     }
     None
+}
+
+#[cfg(all(test, feature = "native"))]
+mod check_source_tests {
+    use super::RqClient;
+
+    #[test]
+    fn check_source_accepts_clean_request() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let target = RqClient::default()
+            .check_source(
+                "rq basic(\"http://localhost:8080/get\");\n",
+                &dir.path().join("draft.rq"),
+                None,
+            )
+            .expect("check_source failed");
+        assert!(target.is_empty());
+    }
+
+    #[test]
+    fn check_source_reports_syntax_error() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let target = RqClient::default()
+            .check_source(
+                "rq basic(\"http://localhost:8080/get\"\n",
+                &dir.path().join("draft.rq"),
+                None,
+            )
+            .expect("check_source failed");
+        assert_eq!(target.len(), 1);
+    }
+
+    #[test]
+    fn check_source_resolves_import_relative_to_draft_directory() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            dir.path().join("shared.rq"),
+            "env local {\n    base_url: \"http://localhost:8080\",\n}\n",
+        )
+        .expect("write shared");
+        let target = RqClient::default()
+            .check_source(
+                "import \"shared\";\n\nrq list(\"{{base_url}}/users\");\n",
+                &dir.path().join("draft.rq"),
+                Some("local"),
+            )
+            .expect("check_source failed");
+        assert!(target.is_empty(), "expected no errors, got {target:?}");
+    }
+
+    #[test]
+    fn check_source_reports_unresolvable_import() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let target = RqClient::default()
+            .check_source(
+                "import \"missing\";\n\nrq list(\"http://localhost:8080/users\");\n",
+                &dir.path().join("draft.rq"),
+                None,
+            )
+            .expect("check_source failed");
+        assert_eq!(target.len(), 1);
+        assert!(target[0].to_string().contains("missing"));
+    }
+
+    #[test]
+    fn check_source_does_not_write_draft_to_disk() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let draft = dir.path().join("draft.rq");
+        RqClient::default()
+            .check_source("rq basic(\"http://localhost:8080/get\");\n", &draft, None)
+            .expect("check_source failed");
+        assert!(!draft.exists());
+    }
 }

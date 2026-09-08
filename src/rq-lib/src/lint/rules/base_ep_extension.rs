@@ -1,4 +1,4 @@
-use crate::lint::{LintContext, LintDiagnostic, LintRule};
+use crate::lint::{endpoint_extensions, line_col, LintContext, LintDiagnostic, LintRule};
 
 pub struct Rule;
 
@@ -8,68 +8,55 @@ impl LintRule for Rule {
     }
 
     fn description(&self) -> &'static str {
-        "Endpoints using the `ep child<base>(…)` extension form duplicate the multi-file \
-         split pattern at parse level. Inline the URL directly into the consuming `ep`."
+        "An `ep child<base>(…)` chain whose base is used by a single endpoint adds indirection \
+         without value. Inline the URL. A base shared by two or more endpoints is the point of \
+         the extension form and is left alone."
     }
 
     fn check(&self, ctx: &LintContext, out: &mut Vec<LintDiagnostic>) {
-        for (idx, line_str) in ctx.source.lines().enumerate() {
-            let trimmed = line_str.trim_start();
-            if !trimmed.starts_with("ep ") {
+        let extensions = endpoint_extensions(ctx.source);
+        for extension in &extensions {
+            let consumers = count_consumers(ctx, &extensions, &extension.base);
+            if consumers >= 2 {
                 continue;
             }
-            let Some(angle_col) = find_extension_angle(trimmed) else {
-                continue;
-            };
-            let leading = line_str.len() - trimmed.len();
+            let (line, column) = line_col(ctx.source, extension.offset);
             out.push(LintDiagnostic {
                 severity: "error",
                 rule: "base_ep_extension",
-                message: "Endpoint uses the `ep child<base>(…)` extension form. \
-                          Inline the URL directly into the consuming `ep` instead — \
-                          extension chains add indirection without value for most cases."
-                    .into(),
-                line: idx + 1,
-                column: leading + angle_col + 1,
-                file: Some(ctx.display_path.to_string()),
-                suggested_fix: Some(
-                    "Rewrite as `ep child(\"<full URL>\") { ... }` without the `<base>` chain."
-                        .into(),
+                message: format!(
+                    "`ep {child}` extends `{base}`, but `{base}` is used by only this one \
+                     endpoint. A one-consumer extension chain adds indirection without value — \
+                     inline the URL directly into `ep {child}`. Keep the chain only once a \
+                     second endpoint extends the same base.",
+                    child = extension.child,
+                    base = extension.base,
                 ),
+                line,
+                column,
+                file: Some(ctx.display_path.to_string()),
+                suggested_fix: Some(format!(
+                    "Rewrite as `ep {child}(\"<full URL>\") {{ ... }}` without the `<{base}>` chain.",
+                    child = extension.child,
+                    base = extension.base,
+                )),
             });
         }
     }
 }
 
-fn find_extension_angle(line_after_trim: &str) -> Option<usize> {
-    let after_ep = &line_after_trim[3..];
-    let mut chars = after_ep.char_indices();
-    while let Some((i, ch)) = chars.next() {
-        if ch.is_whitespace() {
-            continue;
-        }
-        if !is_ident_char(ch) {
-            return None;
-        }
-        let name_start = i;
-        let mut last_ident_end = i + ch.len_utf8();
-        for (j, c) in chars.by_ref() {
-            if is_ident_char(c) {
-                last_ident_end = j + c.len_utf8();
-                continue;
-            }
-            if c == '<' {
-                return Some(3 + name_start + (last_ident_end - name_start));
-            }
-            return None;
-        }
-        return None;
-    }
-    None
-}
-
-fn is_ident_char(c: char) -> bool {
-    c.is_ascii_alphanumeric() || c == '_'
+fn count_consumers(
+    ctx: &LintContext,
+    extensions: &[crate::lint::EndpointExtension],
+    base: &str,
+) -> usize {
+    let local = extensions.iter().filter(|e| e.base == base).count();
+    let workspace = ctx
+        .workspace_endpoints
+        .iter()
+        .filter(|e| e.extends.as_deref() == Some(base))
+        .count();
+    local + workspace
 }
 
 #[cfg(test)]
@@ -77,7 +64,7 @@ mod tests {
     use crate::lint::lint;
 
     #[test]
-    fn flags_ep_with_base_extension() {
+    fn flags_ep_with_base_extension_used_once() {
         let src = "ep base(\"http://x\");\nep users<base>(\"/users\") {\n    rq list();\n}\n";
         let target = lint(src, None, None);
         assert!(
@@ -85,6 +72,43 @@ mod tests {
                 .diagnostics
                 .iter()
                 .any(|d| d.rule == "base_ep_extension"),
+            "got: {:?}",
+            target.diagnostics
+        );
+    }
+
+    #[test]
+    fn does_not_flag_a_base_shared_by_two_endpoints() {
+        let src = "ep base(\"http://x\");\n\
+                   ep users<base>(\"/users\") {\n    rq list();\n}\n\
+                   ep widgets<base>(\"/widgets\") {\n    rq list();\n}\n";
+        let target = lint(src, None, None);
+        assert!(
+            target
+                .diagnostics
+                .iter()
+                .all(|d| d.rule != "base_ep_extension"),
+            "a base with two consumers is the point of the extension form: {:?}",
+            target.diagnostics
+        );
+    }
+
+    #[test]
+    fn does_not_flag_a_base_whose_second_consumer_is_another_file() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            dir.path().join("widgets.rq"),
+            "ep base(\"http://x\");\nep widgets<base>(\"/widgets\") {\n    rq list();\n}\n",
+        )
+        .expect("write widgets");
+        let draft = dir.path().join("users.rq");
+        let src = "ep base(\"http://x\");\nep users<base>(\"/users\") {\n    rq list();\n}\n";
+        let target = lint(src, draft.to_str(), Some(dir.path()));
+        assert!(
+            target
+                .diagnostics
+                .iter()
+                .all(|d| d.rule != "base_ep_extension"),
             "got: {:?}",
             target.diagnostics
         );

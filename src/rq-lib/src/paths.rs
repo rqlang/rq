@@ -15,6 +15,14 @@ pub fn clean_path(path: &Path) -> String {
     clean_path_str(&s).to_string()
 }
 
+const SKIPPED_DIRECTORIES: &[&str] = &["node_modules", ".git", "target"];
+
+pub fn is_skipped_directory(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| SKIPPED_DIRECTORIES.contains(&name))
+}
+
 pub fn resolve_under_workspace(logical: &Path, workspace: Option<&Path>) -> PathBuf {
     let Some(workspace) = workspace else {
         return logical.to_path_buf();
@@ -42,8 +50,28 @@ fn workspace_root(workspace: &Path) -> &Path {
 
 #[cfg(test)]
 mod tests {
-    use super::resolve_under_workspace;
+    use super::{is_skipped_directory, resolve_under_workspace};
     use std::path::{Path, PathBuf};
+
+    #[test]
+    fn skips_dependency_and_build_directories() {
+        for name in ["node_modules", ".git", "target"] {
+            assert!(
+                is_skipped_directory(Path::new("/workspace").join(name).as_path()),
+                "`{name}` must be skipped"
+            );
+        }
+    }
+
+    #[test]
+    fn does_not_skip_an_ordinary_directory() {
+        assert!(!is_skipped_directory(Path::new("/workspace/api")));
+    }
+
+    #[test]
+    fn does_not_skip_a_directory_merely_containing_a_skipped_name() {
+        assert!(!is_skipped_directory(Path::new("/workspace/target_api")));
+    }
 
     #[test]
     fn keeps_the_logical_path_when_there_is_no_workspace() {

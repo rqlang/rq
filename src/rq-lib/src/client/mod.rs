@@ -1200,6 +1200,9 @@ impl RqClient {
         }
         for path in self.fs.read_dir(dir).map_err(RqError::Generic)? {
             if self.fs.is_dir(&path) {
+                if crate::paths::is_skipped_directory(&path) {
+                    continue;
+                }
                 self.collect_rq_paths(&path, paths)?;
             } else if path.extension().and_then(|s| s.to_str()) == Some("rq") {
                 paths.push(path);

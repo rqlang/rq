@@ -418,6 +418,9 @@ fn walk_rq_files(root: &std::path::Path, visit: &mut dyn FnMut(&std::path::Path)
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
+            if crate::paths::is_skipped_directory(&path) {
+                continue;
+            }
             walk_rq_files(&path, visit);
         } else if path.extension().and_then(|s| s.to_str()) == Some("rq") {
             visit(&path);
@@ -449,11 +452,21 @@ mod tests {
 
     fn nested_workspace(files: &[(&str, &str)]) -> tempfile::TempDir {
         let dir = tempfile::tempdir().expect("tempdir");
-        std::fs::create_dir_all(dir.path().join("api")).expect("mkdir");
         for (name, content) in files {
-            std::fs::write(dir.path().join(name), content).expect("write");
+            let path = dir.path().join(name);
+            std::fs::create_dir_all(path.parent().expect("parent")).expect("mkdir");
+            std::fs::write(path, content).expect("write");
         }
+        std::fs::create_dir_all(dir.path().join("api")).expect("mkdir");
         dir
+    }
+
+    fn workspace_rules(dir: &tempfile::TempDir, draft: &str) -> Vec<String> {
+        lint(draft, Some("api/users.rq"), Some(dir.path()))
+            .diagnostics
+            .into_iter()
+            .map(|d| d.rule.to_string())
+            .collect()
     }
 
     fn lint_source(source: &str) -> Vec<String> {
@@ -559,6 +572,32 @@ mod tests {
             target.diagnostics[0].file.as_deref(),
             Some("api/users.rq"),
             "diagnostics keep the logical path the caller passed"
+        );
+    }
+
+    #[test]
+    fn does_not_walk_into_dependency_and_build_directories() {
+        let peer = "rq fetch_users(\"http://localhost:8080/users\");\n";
+        for skipped in ["node_modules", ".git", "target"] {
+            let dir = nested_workspace(&[(&format!("{skipped}/dep.rq"), peer)]);
+            let rules = workspace_rules(&dir, "rq list(\"http://localhost:8080/users\");\n");
+            assert!(
+                !rules.contains(&"top_level_rq_should_be_ep".to_string()),
+                "`{skipped}` must not be scanned as workspace source, got {rules:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn still_walks_ordinary_nested_directories() {
+        let dir = nested_workspace(&[(
+            "vendor/dep.rq",
+            "rq fetch_users(\"http://localhost:8080/users\");\n",
+        )]);
+        let rules = workspace_rules(&dir, "rq list(\"http://localhost:8080/users\");\n");
+        assert!(
+            rules.contains(&"top_level_rq_should_be_ep".to_string()),
+            "an ordinary subdirectory is still workspace source, got {rules:?}"
         );
     }
 }

@@ -78,6 +78,14 @@ export function mirrorToTemp(folderPath: string, overrides: Map<string, string>)
     return tempDir;
 }
 
+export async function isDirectory(target: string): Promise<boolean> {
+    try {
+        return (await fs.promises.stat(target)).isDirectory();
+    } catch {
+        return false;
+    }
+}
+
 export async function directoryOf(source: string): Promise<string> {
     try {
         const stat = await fs.promises.stat(source);

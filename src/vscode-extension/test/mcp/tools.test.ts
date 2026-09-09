@@ -47,6 +47,34 @@ describe('workspaceFor', () => {
     it('falls back to the working directory', async () => {
         await expect(workspaceFor(undefined, undefined)).resolves.toBe(process.cwd().replace(/\\/g, '/'));
     });
+
+    it('derives the parent directory of an absolute draft that exists on disk', async () => {
+        const target = await workspaceFor(undefined, path.join(workspace, 'widgets.rq'));
+        expect(target).toBe(workspace.replace(/\\/g, '/'));
+    });
+
+    it('derives the parent directory of an absolute draft that is not on disk yet', async () => {
+        const target = await workspaceFor(undefined, path.join(workspace, 'unsaved.rq'));
+        expect(target).toBe(workspace.replace(/\\/g, '/'));
+    });
+
+    it('keeps an absolute path that is itself a directory', async () => {
+        await expect(workspaceFor(undefined, workspace)).resolves.toBe(workspace.replace(/\\/g, '/'));
+    });
+});
+
+describe('validateRq for an unsaved draft', () => {
+    it('scans the sibling files of the draft so imports can resolve', async () => {
+        mockCheck.mockReturnValue(JSON.stringify({ errors: [] }));
+
+        await validateRq({ source: 'import "widgets";\n', path: path.join(workspace, 'unsaved.rq') });
+
+        const [filesJson] = mockCheck.mock.calls[0];
+        const files = JSON.parse(filesJson) as Record<string, string>;
+        expect(Object.keys(files).sort()).toEqual(
+            [`${workspace}/unsaved.rq`, `${workspace}/widgets.rq`].map(f => f.replace(/\\/g, '/')).sort()
+        );
+    });
 });
 
 describe('lintRq', () => {

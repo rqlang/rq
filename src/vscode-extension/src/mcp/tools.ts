@@ -1,6 +1,6 @@
 import * as path from 'path';
 import { setWasmTransport, wasmCall } from '../wasmHost';
-import { buildFilesMap, buildSecretsMap, directoryOf, normalizePath } from '../utils';
+import { buildFilesMap, buildSecretsMap, isDirectory, normalizePath } from '../utils';
 
 const DRAFT_FILE_NAME = 'draft.rq';
 
@@ -34,7 +34,9 @@ export function draftPath(workspacePath: string, filePath: string | undefined): 
 
 export async function workspaceFor(workspacePath?: string, filePath?: string): Promise<string> {
     if (workspacePath) { return posix(workspacePath); }
-    if (filePath && path.isAbsolute(filePath)) { return posix(await directoryOf(filePath)); }
+    if (filePath && path.isAbsolute(filePath)) {
+        return posix((await isDirectory(filePath)) ? filePath : path.dirname(filePath));
+    }
     return posix(process.cwd());
 }
 

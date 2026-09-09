@@ -59,10 +59,6 @@ fn single_brace_occurrences(source: &str) -> Vec<(String, usize)> {
                 index += 2;
                 continue;
             }
-            if index > 0 && bytes[index - 1] == b'$' {
-                index += 1;
-                continue;
-            }
             match read_identifier(bytes, index + 1) {
                 Some((name, end)) if bytes.get(end) == Some(&b'}') => {
                     found.push((name, token.span.start + index));
@@ -124,6 +120,25 @@ mod tests {
     fn does_not_flag_double_brace_interpolation() {
         let src = "let widget_id = \"1\";\nrq get(\"http://x/widgets/{{widget_id}}\");\n";
         assert!(!has_rule(src));
+    }
+
+    #[test]
+    fn flags_a_dollar_brace_inside_a_string() {
+        let src = "rq get(\"https://x/${user_id}\");\n";
+        let target = lint(src, None, None);
+        let diagnostic = target
+            .diagnostics
+            .iter()
+            .find(|d| d.rule == "single_brace_interpolation")
+            .expect("`${user_id}` inside a string is literal text, not interpolation");
+        assert!(diagnostic.message.contains("{{user_id}}"));
+    }
+
+    #[test]
+    fn flags_a_dollar_brace_in_a_header_value() {
+        assert!(has_rule(
+            "rq get(\"http://x\", headers: $[\"X-Tenant\": \"${tenant}\"]);\n"
+        ));
     }
 
     #[test]

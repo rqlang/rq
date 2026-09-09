@@ -1,4 +1,5 @@
 use crate::lint::{line_col, significant_tokens, LintContext, LintDiagnostic, LintRule};
+use crate::syntax::keywords::PUNC_DOLLAR;
 use crate::syntax::token::TokenType;
 
 pub struct Rule;
@@ -49,30 +50,50 @@ impl LintRule for Rule {
 fn bearer_auth_headers(source: &str) -> Vec<(String, usize)> {
     let significant = significant_tokens(source);
     let mut found = Vec::new();
-    for window in significant.windows(3) {
-        let [key, colon, value] = window else {
-            continue;
-        };
-        if colon.token_type != TokenType::Punctuation || colon.value != ":" {
+    let mut open_delimiters: Vec<bool> = Vec::new();
+    for (index, token) in significant.iter().enumerate() {
+        if token.token_type != TokenType::Punctuation {
             continue;
         }
-        if key.token_type != TokenType::String || value.token_type != TokenType::String {
-            continue;
+        match token.value.as_str() {
+            "[" => open_delimiters.push(opens_header_map(&significant, index)),
+            "{" | "(" => open_delimiters.push(false),
+            "]" | "}" | ")" => {
+                open_delimiters.pop();
+            }
+            ":" if open_delimiters.last() == Some(&true) => {
+                if let Some(entry) = bearer_header_at(&significant, index) {
+                    found.push(entry);
+                }
+            }
+            _ => {}
         }
-        let (Some(name), Some(header_value)) =
-            (string_content(&key.value), string_content(&value.value))
-        else {
-            continue;
-        };
-        if !name.trim().eq_ignore_ascii_case(AUTH_HEADER) {
-            continue;
-        }
-        let Some(token) = strip_bearer_scheme(header_value.trim()) else {
-            continue;
-        };
-        found.push((token_reference(&token), key.span.start));
     }
     found
+}
+
+fn opens_header_map(significant: &[crate::syntax::token::Token], bracket: usize) -> bool {
+    let Some(previous) = bracket.checked_sub(1).and_then(|i| significant.get(i)) else {
+        return false;
+    };
+    previous.token_type == TokenType::Punctuation && previous.value == PUNC_DOLLAR
+}
+
+fn bearer_header_at(
+    significant: &[crate::syntax::token::Token],
+    colon: usize,
+) -> Option<(String, usize)> {
+    let key = significant.get(colon.checked_sub(1)?)?;
+    let value = significant.get(colon + 1)?;
+    if key.token_type != TokenType::String || value.token_type != TokenType::String {
+        return None;
+    }
+    let (name, header_value) = (string_content(&key.value)?, string_content(&value.value)?);
+    if !name.trim().eq_ignore_ascii_case(AUTH_HEADER) {
+        return None;
+    }
+    let token = strip_bearer_scheme(header_value.trim())?;
+    Some((token_reference(&token), key.span.start))
 }
 
 fn strip_bearer_scheme(value: &str) -> Option<String> {
@@ -180,6 +201,38 @@ mod tests {
     fn flags_a_header_declared_in_a_headers_variable() {
         let src = "let common = $[\"Authorization\": \"Bearer {{token}}\"];\nrq list(\"http://x\", headers: common);\n";
         assert_eq!(diagnostics_for(src).len(), 1);
+    }
+
+    #[test]
+    fn does_not_flag_an_authorization_property_in_a_json_body() {
+        let src =
+            "rq post(\"http://x\", body: ${\"Authorization\": \"Bearer delegated-token\"});\n";
+        let target = diagnostics_for(src);
+        assert!(
+            target.is_empty(),
+            "a JSON body property is not an HTTP header: {target:?}"
+        );
+    }
+
+    #[test]
+    fn does_not_flag_an_authorization_property_nested_in_a_json_body() {
+        let src =
+            "rq post(\"http://x\", body: ${\"forward\": {\"Authorization\": \"Bearer x\"}});\n";
+        let target = diagnostics_for(src);
+        assert!(target.is_empty(), "got: {target:?}");
+    }
+
+    #[test]
+    fn flags_the_header_when_a_json_body_carries_the_same_property() {
+        let src = "rq post(\"http://x\", headers: $[\"Authorization\": \"Bearer {{token}}\"], \
+                   body: ${\"Authorization\": \"Bearer delegated-token\"});\n";
+        let target = diagnostics_for(src);
+        assert_eq!(
+            target.len(),
+            1,
+            "only the header is a manual header: {target:?}"
+        );
+        assert!(target[0].message.contains("{{token}}"));
     }
 
     #[test]

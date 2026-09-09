@@ -195,7 +195,10 @@ fn describe_overlap(endpoint: &EndpointDefinition, peer: &EndpointSummary) -> Op
 
 fn common_url_prefix(left: &str, right: &str) -> Option<String> {
     let (left_scheme, left_rest) = split_scheme(left);
-    let (_, right_rest) = split_scheme(right);
+    let (right_scheme, right_rest) = split_scheme(right);
+    if left_scheme != right_scheme {
+        return None;
+    }
     let left_segments: Vec<&str> = left_rest.split('/').collect();
     let right_segments: Vec<&str> = right_rest.split('/').collect();
 
@@ -253,6 +256,25 @@ mod tests {
         assert!(target[0]
             .message
             .contains("base URL `http://localhost:8080`"));
+    }
+
+    #[test]
+    fn does_not_flag_two_endpoints_whose_schemes_differ() {
+        let src = "ep users(\"http://api.example/users\") {\n    rq list();\n}\n\n\
+                   ep widgets(\"https://api.example/widgets\") {\n    rq list();\n}\n";
+        let target = diagnostics_for(src, Some("api.rq"));
+        assert!(
+            target.is_empty(),
+            "a shared template would change one endpoint's scheme: {target:?}"
+        );
+    }
+
+    #[test]
+    fn does_not_flag_a_schemeless_url_against_an_absolute_one() {
+        let src = "ep users(\"http://api.example/users\") {\n    rq list();\n}\n\n\
+                   ep widgets(\"api.example/widgets\") {\n    rq list();\n}\n";
+        let target = diagnostics_for(src, Some("api.rq"));
+        assert!(target.is_empty(), "got: {target:?}");
     }
 
     #[test]

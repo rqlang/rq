@@ -366,33 +366,16 @@ fn validate_source(
 }
 
 fn resolve_draft_path(path: Option<&str>, workspace_path: Option<&str>) -> Result<PathBuf, String> {
-    let file_name = path
-        .map(Path::new)
-        .and_then(Path::file_name)
+    let logical = path
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from(DRAFT_FILE_NAME));
-    Ok(resolve_draft_dir(path, workspace_path)?.join(file_name))
-}
-
-fn resolve_draft_dir(path: Option<&str>, workspace_path: Option<&str>) -> Result<PathBuf, String> {
-    if let Some(workspace) = workspace_path.map(Path::new) {
-        let dir = if workspace.is_file() {
-            workspace.parent().unwrap_or(workspace)
-        } else {
-            workspace
-        };
-        return Ok(dir.to_path_buf());
+    let resolved = rq_lib::paths::resolve_under_workspace(&logical, workspace_path.map(Path::new));
+    if resolved.is_absolute() {
+        return Ok(resolved);
     }
-    let parent = path
-        .map(Path::new)
-        .and_then(Path::parent)
-        .filter(|p| !p.as_os_str().is_empty());
-    match parent {
-        Some(dir) => Ok(dir.to_path_buf()),
-        None => {
-            std::env::current_dir().map_err(|e| format!("current directory is unavailable: {e}"))
-        }
-    }
+    let cwd =
+        std::env::current_dir().map_err(|e| format!("current directory is unavailable: {e}"))?;
+    Ok(cwd.join(resolved))
 }
 
 fn map_diagnostic(error: RqError, display_path: &str) -> ValidateDiagnostic {
@@ -632,6 +615,39 @@ mod tests {
             0,
             "validation must not create files in the workspace"
         );
+    }
+
+    #[test]
+    fn validate_source_resolves_an_import_next_to_a_relative_draft_in_a_subdirectory() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::create_dir_all(dir.path().join("api")).expect("mkdir");
+        std::fs::write(
+            dir.path().join("api/shared.rq"),
+            "ep base(url: \"http://localhost:8080\");\n",
+        )
+        .expect("write");
+        let target = validate_source(
+            "import \"shared\";\n\nep users<base>(\"/users\") {\n    rq list();\n}\n",
+            Some("api/users.rq"),
+            dir.path().to_str(),
+            None,
+        )
+        .expect("validate_source failed");
+        assert!(target.ok, "expected ok, got {:?}", target.diagnostics);
+    }
+
+    #[test]
+    fn resolve_draft_path_preserves_the_subdirectory_of_a_relative_path() {
+        let target =
+            resolve_draft_path(Some("api/users.rq"), Some("/workspace")).expect("resolve failed");
+        assert_eq!(target, PathBuf::from("/workspace/api/users.rq"));
+    }
+
+    #[test]
+    fn resolve_draft_path_keeps_an_absolute_path_already_inside_the_workspace() {
+        let target = resolve_draft_path(Some("/workspace/api/users.rq"), Some("/workspace"))
+            .expect("resolve failed");
+        assert_eq!(target, PathBuf::from("/workspace/api/users.rq"));
     }
 
     #[test]

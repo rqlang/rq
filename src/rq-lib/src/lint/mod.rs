@@ -68,11 +68,12 @@ pub fn lint(
     workspace_path: Option<&std::path::Path>,
 ) -> LintResult {
     use crate::native::NativeFs;
-    use std::path::PathBuf;
     let display_path = path.unwrap_or("<inline>");
-    let rq_file = RqFile::from_content_lenient(PathBuf::from(display_path), source, &NativeFs);
+    let source_path =
+        crate::paths::resolve_under_workspace(std::path::Path::new(display_path), workspace_path);
+    let rq_file = RqFile::from_content_lenient(source_path.clone(), source, &NativeFs);
     let (workspace_requests, workspace_endpoints) = workspace_path
-        .map(|w| collect_workspace(w, path.map(std::path::Path::new), &rq_file))
+        .map(|w| collect_workspace(w, path.map(|_| source_path.as_path()), &rq_file))
         .unwrap_or_default();
     lint_rq_file(
         &rq_file,
@@ -228,7 +229,7 @@ pub fn local_endpoints<'a>(ctx: &'a LintContext) -> Vec<&'a EndpointDefinition> 
         .endpoints
         .values()
         .filter(|e| !e.is_template)
-        .filter(|e| declared_in(e, std::path::Path::new(ctx.display_path)))
+        .filter(|e| declared_in(e, &ctx.rq_file.path))
         .collect();
     declared.sort_by_key(|e| (e.line, e.character));
     declared
@@ -246,7 +247,7 @@ pub fn endpoint_children<'a>(
                 .iter()
                 .map(|r| &r.request)
                 .filter(|r| r.endpoint.as_deref() == Some(endpoint.name.as_str()))
-                .filter(|r| request_declared_in(r, std::path::Path::new(ctx.display_path)))
+                .filter(|r| request_declared_in(r, &ctx.rq_file.path))
                 .collect();
             (endpoint, children)
         })
@@ -441,10 +442,19 @@ fn line_col(source: &str, offset: usize) -> (usize, usize) {
 
 #[cfg(test)]
 mod tests {
-    use super::lint_rq_file;
+    use super::{lint, lint_rq_file};
     use crate::native::NativeFs;
     use crate::syntax::rq_file::RqFile;
     use std::path::PathBuf;
+
+    fn nested_workspace(files: &[(&str, &str)]) -> tempfile::TempDir {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::create_dir_all(dir.path().join("api")).expect("mkdir");
+        for (name, content) in files {
+            std::fs::write(dir.path().join(name), content).expect("write");
+        }
+        dir
+    }
 
     fn lint_source(source: &str) -> Vec<String> {
         let rq_file = RqFile::from_content_lenient(PathBuf::from("draft.rq"), source, &NativeFs);
@@ -501,5 +511,54 @@ mod tests {
                       rq get(widget_id);\n}\n";
         let rules = lint_source(source);
         assert!(rules.is_empty(), "expected no diagnostics, got {rules:?}");
+    }
+
+    #[test]
+    fn skips_the_on_disk_draft_when_its_path_is_relative_to_the_workspace() {
+        let dir = nested_workspace(&[(
+            "api/users.rq",
+            "rq list_users(\"http://localhost:8080/users\");\n",
+        )]);
+        let draft = "rq fetch_users(\"http://localhost:8080/users\");\n";
+        let rules: Vec<String> = lint(draft, Some("api/users.rq"), Some(dir.path()))
+            .diagnostics
+            .into_iter()
+            .map(|d| d.rule.to_string())
+            .collect();
+        assert!(
+            !rules.contains(&"top_level_rq_should_be_ep".to_string()),
+            "the draft must not be absorbed as its own workspace peer, got {rules:?}"
+        );
+    }
+
+    #[test]
+    fn resolves_imports_of_a_relative_draft_against_the_workspace() {
+        let dir = nested_workspace(&[(
+            "api/shared.rq",
+            "ep base(url: \"http://localhost:8080\", qs: \"v=1\");\n",
+        )]);
+        let draft =
+            "import \"shared\";\n\nep users<base>(\"/users\", qs: \"v=1\") {\n    rq list();\n}\n";
+        let rules: Vec<String> = lint(draft, Some("api/users.rq"), Some(dir.path()))
+            .diagnostics
+            .into_iter()
+            .map(|d| d.rule.to_string())
+            .collect();
+        assert!(
+            rules.contains(&"duplicated_ep_config".to_string()),
+            "the imported template must resolve under the workspace, got {rules:?}"
+        );
+    }
+
+    #[test]
+    fn reports_the_logical_path_even_when_it_is_resolved_under_the_workspace() {
+        let dir = nested_workspace(&[]);
+        let draft = "rq list(\"\");\n";
+        let target = lint(draft, Some("api/users.rq"), Some(dir.path()));
+        assert_eq!(
+            target.diagnostics[0].file.as_deref(),
+            Some("api/users.rq"),
+            "diagnostics keep the logical path the caller passed"
+        );
     }
 }

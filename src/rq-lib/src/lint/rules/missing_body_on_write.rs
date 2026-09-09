@@ -15,10 +15,10 @@ impl LintRule for Rule {
     fn check(&self, ctx: &LintContext, out: &mut Vec<LintDiagnostic>) {
         for req_with_vars in &ctx.rq_file.requests {
             let request = &req_with_vars.request;
-            let bare = bare_request_name(&request.name);
-            let Some(verb) = detect_write_verb(&request.method, bare) else {
+            let Some(verb) = write_verb(&request.method) else {
                 continue;
             };
+            let bare = bare_request_name(&request.name);
             if request.body.is_some() {
                 continue;
             }
@@ -42,27 +42,12 @@ impl LintRule for Rule {
     }
 }
 
-fn detect_write_verb(method: &HttpMethod, bare_name: &str) -> Option<&'static str> {
-    if matches!(method, HttpMethod::POST) {
-        return Some("POST");
-    }
-    if matches!(method, HttpMethod::PUT) {
-        return Some("PUT");
-    }
-    if matches!(method, HttpMethod::PATCH) {
-        return Some("PATCH");
-    }
-    let lower = bare_name.to_lowercase();
-    if lower.starts_with("post_") || lower == "post" {
-        return Some("POST");
-    }
-    if lower.starts_with("put_") || lower == "put" {
-        return Some("PUT");
-    }
-    if lower.starts_with("patch_") || lower == "patch" {
-        return Some("PATCH");
-    }
-    None
+fn write_verb(method: &HttpMethod) -> Option<&'static str> {
+    matches!(
+        method,
+        HttpMethod::POST | HttpMethod::PUT | HttpMethod::PATCH
+    )
+    .then(|| method.as_str())
 }
 
 fn bare_request_name(qualified: &str) -> &str {
@@ -73,31 +58,47 @@ fn bare_request_name(qualified: &str) -> &str {
 mod tests {
     use crate::lint::lint;
 
+    fn flags_missing_body(src: &str) -> bool {
+        lint(src, None, None)
+            .diagnostics
+            .iter()
+            .any(|d| d.rule == "missing_body_on_write")
+    }
+
     #[test]
-    fn flags_post_without_body() {
-        let src = "rq post_user(\"http://x/users\");\n";
-        let target = lint(src, None, None);
-        assert!(
-            target
-                .diagnostics
-                .iter()
-                .any(|d| d.rule == "missing_body_on_write"),
-            "got: {:?}",
-            target.diagnostics
-        );
+    fn flags_a_post_named_after_the_verb_without_body() {
+        assert!(flags_missing_body(
+            "ep users(\"http://x/users\") {\n    rq post();\n}\n"
+        ));
+    }
+
+    #[test]
+    fn flags_a_post_declared_by_attribute_without_body() {
+        assert!(flags_missing_body(
+            "[method(POST)]\nrq post_user(\"http://x/users\");\n"
+        ));
     }
 
     #[test]
     fn does_not_flag_post_with_body() {
-        let src = "rq post_user(\"http://x/users\", body: ${});\n";
-        let target = lint(src, None, None);
+        assert!(!flags_missing_body(
+            "[method(POST)]\nrq post_user(\"http://x/users\", body: ${});\n"
+        ));
+    }
+
+    #[test]
+    fn does_not_flag_a_get_whose_name_merely_starts_with_a_write_verb() {
         assert!(
-            target
-                .diagnostics
-                .iter()
-                .all(|d| d.rule != "missing_body_on_write"),
-            "got: {:?}",
-            target.diagnostics
+            !flags_missing_body("rq post_user(\"http://x/users\");\n"),
+            "`post_user` is not a recognised method name, so the request runs as a GET"
+        );
+    }
+
+    #[test]
+    fn does_not_flag_a_request_explicitly_declared_as_get() {
+        assert!(
+            !flags_missing_body("[method(GET)]\nrq post_user(\"http://x/users\");\n"),
+            "an explicit method attribute must win over the request name"
         );
     }
 

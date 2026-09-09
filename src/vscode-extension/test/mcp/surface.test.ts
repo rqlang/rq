@@ -1,4 +1,4 @@
-import { buildGenerateRqPrompt, RESOURCE_BODIES, surface } from '../../src/mcp/surface';
+import { buildGenerateRqPrompt, render, RESOURCE_BODIES, surface } from '../../src/mcp/surface';
 
 describe('shared MCP surface', () => {
     it('declares the three tools the Rust server also serves', () => {
@@ -15,6 +15,15 @@ describe('shared MCP surface', () => {
         const idioms = RESOURCE_BODIES[surface.resources['idioms'].uri];
         expect(idioms).toContain('Never hand-write an `Authorization` header');
         expect(idioms).toContain('goes on the `ep`, not on each `rq`');
+    });
+});
+
+describe('server instructions', () => {
+    it('advertises both resource URIs with no unresolved placeholders', () => {
+        const target = render(surface.instructions);
+        expect(target).not.toMatch(/\{(language_definition_uri|idioms_uri)\}/);
+        expect(target).toContain(surface.resources['language-definition'].uri);
+        expect(target).toContain(surface.resources['idioms'].uri);
     });
 });
 

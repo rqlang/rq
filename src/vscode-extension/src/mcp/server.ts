@@ -1,7 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { buildGenerateRqPrompt, RESOURCE_BODIES, surface } from './surface';
+import { buildGenerateRqPrompt, render, RESOURCE_BODIES, surface } from './surface';
 import { listRequests, lintRq, useDirectWasm, validateRq } from './tools';
 
 const SERVER_NAME = 'rq-mcp';
@@ -18,7 +18,7 @@ function errorResult(message: string) {
 export function createServer(): McpServer {
     const server = new McpServer(
         { name: SERVER_NAME, version: SERVER_VERSION },
-        { instructions: surface.instructions, capabilities: { tools: {}, resources: {}, prompts: {} } }
+        { instructions: render(surface.instructions), capabilities: { tools: {}, resources: {}, prompts: {} } }
     );
 
     server.registerTool('validate_rq', {

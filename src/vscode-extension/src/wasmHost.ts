@@ -8,6 +8,7 @@ type WasmMethod =
     | 'list_endpoints'
     | 'list_variables'
     | 'check'
+    | 'lint'
     | 'get_request_details'
     | 'get_auth_details'
     | 'get_environment'
@@ -38,8 +39,21 @@ let nextId = 1;
 const pending = new Map<number, PendingCall>();
 let syncWasm: SyncWasmModule | null = null;
 
+export type WasmTransport = 'worker' | 'direct';
+
+let transport: WasmTransport | undefined;
+
+export function setWasmTransport(mode: WasmTransport): void {
+    transport = mode;
+}
+
 function isJestEnvironment(): boolean {
     return typeof process.env.JEST_WORKER_ID !== 'undefined';
+}
+
+function activeTransport(): WasmTransport {
+    if (transport) { return transport; }
+    return isJestEnvironment() ? 'direct' : 'worker';
 }
 
 function getSyncWasm(): SyncWasmModule {
@@ -82,7 +96,7 @@ function getWorker(): Worker {
 }
 
 export function wasmCall(method: WasmMethod, args: unknown[]): Promise<string> {
-    if (isJestEnvironment()) {
+    if (activeTransport() === 'direct') {
         try {
             return Promise.resolve(getSyncWasm()[method](...args));
         } catch (err) {
@@ -103,7 +117,7 @@ export function wasmCall(method: WasmMethod, args: unknown[]): Promise<string> {
 }
 
 export function initWasmHost(): void {
-    if (isJestEnvironment()) { return; }
+    if (activeTransport() === 'direct') { return; }
     getWorker();
 }
 

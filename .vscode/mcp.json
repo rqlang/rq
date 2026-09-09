@@ -1,0 +1,12 @@
+{
+  "servers": {
+    "rq-mcp": {
+      "type": "stdio",
+      "command": "${workspaceFolder}/target/debug/rq-mcp",
+      "env": {
+        "RUST_LOG": "debug",
+        "RUST_BACKTRACE": "1"
+      }
+    }
+  }
+}

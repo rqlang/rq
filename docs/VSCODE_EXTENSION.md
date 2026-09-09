@@ -106,6 +106,32 @@ Errors are surfaced in two places depending on their nature:
 - **Problems panel**: Parse and semantic errors (missing braces, invalid attributes, unknown auth fields, duplicate identifiers, missing variables, etc.) are reported with file, line, and column as you type. These are detected by the language server in real time — no need to trigger a request to see them.
 - **Output panel**: Errors that occur at execution time (for example, a failed HTTP request, a runtime interpolation error, or an auth flow problem) are written to the **RQ** output channel. Open it via **View → Output** and select **RQ** from the dropdown to see execution logs and error details.
 
+## Idiom linting
+
+Beyond parse and semantic errors, the extension runs rq's idiom and style rules over the `.rq` files you have open and reports them in the Problems panel as **warnings**, so they never get confused with real syntax errors.
+
+Each finding carries the rule that produced it (`empty_url_string`, `duplicated_ep_config`, `manual_auth_header`, …) and, where the fix is mechanical, a suggested rewrite appended to the message. Filter them in the Problems panel by the `rq lint` source.
+
+Rules are workspace-aware: an endpoint that duplicates a query string or an auth provider already declared by a sibling `.rq` file is flagged even when that sibling is not open. Unsaved edits are linted as you type — the linter sees the buffer, not the file on disk.
+
+Set `rq.lint.enabled` to `false` to turn the warnings off; parse and semantic errors are unaffected.
+
+## AI assistance (MCP server)
+
+The extension bundles `rq-mcp`, an [MCP](https://modelcontextprotocol.io) server that teaches AI assistants how to write `.rq` files correctly. It is registered automatically on activation — nothing to install or configure.
+
+Once the extension is active, Copilot Chat and any other MCP-aware chat in VS Code can use:
+
+- `validate_rq` — parse and analyze a snippet, returning syntax and semantic diagnostics
+- `lint_rq` — idiom and style rules, returning rule-tagged diagnostics with suggested fixes
+- `list_requests` — enumerate the named requests under a path, so generated names do not collide
+
+It also publishes the language definition and the idioms guide as resources, and a `generate_rq` prompt that drives the whole generate → validate → lint loop. The server authors `.rq` files; it does not execute requests.
+
+The server runs with your first workspace folder as its working directory, so relative paths and imports resolve the way they do on disk.
+
+**How it runs.** The server is bundled as JavaScript and launched on the same Node.js that VS Code itself runs on, reusing the WebAssembly build of rq the extension already loads. There is no native binary and no platform-specific download — a single package works everywhere the extension does.
+
 ## Debug logging
 
 Enable `rq.debugLogging` in VS Code settings (**Code → Settings → Settings**, search for `rq debug`) to write detailed request and authentication traces to the **RQ** output channel.

@@ -1,0 +1,45 @@
+{
+  "instructions": "rq-mcp v1. Tools: validate_rq (parse + analyze, returns syntax/semantic diagnostics), lint_rq (style/idiom rules, returns rule-tagged diagnostics with suggested fixes), list_requests (enumerate named requests under a path so generated ones avoid name collisions). After drafting any .rq snippet, always call validate_rq first; once it returns ok:true, call lint_rq and iterate until that also returns ok:true. Output may span several files: keep one `ep` per file named after the endpoint, and call validate_rq and lint_rq once per file with that file's name as `path`. Some lint rules are cleared by moving code into another file rather than editing the current one — never delete content the user asked for just to silence a diagnostic. Resources: {language_definition_uri} (full rqlang reference) and {idioms_uri} (style preferences and canonical examples) — read both before generating or refactoring any .rq file. Prompts: generate_rq (drives the full generate → validate → lint → iterate loop). Behavior: this server is for authoring .rq files, not running them. Do not propose or suggest CLI commands (e.g. `rq request run …`) for executing generated snippets unless the user explicitly asks how to run them.",
+  "tools": {
+    "validate_rq": {
+      "description": "Validate rqlang source against the real parser and analyzer. Returns { ok, diagnostics[] } where each diagnostic has severity, message, line, column, and optional file. `path` is the logical filename used in diagnostics. `workspace_path` is the directory the draft is checked against — pass it whenever the draft has `import` statements or relies on `.env` secrets, otherwise those imports cannot be resolved and will be reported as errors. When `workspace_path` is omitted the directory is taken from `path`, falling back to the current working directory. The draft is never written to disk. `env` selects an environment for variable resolution."
+    },
+    "lint_rq": {
+      "description": "Run idiom and style lint rules against rqlang source. Returns { ok, diagnostics[] } where each diagnostic carries severity (always `error`), rule id, message, line, column, optional file, and optional suggested_fix. When `workspace_path` is provided, the lint also sees requests from other .rq files under that path and can flag cross-file conflicts (e.g. a draft request that should be merged with an existing endpoint elsewhere). `path` is the logical filename of the draft and tells the workspace walker which file to skip. Call after validate_rq (syntax must already be ok) and iterate: fix the diagnostics, re-validate, then re-lint until ok: true. Pure check, no side effects."
+    },
+    "list_requests": {
+      "description": "List every named rqlang request reachable from `path`. `path` is optional: omit it to use the server's current working directory (typically the active workspace folder). Pass an explicit file or directory only when the user wants to inspect somewhere else. Returns { requests: [{name, endpoint, file, endpoint_file, endpoint_line, endpoint_character}], parse_errors: [diagnostic] }. Use this before generating a new request to avoid name collisions."
+    }
+  },
+  "resources": {
+    "language-definition": {
+      "uri": "rqlang://docs/language-definition",
+      "title": "rqlang Language Definition",
+      "file": "LANGUAGE_DEFINITION.md",
+      "description": "Full reference for the rqlang DSL: statement forms (rq, ep, env, auth, let, import), variable interpolation, attributes, and built-in functions. Read this before generating any .rq snippet."
+    },
+    "idioms": {
+      "uri": "rqlang://docs/idioms",
+      "title": "rqlang Idioms & Style Guide",
+      "file": "RQLANG_IDIOMS.md",
+      "description": "Opinionated style preferences and canonical examples for generating .rq files (when to introduce an ep, verb-only naming, JSON body syntax, multi-file split with import, etc.). Read alongside the language definition before drafting or refactoring any .rq snippet."
+    }
+  },
+  "prompt": {
+    "description": "Author a validated rqlang (.rq) snippet for the described intent.",
+    "header": "You are helping the user author rqlang (.rq) files for the following intent:\n\n> {intent}\n\nWorkflow:\n",
+    "workspace_clause_with": "`workspace_path=\"{path}\"`",
+    "workspace_clause_without": "`workspace_path` set to the current working directory",
+    "steps": {
+      "read_resources": "Read the `{language_definition_uri}` resource for the grammar AND the `{idioms_uri}` resource for style preferences and canonical examples.",
+      "list_requests_with_workspace": "Call the `list_requests` tool with path=\"{path}\" so any names you generate don't collide with existing requests.",
+      "list_requests_default": "Call the `list_requests` tool (omit `path` — it defaults to the current workspace) so any names you generate don't collide with existing requests.",
+      "file_layout": "Decide the file layout BEFORE drafting. Each `ep` goes in its own file named after the endpoint — `ep users` in `users.rq`, `ep widgets` in `widgets.rq` — so a request for several endpoints produces several files, never one file with several `ep` blocks. Any `env`, `auth` or `let` definitions that more than one file needs go in a shared file (e.g. `shared.rq`) that the others `import` with a relative path.",
+      "draft": "Draft the contents of every file in that layout.",
+      "validate": "Validate each file separately: call `validate_rq` once per file with that file's content as `source`, that file's name as `path`, and {workspace_clause} so `import` statements and `.env` secrets resolve against the real workspace. Fix diagnostics and re-validate until every file returns `ok: true`.",
+      "lint": "Lint each file separately: call `lint_rq` once per file with the same `source` and `path`, plus {workspace_clause} so the lint sees the other .rq files and can flag cross-file conflicts. Apply the `suggested_fix` for each diagnostic (or rewrite to satisfy the `rule`), then re-validate and re-lint. Some rules are satisfied by MOVING code into another file rather than editing the current one — `multiple_endpoints_per_file` is cleared by splitting the file into one file per `ep`, not by deleting an endpoint. Never drop content the user asked for in order to silence a diagnostic. Iterate until every file returns `ok: true`.",
+      "present": "Present each file in its own markdown code block with its filename on the line directly above it; briefly explain any non-obvious choices."
+    },
+    "constraints": "Constraints:\n- Use only constructs documented in `{language_definition_uri}`. Do not invent syntax.\n- Identifiers (request names, variable names, env names) use snake_case.\n- Variable references use `{{name}}`. The `${...}` prefix is for JSON literal bodies (e.g. `body: ${\"name\": \"alice\"}`) — it is NOT variable interpolation, and a JSON body must never be written as a quoted string like `body: \"{}\"`.\n- Never put two `ep` blocks in the same file.\n- Do not run the request yourself.\n- Do not suggest CLI commands (e.g. `rq request run …`) for executing the generated snippet. Only mention how to run it if the user explicitly asks."
+  }
+}

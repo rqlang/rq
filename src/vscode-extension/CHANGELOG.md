@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.7.0]
+
+### Enhancements
+
+- **Idiom linting in the editor.** rq's style and idiom rules now run alongside the parser and appear in the Problems panel as warnings, tagged with the rule that produced them (`rq lint` source) and, where the fix is mechanical, a suggested rewrite. Rules are workspace-aware, so an endpoint duplicating a query string or auth provider declared in another `.rq` file is flagged even when that file is not open. Unsaved edits are linted as you type. Disable with the new `rq.lint.enabled` setting.
+- **AI assistance via a bundled MCP server.** The extension now ships a Model Context Protocol server and registers it automatically, so Copilot Chat and other MCP-aware chats in VS Code can validate `.rq` source, run the idiom linter, and enumerate existing requests. It also publishes the language definition and idioms guide as resources and a `generate_rq` prompt that drives the full generate → validate → lint loop. The server runs on the editor's own Node.js and reuses the extension's WebAssembly build of rq — no native binary and no platform-specific download.
+- New lint rules: `manual_auth_header` (a hand-written `Authorization: Bearer …` header that should be an `auth` provider), `hardcoded_secret` (a credential literal that belongs in `.env`), `duplicated_request_qs` and `query_param_as_header` (a query string repeated across sibling requests, or passed in the header position where rq silently sends it as a header), and `duplicated_ep_config` (a `qs` or `[auth(...)]` duplicated across endpoints extending the same template, or re-declared on a child that already inherits it).
+
+### Performance
+
+- Workspace scanning now skips `node_modules`, `.git`, and `target` directories. Previously every validation read every file under the workspace root, which was slow in repositories that keep dependencies alongside `.rq` files.
+
 ## [0.6.0]
 
 ### Bug Fixes

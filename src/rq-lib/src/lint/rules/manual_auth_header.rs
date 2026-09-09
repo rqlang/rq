@@ -1,0 +1,259 @@
+use crate::lint::{line_col, significant_tokens, LintContext, LintDiagnostic, LintRule};
+use crate::syntax::keywords::PUNC_DOLLAR;
+use crate::syntax::token::TokenType;
+
+pub struct Rule;
+
+const AUTH_HEADER: &str = "authorization";
+const BEARER_SCHEME: &str = "bearer ";
+const PROVIDER_NAME: &str = "api_auth";
+const TOKEN_VARIABLE: &str = "api_token";
+
+impl LintRule for Rule {
+    fn id(&self) -> &'static str {
+        "manual_auth_header"
+    }
+
+    fn description(&self) -> &'static str {
+        "A hand-written `\"Authorization\": \"Bearer …\"` header re-implements the `auth` artifact. \
+         Declare an `auth …(auth_type.bearer)` provider and attach it with `[auth(\"…\")]` instead."
+    }
+
+    fn check(&self, ctx: &LintContext, out: &mut Vec<LintDiagnostic>) {
+        for (reference, offset) in bearer_auth_headers(ctx.source) {
+            let (line, column) = line_col(ctx.source, offset);
+            out.push(LintDiagnostic {
+                severity: "error",
+                rule: "manual_auth_header",
+                message: format!(
+                    "The `Authorization` header is assembled by hand as `Bearer <token>`. rqlang \
+                     has a dedicated artifact for this: declare \
+                     `auth {PROVIDER_NAME}(auth_type.bearer) {{ token: \"{reference}\", }}` once, \
+                     attach it with `[auth(\"{PROVIDER_NAME}\")]` on the `ep` or `rq`, and drop \
+                     the header. The provider sends `Authorization: Bearer <token>` for you, so \
+                     the credential is declared in one place, `rq auth show` can inspect it, and \
+                     swapping in an OAuth2 flow later changes only the provider."
+                ),
+                line,
+                column,
+                file: Some(ctx.display_path.to_string()),
+                suggested_fix: Some(format!(
+                    "Declare `auth {PROVIDER_NAME}(auth_type.bearer) {{ token: \"{reference}\", }}`, \
+                     put `[auth(\"{PROVIDER_NAME}\")]` above the `ep`/`rq`, and remove the \
+                     `\"Authorization\"` entry from `headers`."
+                )),
+            });
+        }
+    }
+}
+
+fn bearer_auth_headers(source: &str) -> Vec<(String, usize)> {
+    let significant = significant_tokens(source);
+    let mut found = Vec::new();
+    let mut open_delimiters: Vec<bool> = Vec::new();
+    for (index, token) in significant.iter().enumerate() {
+        if token.token_type != TokenType::Punctuation {
+            continue;
+        }
+        match token.value.as_str() {
+            "[" => open_delimiters.push(opens_header_map(&significant, index)),
+            "{" | "(" => open_delimiters.push(false),
+            "]" | "}" | ")" => {
+                open_delimiters.pop();
+            }
+            ":" if open_delimiters.last() == Some(&true) => {
+                if let Some(entry) = bearer_header_at(&significant, index) {
+                    found.push(entry);
+                }
+            }
+            _ => {}
+        }
+    }
+    found
+}
+
+fn opens_header_map(significant: &[crate::syntax::token::Token], bracket: usize) -> bool {
+    let Some(previous) = bracket.checked_sub(1).and_then(|i| significant.get(i)) else {
+        return false;
+    };
+    previous.token_type == TokenType::Punctuation && previous.value == PUNC_DOLLAR
+}
+
+fn bearer_header_at(
+    significant: &[crate::syntax::token::Token],
+    colon: usize,
+) -> Option<(String, usize)> {
+    let key = significant.get(colon.checked_sub(1)?)?;
+    let value = significant.get(colon + 1)?;
+    if key.token_type != TokenType::String || value.token_type != TokenType::String {
+        return None;
+    }
+    let (name, header_value) = (string_content(&key.value)?, string_content(&value.value)?);
+    if !name.trim().eq_ignore_ascii_case(AUTH_HEADER) {
+        return None;
+    }
+    let token = strip_bearer_scheme(header_value.trim())?;
+    Some((token_reference(&token), key.span.start))
+}
+
+fn strip_bearer_scheme(value: &str) -> Option<String> {
+    let prefix = value.get(..BEARER_SCHEME.len())?;
+    if !prefix.eq_ignore_ascii_case(BEARER_SCHEME) {
+        return None;
+    }
+    Some(value[BEARER_SCHEME.len()..].trim().to_string())
+}
+
+fn token_reference(token: &str) -> String {
+    let trimmed = token.trim();
+    let is_single_interpolation = trimmed.starts_with("{{")
+        && trimmed.ends_with("}}")
+        && trimmed.len() > 4
+        && !trimmed[2..trimmed.len() - 2].contains("{{");
+    if is_single_interpolation {
+        return trimmed.to_string();
+    }
+    format!("{{{{{TOKEN_VARIABLE}}}}}")
+}
+
+fn string_content(raw: &str) -> Option<&str> {
+    if raw.len() < 2 || !raw.starts_with('"') || !raw.ends_with('"') {
+        return None;
+    }
+    Some(&raw[1..raw.len() - 1])
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::lint::lint;
+
+    fn diagnostics_for(src: &str) -> Vec<crate::lint::LintDiagnostic> {
+        lint(src, Some("draft.rq"), None)
+            .diagnostics
+            .into_iter()
+            .filter(|d| d.rule == "manual_auth_header")
+            .collect()
+    }
+
+    #[test]
+    fn flags_a_bearer_header_on_a_template_endpoint() {
+        let src = "ep base(url: \"{{base_url}}\", headers: $[\"Authorization\": \"Bearer {{token}}\"]);\n";
+        let target = diagnostics_for(src);
+        assert_eq!(target.len(), 1, "got: {target:?}");
+        assert!(target[0].message.contains("auth_type.bearer"));
+        assert!(target[0].message.contains("token: \"{{token}}\""));
+        assert!(target[0]
+            .suggested_fix
+            .as_ref()
+            .expect("fix")
+            .contains("[auth(\"api_auth\")]"));
+    }
+
+    #[test]
+    fn does_not_echo_a_literal_token() {
+        let src = "rq list(\"http://x\", headers: $[\"Authorization\": \"Bearer ghp_abc123\"]);\n";
+        let target = diagnostics_for(src);
+        assert_eq!(target.len(), 1, "got: {target:?}");
+        assert!(
+            !target[0].message.contains("ghp_abc123"),
+            "the diagnostic must not repeat the credential: {}",
+            target[0].message
+        );
+        assert!(!target[0]
+            .suggested_fix
+            .as_ref()
+            .expect("fix")
+            .contains("ghp_abc123"));
+    }
+
+    #[test]
+    fn suggests_a_placeholder_variable_for_a_literal_token() {
+        let src = "rq list(\"http://x\", headers: $[\"Authorization\": \"Bearer ghp_abc123\"]);\n";
+        let target = diagnostics_for(src);
+        assert!(target[0].message.contains("token: \"{{api_token}}\""));
+    }
+
+    #[test]
+    fn does_not_echo_a_composed_header_value() {
+        let src =
+            "rq list(\"http://x\", headers: $[\"Authorization\": \"Bearer {{prefix}}-secret\"]);\n";
+        let target = diagnostics_for(src);
+        assert_eq!(target.len(), 1, "got: {target:?}");
+        assert!(!target[0].message.contains("secret"));
+        assert!(target[0].message.contains("token: \"{{api_token}}\""));
+    }
+
+    #[test]
+    fn reports_the_position_of_the_header_key() {
+        let src = "rq list(\"http://x\", headers: $[\n    \"Authorization\": \"Bearer {{token}}\",\n]);\n";
+        let target = diagnostics_for(src);
+        assert_eq!(target[0].line, 2);
+        assert_eq!(target[0].column, 5);
+    }
+
+    #[test]
+    fn flags_a_lowercase_header_name() {
+        let src = "rq list(\"http://x\", headers: $[\"authorization\": \"bearer {{token}}\"]);\n";
+        assert_eq!(diagnostics_for(src).len(), 1);
+    }
+
+    #[test]
+    fn flags_a_header_declared_in_a_headers_variable() {
+        let src = "let common = $[\"Authorization\": \"Bearer {{token}}\"];\nrq list(\"http://x\", headers: common);\n";
+        assert_eq!(diagnostics_for(src).len(), 1);
+    }
+
+    #[test]
+    fn does_not_flag_an_authorization_property_in_a_json_body() {
+        let src =
+            "rq post(\"http://x\", body: ${\"Authorization\": \"Bearer delegated-token\"});\n";
+        let target = diagnostics_for(src);
+        assert!(
+            target.is_empty(),
+            "a JSON body property is not an HTTP header: {target:?}"
+        );
+    }
+
+    #[test]
+    fn does_not_flag_an_authorization_property_nested_in_a_json_body() {
+        let src =
+            "rq post(\"http://x\", body: ${\"forward\": {\"Authorization\": \"Bearer x\"}});\n";
+        let target = diagnostics_for(src);
+        assert!(target.is_empty(), "got: {target:?}");
+    }
+
+    #[test]
+    fn flags_the_header_when_a_json_body_carries_the_same_property() {
+        let src = "rq post(\"http://x\", headers: $[\"Authorization\": \"Bearer {{token}}\"], \
+                   body: ${\"Authorization\": \"Bearer delegated-token\"});\n";
+        let target = diagnostics_for(src);
+        assert_eq!(
+            target.len(),
+            1,
+            "only the header is a manual header: {target:?}"
+        );
+        assert!(target[0].message.contains("{{token}}"));
+    }
+
+    #[test]
+    fn does_not_flag_an_endpoint_using_the_auth_attribute() {
+        let src = "auth api_auth(auth_type.bearer) {\n    token: \"{{api_token}}\",\n}\n\n[auth(\"api_auth\")]\nep base(url: \"{{base_url}}\");\n";
+        assert!(diagnostics_for(src).is_empty());
+    }
+
+    #[test]
+    fn does_not_flag_an_unrelated_header() {
+        let src = "rq list(\"http://x\", headers: $[\"X-Trace\": \"Bearer-ish\"]);\n";
+        assert!(diagnostics_for(src).is_empty());
+    }
+
+    #[test]
+    fn does_not_flag_a_scheme_rq_has_no_provider_for() {
+        let src =
+            "rq list(\"http://x\", headers: $[\"Authorization\": \"Basic {{credentials}}\"]);\n";
+        assert!(
+            diagnostics_for(src).is_empty(),
+            "rq has no basic provider, so the manual header is the only option"
+        );
+    }
+}

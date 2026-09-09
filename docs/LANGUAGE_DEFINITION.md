@@ -161,6 +161,7 @@ rq mixed_params("http://localhost:8080/mixed", headers: $[
 Rules for named parameters:
 
 - Supported names for `rq` are currently: `url`, `headers`, and `body`.
+- There is **no `qs` parameter on `rq`** — only `ep` has one. The positional arguments of `rq` are `url`, `headers`, `body` in that order, so `rq get(user_id, $["v": "1"])` sets the HTTP header `v: 1`, not the query parameter `?v=1`. Put a query string that applies to every child request in the endpoint's `qs`; put one that belongs to a single request in that request's URL string.
 - Each of these parameters may appear **at most once** in a given request.
 - You may mix positional and named arguments, but the effective meaning must be unambiguous. A common pattern is positional `url` plus named `headers` and/or `body`.
 
@@ -603,7 +604,7 @@ Here:
 
 ### Endpoint parameters: URL, headers, query string
 
-An endpoint can take the same kinds of parameters as an `rq` request (except body), but they apply as **defaults** to all child requests:
+An endpoint takes `url`, `headers`, and `qs` — note that `qs` exists only here, not on `rq` — and they apply as **defaults** to all child requests:
 
 ```
 let u = "http://localhost:8080";
@@ -625,7 +626,7 @@ Semantics:
 - `headers` defines headers that are added to every child request.
 - `qs` appends query string parameters to all child requests.
 
-Child requests can add more headers or query parameters; these are merged with the endpoint defaults.
+Child requests can add more headers with their own `headers` argument, and more query parameters by writing them into their URL string; these are merged with the endpoint defaults.
 
 You can also pass query string defaults using named parameters:
 

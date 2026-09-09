@@ -1,4 +1,3 @@
-import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -8,12 +7,14 @@ import * as os from 'os';
  */
 export function normalizePath(p: string): string {
     const stripped = p.replace(/^\\\\\?\\/, '');
-    let normalized = vscode.Uri.file(stripped).fsPath;
+    let normalized = path.normalize(stripped);
     if (/^[a-z]:/.test(normalized)) {
         normalized = normalized.charAt(0).toUpperCase() + normalized.slice(1);
     }
     return normalized;
 }
+
+const SKIPPED_DIRECTORIES = new Set(['node_modules', '.git', 'target']);
 
 export function collectRqFiles(dir: string): string[] {
     return collectAllFiles(dir).filter(f => f.endsWith('.rq'));
@@ -23,6 +24,9 @@ export function collectAllFiles(dir: string): string[] {
     const results: string[] = [];
     try {
         for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+            if (entry.isDirectory() && SKIPPED_DIRECTORIES.has(entry.name)) {
+                continue;
+            }
             const full = path.join(dir, entry.name);
             if (entry.isDirectory()) {
                 results.push(...collectAllFiles(full));
@@ -41,6 +45,9 @@ export async function collectAllFilesAsync(dir: string): Promise<string[]> {
     try {
         const entries = await fs.promises.readdir(dir, { withFileTypes: true });
         for (const entry of entries) {
+            if (entry.isDirectory() && SKIPPED_DIRECTORIES.has(entry.name)) {
+                continue;
+            }
             const full = path.join(dir, entry.name);
             if (entry.isDirectory()) {
                 results.push(...await collectAllFilesAsync(full));
@@ -71,20 +78,60 @@ export function mirrorToTemp(folderPath: string, overrides: Map<string, string>)
     return tempDir;
 }
 
-export function applyTreeItemLoading(
-    item: vscode.TreeItem,
-    loading: boolean,
-    originalIcons: WeakMap<vscode.TreeItem, vscode.TreeItem['iconPath']>,
-    fireChange: (item: vscode.TreeItem) => void
-): void {
-    if (loading) {
-        if (!originalIcons.has(item)) {
-            originalIcons.set(item, item.iconPath);
-        }
-        item.iconPath = new vscode.ThemeIcon('sync~spin');
-    } else {
-        item.iconPath = originalIcons.get(item) ?? item.iconPath;
-        originalIcons.delete(item);
+export async function isDirectory(target: string): Promise<boolean> {
+    try {
+        return (await fs.promises.stat(target)).isDirectory();
+    } catch {
+        return false;
     }
-    fireChange(item);
+}
+
+export async function directoryOf(source: string): Promise<string> {
+    try {
+        const stat = await fs.promises.stat(source);
+        return stat.isDirectory() ? source : path.dirname(source);
+    } catch {
+        return source;
+    }
+}
+
+export interface DraftFile {
+    path: string;
+    source: string;
+}
+
+export async function buildFilesMap(source: string, drafts: DraftFile[] = []): Promise<string> {
+    const dir = await directoryOf(source);
+    const files: Record<string, string> = {};
+    for (const filePath of await collectAllFilesAsync(dir)) {
+        const normalized = filePath.replace(/\\/g, '/');
+        try {
+            files[normalized] = await fs.promises.readFile(filePath, 'utf8');
+        } catch {
+            continue;
+        }
+    }
+    for (const draft of drafts) {
+        files[draft.path.replace(/\\/g, '/')] = draft.source;
+    }
+    return JSON.stringify(files);
+}
+
+export async function buildSecretsMap(source: string): Promise<string> {
+    const dir = await directoryOf(source);
+
+    let envFile: string | null = null;
+    try {
+        envFile = await fs.promises.readFile(path.join(dir, '.env'), 'utf8');
+    } catch {
+        envFile = null;
+    }
+
+    const osVars: [string, string][] = [];
+    for (const [key, value] of Object.entries(process.env)) {
+        if (key.startsWith('RQ__') && value !== undefined) {
+            osVars.push([key, value]);
+        }
+    }
+    return JSON.stringify({ env_file: envFile, os_vars: osVars });
 }

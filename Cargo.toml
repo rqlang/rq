@@ -1,5 +1,5 @@
 [workspace]
-members = ["src/cli", "src/rq-lib"]
+members = ["src/cli", "src/rq-lib", "src/rq-mcp"]
 resolver = "2"
 
 [workspace.package]

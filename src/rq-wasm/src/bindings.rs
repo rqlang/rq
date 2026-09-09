@@ -1,6 +1,6 @@
 use crate::{WasmFs, WasmHttpClient, WasmSecretProvider};
 use rq_lib::client::models::{
-    AuthListEntry, EndpointEntry, EnvironmentEntry, ReferenceLocation, VariableEntry,
+    AuthListEntry, EndpointEntry, EnvironmentEntry, ReferenceLocation, RequestInfo, VariableEntry,
 };
 use rq_lib::error::RqError;
 use rq_lib::RqClient;
@@ -48,6 +48,21 @@ struct CheckError {
 #[derive(Serialize)]
 struct CheckResult {
     errors: Vec<CheckError>,
+}
+
+#[derive(Serialize)]
+struct ParseDiagnostic {
+    severity: &'static str,
+    message: String,
+    line: usize,
+    column: usize,
+    file: String,
+}
+
+#[derive(Serialize)]
+struct ListRequestsResult {
+    requests: Vec<RequestInfo>,
+    parse_errors: Vec<ParseDiagnostic>,
 }
 
 #[derive(Serialize)]
@@ -101,10 +116,36 @@ pub fn list_requests(
     secrets_json: &str,
     source: &str,
 ) -> Result<String, JsError> {
-    let (requests, _) = make_client(parse_files(files_json)?, parse_secrets(secrets_json))
+    let (requests, parse_errors) = make_client(parse_files(files_json)?, parse_secrets(secrets_json))
         .list_requests(Path::new(source))
         .map_err(rq_err)?;
-    serde_json::to_string(&requests).map_err(|e| JsError::new(&e.to_string()))
+    let result = ListRequestsResult {
+        requests,
+        parse_errors: parse_errors
+            .into_iter()
+            .map(|e| parse_diagnostic(e, source))
+            .collect(),
+    };
+    serde_json::to_string(&result).map_err(|e| JsError::new(&e.to_string()))
+}
+
+fn parse_diagnostic(error: RqError, source: &str) -> ParseDiagnostic {
+    match error {
+        RqError::Syntax(se) => ParseDiagnostic {
+            severity: "error",
+            message: se.message,
+            line: se.line,
+            column: se.column,
+            file: se.file_path.unwrap_or_else(|| source.to_string()),
+        },
+        other => ParseDiagnostic {
+            severity: "error",
+            message: other.to_string(),
+            line: 0,
+            column: 0,
+            file: source.to_string(),
+        },
+    }
 }
 
 #[wasm_bindgen]
@@ -154,6 +195,34 @@ pub fn list_variables(
             .list_variables(Path::new(source), env.as_deref())
             .map_err(rq_err)?;
     serde_json::to_string(&entries).map_err(|e| JsError::new(&e.to_string()))
+}
+
+#[wasm_bindgen]
+pub fn lint(files_json: &str, source: &str, path: &str) -> Result<String, JsError> {
+    use rq_lib::lint::{lint_rq_file, WorkspaceCollector};
+    use rq_lib::syntax::rq_file::RqFile;
+
+    let files = parse_files(files_json)?;
+    let fs = WasmFs::new(files.clone());
+    let draft = RqFile::from_content_lenient(std::path::PathBuf::from(path), source, &fs);
+
+    let mut collector = WorkspaceCollector::new(&draft);
+    for (file_path, content) in files.iter() {
+        if file_path == path || !file_path.ends_with(".rq") {
+            continue;
+        }
+        collector.absorb(Path::new(file_path), content, &fs);
+    }
+    let (workspace_requests, workspace_endpoints) = collector.finish();
+
+    let result = lint_rq_file(
+        &draft,
+        source,
+        path,
+        &workspace_requests,
+        &workspace_endpoints,
+    );
+    serde_json::to_string(&result).map_err(|e| JsError::new(&e.to_string()))
 }
 
 #[wasm_bindgen]

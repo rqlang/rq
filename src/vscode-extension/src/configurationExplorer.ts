@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as rqClient from './rqClient';
-import { applyTreeItemLoading } from './utils';
+import { applyTreeItemLoading } from './vscodeUtils';
 
 type ItemKind = 'section-environments' | 'section-auth' | 'environment' | 'auth-config' | 'loading';
 

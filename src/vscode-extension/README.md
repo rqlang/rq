@@ -23,6 +23,8 @@ Want the full tour? Check out the [VS Code Extension docs](https://www.rqlang.co
 
 - Syntax highlighting for rq keywords, HTTP methods, attributes and interpolations.
 - **Language server** — real-time diagnostics as you type: parse errors, semantic errors, and missing variables are surfaced in the Problems panel without running a request.
+- **Idiom linting** — style and idiom rules run alongside the parser and appear as warnings in the Problems panel, each tagged with its rule and a suggested fix. Turn it off with `rq.lint.enabled`.
+- **AI assistance (MCP server)** — a bundled Model Context Protocol server that lets Copilot Chat and other MCP-aware chats validate, lint, and explore `.rq` files. Registered automatically; nothing to install.
 - **IntelliSense** — autocomplete for variables, request names, environments, auth providers, object parameters, auth properties, attributes, and imports.
 - **Hover tooltips** — inline summaries for `rq`, `ep`, `env`, and `auth` statements.
 - **Navigation** — go to definition, find all references, and rename symbol across the workspace.

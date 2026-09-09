@@ -19,6 +19,12 @@ rq list("https://api.example.com/v1/items");
 
 Field values resolve through the normal variable chain, so secrets stay out of `.rq` files and live in `.env` or environment variables instead. See [Secrets](LANGUAGE_DEFINITION.md#secrets) for the full resolution order.
 
+Two rules follow from this:
+
+- **Do not hand-write the `Authorization` header.** `headers: $["Authorization": "Bearer {{token}}"]` works, but it bypasses the auth artifact: the credential is spelled out at every call site, `rq auth show` cannot inspect it, and moving to an OAuth2 flow means rewriting every header map. Declare a provider instead and attach it with `[auth("...")]` — on a single `rq`, or on an `ep` (including a template endpoint) to cover every request under it.
+- **Do not write the credential itself into the `.rq` file.** `token: "ghp_real_token"` gets committed. Write `token: "{{api_token}}"` and put `API_TOKEN=…` in a `.env` file next to the source, or `ENV__PROD__API_TOKEN=…` to vary it per environment.
+
+
 For the formal syntax of `auth` blocks, see the [Language Definition — Auth](LANGUAGE_DEFINITION.md#auth).
 
 ## Choosing an auth type

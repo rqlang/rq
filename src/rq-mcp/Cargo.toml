@@ -1,0 +1,22 @@
+[package]
+name = "rq-mcp"
+version.workspace = true
+edition = "2021"
+
+[[bin]]
+name = "rq-mcp"
+path = "src/main.rs"
+
+[dependencies]
+rq-lib = { path = "../rq-lib" }
+rmcp = { version = "1.7", features = ["server", "macros", "transport-io"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "io-std", "signal", "sync"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+schemars = "0.8"
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+tempfile = "3"

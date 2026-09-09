@@ -105,8 +105,8 @@ impl LintRule for Rule {
 fn url_prefix(url: &str) -> String {
     let stripped = url.split('?').next().unwrap_or(url).trim_end_matches('/');
     let parts: Vec<&str> = stripped.split('/').collect();
-    if parts.len() >= 4 && parts[0].ends_with(':') && parts[1].is_empty() {
-        return parts[..4].join("/");
+    if parts.len() >= 3 && parts[0].ends_with(':') && parts[1].is_empty() {
+        return parts[..parts.len().min(4)].join("/");
     }
     if parts.len() >= 2 {
         return parts[..2].join("/");
@@ -133,6 +133,52 @@ mod tests {
                 .any(|d| d.rule == "top_level_rq_should_be_ep"),
             "got: {:?}",
             target.diagnostics
+        );
+    }
+
+    fn diagnostics_for(src: &str) -> Vec<crate::lint::LintDiagnostic> {
+        lint(src, None, None)
+            .diagnostics
+            .into_iter()
+            .filter(|d| d.rule == "top_level_rq_should_be_ep")
+            .collect()
+    }
+
+    #[test]
+    fn reports_a_host_only_url_as_the_whole_host() {
+        let src = "rq ping(\"http://example.test\");\nrq health(\"http://example.test\");\n";
+        let target = diagnostics_for(src);
+        assert_eq!(target.len(), 2, "got: {target:?}");
+        assert!(
+            target[0].message.contains("`http://example.test`"),
+            "the prefix must be the whole host: {}",
+            target[0].message
+        );
+        assert!(
+            !target[0].message.contains("`http:/`"),
+            "got: {}",
+            target[0].message
+        );
+    }
+
+    #[test]
+    fn does_not_group_two_host_only_urls_on_different_hosts() {
+        let src = "rq ping(\"http://a.test\");\nrq health(\"http://b.test\");\n";
+        let target = diagnostics_for(src);
+        assert!(
+            target.is_empty(),
+            "unrelated hosts share no base URL: {target:?}"
+        );
+    }
+
+    #[test]
+    fn keeps_the_first_path_segment_for_a_url_with_a_path() {
+        let src = "rq list_users(\"http://x/users\");\nrq get_user(\"http://x/users/1\");\n";
+        let target = diagnostics_for(src);
+        assert!(
+            target[0].message.contains("`http://x/users`"),
+            "got: {}",
+            target[0].message
         );
     }
 

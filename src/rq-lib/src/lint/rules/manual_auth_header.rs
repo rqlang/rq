@@ -6,6 +6,7 @@ pub struct Rule;
 const AUTH_HEADER: &str = "authorization";
 const BEARER_SCHEME: &str = "bearer ";
 const PROVIDER_NAME: &str = "api_auth";
+const TOKEN_VARIABLE: &str = "api_token";
 
 impl LintRule for Rule {
     fn id(&self) -> &'static str {
@@ -18,15 +19,15 @@ impl LintRule for Rule {
     }
 
     fn check(&self, ctx: &LintContext, out: &mut Vec<LintDiagnostic>) {
-        for (token, offset) in bearer_auth_headers(ctx.source) {
+        for (reference, offset) in bearer_auth_headers(ctx.source) {
             let (line, column) = line_col(ctx.source, offset);
             out.push(LintDiagnostic {
                 severity: "error",
                 rule: "manual_auth_header",
                 message: format!(
-                    "The `Authorization` header is assembled by hand as `Bearer {token}`. rqlang \
+                    "The `Authorization` header is assembled by hand as `Bearer <token>`. rqlang \
                      has a dedicated artifact for this: declare \
-                     `auth {PROVIDER_NAME}(auth_type.bearer) {{ token: \"{token}\", }}` once, \
+                     `auth {PROVIDER_NAME}(auth_type.bearer) {{ token: \"{reference}\", }}` once, \
                      attach it with `[auth(\"{PROVIDER_NAME}\")]` on the `ep` or `rq`, and drop \
                      the header. The provider sends `Authorization: Bearer <token>` for you, so \
                      the credential is declared in one place, `rq auth show` can inspect it, and \
@@ -36,7 +37,7 @@ impl LintRule for Rule {
                 column,
                 file: Some(ctx.display_path.to_string()),
                 suggested_fix: Some(format!(
-                    "Declare `auth {PROVIDER_NAME}(auth_type.bearer) {{ token: \"{token}\", }}`, \
+                    "Declare `auth {PROVIDER_NAME}(auth_type.bearer) {{ token: \"{reference}\", }}`, \
                      put `[auth(\"{PROVIDER_NAME}\")]` above the `ep`/`rq`, and remove the \
                      `\"Authorization\"` entry from `headers`."
                 )),
@@ -69,7 +70,7 @@ fn bearer_auth_headers(source: &str) -> Vec<(String, usize)> {
         let Some(token) = strip_bearer_scheme(header_value.trim()) else {
             continue;
         };
-        found.push((token, key.span.start));
+        found.push((token_reference(&token), key.span.start));
     }
     found
 }
@@ -80,6 +81,18 @@ fn strip_bearer_scheme(value: &str) -> Option<String> {
         return None;
     }
     Some(value[BEARER_SCHEME.len()..].trim().to_string())
+}
+
+fn token_reference(token: &str) -> String {
+    let trimmed = token.trim();
+    let is_single_interpolation = trimmed.starts_with("{{")
+        && trimmed.ends_with("}}")
+        && trimmed.len() > 4
+        && !trimmed[2..trimmed.len() - 2].contains("{{");
+    if is_single_interpolation {
+        return trimmed.to_string();
+    }
+    format!("{{{{{TOKEN_VARIABLE}}}}}")
 }
 
 fn string_content(raw: &str) -> Option<&str> {
@@ -113,6 +126,40 @@ mod tests {
             .as_ref()
             .expect("fix")
             .contains("[auth(\"api_auth\")]"));
+    }
+
+    #[test]
+    fn does_not_echo_a_literal_token() {
+        let src = "rq list(\"http://x\", headers: $[\"Authorization\": \"Bearer ghp_abc123\"]);\n";
+        let target = diagnostics_for(src);
+        assert_eq!(target.len(), 1, "got: {target:?}");
+        assert!(
+            !target[0].message.contains("ghp_abc123"),
+            "the diagnostic must not repeat the credential: {}",
+            target[0].message
+        );
+        assert!(!target[0]
+            .suggested_fix
+            .as_ref()
+            .expect("fix")
+            .contains("ghp_abc123"));
+    }
+
+    #[test]
+    fn suggests_a_placeholder_variable_for_a_literal_token() {
+        let src = "rq list(\"http://x\", headers: $[\"Authorization\": \"Bearer ghp_abc123\"]);\n";
+        let target = diagnostics_for(src);
+        assert!(target[0].message.contains("token: \"{{api_token}}\""));
+    }
+
+    #[test]
+    fn does_not_echo_a_composed_header_value() {
+        let src =
+            "rq list(\"http://x\", headers: $[\"Authorization\": \"Bearer {{prefix}}-secret\"]);\n";
+        let target = diagnostics_for(src);
+        assert_eq!(target.len(), 1, "got: {target:?}");
+        assert!(!target[0].message.contains("secret"));
+        assert!(target[0].message.contains("token: \"{{api_token}}\""));
     }
 
     #[test]

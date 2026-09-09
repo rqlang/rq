@@ -16,7 +16,7 @@ impl LintRule for Rule {
             let Some((col, path)) = find_import_path(line_str) else {
                 continue;
             };
-            if !path.starts_with('/') {
+            if !is_absolute_import(path) {
                 continue;
             }
             out.push(LintDiagnostic {
@@ -36,6 +36,18 @@ impl LintRule for Rule {
             });
         }
     }
+}
+
+fn is_absolute_import(path: &str) -> bool {
+    path.starts_with('/') || path.starts_with('\\') || has_drive_prefix(path)
+}
+
+fn has_drive_prefix(path: &str) -> bool {
+    let mut chars = path.chars();
+    let Some(drive) = chars.next() else {
+        return false;
+    };
+    drive.is_ascii_alphabetic() && chars.next() == Some(':')
 }
 
 fn find_import_path(line: &str) -> Option<(usize, &str)> {
@@ -65,6 +77,42 @@ mod tests {
                 .any(|d| d.rule == "absolute_import_path"),
             "got: {:?}",
             target.diagnostics
+        );
+    }
+
+    fn flags(src: &str) -> bool {
+        lint(src, None, None)
+            .diagnostics
+            .iter()
+            .any(|d| d.rule == "absolute_import_path")
+    }
+
+    #[test]
+    fn flags_a_windows_drive_path() {
+        assert!(flags("import \"C:\\\\shared\";\n"), "backslash drive path");
+        assert!(flags("import \"C:/shared\";\n"), "forward slash drive path");
+    }
+
+    #[test]
+    fn flags_a_lowercase_windows_drive_path() {
+        assert!(flags("import \"c:\\\\shared\";\n"));
+    }
+
+    #[test]
+    fn flags_a_windows_rooted_path() {
+        assert!(flags("import \"\\\\shared\";\n"));
+    }
+
+    #[test]
+    fn flags_a_windows_unc_path() {
+        assert!(flags("import \"\\\\\\\\server\\\\share\\\\shared\";\n"));
+    }
+
+    #[test]
+    fn does_not_flag_a_relative_path_containing_a_colon() {
+        assert!(
+            !flags("import \"shared:v2\";\n"),
+            "a colon away from the drive position is not an absolute path"
         );
     }
 

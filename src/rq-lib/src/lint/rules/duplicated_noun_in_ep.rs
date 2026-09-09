@@ -47,17 +47,30 @@ fn bare_request_name(qualified: &str) -> &str {
 }
 
 fn name_contains_noun(request_name: &str, ep_name: &str) -> bool {
-    let req = request_name.to_lowercase();
-    let ep = ep_name.to_lowercase();
-    if req.contains(&ep) {
-        return true;
+    let request_segments = segments(request_name);
+    let ep_segments = segments(ep_name);
+    if ep_segments.is_empty() || request_segments.len() < ep_segments.len() {
+        return false;
     }
-    if let Some(singular) = singular_form(&ep) {
-        if req.contains(&singular) {
-            return true;
-        }
-    }
-    false
+    request_segments.windows(ep_segments.len()).any(|window| {
+        window
+            .iter()
+            .zip(ep_segments.iter())
+            .all(|(request, ep)| same_noun(request, ep))
+    })
+}
+
+fn segments(name: &str) -> Vec<String> {
+    name.split('_')
+        .filter(|segment| !segment.is_empty())
+        .map(|segment| segment.to_lowercase())
+        .collect()
+}
+
+fn same_noun(left: &str, right: &str) -> bool {
+    left == right
+        || singular_form(left).as_deref() == Some(right)
+        || singular_form(right).as_deref() == Some(left)
 }
 
 fn singular_form(name: &str) -> Option<String> {
@@ -65,12 +78,22 @@ fn singular_form(name: &str) -> Option<String> {
         return Some(format!("{stripped}y"));
     }
     if let Some(stripped) = name.strip_suffix("es") {
-        return Some(stripped.to_string());
+        if ends_with_sibilant(stripped) {
+            return Some(stripped.to_string());
+        }
     }
     if let Some(stripped) = name.strip_suffix('s') {
         return Some(stripped.to_string());
     }
     None
+}
+
+fn ends_with_sibilant(stem: &str) -> bool {
+    stem.ends_with('s')
+        || stem.ends_with('x')
+        || stem.ends_with('z')
+        || stem.ends_with("ch")
+        || stem.ends_with("sh")
 }
 
 #[cfg(test)]
@@ -116,11 +139,72 @@ mod tests {
         );
     }
 
+    fn flags_noun(src: &str) -> bool {
+        lint(src, None, None)
+            .diagnostics
+            .iter()
+            .any(|d| d.rule == "duplicated_noun_in_ep")
+    }
+
+    #[test]
+    fn does_not_flag_a_name_that_merely_contains_the_noun_as_a_substring() {
+        assert!(
+            !flags_noun("ep users(\"http://x/users\") { rq get_abusers(); }\n"),
+            "`abusers` is not the endpoint noun"
+        );
+        assert!(
+            !flags_noun("ep orders(\"http://x/orders\") { rq get_preorders(); }\n"),
+            "`preorders` is not the endpoint noun"
+        );
+    }
+
+    #[test]
+    fn flags_a_multi_segment_endpoint_noun() {
+        assert!(flags_noun(
+            "ep user_profiles(\"http://x/user-profiles\") { rq get_user_profile(); }\n"
+        ));
+    }
+
+    #[test]
+    fn does_not_flag_a_partial_match_of_a_multi_segment_noun() {
+        assert!(
+            !flags_noun("ep user_profiles(\"http://x/user-profiles\") { rq get_user(); }\n"),
+            "only part of the endpoint noun is repeated"
+        );
+    }
+
+    #[test]
+    fn flags_a_plural_request_under_a_singular_endpoint() {
+        assert!(flags_noun(
+            "ep user(\"http://x/user\") { rq get_users(); }\n"
+        ));
+    }
+
+    #[test]
+    fn flags_a_noun_in_the_middle_of_a_request_name() {
+        assert!(flags_noun(
+            "ep widgets(\"http://x/widgets\") { rq get_widget_by_id(); }\n"
+        ));
+    }
+
     #[test]
     fn singular_handles_ies_es_s() {
         assert_eq!(singular_form("categories"), Some("category".to_string()));
         assert_eq!(singular_form("widgets"), Some("widget".to_string()));
         assert_eq!(singular_form("user"), None);
+    }
+
+    #[test]
+    fn singular_strips_only_the_s_when_es_is_not_the_plural_marker() {
+        assert_eq!(singular_form("profiles"), Some("profile".to_string()));
+        assert_eq!(singular_form("notes"), Some("note".to_string()));
+    }
+
+    #[test]
+    fn singular_strips_es_after_a_sibilant_stem() {
+        assert_eq!(singular_form("addresses"), Some("address".to_string()));
+        assert_eq!(singular_form("boxes"), Some("box".to_string()));
+        assert_eq!(singular_form("matches"), Some("match".to_string()));
     }
 
     #[test]

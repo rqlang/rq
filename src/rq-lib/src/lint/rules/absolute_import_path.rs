@@ -1,4 +1,6 @@
-use crate::lint::{LintContext, LintDiagnostic, LintRule};
+use crate::lint::{line_col, significant_tokens, LintContext, LintDiagnostic, LintRule};
+use crate::syntax::keywords::KW_IMPORT;
+use crate::syntax::token::TokenType;
 
 pub struct Rule;
 
@@ -12,13 +14,11 @@ impl LintRule for Rule {
     }
 
     fn check(&self, ctx: &LintContext, out: &mut Vec<LintDiagnostic>) {
-        for (idx, line_str) in ctx.source.lines().enumerate() {
-            let Some((col, path)) = find_import_path(line_str) else {
-                continue;
-            };
+        for (offset, path) in import_paths(ctx.source) {
             if !is_absolute_import(path) {
                 continue;
             }
+            let (line, column) = line_col(ctx.source, offset);
             out.push(LintDiagnostic {
                 severity: "error",
                 rule: "absolute_import_path",
@@ -27,8 +27,8 @@ impl LintRule for Rule {
                      `\"common/envs\"`, `\"../shared\"`); absolute paths make the project \
                      non-portable across machines."
                 ),
-                line: idx + 1,
-                column: col + 1,
+                line,
+                column,
                 file: Some(ctx.display_path.to_string()),
                 suggested_fix: Some(format!(
                     "Replace `\"{path}\"` with a path relative to the importing file."
@@ -50,16 +50,24 @@ fn has_drive_prefix(path: &str) -> bool {
     drive.is_ascii_alphabetic() && chars.next() == Some(':')
 }
 
-fn find_import_path(line: &str) -> Option<(usize, &str)> {
-    let trimmed_start = line.len() - line.trim_start().len();
-    let rest = &line[trimmed_start..];
-    let after_import = rest.strip_prefix("import")?.trim_start();
-    let consumed = rest.len() - after_import.len();
-    let path_start = trimmed_start + consumed;
-    let inner = after_import.strip_prefix('"')?;
-    let end = inner.find('"')?;
-    let path = &inner[..end];
-    Some((path_start + 1, path))
+fn import_paths(source: &str) -> Vec<(usize, &str)> {
+    let tokens = significant_tokens(source);
+    let mut found = Vec::new();
+    for window in tokens.windows(2) {
+        let [keyword, value] = window else {
+            continue;
+        };
+        if keyword.token_type != TokenType::Keyword || keyword.value != KW_IMPORT {
+            continue;
+        }
+        if value.token_type != TokenType::String || value.value.len() < 2 {
+            continue;
+        }
+        let start = value.span.start + 1;
+        let end = value.span.start + value.value.len() - 1;
+        found.push((start, &source[start..end]));
+    }
+    found
 }
 
 #[cfg(test)]
@@ -85,6 +93,48 @@ mod tests {
             .diagnostics
             .iter()
             .any(|d| d.rule == "absolute_import_path")
+    }
+
+    fn diagnostics_for(src: &str) -> Vec<crate::lint::LintDiagnostic> {
+        lint(src, None, None)
+            .diagnostics
+            .into_iter()
+            .filter(|d| d.rule == "absolute_import_path")
+            .collect()
+    }
+
+    #[test]
+    fn does_not_flag_an_import_inside_a_block_comment() {
+        let src = "/*\nimport \"/tmp/shared\";\n*/\nrq foo(\"http://x\");\n";
+        let target = diagnostics_for(src);
+        assert!(target.is_empty(), "got: {target:?}");
+    }
+
+    #[test]
+    fn does_not_flag_an_import_inside_a_line_comment() {
+        let src = "// import \"/tmp/shared\";\nrq foo(\"http://x\");\n";
+        let target = diagnostics_for(src);
+        assert!(target.is_empty(), "got: {target:?}");
+    }
+
+    #[test]
+    fn flags_a_real_import_next_to_a_commented_out_one() {
+        let src = "/* import \"/old/shared\"; */\nimport \"/new/shared\";\nrq foo(\"http://x\");\n";
+        let target = diagnostics_for(src);
+        assert_eq!(target.len(), 1, "got: {target:?}");
+        assert!(target[0].message.contains("/new/shared"));
+        assert_eq!(target[0].line, 2);
+        assert_eq!(target[0].column, 9);
+    }
+
+    #[test]
+    fn flags_a_single_quoted_absolute_import() {
+        assert_eq!(diagnostics_for("import '/tmp/shared';\n").len(), 1);
+    }
+
+    #[test]
+    fn does_not_flag_an_identifier_import() {
+        assert!(diagnostics_for("import shared;\n").is_empty());
     }
 
     #[test]

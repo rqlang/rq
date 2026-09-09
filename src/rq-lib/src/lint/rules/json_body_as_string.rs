@@ -1,7 +1,10 @@
-use crate::lint::{LintContext, LintDiagnostic, LintRule};
+use crate::lint::{line_col, significant_tokens, LintContext, LintDiagnostic, LintRule};
+use crate::syntax::token::TokenType;
 use crate::syntax::variable_context::VariableValue;
 
 pub struct Rule;
+
+const BODY_ARGUMENT: &str = "body";
 
 impl LintRule for Rule {
     fn id(&self) -> &'static str {
@@ -51,10 +54,8 @@ fn check_let_with_json_string(ctx: &LintContext, out: &mut Vec<LintDiagnostic>) 
 }
 
 fn check_inline_string_body(ctx: &LintContext, out: &mut Vec<LintDiagnostic>) {
-    for (idx, line_str) in ctx.source.lines().enumerate() {
-        let Some(col) = find_inline_json_string_body(line_str) else {
-            continue;
-        };
+    for offset in json_string_bodies(ctx.source) {
+        let (line, column) = line_col(ctx.source, offset);
         out.push(LintDiagnostic {
             severity: "error",
             rule: "json_body_as_string",
@@ -62,34 +63,52 @@ fn check_inline_string_body(ctx: &LintContext, out: &mut Vec<LintDiagnostic>) {
                       At runtime this is sent as a string, not JSON, and will break receiving APIs. \
                       Use a `${ ... }` literal or `io.read_file(\"…\")`."
                 .into(),
-            line: idx + 1,
-            column: col,
+            line,
+            column,
             file: Some(ctx.display_path.to_string()),
             suggested_fix: Some("Replace `body: \"{...}\"` with `body: ${...}`".into()),
         });
     }
 }
 
+fn json_string_bodies(source: &str) -> Vec<usize> {
+    let significant = significant_tokens(source);
+    let mut found = Vec::new();
+    for window in significant.windows(3) {
+        let [key, colon, value] = window else {
+            continue;
+        };
+        if key.token_type != TokenType::Identifier || key.value != BODY_ARGUMENT {
+            continue;
+        }
+        if colon.token_type != TokenType::Punctuation || colon.value != ":" {
+            continue;
+        }
+        if value.token_type != TokenType::String {
+            continue;
+        }
+        let Some(content) = string_content(&value.value) else {
+            continue;
+        };
+        if !looks_like_json(content) {
+            continue;
+        }
+        found.push(value.span.start);
+    }
+    found
+}
+
+fn string_content(raw: &str) -> Option<&str> {
+    if raw.len() < 2 || !raw.starts_with('"') || !raw.ends_with('"') {
+        return None;
+    }
+    Some(&raw[1..raw.len() - 1])
+}
+
 fn looks_like_json(value: &str) -> bool {
     let trimmed = value.trim();
     (trimmed.starts_with('{') && trimmed.ends_with('}'))
         || (trimmed.starts_with('[') && trimmed.ends_with(']'))
-}
-
-fn find_inline_json_string_body(line: &str) -> Option<usize> {
-    let after_body = line.find("body:").map(|i| i + "body:".len())?;
-    let rest = &line[after_body..];
-    let trim_start = rest.len() - rest.trim_start().len();
-    let trimmed = &rest[trim_start..];
-    let mut chars = trimmed.chars();
-    if chars.next() != Some('"') {
-        return None;
-    }
-    let next = chars.next()?;
-    if next != '{' && next != '[' {
-        return None;
-    }
-    Some(after_body + trim_start + 1)
 }
 
 #[cfg(test)]
@@ -121,6 +140,40 @@ mod tests {
             .diagnostics
             .iter()
             .any(|d| d.rule == "json_body_as_string"));
+    }
+
+    fn diagnostics_for(src: &str) -> Vec<crate::lint::LintDiagnostic> {
+        lint(src, None, None)
+            .diagnostics
+            .into_iter()
+            .filter(|d| d.rule == "json_body_as_string")
+            .collect()
+    }
+
+    #[test]
+    fn does_not_flag_a_body_mentioned_in_a_comment() {
+        let src = "// example: body: \"{}\"\nrq foo(\"http://x\", body: ${});\n";
+        let target = diagnostics_for(src);
+        assert!(target.is_empty(), "got: {target:?}");
+    }
+
+    #[test]
+    fn flags_a_body_on_the_line_after_the_argument_name() {
+        let src = "rq foo(\n    \"http://x\",\n    body:\n        \"{\\\"a\\\":1}\",\n);\n";
+        let target = diagnostics_for(src);
+        assert_eq!(target.len(), 1, "got: {target:?}");
+        assert_eq!(target[0].line, 4);
+        assert_eq!(target[0].column, 9);
+    }
+
+    #[test]
+    fn does_not_flag_a_body_key_in_a_map() {
+        let src = "rq foo(\"http://x\", headers: $[\"body\": \"{}\"]);\n";
+        let target = diagnostics_for(src);
+        assert!(
+            target.is_empty(),
+            "a quoted map key is not the body argument: {target:?}"
+        );
     }
 
     #[test]

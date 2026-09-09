@@ -1,4 +1,5 @@
 use crate::lint::{line_col, significant_tokens, LintContext, LintDiagnostic, LintRule};
+use crate::syntax::keywords::{KW_EP, KW_RQ};
 use crate::syntax::token::TokenType;
 use crate::syntax::variable_context::VariableValue;
 
@@ -74,28 +75,54 @@ fn check_inline_string_body(ctx: &LintContext, out: &mut Vec<LintDiagnostic>) {
 fn json_string_bodies(source: &str) -> Vec<usize> {
     let significant = significant_tokens(source);
     let mut found = Vec::new();
-    for window in significant.windows(3) {
-        let [key, colon, value] = window else {
-            continue;
-        };
-        if key.token_type != TokenType::Identifier || key.value != BODY_ARGUMENT {
-            continue;
-        }
-        if colon.token_type != TokenType::Punctuation || colon.value != ":" {
+    let mut open_delimiters: Vec<bool> = Vec::new();
+    let mut constructor_pending = false;
+    for (index, token) in significant.iter().enumerate() {
+        if token.token_type == TokenType::Keyword && (token.value == KW_RQ || token.value == KW_EP)
+        {
+            constructor_pending = true;
             continue;
         }
-        if value.token_type != TokenType::String {
+        if token.token_type != TokenType::Punctuation {
             continue;
         }
-        let Some(content) = string_content(&value.value) else {
-            continue;
-        };
-        if !looks_like_json(content) {
-            continue;
+        match token.value.as_str() {
+            "(" => {
+                open_delimiters.push(constructor_pending);
+                constructor_pending = false;
+            }
+            "{" | "[" => {
+                open_delimiters.push(false);
+                constructor_pending = false;
+            }
+            ")" | "}" | "]" => {
+                open_delimiters.pop();
+            }
+            ":" if open_delimiters.last() == Some(&true) => {
+                if let Some(offset) = json_string_body_at(&significant, index) {
+                    found.push(offset);
+                }
+            }
+            ";" => constructor_pending = false,
+            _ => {}
         }
-        found.push(value.span.start);
     }
     found
+}
+
+fn json_string_body_at(significant: &[crate::syntax::token::Token], colon: usize) -> Option<usize> {
+    let key = significant.get(colon.checked_sub(1)?)?;
+    let value = significant.get(colon + 1)?;
+    if key.token_type != TokenType::Identifier || key.value != BODY_ARGUMENT {
+        return None;
+    }
+    if value.token_type != TokenType::String {
+        return None;
+    }
+    if !looks_like_json(string_content(&value.value)?) {
+        return None;
+    }
+    Some(value.span.start)
 }
 
 fn string_content(raw: &str) -> Option<&str> {
@@ -164,6 +191,48 @@ mod tests {
         assert_eq!(target.len(), 1, "got: {target:?}");
         assert_eq!(target[0].line, 4);
         assert_eq!(target[0].column, 9);
+    }
+
+    #[test]
+    fn does_not_flag_a_body_variable_in_an_environment_block() {
+        let src = "env local {\n    body: \"{}\",\n}\n";
+        let target = diagnostics_for(src);
+        assert!(
+            target.is_empty(),
+            "an env variable named `body` is not a request body: {target:?}"
+        );
+    }
+
+    #[test]
+    fn does_not_flag_a_body_field_in_an_auth_block() {
+        let src = "auth api_auth(auth_type.bearer) {\n    body: \"{}\",\n}\n";
+        let target = diagnostics_for(src);
+        assert!(target.is_empty(), "got: {target:?}");
+    }
+
+    #[test]
+    fn does_not_flag_a_body_key_inside_a_json_literal_body() {
+        let src = "rq foo(\"http://x\", body: ${\n    body: \"{}\",\n});\n";
+        let target = diagnostics_for(src);
+        assert!(
+            target.is_empty(),
+            "a field inside a JSON literal is not the body argument: {target:?}"
+        );
+    }
+
+    #[test]
+    fn does_not_flag_a_body_argument_of_a_nested_call() {
+        let src = "rq foo(\"http://x\", body: io.read_file(\"payload.json\"));\n";
+        let target = diagnostics_for(src);
+        assert!(target.is_empty(), "got: {target:?}");
+    }
+
+    #[test]
+    fn flags_a_body_on_a_request_nested_in_an_endpoint() {
+        let src = "ep widgets(\"http://x/widgets\") {\n    rq post(body: \"{}\");\n}\n";
+        let target = diagnostics_for(src);
+        assert_eq!(target.len(), 1, "got: {target:?}");
+        assert_eq!(target[0].line, 2);
     }
 
     #[test]

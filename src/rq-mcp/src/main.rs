@@ -313,7 +313,7 @@ fn list_requests_at(path: Option<&str>) -> Result<ListRequestsResult, ListReques
         })?;
     let parse_errors = parse_errors
         .into_iter()
-        .map(|e| map_diagnostic(e, &resolved))
+        .map(|e| map_diagnostic(e, &resolved, Path::new(&resolved)))
         .collect();
     Ok(ListRequestsResult {
         requests,
@@ -357,7 +357,7 @@ fn validate_source(
         .map_err(|e| format!("check failed: {e}"))?;
     let diagnostics: Vec<ValidateDiagnostic> = errors
         .into_iter()
-        .map(|e| map_diagnostic(e, display_path))
+        .map(|e| map_diagnostic(e, display_path, &draft_path))
         .collect();
     Ok(ValidateResult {
         ok: diagnostics.is_empty(),
@@ -378,14 +378,21 @@ fn resolve_draft_path(path: Option<&str>, workspace_path: Option<&str>) -> Resul
     Ok(cwd.join(resolved))
 }
 
-fn map_diagnostic(error: RqError, display_path: &str) -> ValidateDiagnostic {
+fn reported_file(file_path: Option<String>, display_path: &str, draft_path: &Path) -> String {
+    match file_path {
+        Some(path) if Path::new(&path) != draft_path => path,
+        _ => display_path.to_string(),
+    }
+}
+
+fn map_diagnostic(error: RqError, display_path: &str, draft_path: &Path) -> ValidateDiagnostic {
     match error {
         RqError::Syntax(se) => ValidateDiagnostic {
             severity: "error",
             message: se.message,
             line: se.line,
             column: se.column,
-            file: Some(display_path.to_string()),
+            file: Some(reported_file(se.file_path, display_path, draft_path)),
         },
         other => ValidateDiagnostic {
             severity: "error",
@@ -550,6 +557,48 @@ mod tests {
         assert!(diag.column >= 1);
         assert_eq!(diag.file.as_deref(), Some("draft.rq"));
         assert!(!diag.message.is_empty());
+    }
+
+    #[test]
+    fn validate_source_blames_the_imported_file_that_actually_has_the_error() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("shared.rq"), "let broken = ;\n").expect("write");
+        let target = validate_source(
+            "import \"shared\";\n\nrq list(\"http://localhost:8080/users\");\n",
+            Some("users.rq"),
+            dir.path().to_str(),
+            None,
+        )
+        .expect("validate_source failed");
+        assert!(!target.ok, "expected a diagnostic");
+        let blamed = target.diagnostics[0].file.as_deref().expect("file");
+        assert!(
+            blamed.ends_with("shared.rq"),
+            "the broken sibling should be blamed, got {blamed}"
+        );
+    }
+
+    #[test]
+    fn list_requests_at_blames_the_broken_file_not_the_directory() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            dir.path().join("good.rq"),
+            "rq greet(\"http://example.test/hi\");\n",
+        )
+        .expect("write");
+        std::fs::write(dir.path().join("broken.rq"), "rq oops(\"http://x\"\n").expect("write");
+        let target = list_requests_at(dir.path().to_str()).expect("list failed");
+        assert_eq!(
+            target.parse_errors.len(),
+            1,
+            "got: {:?}",
+            target.parse_errors
+        );
+        let blamed = target.parse_errors[0].file.as_deref().expect("file");
+        assert!(
+            blamed.ends_with("broken.rq"),
+            "the broken file should be blamed, got {blamed}"
+        );
     }
 
     #[test]

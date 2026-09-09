@@ -121,3 +121,40 @@ describe('DiagnosticsProvider lint integration', () => {
         );
     });
 });
+
+
+describe('DiagnosticsProvider lint setting changes', () => {
+    function changeHandler(): (event: any) => void {
+        return workspace.onDidChangeConfiguration.mock.calls[0][0];
+    }
+
+    it('revalidates when rq.lint.enabled changes so stale warnings clear immediately', () => {
+        const target = new DiagnosticsProvider(collection());
+        const revalidate = jest.spyOn(target, 'validateAllFolders').mockImplementation(() => {});
+
+        changeHandler()({ affectsConfiguration: (setting: string) => setting === 'rq.lint.enabled' });
+
+        expect(revalidate).toHaveBeenCalled();
+        target.dispose();
+    });
+
+    it('ignores changes to unrelated settings', () => {
+        const target = new DiagnosticsProvider(collection());
+        const revalidate = jest.spyOn(target, 'validateAllFolders').mockImplementation(() => {});
+
+        changeHandler()({ affectsConfiguration: () => false });
+
+        expect(revalidate).not.toHaveBeenCalled();
+        target.dispose();
+    });
+
+    it('disposes its configuration listener', () => {
+        const dispose = jest.fn();
+        workspace.onDidChangeConfiguration.mockReturnValueOnce({ dispose });
+        const target = new DiagnosticsProvider(collection());
+
+        target.dispose();
+
+        expect(dispose).toHaveBeenCalled();
+    });
+});

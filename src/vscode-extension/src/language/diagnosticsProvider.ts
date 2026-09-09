@@ -16,10 +16,16 @@ export class DiagnosticsProvider {
     private readonly environmentProvider: EnvironmentProvider | undefined;
     private readonly tempRoots = new Map<string, string>();
     private readonly debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
+    private readonly configurationListener: vscode.Disposable;
 
     constructor(diagnosticCollection: vscode.DiagnosticCollection, environmentProvider?: EnvironmentProvider) {
         this.diagnosticCollection = diagnosticCollection;
         this.environmentProvider = environmentProvider;
+        this.configurationListener = vscode.workspace.onDidChangeConfiguration(event => {
+            if (event.affectsConfiguration(LINT_SETTING)) {
+                this.validateAllFolders();
+            }
+        });
     }
 
     scheduleValidation(document: vscode.TextDocument): void {
@@ -73,6 +79,7 @@ export class DiagnosticsProvider {
     }
 
     dispose(): void {
+        this.configurationListener.dispose();
         for (const timer of this.debounceTimers.values()) {
             clearTimeout(timer);
         }

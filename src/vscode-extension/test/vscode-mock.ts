@@ -87,7 +87,8 @@ export const workspace = {
     openTextDocument: jest.fn(),
     findFiles: jest.fn().mockResolvedValue([]),
     getWorkspaceFolder: jest.fn(),
-    onDidChangeWorkspaceFolders: jest.fn().mockReturnValue({ dispose: () => {} })
+    onDidChangeWorkspaceFolders: jest.fn().mockReturnValue({ dispose: () => {} }),
+    onDidChangeConfiguration: jest.fn().mockReturnValue({ dispose: () => {} })
 };
 
 export class McpStdioServerDefinition {

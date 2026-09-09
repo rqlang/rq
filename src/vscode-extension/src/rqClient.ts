@@ -267,12 +267,13 @@ export async function showAuthConfig(name: string, sourceDirectory?: string, env
 export async function listRequests(sourceDirectory?: string): Promise<ListRequestsResult> {
     const source = resolveSource(sourceDirectory);
     const result = await wasmCall('list_requests', [await buildFilesMap(source), await buildSecretsMap(source), source]);
-    const requests = JSON.parse(result) as RequestInfo[];
+    const parsed = JSON.parse(result) as { requests: RequestInfo[]; parse_errors?: { message: string }[] };
+    const requests = parsed.requests ?? [];
     requests.forEach(r => {
         r.file = normalizePath(r.file);
         if (r.endpoint_file) { r.endpoint_file = normalizePath(r.endpoint_file); }
     });
-    return { requests };
+    return { requests, errors: (parsed.parse_errors ?? []).map(e => e.message) };
 }
 
 export async function showRequest(requestName: string, sourceDirectory?: string, environment?: string, interpolate = false, skipRequiredVariables = false): Promise<RequestShowOutput> {

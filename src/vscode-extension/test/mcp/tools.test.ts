@@ -12,7 +12,7 @@ jest.mock('../../src/wasm/rq_wasm', () => ({
     list_requests: mockListRequests
 }), { virtual: true });
 
-import { lintRq, validateRq, listRequests, draftPath, workspaceFor } from '../../src/mcp/tools';
+import { Diagnostic, lintRq, validateRq, listRequests, draftPath, workspaceFor } from '../../src/mcp/tools';
 
 let workspace: string;
 
@@ -138,10 +138,31 @@ describe('validateRq', () => {
 
 describe('listRequests', () => {
     it('returns the requests the wasm reports', async () => {
-        mockListRequests.mockReturnValue(JSON.stringify([{ name: 'widgets/list' }]));
+        mockListRequests.mockReturnValue(JSON.stringify({ requests: [{ name: 'widgets/list' }], parse_errors: [] }));
 
         const target = await listRequests({ path: workspace }) as { requests: { name: string }[] };
 
         expect(target.requests[0].name).toBe('widgets/list');
+    });
+
+    it('reports the parse errors the wasm found instead of an empty array', async () => {
+        mockListRequests.mockReturnValue(JSON.stringify({
+            requests: [{ name: 'widgets/list' }],
+            parse_errors: [{ severity: 'error', message: 'Expected \')\'', line: 2, column: 5, file: 'broken.rq' }]
+        }));
+
+        const target = await listRequests({ path: workspace }) as { parse_errors: Diagnostic[] };
+
+        expect(target.parse_errors).toHaveLength(1);
+        expect(target.parse_errors[0].message).toBe('Expected \')\'');
+        expect(target.parse_errors[0].file).toBe('broken.rq');
+    });
+
+    it('defaults to an empty list when the wasm reports no parse errors', async () => {
+        mockListRequests.mockReturnValue(JSON.stringify({ requests: [] }));
+
+        const target = await listRequests({ path: workspace }) as { parse_errors: Diagnostic[] };
+
+        expect(target.parse_errors).toEqual([]);
     });
 });

@@ -1,6 +1,6 @@
 use crate::{WasmFs, WasmHttpClient, WasmSecretProvider};
 use rq_lib::client::models::{
-    AuthListEntry, EndpointEntry, EnvironmentEntry, ReferenceLocation, VariableEntry,
+    AuthListEntry, EndpointEntry, EnvironmentEntry, ReferenceLocation, RequestInfo, VariableEntry,
 };
 use rq_lib::error::RqError;
 use rq_lib::RqClient;
@@ -48,6 +48,21 @@ struct CheckError {
 #[derive(Serialize)]
 struct CheckResult {
     errors: Vec<CheckError>,
+}
+
+#[derive(Serialize)]
+struct ParseDiagnostic {
+    severity: &'static str,
+    message: String,
+    line: usize,
+    column: usize,
+    file: String,
+}
+
+#[derive(Serialize)]
+struct ListRequestsResult {
+    requests: Vec<RequestInfo>,
+    parse_errors: Vec<ParseDiagnostic>,
 }
 
 #[derive(Serialize)]
@@ -101,10 +116,36 @@ pub fn list_requests(
     secrets_json: &str,
     source: &str,
 ) -> Result<String, JsError> {
-    let (requests, _) = make_client(parse_files(files_json)?, parse_secrets(secrets_json))
+    let (requests, parse_errors) = make_client(parse_files(files_json)?, parse_secrets(secrets_json))
         .list_requests(Path::new(source))
         .map_err(rq_err)?;
-    serde_json::to_string(&requests).map_err(|e| JsError::new(&e.to_string()))
+    let result = ListRequestsResult {
+        requests,
+        parse_errors: parse_errors
+            .into_iter()
+            .map(|e| parse_diagnostic(e, source))
+            .collect(),
+    };
+    serde_json::to_string(&result).map_err(|e| JsError::new(&e.to_string()))
+}
+
+fn parse_diagnostic(error: RqError, source: &str) -> ParseDiagnostic {
+    match error {
+        RqError::Syntax(se) => ParseDiagnostic {
+            severity: "error",
+            message: se.message,
+            line: se.line,
+            column: se.column,
+            file: se.file_path.unwrap_or_else(|| source.to_string()),
+        },
+        other => ParseDiagnostic {
+            severity: "error",
+            message: other.to_string(),
+            line: 0,
+            column: 0,
+            file: source.to_string(),
+        },
+    }
 }
 
 #[wasm_bindgen]

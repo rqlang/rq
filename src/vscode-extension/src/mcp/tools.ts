@@ -67,6 +67,7 @@ export async function listRequests(args: { path?: string }): Promise<unknown> {
     const target = await workspaceFor(args.path);
     const filesJson = await buildFilesMap(target);
     const secretsJson = await buildSecretsMap(target);
-    const requests = JSON.parse(await wasmCall('list_requests', [filesJson, secretsJson, target]));
-    return { requests, parse_errors: [] };
+    const raw = await wasmCall('list_requests', [filesJson, secretsJson, target]);
+    const parsed = JSON.parse(raw) as { requests: unknown[]; parse_errors?: Diagnostic[] };
+    return { requests: parsed.requests ?? [], parse_errors: parsed.parse_errors ?? [] };
 }

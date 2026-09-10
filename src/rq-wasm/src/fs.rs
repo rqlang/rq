@@ -4,11 +4,20 @@ use std::path::{Path, PathBuf};
 
 pub struct WasmFs {
     files: HashMap<String, String>,
+    root: Option<String>,
 }
 
 impl WasmFs {
     pub fn new(files: HashMap<String, String>) -> Self {
-        Self { files }
+        Self { files, root: None }
+    }
+
+    pub fn with_root(files: HashMap<String, String>, root: &Path) -> Self {
+        let root = Self::normalize(root);
+        Self {
+            files,
+            root: Some(root),
+        }
     }
 
     fn normalize(path: &Path) -> String {
@@ -64,12 +73,16 @@ impl Fs for WasmFs {
 
     fn is_dir(&self, path: &Path) -> bool {
         let key = Self::normalize(path);
+        if self.files.contains_key(&key) {
+            return false;
+        }
         let prefix = if key.ends_with('/') {
             key.clone()
         } else {
             format!("{key}/")
         };
         self.files.keys().any(|k| k.starts_with(&prefix))
+            || self.root.as_deref() == Some(key.as_str())
     }
 
     fn read_dir(&self, dir: &Path) -> Result<Vec<PathBuf>, String> {
@@ -108,6 +121,16 @@ mod tests {
                 .iter()
                 .map(|(k, v)| (k.to_string(), v.to_string()))
                 .collect(),
+        )
+    }
+
+    fn make_rooted_fs(entries: &[(&str, &str)], root: &str) -> WasmFs {
+        WasmFs::with_root(
+            entries
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
+            Path::new(root),
         )
     }
 
@@ -284,6 +307,54 @@ mod tests {
             .resolve_path(Path::new("/project"), "bar.rq")
             .unwrap();
         assert_eq!(resolved, PathBuf::from("/project/bar.rq"));
+    }
+
+    #[test]
+    fn is_dir_true_for_root_when_no_files_are_loaded() {
+        let target = make_rooted_fs(&[], "/project");
+        assert!(target.is_dir(Path::new("/project")));
+    }
+
+    #[test]
+    fn exists_true_for_root_when_no_files_are_loaded() {
+        let target = make_rooted_fs(&[], "/project");
+        assert!(target.exists(Path::new("/project")));
+    }
+
+    #[test]
+    fn read_dir_on_empty_root_returns_no_entries() {
+        let target = make_rooted_fs(&[], "/project");
+        assert!(target.read_dir(Path::new("/project")).unwrap().is_empty());
+    }
+
+    #[test]
+    fn is_dir_false_for_unknown_path_when_root_is_set() {
+        let target = make_rooted_fs(&[], "/project");
+        assert!(!target.is_dir(Path::new("/elsewhere")));
+    }
+
+    #[test]
+    fn is_dir_false_for_missing_subdirectory_of_root() {
+        let target = make_rooted_fs(&[], "/project");
+        assert!(!target.is_dir(Path::new("/project/sub")));
+    }
+
+    #[test]
+    fn is_dir_false_when_root_points_at_a_loaded_file() {
+        let target = make_rooted_fs(&[("/project/foo.rq", "")], "/project/foo.rq");
+        assert!(!target.is_dir(Path::new("/project/foo.rq")));
+    }
+
+    #[test]
+    fn is_dir_true_for_root_given_with_a_trailing_slash() {
+        let target = make_rooted_fs(&[], "/project/");
+        assert!(target.is_dir(Path::new("/project")));
+    }
+
+    #[test]
+    fn is_dir_still_true_for_ancestor_when_root_is_set() {
+        let target = make_rooted_fs(&[("/project/sub/foo.rq", "")], "/project");
+        assert!(target.is_dir(Path::new("/project/sub")));
     }
 
     #[test]

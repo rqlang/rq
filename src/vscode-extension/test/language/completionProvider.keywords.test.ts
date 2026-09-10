@@ -141,6 +141,27 @@ describe('top-level keyword completion', () => {
         expect(target.insertText.value).toContain('scope:');
     });
 
+    test('bearer auth snippet references a variable instead of an empty token literal', async () => {
+        const doc = makeDocument(['auth']);
+        const position = new vscode.Position(0, 4);
+
+        const items = await provideCompletionItems(doc, position);
+
+        const target = items.find((i: any) => i.label === 'auth bearer');
+        expect(target.insertText.value).toContain('token: ${2:api_token},');
+    });
+
+    test('no auth snippet inserts an empty placeholder value', async () => {
+        const doc = makeDocument(['auth']);
+        const position = new vscode.Position(0, 4);
+
+        const items = await provideCompletionItems(doc, position);
+
+        const authSnippets = items.filter((i: any) => i.label.startsWith('auth ') && i.insertText.value);
+        expect(authSnippets.length).toBe(5);
+        authSnippets.forEach((i: any) => expect(i.insertText.value).not.toMatch(/\$\{\d+:\}/));
+    });
+
     test('suggests rq keyword item with Keyword kind when typing rq', async () => {
         const doc = makeDocument(['rq']);
         const position = new vscode.Position(0, 2);
@@ -159,31 +180,61 @@ describe('top-level keyword completion', () => {
 
         const items = await provideCompletionItems(doc, position);
 
-        const snip = items.find((i: any) => i.label === 'rq …');
-        expect(snip).toBeDefined();
-        expect(snip.kind).toBe(vscode.CompletionItemKind.Module);
-        expect(snip.insertText.value).toContain('rq_name');
+        const target = items.find((i: any) => i.label === 'rq …');
+        expect(target).toBeDefined();
+        expect(target.kind).toBe(vscode.CompletionItemKind.Module);
+        expect(target.insertText.value).toBe('rq ${1:rq_name}("${2:http://localhost:8080/path}");$0');
     });
 
-    test('suggests ep crud snippet with linked widget placeholder', async () => {
+    test('suggests ep snippet with a url placeholder when typing ep', async () => {
         const doc = makeDocument(['ep']);
         const position = new vscode.Position(0, 2);
 
         const items = await provideCompletionItems(doc, position);
 
-        const snip = items.find((i: any) => i.label === 'ep crud');
-        expect(snip).toBeDefined();
-        expect(snip.kind).toBe(vscode.CompletionItemKind.Module);
-        const val = snip.insertText.value;
-        expect(val).toContain('${1:endpoint}_id');
-        expect(val).toContain('ep ${1:endpoint}s(');
-        expect(val).toContain('${1:endpoint}-post.json');
-        expect(val).toContain('${1:endpoint}-patch.json');
-        expect(val).toContain('rq list()');
-        expect(val).toContain('rq get()');
-        expect(val).toContain('rq post(');
-        expect(val).toContain('rq patch(');
-        expect(val).toContain('rq delete()');
+        const target = items.find((i: any) => i.label === 'ep …');
+        expect(target.insertText.value).toBe('ep ${1:ep_name}("${2:http://localhost:8080/path}") {\n\t$0\n}');
+    });
+
+    test('suggests env snippet with a trailing comma after the entry', async () => {
+        const doc = makeDocument(['env']);
+        const position = new vscode.Position(0, 3);
+
+        const items = await provideCompletionItems(doc, position);
+
+        const target = items.find((i: any) => i.label === 'env …');
+        expect(target.insertText.value).toBe('env ${1:local} {\n\t${2:base_url}: "${3:http://localhost:8080}",\n}');
+    });
+
+    test('suggests ep crud snippet with separate name, url and path param placeholders', async () => {
+        const doc = makeDocument(['ep']);
+        const position = new vscode.Position(0, 2);
+
+        const items = await provideCompletionItems(doc, position);
+
+        const target = items.find((i: any) => i.label === 'ep crud');
+        expect(target).toBeDefined();
+        expect(target.kind).toBe(vscode.CompletionItemKind.Module);
+        const val = target.insertText.value;
+        expect(val).toContain('ep ${1:resources}("${2:http://localhost:8080/resources}")');
+        expect(val).toContain('[required(${3:resource_id})]');
+        expect(val).not.toContain('let ');
+    });
+
+    test('ep crud snippet targets the path parameter on item-level requests', async () => {
+        const doc = makeDocument(['ep']);
+        const position = new vscode.Position(0, 2);
+
+        const items = await provideCompletionItems(doc, position);
+
+        const target = items.find((i: any) => i.label === 'ep crud');
+        const val = target.insertText.value;
+        expect(val).toContain('rq list();');
+        expect(val).toContain('rq get($3);');
+        expect(val).toContain('rq delete($3);');
+        expect(val).toContain('rq post(body: io.read_file("$1-post.json"));');
+        expect(val).toContain('rq put($3, body: io.read_file("$1-put.json"));');
+        expect(val).toContain('rq patch($3, body: io.read_file("$1-patch.json"));');
     });
 
     test('suggests ep keyword item with Keyword kind when typing ep', async () => {

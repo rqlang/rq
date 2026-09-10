@@ -60,6 +60,18 @@ struct ValidateResult {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct GetRqReferenceParams {
+    doc: ReferenceDoc,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+enum ReferenceDoc {
+    LanguageDefinition,
+    Idioms,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 struct ListRequestsParams {
     #[serde(default)]
     path: Option<String>,
@@ -147,6 +159,20 @@ impl RqMcp {
     }
 
     #[tool(
+        description = "Return the full text of one rqlang documentation file: `language-definition` (the complete grammar reference — statement forms, interpolation, attributes, built-in functions) or `idioms` (style preferences and canonical examples). The same documents are also published as MCP resources, but this tool works on clients that do not let the model read resources. Call it for both documents before generating or refactoring any .rq file — never guess rqlang syntax or probe for it with repeated validate_rq calls."
+    )]
+    fn get_rq_reference(
+        &self,
+        Parameters(GetRqReferenceParams { doc }): Parameters<GetRqReferenceParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let body = match doc {
+            ReferenceDoc::LanguageDefinition => LANGUAGE_DEFINITION_MD,
+            ReferenceDoc::Idioms => IDIOMS_MD,
+        };
+        Ok(CallToolResult::success(vec![Content::text(body)]))
+    }
+
+    #[tool(
         description = "List every named rqlang request reachable from `path`. `path` is optional: omit it to use the server's current working directory (typically the active workspace folder). Pass an explicit file or directory only when the user wants to inspect somewhere else. Returns { requests: [{name, endpoint, file, endpoint_file, endpoint_line, endpoint_character}], parse_errors: [diagnostic] }. Use this before generating a new request to avoid name collisions."
     )]
     fn list_requests(
@@ -215,8 +241,11 @@ fn build_generate_rq_prompt(args: &GenerateRqArgs) -> String {
 
 fn read_resources_step() -> String {
     format!(
-        "Read the `{LANGUAGE_DEFINITION_URI}` resource for the grammar AND the \
-         `{IDIOMS_URI}` resource for style preferences and canonical examples."
+        "Read both rqlang documents before writing anything: the grammar reference and the \
+         style guide. Call `get_rq_reference` with `doc=\"language-definition\"` and then with \
+         `doc=\"idioms\"` — those are the same documents published as the \
+         `{LANGUAGE_DEFINITION_URI}` and `{IDIOMS_URI}` resources, so read the resources instead \
+         if your client exposes them to you."
     )
 }
 
@@ -424,16 +453,20 @@ impl ServerHandler for RqMcp {
             "rq-mcp v1. Tools: validate_rq (parse + analyze, returns syntax/semantic \
              diagnostics), lint_rq (style/idiom rules, returns rule-tagged diagnostics with \
              suggested fixes), list_requests (enumerate named requests under a path so \
-             generated ones avoid name collisions). After drafting any .rq snippet, always \
+             generated ones avoid name collisions), get_rq_reference (return the full text of \
+             the rqlang grammar reference or the idioms guide). After drafting any .rq snippet, always \
              call validate_rq first; once it returns ok:true, call lint_rq and iterate \
              until that also returns ok:true. Output may span several files: keep one `ep` \
              per file named after the endpoint, and call validate_rq and lint_rq once per \
              file with that file's name as `path`. Some lint rules are cleared by moving \
              code into another file rather than editing the current one — never delete \
              content the user asked for just to silence a diagnostic. \
-             Resources: {LANGUAGE_DEFINITION_URI} \
-             (full rqlang reference) and {IDIOMS_URI} (style preferences and canonical \
-             examples) — read both before generating or refactoring any .rq file. Prompts: \
+             Before generating or refactoring any .rq file, read both rqlang documents with \
+             get_rq_reference (`doc=\"language-definition\"` for the grammar, `doc=\"idioms\"` \
+             for style); they are also published as the {LANGUAGE_DEFINITION_URI} and \
+             {IDIOMS_URI} resources for clients that expose resource reads. Never infer rqlang \
+             syntax from repeated validate_rq attempts or by searching the filesystem for \
+             documentation. Prompts: \
              generate_rq (drives the full generate → validate → lint → iterate loop). \
              Behavior: this server is for authoring .rq files, not running them. Do not \
              propose or suggest CLI commands (e.g. `rq request run …`) for executing \
@@ -886,6 +919,55 @@ mod tests {
             body.contains(LANGUAGE_DEFINITION_URI),
             "prompt should still tell the AI to read {LANGUAGE_DEFINITION_URI}"
         );
+    }
+
+    fn reference_text(doc: ReferenceDoc) -> String {
+        let result = RqMcp::new()
+            .get_rq_reference(Parameters(GetRqReferenceParams { doc }))
+            .expect("get_rq_reference failed");
+        result
+            .content
+            .into_iter()
+            .filter_map(|c| c.as_text().map(|t| t.text.clone()))
+            .collect()
+    }
+
+    #[test]
+    fn get_rq_reference_returns_the_language_definition() {
+        let target = reference_text(ReferenceDoc::LanguageDefinition);
+        assert_eq!(target, LANGUAGE_DEFINITION_MD);
+    }
+
+    #[test]
+    fn get_rq_reference_returns_the_idioms_guide() {
+        let target = reference_text(ReferenceDoc::Idioms);
+        assert_eq!(target, IDIOMS_MD);
+    }
+
+    #[test]
+    fn get_rq_reference_serves_the_same_bodies_as_the_resources() {
+        assert!(reference_text(ReferenceDoc::LanguageDefinition).contains("rq "));
+        assert!(reference_text(ReferenceDoc::Idioms)
+            .contains("Never hand-write an `Authorization` header"));
+    }
+
+    #[test]
+    fn server_instructions_point_at_the_reference_tool() {
+        let instructions = RqMcp::new().get_info().instructions.expect("instructions");
+        assert!(
+            instructions.contains("get_rq_reference"),
+            "clients that cannot read resources need the tool named in the instructions"
+        );
+    }
+
+    #[test]
+    fn generate_rq_prompt_points_at_the_reference_tool() {
+        let args = GenerateRqArgs {
+            intent: "list users".into(),
+            workspace_path: None,
+        };
+        let body = build_generate_rq_prompt(&args);
+        assert!(body.contains("get_rq_reference"), "got: {body}");
     }
 
     #[test]

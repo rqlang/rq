@@ -1,8 +1,10 @@
 import { buildGenerateRqPrompt, render, RESOURCE_BODIES, surface } from '../../src/mcp/surface';
 
 describe('shared MCP surface', () => {
-    it('declares the three tools the Rust server also serves', () => {
-        expect(Object.keys(surface.tools).sort()).toEqual(['lint_rq', 'list_requests', 'validate_rq']);
+    it('declares the same tools the Rust server serves', () => {
+        expect(Object.keys(surface.tools).sort()).toEqual(
+            ['get_rq_reference', 'lint_rq', 'list_requests', 'validate_rq']
+        );
     });
 
     it('carries the markdown body for every declared resource', () => {
@@ -56,7 +58,7 @@ describe('buildGenerateRqPrompt', () => {
 
     it('numbers the workflow steps', () => {
         const target = buildGenerateRqPrompt('list users');
-        expect(target).toContain('1. Read the `rqlang://docs/language-definition` resource');
+        expect(target).toContain('1. Read both rqlang documents before writing anything');
         expect(target).toContain('7. Present each file');
     });
 });

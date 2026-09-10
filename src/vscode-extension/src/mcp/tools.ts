@@ -1,6 +1,7 @@
 import * as path from 'path';
 import { setWasmTransport, wasmCall } from '../wasmHost';
 import { buildFilesMap, buildSecretsMap, isDirectory, normalizePath } from '../utils';
+import { RESOURCE_BODIES, surface } from './surface';
 
 const DRAFT_FILE_NAME = 'draft.rq';
 
@@ -70,4 +71,18 @@ export async function listRequests(args: { path?: string }): Promise<unknown> {
     const raw = await wasmCall('list_requests', [filesJson, secretsJson, target]);
     const parsed = JSON.parse(raw) as { requests: unknown[]; parse_errors?: Diagnostic[] };
     return { requests: parsed.requests ?? [], parse_errors: parsed.parse_errors ?? [] };
+}
+
+export type ReferenceDoc = keyof typeof surface.resources;
+
+export function referenceDocIds(): ReferenceDoc[] {
+    return Object.keys(surface.resources) as ReferenceDoc[];
+}
+
+export function getRqReference(args: { doc: ReferenceDoc }): string {
+    const definition = surface.resources[args.doc];
+    if (!definition) {
+        throw new Error(`Unknown rqlang document \`${args.doc}\`. Available: ${referenceDocIds().join(', ')}.`);
+    }
+    return RESOURCE_BODIES[definition.uri];
 }

@@ -10,9 +10,13 @@ use std::path::Path;
 use std::sync::Arc;
 use wasm_bindgen::prelude::*;
 
-fn make_client(files: HashMap<String, String>, secrets: WasmSecretProvider) -> RqClient {
+fn make_client(
+    files: HashMap<String, String>,
+    secrets: WasmSecretProvider,
+    source: &str,
+) -> RqClient {
     RqClient::new(
-        Arc::new(WasmFs::new(files)),
+        Arc::new(WasmFs::with_root(files, Path::new(source))),
         Arc::new(secrets),
         Arc::new(WasmHttpClient),
     )
@@ -116,9 +120,13 @@ pub fn list_requests(
     secrets_json: &str,
     source: &str,
 ) -> Result<String, JsError> {
-    let (requests, parse_errors) = make_client(parse_files(files_json)?, parse_secrets(secrets_json))
-        .list_requests(Path::new(source))
-        .map_err(rq_err)?;
+    let (requests, parse_errors) = make_client(
+        parse_files(files_json)?,
+        parse_secrets(secrets_json),
+        source,
+    )
+    .list_requests(Path::new(source))
+    .map_err(rq_err)?;
     let result = ListRequestsResult {
         requests,
         parse_errors: parse_errors
@@ -150,10 +158,13 @@ fn parse_diagnostic(error: RqError, source: &str) -> ParseDiagnostic {
 
 #[wasm_bindgen]
 pub fn list_auth(files_json: &str, secrets_json: &str, source: &str) -> Result<String, JsError> {
-    let entries: Vec<AuthListEntry> =
-        make_client(parse_files(files_json)?, parse_secrets(secrets_json))
-            .list_auth(Path::new(source))
-            .map_err(rq_err)?;
+    let entries: Vec<AuthListEntry> = make_client(
+        parse_files(files_json)?,
+        parse_secrets(secrets_json),
+        source,
+    )
+    .list_auth(Path::new(source))
+    .map_err(rq_err)?;
     serde_json::to_string(&entries).map_err(|e| JsError::new(&e.to_string()))
 }
 
@@ -163,10 +174,13 @@ pub fn list_environments(
     secrets_json: &str,
     source: &str,
 ) -> Result<String, JsError> {
-    let entries: Vec<EnvironmentEntry> =
-        make_client(parse_files(files_json)?, parse_secrets(secrets_json))
-            .list_environments_with_locations(Path::new(source))
-            .map_err(rq_err)?;
+    let entries: Vec<EnvironmentEntry> = make_client(
+        parse_files(files_json)?,
+        parse_secrets(secrets_json),
+        source,
+    )
+    .list_environments_with_locations(Path::new(source))
+    .map_err(rq_err)?;
     serde_json::to_string(&entries).map_err(|e| JsError::new(&e.to_string()))
 }
 
@@ -176,10 +190,13 @@ pub fn list_endpoints(
     secrets_json: &str,
     source: &str,
 ) -> Result<String, JsError> {
-    let entries: Vec<EndpointEntry> =
-        make_client(parse_files(files_json)?, parse_secrets(secrets_json))
-            .list_endpoints(Path::new(source))
-            .map_err(rq_err)?;
+    let entries: Vec<EndpointEntry> = make_client(
+        parse_files(files_json)?,
+        parse_secrets(secrets_json),
+        source,
+    )
+    .list_endpoints(Path::new(source))
+    .map_err(rq_err)?;
     serde_json::to_string(&entries).map_err(|e| JsError::new(&e.to_string()))
 }
 
@@ -190,10 +207,13 @@ pub fn list_variables(
     source: &str,
     env: Option<String>,
 ) -> Result<String, JsError> {
-    let entries: Vec<VariableEntry> =
-        make_client(parse_files(files_json)?, parse_secrets(secrets_json))
-            .list_variables(Path::new(source), env.as_deref())
-            .map_err(rq_err)?;
+    let entries: Vec<VariableEntry> = make_client(
+        parse_files(files_json)?,
+        parse_secrets(secrets_json),
+        source,
+    )
+    .list_variables(Path::new(source), env.as_deref())
+    .map_err(rq_err)?;
     serde_json::to_string(&entries).map_err(|e| JsError::new(&e.to_string()))
 }
 
@@ -232,9 +252,13 @@ pub fn check(
     source: &str,
     env: Option<String>,
 ) -> Result<String, JsError> {
-    let errors = make_client(parse_files(files_json)?, parse_secrets(secrets_json))
-        .check_path(Path::new(source), env.as_deref())
-        .map_err(rq_err)?;
+    let errors = make_client(
+        parse_files(files_json)?,
+        parse_secrets(secrets_json),
+        source,
+    )
+    .check_path(Path::new(source), env.as_deref())
+    .map_err(rq_err)?;
 
     let check_errors: Vec<CheckError> = errors
         .into_iter()
@@ -259,6 +283,7 @@ pub fn check(
 }
 
 #[wasm_bindgen]
+#[allow(clippy::too_many_arguments)]
 pub fn get_request_details(
     files_json: &str,
     secrets_json: &str,
@@ -274,8 +299,19 @@ pub fn get_request_details(
             .map_err(|e| JsError::new(&format!("Invalid variables_json: {e}")))?,
         None => vec![],
     };
-    let details = make_client(parse_files(files_json)?, parse_secrets(secrets_json))
-        .get_request_details(Path::new(source), name, env.as_deref(), interpolate, skip_required_variables, &variables)?;
+    let details = make_client(
+        parse_files(files_json)?,
+        parse_secrets(secrets_json),
+        source,
+    )
+    .get_request_details(
+        Path::new(source),
+        name,
+        env.as_deref(),
+        interpolate,
+        skip_required_variables,
+        &variables,
+    )?;
 
     let headers: HashMap<String, String> = details.headers.into_iter().collect();
     let auth = details.auth_name.map(|n| AuthRef {
@@ -311,6 +347,7 @@ pub fn get_auth_details(
     let (auth_name, auth_type, fields, file, line, character) = make_client(
         parse_files(files_json)?,
         parse_secrets(secrets_json),
+        source,
     )
     .get_auth_details(Path::new(source), name, env.as_deref(), interpolate)?;
 
@@ -333,9 +370,13 @@ pub fn get_environment(
     source: &str,
     name: &str,
 ) -> Result<String, JsError> {
-    let entry = make_client(parse_files(files_json)?, parse_secrets(secrets_json))
-        .get_environment(Path::new(source), name)
-        .map_err(rq_err)?;
+    let entry = make_client(
+        parse_files(files_json)?,
+        parse_secrets(secrets_json),
+        source,
+    )
+    .get_environment(Path::new(source), name)
+    .map_err(rq_err)?;
     serde_json::to_string(&entry).map_err(|e| JsError::new(&e.to_string()))
 }
 
@@ -346,9 +387,13 @@ pub fn get_endpoint(
     source: &str,
     name: &str,
 ) -> Result<String, JsError> {
-    let entry = make_client(parse_files(files_json)?, parse_secrets(secrets_json))
-        .get_endpoint(Path::new(source), name)
-        .map_err(rq_err)?;
+    let entry = make_client(
+        parse_files(files_json)?,
+        parse_secrets(secrets_json),
+        source,
+    )
+    .get_endpoint(Path::new(source), name)
+    .map_err(rq_err)?;
     serde_json::to_string(&entry).map_err(|e| JsError::new(&e.to_string()))
 }
 
@@ -361,9 +406,13 @@ pub fn get_variable(
     env: Option<String>,
     interpolate: bool,
 ) -> Result<String, JsError> {
-    let entry = make_client(parse_files(files_json)?, parse_secrets(secrets_json))
-        .get_variable(Path::new(source), name, env.as_deref(), interpolate)
-        .map_err(rq_err)?;
+    let entry = make_client(
+        parse_files(files_json)?,
+        parse_secrets(secrets_json),
+        source,
+    )
+    .get_variable(Path::new(source), name, env.as_deref(), interpolate)
+    .map_err(rq_err)?;
     serde_json::to_string(&entry).map_err(|e| JsError::new(&e.to_string()))
 }
 
@@ -374,10 +423,13 @@ pub fn list_variable_refs(
     source: &str,
     name: &str,
 ) -> Result<String, JsError> {
-    let refs: Vec<ReferenceLocation> =
-        make_client(parse_files(files_json)?, parse_secrets(secrets_json))
-            .list_variable_references(Path::new(source), name)
-            .map_err(rq_err)?;
+    let refs: Vec<ReferenceLocation> = make_client(
+        parse_files(files_json)?,
+        parse_secrets(secrets_json),
+        source,
+    )
+    .list_variable_references(Path::new(source), name)
+    .map_err(rq_err)?;
     serde_json::to_string(&refs).map_err(|e| JsError::new(&e.to_string()))
 }
 
@@ -388,10 +440,13 @@ pub fn list_endpoint_refs(
     source: &str,
     name: &str,
 ) -> Result<String, JsError> {
-    let refs: Vec<ReferenceLocation> =
-        make_client(parse_files(files_json)?, parse_secrets(secrets_json))
-            .list_endpoint_references(Path::new(source), name)
-            .map_err(rq_err)?;
+    let refs: Vec<ReferenceLocation> = make_client(
+        parse_files(files_json)?,
+        parse_secrets(secrets_json),
+        source,
+    )
+    .list_endpoint_references(Path::new(source), name)
+    .map_err(rq_err)?;
     serde_json::to_string(&refs).map_err(|e| JsError::new(&e.to_string()))
 }
 
@@ -411,7 +466,7 @@ pub async fn run_request(
 ) -> Result<String, JsError> {
     let files = parse_files(files_json)?;
     let secrets = parse_secrets(secrets_json);
-    let client = make_client(files, secrets);
+    let client = make_client(files, secrets, source);
 
     let variables: Vec<String> = match variables_json.as_deref() {
         Some(s) => serde_json::from_str(s)

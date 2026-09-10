@@ -25,3 +25,9 @@ target
 
 /target
 .DS_Store
+
+# Vim swap/session files
+*.sw[a-p]
+*.un~
+Session.vim
+.netrwhist

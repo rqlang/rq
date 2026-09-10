@@ -2,7 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { buildGenerateRqPrompt, render, RESOURCE_BODIES, surface } from './surface';
-import { getRqReference, listRequests, lintRq, referenceDocIds, useDirectWasm, validateRq } from './tools';
+import { getRqReference, listRequests, lintRq, ReferenceDoc, referenceDocIds, useDirectWasm, validateRq } from './tools';
 
 const SERVER_NAME = 'rq-mcp';
 const SERVER_VERSION = process.env.RQ_MCP_VERSION ?? '1.0.0';
@@ -68,7 +68,7 @@ export function createServer(): McpServer {
         inputSchema: { doc: z.enum(referenceDocIds() as [string, ...string[]]) }
     }, args => {
         try {
-            return { content: [{ type: 'text' as const, text: getRqReference(args as { doc: never }) }] };
+            return { content: [{ type: 'text' as const, text: getRqReference(args as { doc: ReferenceDoc }) }] };
         } catch (err) {
             return errorResult(err instanceof Error ? err.message : String(err));
         }

@@ -534,3 +534,77 @@ fn test_request_show_resolved_variables_json() -> Result<(), Box<dyn std::error:
 
     Ok(())
 }
+
+#[test]
+fn test_request_show_unknown_auth_fails() -> Result<(), Box<dyn std::error::Error>> {
+    let temp_dir = std::env::temp_dir().join(format!("rq_test_req_auth_{}", std::process::id()));
+    std::fs::create_dir_all(&temp_dir)?;
+
+    std::fs::write(
+        temp_dir.join("test.rq"),
+        r#"[auth("ghost")]
+rq my_request("http://localhost:8080/resource");
+"#,
+    )?;
+
+    let output = rq_cmd()
+        .args([
+            "request",
+            "show",
+            "-s",
+            temp_dir.to_str().unwrap(),
+            "-n",
+            "my_request",
+        ])
+        .output()?;
+
+    std::fs::remove_dir_all(&temp_dir).ok();
+
+    if output.status.success() {
+        return Err("Expected command to fail with unknown auth configuration".into());
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if !stderr.contains("Auth configuration 'ghost' not found") {
+        return Err(format!("Expected unknown auth error, got: {stderr}").into());
+    }
+
+    Ok(())
+}
+
+#[test]
+fn test_request_show_unknown_auth_no_var_interpolation() -> Result<(), Box<dyn std::error::Error>> {
+    let temp_dir = std::env::temp_dir().join(format!("rq_test_req_auth_nv_{}", std::process::id()));
+    std::fs::create_dir_all(&temp_dir)?;
+
+    std::fs::write(
+        temp_dir.join("test.rq"),
+        r#"[auth("ghost")]
+rq my_request("http://localhost:8080/resource");
+"#,
+    )?;
+
+    let output = rq_cmd()
+        .args([
+            "request",
+            "show",
+            "-s",
+            temp_dir.to_str().unwrap(),
+            "-n",
+            "my_request",
+            "--no-var-interpolation",
+        ])
+        .output()?;
+
+    std::fs::remove_dir_all(&temp_dir).ok();
+
+    if !output.status.success() {
+        return Err(format!(
+            "Command failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
+    }
+
+    Ok(())
+}

@@ -3,6 +3,13 @@ use crate::syntax::http_method::HttpMethod;
 use crate::syntax::variable_context::Variable;
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct AuthLocation {
+    pub file: String,
+    pub line: usize,
+    pub character: usize,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct EndpointDefinition {
     pub name: String,
     pub url: String,
@@ -10,6 +17,7 @@ pub struct EndpointDefinition {
     pub headers_var: Option<String>,
     pub qs: Option<String>,
     pub auth: Option<String>,
+    pub auth_location: Option<AuthLocation>,
     pub timeout: Option<String>,
     pub variables: Vec<Variable>,
     pub has_requests: bool,
@@ -31,6 +39,7 @@ pub struct Request {
     pub headers_var: Option<String>,
     pub endpoint: Option<String>,
     pub auth: Option<String>,
+    pub auth_location: Option<AuthLocation>,
     pub timeout: Option<String>,
     pub required_variables: Vec<String>,
     pub source_path: Option<String>,

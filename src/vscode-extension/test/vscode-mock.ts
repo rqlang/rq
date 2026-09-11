@@ -187,6 +187,10 @@ export class CompletionItem {
     constructor(public label: string, public kind?: CompletionItemKind) {}
 }
 
+export class CompletionList {
+    constructor(public items: CompletionItem[] = [], public isIncomplete = false) {}
+}
+
 export class Location {
     public range: Range;
     constructor(public uri: any, rangeOrPosition: Range | Position) {

@@ -12,6 +12,9 @@ import {
     insideHeadersLiteral,
     insideJsonLiteral,
     getActiveAuthBlock,
+    getAuthAttributeContext,
+    insideUnclosedAttribute,
+    AuthAttributeContext,
     collectNamedProps,
     countPositionalArgs,
     filterRequiredVars,
@@ -25,6 +28,7 @@ import {
 } from './definitions';
 
 export interface CompletionHandler {
+    incomplete?: boolean;
     canHandle(ctx: CompletionContext): boolean;
     provide(ctx: CompletionContext): Promise<vscode.CompletionItem[] | undefined>;
 }
@@ -363,25 +367,32 @@ export const epBlockHandler = buildRqEpHandler(
     false
 );
 
+function authNameReplaceRange(ctx: CompletionContext, authContext: AuthAttributeContext): vscode.Range {
+    const { linePrefix, document, position } = ctx;
+    const typedOnLine = linePrefix.match(/[a-zA-Z0-9_-]*$/)?.[0] ?? '';
+    const afterCursor = document.lineAt(position.line).text.substring(position.character);
+    const trailingPattern = authContext.quoted ? /^[^"]*/ : /^[a-zA-Z0-9_-]*/;
+    const trailingName = afterCursor.match(trailingPattern)?.[0] ?? '';
+    return new vscode.Range(
+        position.line, position.character - typedOnLine.length,
+        position.line, position.character + trailingName.length
+    );
+}
+
 export const authNameValueHandler: CompletionHandler = {
-    canHandle: ({ linePrefix }) => /^\s*\[auth\("([^"]*)$/.test(linePrefix),
+    incomplete: true,
+    canHandle: ({ documentPrefix }) => getAuthAttributeContext(documentPrefix) !== null,
     async provide(ctx) {
-        const { linePrefix, document, position } = ctx;
-        const m = linePrefix.match(/^\s*\[auth\("([^"]*)$/);
-        if (!m) { return undefined; }
-        const partial = m[1];
+        const authContext = getAuthAttributeContext(ctx.documentPrefix);
+        if (!authContext) { return undefined; }
         try {
             const authConfigs = await rqClient.listAuthConfigs(await ctx.getCliFilePath());
-            const afterCursor = document.lineAt(position.line).text.substring(position.character);
-            const trailingName = afterCursor.match(/^([^"]*)/)?.[1] ?? '';
+            const range = authNameReplaceRange(ctx, authContext);
             return authConfigs.map(a => {
                 const item = new vscode.CompletionItem(a.name, vscode.CompletionItemKind.Reference);
                 item.detail = a.auth_type;
-                item.insertText = a.name;
-                item.range = new vscode.Range(
-                    position.line, position.character - partial.length,
-                    position.line, position.character + trailingName.length
-                );
+                item.insertText = authContext.quoted ? a.name : `"${a.name}"`;
+                item.range = range;
                 return item;
             });
         } catch { return undefined; }
@@ -527,8 +538,9 @@ export const namespaceHandler: CompletionHandler = {
 };
 
 export const topLevelKeywordHandler: CompletionHandler = {
-    canHandle: ({ linePrefix, triggerKind }) => {
+    canHandle: ({ linePrefix, documentPrefix, triggerKind }) => {
         if (!/^\s*\w*$/.test(linePrefix)) { return false; }
+        if (insideUnclosedAttribute(documentPrefix)) { return false; }
         if (/^\s*$/.test(linePrefix) && triggerKind === vscode.CompletionTriggerKind.TriggerCharacter) { return false; }
         return true;
     },
@@ -637,6 +649,7 @@ export const topLevelKeywordHandler: CompletionHandler = {
 };
 
 export const ALL_HANDLERS: CompletionHandler[] = [
+    authNameValueHandler,
     epTemplateHandler,
     importHandler,
     dollarPrefixHandler,
@@ -649,7 +662,6 @@ export const ALL_HANDLERS: CompletionHandler[] = [
     authDeclarationHandler,
     rqBlockHandler,
     epBlockHandler,
-    authNameValueHandler,
     attributeHandler,
     headerKeyHandler,
     functionArgHandler,

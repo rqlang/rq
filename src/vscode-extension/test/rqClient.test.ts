@@ -2,10 +2,12 @@ import * as https from 'https';
 import * as fs from 'fs';
 
 const mockGetRequestDetails = jest.fn();
+const mockGetAuthDetails = jest.fn();
 const mockVersion = jest.fn().mockReturnValue('0.0.0-test');
 
 jest.mock('../src/wasm/rq_wasm', () => ({
     get_request_details: mockGetRequestDetails,
+    get_auth_details: mockGetAuthDetails,
     version: mockVersion,
 }), { virtual: true });
 
@@ -188,6 +190,41 @@ describe('executeRequest', () => {
 
             const callArgs = (https.request as jest.Mock).mock.calls[0][0];
             expect(callArgs.headers['content-type']).toBe('application/vnd.api+json');
+        });
+    });
+
+    describe('auth', () => {
+        test('applies a bearer token as the authorization header', async () => {
+            mockGetRequestDetails.mockReturnValue(JSON.stringify({
+                ...BASE_DETAILS,
+                Auth: { name: 'my_bearer', type: 'bearer' },
+            }));
+            mockGetAuthDetails.mockReturnValue(JSON.stringify({
+                'Auth Configuration': 'my_bearer',
+                Type: 'bearer',
+                Fields: { token: 'secret-token' },
+                file: 'test.rq',
+                line: 0,
+                character: 0,
+            }));
+            makeHttpsMock();
+
+            await executeRequest({ requestName: 'test-req', sourceDirectory: '/tmp/project' });
+
+            const callArgs = (https.request as jest.Mock).mock.calls[0][0];
+            expect(callArgs.headers['authorization']).toBe('Bearer secret-token');
+        });
+
+        test('refuses to send a request whose auth type cannot be applied', async () => {
+            mockGetRequestDetails.mockReturnValue(JSON.stringify({
+                ...BASE_DETAILS,
+                Auth: { name: 'ghost', type: '' },
+            }));
+            makeHttpsMock();
+
+            await expect(executeRequest({ requestName: 'test-req', sourceDirectory: '/tmp/project' }))
+                .rejects.toThrow("Auth configuration 'ghost' has unsupported type ''");
+            expect(https.request).not.toHaveBeenCalled();
         });
     });
 

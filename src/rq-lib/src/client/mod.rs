@@ -6,6 +6,7 @@ use crate::client::models::{RequestDetails, RequestExecutionResult, RequestInfo}
 use crate::error::RqError;
 use crate::http::HttpClient;
 use crate::logger::Logger;
+use crate::syntax::parse_result::AuthLocation;
 use crate::syntax::{Fs, Request, RqFile, SecretProvider, Variable, VariableValue};
 
 use std::collections::{HashMap, HashSet};
@@ -451,13 +452,14 @@ impl RqClient {
         let (auth_name, auth_type) = if let Some(auth_name) = resolved.auth.as_deref() {
             if auth_name.trim().is_empty() {
                 (None, None)
-            } else if let Some(auth_provider) = loaded_auth_providers.get(auth_name) {
+            } else {
+                let auth_provider = loaded_auth_providers.get(auth_name).ok_or_else(|| {
+                    RqError::Validation(format!("Auth configuration '{auth_name}' not found"))
+                })?;
                 (
                     Some(auth_name.to_string()),
                     Some(auth_provider.auth_type.as_str().to_string()),
                 )
-            } else {
-                (Some(auth_name.to_string()), None)
             }
         } else {
             (None, None)
@@ -489,17 +491,15 @@ impl RqClient {
             ));
         }
 
-        let dir = if self.fs.is_file(source_path) {
-            source_path
-                .parent()
-                .filter(|p| !p.as_os_str().is_empty())
-                .unwrap_or(Path::new("."))
-        } else {
-            source_path
-        };
-
         let mut auth_map = HashMap::new();
-        self.collect_auth_entries(dir, &mut auth_map)?;
+        if self.fs.is_file(source_path) {
+            self.collect_auth_entries_from_paths(
+                &self.collect_import_closure(source_path),
+                &mut auth_map,
+            );
+        } else {
+            self.collect_auth_entries(source_path, &mut auth_map)?;
+        }
 
         let mut auth_list: Vec<crate::client::models::AuthListEntry> = auth_map
             .into_iter()
@@ -700,26 +700,7 @@ impl RqClient {
         let mut entries: Vec<crate::client::models::EndpointEntry> = Vec::new();
 
         let paths: Vec<PathBuf> = if self.fs.is_file(source_path) {
-            let mut processed: HashSet<PathBuf> = HashSet::new();
-            let mut to_process = vec![source_path.to_path_buf()];
-            let mut file_paths = Vec::new();
-            while let Some(path) = to_process.pop() {
-                if processed.contains(&path) {
-                    continue;
-                }
-                processed.insert(path.clone());
-                let imports = self
-                    .load_rq_file_lenient(&path)
-                    .map(|f| f.imported_files)
-                    .unwrap_or_default();
-                for import in imports {
-                    if !processed.contains(&import) {
-                        to_process.push(import);
-                    }
-                }
-                file_paths.push(path);
-            }
-            file_paths
+            self.collect_import_closure(source_path)
         } else {
             self.collect_paths(source_path)?
         };
@@ -806,26 +787,7 @@ impl RqClient {
         }
 
         let mut paths: Vec<PathBuf> = if self.fs.is_file(source_path) {
-            let mut processed: HashSet<PathBuf> = HashSet::new();
-            let mut to_process = vec![source_path.to_path_buf()];
-            let mut file_paths = Vec::new();
-            while let Some(path) = to_process.pop() {
-                if processed.contains(&path) {
-                    continue;
-                }
-                processed.insert(path.clone());
-                let imports = self
-                    .load_rq_file_lenient(&path)
-                    .map(|f| f.imported_files)
-                    .unwrap_or_default();
-                file_paths.push(path);
-                for import in imports {
-                    if !processed.contains(&import) {
-                        to_process.push(import);
-                    }
-                }
-            }
-            file_paths
+            self.collect_import_closure(source_path)
         } else if self.fs.is_dir(source_path) {
             let mut ps = Vec::new();
             self.collect_rq_paths(source_path, &mut ps)?;
@@ -1035,6 +997,7 @@ impl RqClient {
             match self.load_rq_file(path) {
                 Ok(rq_file) => {
                     errors.extend(self.check_variables(&rq_file, source_path, env_name));
+                    errors.extend(self.check_auth_references(&rq_file));
                 }
                 Err(e) => {
                     errors.push(e);
@@ -1049,6 +1012,7 @@ impl RqClient {
         let mut errors = self.collect_rq_files_parsed(path, &mut rq_files)?;
         for rq_file in &rq_files {
             errors.extend(self.check_variables(rq_file, source_path, env_name));
+            errors.extend(self.check_auth_references(rq_file));
         }
         Ok(errors)
     }
@@ -1062,7 +1026,10 @@ impl RqClient {
         let source_path = path.parent().unwrap_or(path);
         let mut errors = Vec::new();
         match RqFile::from_content(path.to_path_buf(), source, &*self.fs) {
-            Ok(rq_file) => errors.extend(self.check_variables(&rq_file, source_path, env_name)),
+            Ok(rq_file) => {
+                errors.extend(self.check_variables(&rq_file, source_path, env_name));
+                errors.extend(self.check_auth_references(&rq_file));
+            }
             Err(e) => errors.push(Self::map_parse_error(e)),
         }
         Ok(errors)
@@ -1436,6 +1403,54 @@ impl RqClient {
         errors
     }
 
+    fn check_auth_references(&self, rq_file: &RqFile) -> Vec<RqError> {
+        let file = rq_file.path.to_string_lossy().to_string();
+        let endpoint_references = rq_file
+            .endpoints
+            .values()
+            .filter_map(|endpoint| Self::auth_reference(&endpoint.auth, &endpoint.auth_location));
+        let request_references = rq_file
+            .requests
+            .iter()
+            .filter_map(|req| Self::auth_reference(&req.request.auth, &req.request.auth_location));
+
+        let mut references: Vec<(&str, &AuthLocation)> = endpoint_references
+            .chain(request_references)
+            .filter(|(auth_name, location)| {
+                location.file == file && !rq_file.auth_providers.contains_key(*auth_name)
+            })
+            .collect();
+        references.sort_by_key(|(_, location)| (location.line, location.character));
+
+        let mut reported = std::collections::HashSet::new();
+        references
+            .into_iter()
+            .filter(|(auth_name, location)| {
+                reported.insert((location.line, location.character, *auth_name))
+            })
+            .map(|(auth_name, location)| {
+                RqError::Syntax(crate::syntax::error::SyntaxError::with_file(
+                    format!("Auth configuration '{auth_name}' not found"),
+                    location.line + 1,
+                    location.character + 1,
+                    0..0,
+                    crate::paths::clean_path(&rq_file.path),
+                ))
+            })
+            .collect()
+    }
+
+    fn auth_reference<'a>(
+        auth: &'a Option<String>,
+        location: &'a Option<AuthLocation>,
+    ) -> Option<(&'a str, &'a AuthLocation)> {
+        let auth_name = auth.as_deref()?;
+        if auth_name.trim().is_empty() {
+            return None;
+        }
+        Some((auth_name, location.as_ref()?))
+    }
+
     fn collect_rq_files_parsed(
         &self,
         dir: &Path,
@@ -1592,6 +1607,29 @@ impl RqClient {
         }
     }
 
+    fn collect_import_closure(&self, source_path: &Path) -> Vec<PathBuf> {
+        let mut processed: HashSet<PathBuf> = HashSet::new();
+        let mut to_process = vec![source_path.to_path_buf()];
+        let mut file_paths = Vec::new();
+        while let Some(path) = to_process.pop() {
+            if processed.contains(&path) {
+                continue;
+            }
+            processed.insert(path.clone());
+            let imports = self
+                .load_rq_file_lenient(&path)
+                .map(|f| f.imported_files)
+                .unwrap_or_default();
+            for import in imports {
+                if !processed.contains(&import) {
+                    to_process.push(import);
+                }
+            }
+            file_paths.push(path);
+        }
+        file_paths
+    }
+
     fn collect_auth_entries(
         &self,
         dir: &Path,
@@ -1599,8 +1637,17 @@ impl RqClient {
     ) -> Result<(), RqError> {
         let mut paths = Vec::new();
         self.collect_rq_paths(dir, &mut paths)?;
+        self.collect_auth_entries_from_paths(&paths, auth_map);
+        Ok(())
+    }
+
+    fn collect_auth_entries_from_paths(
+        &self,
+        paths: &[PathBuf],
+        auth_map: &mut HashMap<String, (String, String, usize, usize)>,
+    ) {
         for path in paths {
-            if let Ok(rq_file) = self.load_rq_file(&path) {
+            if let Some(rq_file) = self.load_rq_file_lenient(path) {
                 for (auth_name, provider) in rq_file.auth_providers.iter() {
                     auth_map.insert(
                         auth_name.clone(),
@@ -1614,7 +1661,6 @@ impl RqClient {
                 }
             }
         }
-        Ok(())
     }
 
     fn find_auth_provider(
@@ -1740,6 +1786,35 @@ mod check_source_tests {
             .expect("check_source failed");
         assert_eq!(target.len(), 1);
         assert!(target[0].to_string().contains("missing"));
+    }
+
+    #[test]
+    fn check_source_reports_unknown_auth_reference() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let target = RqClient::default()
+            .check_source(
+                "[auth(\"ghost\")]\nrq basic(\"http://localhost:8080/get\");\n",
+                &dir.path().join("draft.rq"),
+                None,
+            )
+            .expect("check_source failed");
+        assert_eq!(target.len(), 1);
+        assert!(target[0]
+            .to_string()
+            .contains("Auth configuration 'ghost' not found"));
+    }
+
+    #[test]
+    fn check_source_accepts_auth_reference_declared_in_draft() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let target = RqClient::default()
+            .check_source(
+                "auth token(auth_type.bearer) {\n    token: \"secret\",\n}\n\n[auth(\"token\")]\nrq basic(\"http://localhost:8080/get\");\n",
+                &dir.path().join("draft.rq"),
+                None,
+            )
+            .expect("check_source failed");
+        assert!(target.is_empty(), "expected no errors, got {target:?}");
     }
 
     #[test]

@@ -1,0 +1,10 @@
+{
+  "errors": [
+    {
+      "file": "{{regex:.*/auth_ref_inherited/base\\.rq}}",
+      "line": 1,
+      "column": 7,
+      "message": "Auth configuration 'ghost' not found"
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+import "base";
+
+ep users<auth_base>("/users") {
+    rq list();
+}

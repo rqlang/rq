@@ -364,3 +364,104 @@ fn test_auth_list_invalid_output() {
     assert!(stderr.contains("--output <OUTPUT>"));
     assert!(stderr.contains("[possible values: text, json]"));
 }
+
+#[test]
+fn test_auth_list_includes_auth_from_file_being_edited() -> Result<(), Box<dyn std::error::Error>> {
+    let temp_dir = std::env::temp_dir().join(format!("rq_test_partial_{}", std::process::id()));
+    fs::create_dir_all(&temp_dir)?;
+
+    fs::write(
+        temp_dir.join("main.rq"),
+        r#"auth local_bearer(auth_type.bearer) {
+    token: "token123",
+}
+
+[auth("
+rq test("http://localhost:8080/test");
+"#,
+    )?;
+
+    let output = rq_cmd()
+        .args(["auth", "list", "-s", temp_dir.to_str().unwrap()])
+        .output()?;
+
+    fs::remove_dir_all(&temp_dir).ok();
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    if !output.status.success() {
+        return Err(format!(
+            "Command failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
+    }
+
+    if !stdout.contains("local_bearer") {
+        return Err(format!("Expected 'local_bearer' in output, got: {stdout}").into());
+    }
+
+    Ok(())
+}
+
+#[test]
+fn test_auth_list_file_scope_covers_imports_only() -> Result<(), Box<dyn std::error::Error>> {
+    let temp_dir = std::env::temp_dir().join(format!("rq_test_scope_{}", std::process::id()));
+    fs::create_dir_all(&temp_dir)?;
+
+    fs::write(
+        temp_dir.join("shared.rq"),
+        r#"auth imported_bearer(auth_type.bearer) {
+    token: "token123",
+}
+"#,
+    )?;
+    fs::write(
+        temp_dir.join("unrelated.rq"),
+        r#"auth unrelated_bearer(auth_type.bearer) {
+    token: "token123",
+}
+"#,
+    )?;
+    fs::write(
+        temp_dir.join("main.rq"),
+        r#"import "./shared.rq";
+
+[auth("imported_bearer")]
+rq test("http://localhost:8080/test");
+"#,
+    )?;
+
+    let output = rq_cmd()
+        .args([
+            "auth",
+            "list",
+            "-s",
+            temp_dir.join("main.rq").to_str().unwrap(),
+        ])
+        .output()?;
+
+    fs::remove_dir_all(&temp_dir).ok();
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    if !output.status.success() {
+        return Err(format!(
+            "Command failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
+    }
+
+    if !stdout.contains("imported_bearer") {
+        return Err(format!("Expected 'imported_bearer' in output, got: {stdout}").into());
+    }
+
+    if stdout.contains("unrelated_bearer") {
+        return Err(
+            format!("Expected 'unrelated_bearer' to be out of scope, got: {stdout}").into(),
+        );
+    }
+
+    Ok(())
+}

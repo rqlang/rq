@@ -361,6 +361,7 @@ pub(crate) fn parse_request_with_context(
         headers_var,
         endpoint: endpoint_name.map(|s| s.to_string()),
         auth: ctx.auth,
+        auth_location: ctx.auth_location,
         timeout: ctx.timeout,
         required_variables: ctx.required_variables.into_iter().map(|v| v.name).collect(),
         source_path: Some(file),

@@ -94,6 +94,30 @@ describe('getAuthAttributeContext', () => {
     test('returns null inside an array literal', () => {
         expect(getAuthAttributeContext('let values = [1, ')).toBeNull();
     });
+
+    test('ignores apostrophes inside line comments', () => {
+        expect(getAuthAttributeContext("// don't do this\n[auth(\"")).toEqual({ quoted: true });
+    });
+
+    test('ignores apostrophes inside block comments', () => {
+        expect(getAuthAttributeContext("/* don't do this */\n[auth(\"")).toEqual({ quoted: true });
+    });
+
+    test('ignores escaped quotes inside strings', () => {
+        expect(getAuthAttributeContext('rq a(body: "he said \\"hi")\n[auth("')).toEqual({ quoted: true });
+    });
+
+    test('detects a single quoted name', () => {
+        expect(getAuthAttributeContext("[auth('my_be")).toEqual({ quoted: true });
+    });
+
+    test('returns null once a single quoted name is closed', () => {
+        expect(getAuthAttributeContext("[auth('my_bearer'")).toBeNull();
+    });
+
+    test('returns null when the cursor is inside a line comment', () => {
+        expect(getAuthAttributeContext('[auth("my_bearer")]\n// note: don\'t')).toBeNull();
+    });
 });
 
 describe('insideUnclosedAttribute', () => {
@@ -119,5 +143,13 @@ describe('insideUnclosedAttribute', () => {
 
     test('returns false inside a headers literal', () => {
         expect(insideUnclosedAttribute('let h = $[')).toBe(false);
+    });
+
+    test('returns true when a comment above contains an apostrophe', () => {
+        expect(insideUnclosedAttribute("// don't do this\n[auth(")).toBe(true);
+    });
+
+    test('returns false when the cursor is inside a line comment', () => {
+        expect(insideUnclosedAttribute('[auth("x")]\n// note: don\'t')).toBe(false);
     });
 });

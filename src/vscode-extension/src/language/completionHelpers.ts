@@ -133,10 +133,19 @@ function openAttributeBracketIndex(text: string): number {
     for (let i = 0; i < text.length; i++) {
         const ch = text[i];
         if (inString) {
-            if (ch === stringChar) { inString = false; }
+            if (ch === '\\') { i++; }
+            else if (ch === stringChar) { inString = false; }
             continue;
         }
-        if (ch === '"' || ch === "'") { inString = true; stringChar = ch; }
+        if (ch === '/' && text[i + 1] === '/') {
+            const lineEnd = text.indexOf('\n', i);
+            if (lineEnd === -1) { return -1; }
+            i = lineEnd;
+        } else if (ch === '/' && text[i + 1] === '*') {
+            const commentEnd = text.indexOf('*/', i + 2);
+            if (commentEnd === -1) { return -1; }
+            i = commentEnd + 1;
+        } else if (ch === '"' || ch === "'") { inString = true; stringChar = ch; }
         else if (ch === '[') { openBrackets.push(i); }
         else if (ch === ']') { openBrackets.pop(); }
     }
@@ -158,12 +167,15 @@ export function getAuthAttributeContext(text: string): AuthAttributeContext | nu
     if (!opener) { return null; }
     const args = text.slice(index + 1 + opener[0].length);
     let inString = false;
-    for (const ch of args) {
+    let stringChar = '';
+    for (let i = 0; i < args.length; i++) {
+        const ch = args[i];
         if (inString) {
-            if (ch === '"') { inString = false; }
+            if (ch === '\\') { i++; }
+            else if (ch === stringChar) { inString = false; }
             continue;
         }
-        if (ch === '"') { inString = true; }
+        if (ch === '"' || ch === "'") { inString = true; stringChar = ch; }
         else if (ch === ')') { return null; }
     }
     if (inString) { return { quoted: true }; }

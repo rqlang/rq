@@ -276,6 +276,36 @@ describe('auth attribute value completion', () => {
         expect(items[0].insertText).toBe('"my_bearer"');
     });
 
+    test('suggests auth configs after a comment containing an apostrophe', async () => {
+        (cliService.listAuthConfigs as jest.Mock).mockResolvedValue([
+            { name: 'my_bearer', auth_type: 'bearer' }
+        ]);
+
+        const items = await authNameItems(["// don't put the token here", '[auth("']);
+
+        expect(items.map((i: any) => i.label)).toEqual(['my_bearer']);
+    });
+
+    test('suggests auth configs for a single quoted name', async () => {
+        (cliService.listAuthConfigs as jest.Mock).mockResolvedValue([
+            { name: 'my_bearer', auth_type: 'bearer' }
+        ]);
+
+        const items = await authNameItems(["[auth('"]);
+
+        expect(items[0].label).toBe('my_bearer');
+        expect(items[0].insertText).toBe('my_bearer');
+    });
+
+    test('does not trigger when the cursor is inside a comment', async () => {
+        const doc = makeDocument(['[auth("my_bearer")]', "// don't touch this"]);
+        const position = new vscode.Position(1, 19);
+
+        await provideCompletionItems(doc, position);
+
+        expect(cliService.listAuthConfigs).not.toHaveBeenCalled();
+    });
+
     test('suggests auth configs when the attribute is not first on the line', async () => {
         (cliService.listAuthConfigs as jest.Mock).mockResolvedValue([
             { name: 'my_bearer', auth_type: 'bearer' }

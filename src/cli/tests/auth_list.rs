@@ -371,18 +371,31 @@ fn test_auth_list_includes_auth_from_file_being_edited() -> Result<(), Box<dyn s
     fs::create_dir_all(&temp_dir)?;
 
     fs::write(
+        temp_dir.join("shared.rq"),
+        r#"auth imported_bearer(auth_type.bearer) {
+    token: "token123",
+}
+"#,
+    )?;
+    fs::write(
         temp_dir.join("main.rq"),
-        r#"auth local_bearer(auth_type.bearer) {
+        r#"import "./shared.rq";
+
+auth local_bearer(auth_type.bearer) {
     token: "token123",
 }
 
 [auth("
-rq test("http://localhost:8080/test");
 "#,
     )?;
 
     let output = rq_cmd()
-        .args(["auth", "list", "-s", temp_dir.to_str().unwrap()])
+        .args([
+            "auth",
+            "list",
+            "-s",
+            temp_dir.join("main.rq").to_str().unwrap(),
+        ])
         .output()?;
 
     fs::remove_dir_all(&temp_dir).ok();
@@ -399,6 +412,10 @@ rq test("http://localhost:8080/test");
 
     if !stdout.contains("local_bearer") {
         return Err(format!("Expected 'local_bearer' in output, got: {stdout}").into());
+    }
+
+    if !stdout.contains("imported_bearer") {
+        return Err(format!("Expected 'imported_bearer' in output, got: {stdout}").into());
     }
 
     Ok(())

@@ -371,7 +371,7 @@ function authNameReplaceRange(ctx: CompletionContext, authContext: AuthAttribute
     const { linePrefix, document, position } = ctx;
     const typedOnLine = linePrefix.match(/[a-zA-Z0-9_-]*$/)?.[0] ?? '';
     const afterCursor = document.lineAt(position.line).text.substring(position.character);
-    const trailingPattern = authContext.quoted ? /^[^"]*/ : /^[a-zA-Z0-9_-]*/;
+    const trailingPattern = authContext.quoted ? /^[^"']*/ : /^[a-zA-Z0-9_-]*/;
     const trailingName = afterCursor.match(trailingPattern)?.[0] ?? '';
     return new vscode.Range(
         position.line, position.character - typedOnLine.length,

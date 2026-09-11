@@ -1445,7 +1445,7 @@ impl RqClient {
         location: &'a Option<AuthLocation>,
     ) -> Option<(&'a str, &'a AuthLocation)> {
         let auth_name = auth.as_deref()?;
-        if auth_name.trim().is_empty() {
+        if auth_name.trim().is_empty() || auth_name.contains("{{") {
             return None;
         }
         Some((auth_name, location.as_ref()?))

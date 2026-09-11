@@ -1,6 +1,8 @@
 use super::{
+    error::SyntaxError,
     fs::Fs,
     parse_result::{EndpointDefinition, ParseResult, RequestWithVariables},
+    token::Token,
     variable_context::Variable,
 };
 use crate::syntax::auth::Config as AuthConfig;
@@ -37,12 +39,20 @@ impl RqFile {
 
     pub fn from_content_lenient(path: PathBuf, content: &str, fs: &dyn Fs) -> Self {
         let tokens = match crate::syntax::tokenize(content) {
-            Ok(t) => t,
-            Err(_) => return Self::empty(path),
+            Ok(tokens) => tokens,
+            Err(error) => match Self::tokenize_before_error(content, &error) {
+                Some(tokens) => tokens,
+                None => return Self::empty(path),
+            },
         };
         let parse_result =
             crate::syntax::analysis::analyze_lenient(&tokens, path.clone(), content, fs);
         Self::from_parse_result(path, parse_result)
+    }
+
+    fn tokenize_before_error(content: &str, error: &SyntaxError) -> Option<Vec<Token>> {
+        let line_start = content.get(..error.span.start)?.rfind('\n')?;
+        crate::syntax::tokenize(&content[..line_start]).ok()
     }
 
     fn empty(path: PathBuf) -> Self {

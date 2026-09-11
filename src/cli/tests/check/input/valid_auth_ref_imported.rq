@@ -1,0 +1,9 @@
+import "valid_auth_ref_imported_shared";
+
+[auth("imported_bearer")]
+ep users(url: "http://localhost:8080/users") {
+    rq list();
+
+    [auth("imported_bearer")]
+    rq post(body: "{}");
+}

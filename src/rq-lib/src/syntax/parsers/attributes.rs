@@ -3,6 +3,7 @@ use crate::syntax::{
     error::SyntaxError,
     http_method::HttpMethod,
     keywords::{PUNC_DOLLAR, PUNC_LBRACKET, PUNC_LPAREN, PUNC_RBRACKET, PUNC_RPAREN},
+    parse_result::AuthLocation,
     reader::{expect, TokenReader},
     token::TokenType,
 };
@@ -17,6 +18,7 @@ pub struct RequiredVariable {
 pub struct AttributeContext {
     pub method: Option<HttpMethod>,
     pub auth: Option<String>,
+    pub auth_location: Option<AuthLocation>,
     pub timeout: Option<String>,
     pub required_variables: Vec<RequiredVariable>,
 }
@@ -29,11 +31,12 @@ impl AttributeContext {
         self.method = Some(method);
         Ok(())
     }
-    pub fn set_auth(&mut self, auth: String) -> Result<(), String> {
+    pub fn set_auth(&mut self, auth: String, location: AuthLocation) -> Result<(), String> {
         if self.auth.is_some() {
             return Err("Duplicate attribute 'auth'".to_string());
         }
         self.auth = Some(auth);
+        self.auth_location = Some(location);
         Ok(())
     }
     pub fn set_timeout(&mut self, timeout: String) -> Result<(), String> {
@@ -216,6 +219,12 @@ impl AttributeParser for AuthAttributeParser {
         } else {
             unescape_string(&auth_name_tok.value[1..auth_name_tok.value.len() - 1])
         };
+        let (auth_line_1, auth_col_1) = r.get_line_col(auth_name_tok.span.start);
+        let auth_location = AuthLocation {
+            file: r.file_path.to_string_lossy().to_string(),
+            line: auth_line_1.saturating_sub(1),
+            character: auth_col_1.saturating_sub(1),
+        };
         r.advance();
 
         r.skip_ignorable();
@@ -234,7 +243,7 @@ impl AttributeParser for AuthAttributeParser {
         )?;
         r.advance();
 
-        ctx.set_auth(auth_name)
+        ctx.set_auth(auth_name, auth_location)
             .map_err(|msg| r.create_error_with_file(msg, start_token.span.clone()))?;
         Ok(())
     }

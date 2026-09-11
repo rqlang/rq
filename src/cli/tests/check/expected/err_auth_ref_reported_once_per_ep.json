@@ -1,0 +1,10 @@
+{
+  "errors": [
+    {
+      "file": "{{*}}",
+      "line": 1,
+      "column": 7,
+      "message": "Auth configuration 'ghost' not found"
+    }
+  ]
+}

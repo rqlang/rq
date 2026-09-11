@@ -1,0 +1,3 @@
+auth imported_bearer(auth_type.bearer) {
+    token: "secret-token",
+}

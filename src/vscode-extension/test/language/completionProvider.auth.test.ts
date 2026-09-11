@@ -208,22 +208,134 @@ describe('auth block property name completion', () => {
 });
 
 describe('auth attribute value completion', () => {
+    const authNameItems = async (lines: string[], character?: number, vsContext?: any) => {
+        const doc = makeDocument(lines);
+        const line = lines.length - 1;
+        const position = new vscode.Position(line, character ?? lines[line].length);
+        const result = await provideCompletionItems(doc, position, undefined, vsContext);
+        return result?.items;
+    };
+
     test('suggests auth configs when typing [auth("', async () => {
         (cliService.listAuthConfigs as jest.Mock).mockResolvedValue([
             { name: 'my_bearer', auth_type: 'bearer' },
             { name: 'my_oauth', auth_type: 'oauth2_client_credentials' }
         ]);
 
-        const doc = makeDocument(['[auth("']);
-        const position = new vscode.Position(0, 7);
-
-        const items = await provideCompletionItems(doc, position);
+        const items = await authNameItems(['[auth("']);
 
         expect(cliService.listAuthConfigs).toHaveBeenCalledWith('/workspace/current.rq');
         expect(items).toHaveLength(2);
         expect(items[0].label).toBe('my_bearer');
         expect(items[0].detail).toBe('bearer');
         expect(items[1].label).toBe('my_oauth');
+    });
+
+    test('marks the auth name list as incomplete', async () => {
+        (cliService.listAuthConfigs as jest.Mock).mockResolvedValue([
+            { name: 'my_bearer', auth_type: 'bearer' }
+        ]);
+
+        const doc = makeDocument(['[auth("']);
+        const position = new vscode.Position(0, 7);
+
+        const result = await provideCompletionItems(doc, position);
+
+        expect(result.isIncomplete).toBe(true);
+    });
+
+    test('suggests auth configs when the attribute spans several lines', async () => {
+        (cliService.listAuthConfigs as jest.Mock).mockResolvedValue([
+            { name: 'my_bearer', auth_type: 'bearer' }
+        ]);
+
+        const items = await authNameItems(['[auth(', '    ']);
+
+        expect(items.map((i: any) => i.label)).toEqual(['my_bearer']);
+    });
+
+    test('does not fall back to top level keywords inside an unfinished auth attribute', async () => {
+        (cliService.listAuthConfigs as jest.Mock).mockResolvedValue([
+            { name: 'my_bearer', auth_type: 'bearer' }
+        ]);
+
+        const items = await authNameItems(['[auth(', '    my']);
+
+        expect(items.some((i: any) => i.label.startsWith('auth '))).toBe(false);
+        expect(items.map((i: any) => i.label)).toEqual(['my_bearer']);
+    });
+
+    test('suggests quoted auth names before the opening quote is typed', async () => {
+        (cliService.listAuthConfigs as jest.Mock).mockResolvedValue([
+            { name: 'my_bearer', auth_type: 'bearer' }
+        ]);
+
+        const items = await authNameItems(['[auth(']);
+
+        expect(items[0].label).toBe('my_bearer');
+        expect(items[0].insertText).toBe('"my_bearer"');
+    });
+
+    test('suggests auth configs after a comment containing an apostrophe', async () => {
+        (cliService.listAuthConfigs as jest.Mock).mockResolvedValue([
+            { name: 'my_bearer', auth_type: 'bearer' }
+        ]);
+
+        const items = await authNameItems(["// don't put the token here", '[auth("']);
+
+        expect(items.map((i: any) => i.label)).toEqual(['my_bearer']);
+    });
+
+    test('suggests auth configs for a single quoted name', async () => {
+        (cliService.listAuthConfigs as jest.Mock).mockResolvedValue([
+            { name: 'my_bearer', auth_type: 'bearer' }
+        ]);
+
+        const items = await authNameItems(["[auth('"]);
+
+        expect(items[0].label).toBe('my_bearer');
+        expect(items[0].insertText).toBe('my_bearer');
+    });
+
+    test('does not trigger when the cursor is inside a comment', async () => {
+        const doc = makeDocument(['[auth("my_bearer")]', "// don't touch this"]);
+        const position = new vscode.Position(1, 19);
+
+        await provideCompletionItems(doc, position);
+
+        expect(cliService.listAuthConfigs).not.toHaveBeenCalled();
+    });
+
+    test('suggests auth configs when the attribute is not first on the line', async () => {
+        (cliService.listAuthConfigs as jest.Mock).mockResolvedValue([
+            { name: 'my_bearer', auth_type: 'bearer' }
+        ]);
+
+        const items = await authNameItems(['[timeout(30)] [auth("']);
+
+        expect(items.map((i: any) => i.label)).toEqual(['my_bearer']);
+    });
+
+    test('suggests auth configs with spaces around the attribute name', async () => {
+        (cliService.listAuthConfigs as jest.Mock).mockResolvedValue([
+            { name: 'my_bearer', auth_type: 'bearer' }
+        ]);
+
+        const items = await authNameItems(['[ auth ("']);
+
+        expect(items.map((i: any) => i.label)).toEqual(['my_bearer']);
+    });
+
+    test('replaces the partial name already typed', async () => {
+        (cliService.listAuthConfigs as jest.Mock).mockResolvedValue([
+            { name: 'my_bearer', auth_type: 'bearer' }
+        ]);
+
+        const items = await authNameItems(['[auth("my")]'], 9);
+
+        expect(items[0].range.start.character).toBe(7);
+        expect(items[0].range.end.character).toBe(9);
+        expect(items[0].insertText).toBe('my_bearer');
     });
 
     test('uses temp path for auth configs when docs are dirty', async () => {
@@ -261,6 +373,19 @@ describe('auth attribute value completion', () => {
         expect(items).toBeUndefined();
     });
 
+    test('returns undefined when the request is cancelled', async () => {
+        (cliService.listAuthConfigs as jest.Mock).mockResolvedValue([
+            { name: 'my_bearer', auth_type: 'bearer' }
+        ]);
+
+        const doc = makeDocument(['[auth("']);
+        const position = new vscode.Position(0, 7);
+
+        const result = await provideCompletionItems(doc, position, { isCancellationRequested: true });
+
+        expect(result).toBeUndefined();
+    });
+
     test('does not trigger outside auth attribute context', async () => {
         const doc = makeDocument(['let x = "']);
         const position = new vscode.Position(0, 9);
@@ -268,5 +393,32 @@ describe('auth attribute value completion', () => {
         await provideCompletionItems(doc, position);
 
         expect(cliService.listAuthConfigs).not.toHaveBeenCalled();
+    });
+
+    test('does not trigger once the attribute is closed', async () => {
+        const doc = makeDocument(['[auth("my_bearer")]', 'r']);
+        const position = new vscode.Position(1, 1);
+
+        await provideCompletionItems(doc, position);
+
+        expect(cliService.listAuthConfigs).not.toHaveBeenCalled();
+    });
+
+    test('does not trigger inside a headers literal', async () => {
+        const doc = makeDocument(['let h = $[auth("']);
+        const position = new vscode.Position(0, 16);
+
+        await provideCompletionItems(doc, position);
+
+        expect(cliService.listAuthConfigs).not.toHaveBeenCalled();
+    });
+
+    test('does not offer top level keywords inside an unfinished attribute', async () => {
+        const doc = makeDocument(['[method(', '    ']);
+        const position = new vscode.Position(1, 4);
+
+        const result = await provideCompletionItems(doc, position);
+
+        expect(result).toBeUndefined();
     });
 });

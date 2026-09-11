@@ -1,0 +1,8 @@
+[auth("ghost")]
+ep users(url: "http://localhost:8080/users") {
+    rq list();
+
+    rq post(body: "{}");
+
+    rq delete();
+}

@@ -1,0 +1,11 @@
+let auth_name = "local_bearer";
+
+auth local_bearer(auth_type.bearer) {
+    token: "secret-token",
+}
+
+[auth(auth_name)]
+rq get("http://localhost:8080/users");
+
+[auth("{{auth_name}}")]
+rq list("http://localhost:8080/items");

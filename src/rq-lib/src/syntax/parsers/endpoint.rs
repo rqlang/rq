@@ -365,6 +365,7 @@ pub(crate) fn parse_endpoint_with_context(
         }
         if ctx.auth.is_none() {
             ctx.auth = parent.auth;
+            ctx.auth_location = parent.auth_location;
         }
         if ctx.timeout.is_none() {
             ctx.timeout = parent.timeout;
@@ -397,6 +398,7 @@ pub(crate) fn parse_endpoint_with_context(
                 headers_var: ep_headers_var,
                 qs: ep_qs,
                 auth: ctx.auth,
+                auth_location: ctx.auth_location,
                 timeout: ctx.timeout,
                 variables: endpoint_variables,
                 has_requests: false,
@@ -502,6 +504,7 @@ pub(crate) fn parse_endpoint_with_context(
             if req.auth.is_none() {
                 if let Some(ref ea) = ctx.auth {
                     req.auth = Some(ea.clone());
+                    req.auth_location = ctx.auth_location.clone();
                 }
             }
             if req.timeout.is_none() {
@@ -546,6 +549,7 @@ pub(crate) fn parse_endpoint_with_context(
         headers_var: ep_headers_var,
         qs: ep_qs,
         auth: ctx.auth,
+        auth_location: ctx.auth_location,
         timeout: ctx.timeout,
         variables: endpoint_variables,
         has_requests: !children.is_empty(),

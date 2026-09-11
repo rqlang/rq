@@ -120,6 +120,68 @@ export function insideOpenBlock(text: string, blockPattern: RegExp): boolean {
     return depth > 0;
 }
 
+export const ATTRIBUTE_NAMES = ['method', 'timeout', 'auth', 'required'];
+
+export interface AuthAttributeContext {
+    quoted: boolean;
+}
+
+function openAttributeBracketIndex(text: string): number {
+    const openBrackets: number[] = [];
+    let inString = false;
+    let stringChar = '';
+    for (let i = 0; i < text.length; i++) {
+        const ch = text[i];
+        if (inString) {
+            if (ch === '\\') { i++; }
+            else if (ch === stringChar) { inString = false; }
+            continue;
+        }
+        if (ch === '/' && text[i + 1] === '/') {
+            const lineEnd = text.indexOf('\n', i);
+            if (lineEnd === -1) { return -1; }
+            i = lineEnd;
+        } else if (ch === '/' && text[i + 1] === '*') {
+            const commentEnd = text.indexOf('*/', i + 2);
+            if (commentEnd === -1) { return -1; }
+            i = commentEnd + 1;
+        } else if (ch === '"' || ch === "'") { inString = true; stringChar = ch; }
+        else if (ch === '[') { openBrackets.push(i); }
+        else if (ch === ']') { openBrackets.pop(); }
+    }
+    if (openBrackets.length === 0) { return -1; }
+    const index = openBrackets[openBrackets.length - 1];
+    return index > 0 && text[index - 1] === '$' ? -1 : index;
+}
+
+export function insideUnclosedAttribute(text: string): boolean {
+    const index = openAttributeBracketIndex(text);
+    if (index === -1) { return false; }
+    return new RegExp(`^\\s*(${ATTRIBUTE_NAMES.join('|')})\\b`).test(text.slice(index + 1));
+}
+
+export function getAuthAttributeContext(text: string): AuthAttributeContext | null {
+    const index = openAttributeBracketIndex(text);
+    if (index === -1) { return null; }
+    const opener = text.slice(index + 1).match(/^\s*auth\s*\(/);
+    if (!opener) { return null; }
+    const args = text.slice(index + 1 + opener[0].length);
+    let inString = false;
+    let stringChar = '';
+    for (let i = 0; i < args.length; i++) {
+        const ch = args[i];
+        if (inString) {
+            if (ch === '\\') { i++; }
+            else if (ch === stringChar) { inString = false; }
+            continue;
+        }
+        if (ch === '"' || ch === "'") { inString = true; stringChar = ch; }
+        else if (ch === ')') { return null; }
+    }
+    if (inString) { return { quoted: true }; }
+    return /^[a-zA-Z0-9_\s-]*$/.test(args) ? { quoted: false } : null;
+}
+
 export const insideEnvOrAuthBlock = (text: string): boolean =>
     insideOpenBlock(text, /\b(env|auth)\s+\w+[^{]*\{/);
 

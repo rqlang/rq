@@ -14,14 +14,16 @@ export const completionProvider = vscode.languages.registerCompletionItemProvide
         async provideCompletionItems(
             document: vscode.TextDocument,
             position: vscode.Position,
-            _token: vscode.CancellationToken,
+            token: vscode.CancellationToken,
             vsContext: vscode.CompletionContext
         ) {
             const { ctx, cleanup } = buildContext(document, position, vsContext, environmentProvider);
             try {
                 for (const handler of ALL_HANDLERS) {
                     if (handler.canHandle(ctx)) {
-                        return await handler.provide(ctx);
+                        const items = await handler.provide(ctx);
+                        if (!items || token?.isCancellationRequested) { return undefined; }
+                        return handler.incomplete ? new vscode.CompletionList(items, true) : items;
                     }
                 }
                 return undefined;

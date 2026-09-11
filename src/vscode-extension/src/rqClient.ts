@@ -408,6 +408,8 @@ export async function executeRequest(options: ExecuteRequestOptions): Promise<Ex
             const authDetails = await showAuthConfig(authName, options.sourceDirectory, options.environment);
             const token = await fetchClientCredentialsToken(authDetails.fields, path.dirname(authDetails.file));
             headers['authorization'] = `Bearer ${token}`;
+        } else {
+            throw new Error(`Auth configuration '${authName}' has unsupported type '${authType}'`);
         }
     }
 

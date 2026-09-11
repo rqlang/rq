@@ -1,0 +1,6 @@
+auth local_bearer(auth_type.bearer) {
+    token: "secret-token",
+}
+
+[auth("local_bearer")]
+rq get("http://localhost:8080/users");

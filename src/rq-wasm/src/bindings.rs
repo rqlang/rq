@@ -393,7 +393,11 @@ pub fn get_endpoint(
         parse_secrets(secrets_json),
         source,
     )
-    .get_endpoint(Path::new(source), name, scope_file.as_deref().map(Path::new))
+    .get_endpoint(
+        Path::new(source),
+        name,
+        scope_file.as_deref().map(Path::new),
+    )
     .map_err(rq_err)?;
     serde_json::to_string(&entry).map_err(|e| JsError::new(&e.to_string()))
 }
@@ -437,7 +441,11 @@ pub fn list_variable_refs(
         parse_secrets(secrets_json),
         source,
     )
-    .list_variable_references(Path::new(source), name, scope_file.as_deref().map(Path::new))
+    .list_variable_references(
+        Path::new(source),
+        name,
+        scope_file.as_deref().map(Path::new),
+    )
     .map_err(rq_err)?;
     serde_json::to_string(&refs).map_err(|e| JsError::new(&e.to_string()))
 }
@@ -455,7 +463,11 @@ pub fn list_endpoint_refs(
         parse_secrets(secrets_json),
         source,
     )
-    .list_endpoint_references(Path::new(source), name, scope_file.as_deref().map(Path::new))
+    .list_endpoint_references(
+        Path::new(source),
+        name,
+        scope_file.as_deref().map(Path::new),
+    )
     .map_err(rq_err)?;
     serde_json::to_string(&refs).map_err(|e| JsError::new(&e.to_string()))
 }

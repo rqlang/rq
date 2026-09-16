@@ -1,11 +1,18 @@
 use crate::lint::{line_col, significant_tokens, LintContext, LintDiagnostic, LintRule};
 use crate::syntax::keywords::{KW_EP, KW_RQ};
+use crate::syntax::parsers::utils::unescape_string;
 use crate::syntax::token::TokenType;
 use crate::syntax::variable_context::VariableValue;
+use lazy_static::lazy_static;
+use std::path::Path;
 
 pub struct Rule;
 
 const BODY_ARGUMENT: &str = "body";
+
+lazy_static! {
+    static ref INTERPOLATION_PATTERN: regex::Regex = regex::Regex::new(r"\{\{[^{}]*\}\}").unwrap();
+}
 
 impl LintRule for Rule {
     fn id(&self) -> &'static str {
@@ -31,12 +38,13 @@ fn check_let_with_json_string(ctx: &LintContext, out: &mut Vec<LintDiagnostic>) 
         if !looks_like_json(s) {
             continue;
         }
-        let (line, column) = ctx
-            .rq_file
-            .let_variable_locations
-            .get(&var.name)
-            .map(|(_, l, c)| (l + 1, c + 1))
-            .unwrap_or((1, 1));
+        let Some((file, line, column)) = ctx.rq_file.let_variable_locations.get(&var.name) else {
+            continue;
+        };
+        if Path::new(file) != ctx.rq_file.path {
+            continue;
+        }
+        let (line, column) = (line + 1, column + 1);
         out.push(LintDiagnostic {
             severity: "error",
             rule: "json_body_as_string",
@@ -119,23 +127,25 @@ fn json_string_body_at(significant: &[crate::syntax::token::Token], colon: usize
     if value.token_type != TokenType::String {
         return None;
     }
-    if !looks_like_json(string_content(&value.value)?) {
+    if !looks_like_json(&string_content(&value.value)?) {
         return None;
     }
     Some(value.span.start)
 }
 
-fn string_content(raw: &str) -> Option<&str> {
+fn string_content(raw: &str) -> Option<String> {
     if raw.len() < 2 || !raw.starts_with('"') || !raw.ends_with('"') {
         return None;
     }
-    Some(&raw[1..raw.len() - 1])
+    Some(unescape_string(&raw[1..raw.len() - 1]))
 }
 
 fn looks_like_json(value: &str) -> bool {
-    let trimmed = value.trim();
-    (trimmed.starts_with('{') && trimmed.ends_with('}'))
-        || (trimmed.starts_with('[') && trimmed.ends_with(']'))
+    let neutralized = INTERPOLATION_PATTERN.replace_all(value.trim(), "0");
+    let candidate = neutralized.trim();
+    let bounded = (candidate.starts_with('{') && candidate.ends_with('}'))
+        || (candidate.starts_with('[') && candidate.ends_with(']'));
+    bounded && serde_json::from_str::<serde_json::Value>(candidate).is_ok()
 }
 
 #[cfg(test)]
@@ -160,6 +170,30 @@ mod tests {
     }
 
     #[test]
+    fn does_not_flag_a_url_built_from_interpolations() {
+        let src = "let collections_url = \"{{base_url}}/collections/{{collection_id}}\";\n";
+        let target = diagnostics_for(src);
+        assert!(
+            target.is_empty(),
+            "interpolation braces are not a JSON object: {target:?}"
+        );
+    }
+
+    #[test]
+    fn does_not_flag_a_lone_interpolation() {
+        let src = "let payload = \"{{body_template}}\";\n";
+        let target = diagnostics_for(src);
+        assert!(target.is_empty(), "got: {target:?}");
+    }
+
+    #[test]
+    fn flags_a_json_object_carrying_an_interpolated_value() {
+        let src = "let payload = \"{\\\"name\\\": \\\"{{user_name}}\\\"}\";\n";
+        let target = diagnostics_for(src);
+        assert_eq!(target.len(), 1, "got: {target:?}");
+    }
+
+    #[test]
     fn flags_inline_string_body_looking_like_json() {
         let src = "rq foo(\"http://x\", body: \"{}\");\n";
         let target = lint(src, None, None);
@@ -167,6 +201,46 @@ mod tests {
             .diagnostics
             .iter()
             .any(|d| d.rule == "json_body_as_string"));
+    }
+
+    fn json_diagnostics(result: crate::lint::LintResult) -> Vec<crate::lint::LintDiagnostic> {
+        result
+            .diagnostics
+            .into_iter()
+            .filter(|d| d.rule == "json_body_as_string")
+            .collect()
+    }
+
+    #[test]
+    fn does_not_flag_a_json_string_declared_in_an_imported_file() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root = dir.path();
+        std::fs::write(root.join("shared.rq"), "let payload = \"{\\\"a\\\":1}\";\n")
+            .expect("shared.rq");
+        let source = "import \"shared\";\n\nrq get(\"http://localhost:8080\");\n";
+        let path = root.join("main.rq");
+        std::fs::write(&path, source).expect("main.rq");
+
+        let target = json_diagnostics(lint(source, path.to_str(), Some(root)));
+
+        assert!(
+            target.is_empty(),
+            "the let belongs to shared.rq, not to the file being linted: {target:?}"
+        );
+    }
+
+    #[test]
+    fn flags_a_json_string_in_the_file_that_declares_it() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root = dir.path();
+        let source = "let payload = \"{\\\"a\\\":1}\";\n";
+        let path = root.join("shared.rq");
+        std::fs::write(&path, source).expect("shared.rq");
+
+        let target = json_diagnostics(lint(source, path.to_str(), Some(root)));
+
+        assert_eq!(target.len(), 1, "got: {target:?}");
+        assert_eq!(target[0].line, 1);
     }
 
     fn diagnostics_for(src: &str) -> Vec<crate::lint::LintDiagnostic> {

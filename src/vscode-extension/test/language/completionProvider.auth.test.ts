@@ -224,7 +224,7 @@ describe('auth attribute value completion', () => {
 
         const items = await authNameItems(['[auth("']);
 
-        expect(cliService.listAuthConfigs).toHaveBeenCalledWith('/workspace/current.rq');
+        expect(cliService.listAuthConfigs).toHaveBeenCalledWith('/workspace/current.rq', '/workspace');
         expect(items).toHaveLength(2);
         expect(items[0].label).toBe('my_bearer');
         expect(items[0].detail).toBe('bearer');
@@ -359,7 +359,7 @@ describe('auth attribute value completion', () => {
         await provideCompletionItems(doc, position);
 
         expect(utils.mirrorToTemp).toHaveBeenCalled();
-        expect(cliService.listAuthConfigs).toHaveBeenCalledWith('/tmp/rq-check-mock/current.rq');
+        expect(cliService.listAuthConfigs).toHaveBeenCalledWith('/tmp/rq-check-mock/current.rq', '/tmp/rq-check-mock');
     });
 
     test('returns undefined when listAuthConfigs throws', async () => {

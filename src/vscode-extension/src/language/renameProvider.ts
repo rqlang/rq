@@ -111,7 +111,7 @@ export const renameProvider = vscode.languages.registerRenameProvider('rq', {
 
         if (symbol.kind === 'ep') {
             try {
-                const refs = await rqClient.epRefs(symbol.name, sourceDirectory);
+                const refs = await rqClient.epRefs(symbol.name, sourceDirectory, document.uri.fsPath);
                 if (refs.length === 0) { return undefined; }
                 for (const r of refs) {
                     edit.replace(
@@ -130,7 +130,7 @@ export const renameProvider = vscode.languages.registerRenameProvider('rq', {
         }
 
         try {
-            const refs = await rqClient.varRefs(symbol.name, sourceDirectory);
+            const refs = await rqClient.varRefs(symbol.name, sourceDirectory, document.uri.fsPath);
             if (refs.length === 0) { return undefined; }
             for (const r of refs) {
                 edit.replace(

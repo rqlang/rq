@@ -735,6 +735,7 @@ impl RqClient {
         &self,
         source_path: &Path,
         name: &str,
+        scope_file: Option<&Path>,
     ) -> Result<crate::client::models::EndpointEntry, RqError> {
         if !self.fs.exists(source_path) {
             return Err(RqError::DirectoryNotFound(
@@ -742,16 +743,7 @@ impl RqClient {
             ));
         }
 
-        let mut paths = Vec::new();
-        if self.fs.is_file(source_path) {
-            paths.push(source_path.to_path_buf());
-        } else if self.fs.is_dir(source_path) {
-            self.collect_rq_paths(source_path, &mut paths)?;
-        } else {
-            return Err(RqError::NotADirectory(source_path.display().to_string()));
-        }
-
-        paths.sort();
+        let paths = self.resolution_paths(source_path, scope_file)?;
         for path in &paths {
             if let Ok(rq_file) = self.load_rq_file(path) {
                 if let Some(ep) = rq_file.endpoints.get(name) {
@@ -786,21 +778,19 @@ impl RqClient {
             ));
         }
 
-        let mut paths: Vec<PathBuf> = if self.fs.is_file(source_path) {
-            self.collect_import_closure(source_path)
-        } else if self.fs.is_dir(source_path) {
-            let mut ps = Vec::new();
-            self.collect_rq_paths(source_path, &mut ps)?;
-            ps
-        } else {
-            return Err(RqError::NotADirectory(source_path.display().to_string()));
-        };
+        let paths = self.resolution_paths(source_path, None)?;
+        Ok(self.collect_variable_entries(&paths, environment))
+    }
 
-        paths.sort();
+    fn collect_variable_entries(
+        &self,
+        paths: &[PathBuf],
+        environment: Option<&str>,
+    ) -> Vec<crate::client::models::VariableEntry> {
         let mut seen = HashSet::new();
         let mut entries: Vec<crate::client::models::VariableEntry> = Vec::new();
 
-        for path in &paths {
+        for path in paths {
             if let Some(rq_file) = self.load_rq_file_lenient(path) {
                 let let_values: HashMap<&str, &VariableValue> = rq_file
                     .file_variables
@@ -866,7 +856,7 @@ impl RqClient {
         }
 
         entries.sort_by(|a, b| a.name.cmp(&b.name));
-        Ok(entries)
+        entries
     }
 
     pub fn get_variable(
@@ -875,9 +865,17 @@ impl RqClient {
         name: &str,
         environment: Option<&str>,
         interpolate_variables: bool,
+        scope_file: Option<&Path>,
     ) -> Result<crate::client::models::VariableEntry, RqError> {
-        let entries = self.list_variables(source_path, environment)?;
-        let entry = entries
+        if !self.fs.exists(source_path) {
+            return Err(RqError::DirectoryNotFound(
+                source_path.display().to_string(),
+            ));
+        }
+
+        let paths = self.resolution_paths(source_path, scope_file)?;
+        let entry = self
+            .collect_variable_entries(&paths, environment)
             .into_iter()
             .find(|e| e.name == name)
             .ok_or_else(|| RqError::Validation(format!("Variable '{name}' not found")))?;
@@ -885,14 +883,6 @@ impl RqClient {
         if !interpolate_variables {
             return Ok(entry);
         }
-
-        let mut paths = Vec::new();
-        if self.fs.is_file(source_path) {
-            paths.push(source_path.to_path_buf());
-        } else if self.fs.is_dir(source_path) {
-            self.collect_rq_paths(source_path, &mut paths)?;
-        }
-        paths.sort();
 
         let mut all_vars: Vec<crate::syntax::Variable> = Vec::new();
         let mut target_raw: Option<VariableValue> = None;
@@ -951,8 +941,11 @@ impl RqClient {
         &self,
         source_path: &Path,
         name: &str,
+        scope_file: Option<&Path>,
     ) -> Result<Vec<crate::client::models::ReferenceLocation>, RqError> {
-        let paths = self.collect_paths(source_path)?;
+        let paths = self.reference_paths(source_path, scope_file, |closure| {
+            self.variable_definition_file(closure, name)
+        })?;
         let refs = crate::syntax::resolve::find_all_variable_references(&*self.fs, &paths, name);
         Ok(refs
             .into_iter()
@@ -970,8 +963,11 @@ impl RqClient {
         &self,
         source_path: &Path,
         name: &str,
+        scope_file: Option<&Path>,
     ) -> Result<Vec<crate::client::models::ReferenceLocation>, RqError> {
-        let paths = self.collect_paths(source_path)?;
+        let paths = self.reference_paths(source_path, scope_file, |closure| {
+            self.endpoint_definition_file(closure, name)
+        })?;
         let refs = crate::syntax::resolve::find_all_endpoint_references(&*self.fs, &paths, name);
         Ok(refs
             .into_iter()
@@ -1643,6 +1639,104 @@ impl RqClient {
         file_paths
     }
 
+    fn resolution_paths(
+        &self,
+        source_path: &Path,
+        scope_file: Option<&Path>,
+    ) -> Result<Vec<PathBuf>, RqError> {
+        match scope_file {
+            Some(file) if self.fs.is_file(file) => Ok(self.import_closure_sorted(file)),
+            _ if self.fs.is_file(source_path) => Ok(self.import_closure_sorted(source_path)),
+            _ => self.collect_paths(source_path),
+        }
+    }
+
+    fn reference_paths(
+        &self,
+        source_path: &Path,
+        scope_file: Option<&Path>,
+        definition_file: impl Fn(&[PathBuf]) -> Option<PathBuf>,
+    ) -> Result<Vec<PathBuf>, RqError> {
+        let candidates = self.collect_paths(source_path)?;
+        let Some(file) = scope_file.filter(|f| self.fs.is_file(f)) else {
+            return Ok(candidates);
+        };
+
+        let closure = self.import_closure_sorted(file);
+        let Some(anchor) = definition_file(&closure).or_else(|| self.canonical(file)) else {
+            return Ok(closure);
+        };
+
+        let mut paths: Vec<PathBuf> = candidates
+            .into_iter()
+            .filter(|candidate| {
+                self.canonical(candidate) == Some(anchor.clone())
+                    || self
+                        .import_closure_sorted(candidate)
+                        .iter()
+                        .any(|imported| self.canonical(imported) == Some(anchor.clone()))
+            })
+            .collect();
+
+        if paths.is_empty() {
+            return Ok(closure);
+        }
+        paths.sort();
+        paths.dedup();
+        Ok(paths)
+    }
+
+    fn variable_definition_file(&self, paths: &[PathBuf], name: &str) -> Option<PathBuf> {
+        for path in paths {
+            let Some(rq_file) = self.load_rq_file_lenient(path) else {
+                continue;
+            };
+            let location = rq_file
+                .let_variable_locations
+                .get(name)
+                .or_else(|| rq_file.required_variable_locations.get(name))
+                .or_else(|| {
+                    rq_file
+                        .env_variable_locations
+                        .values()
+                        .find_map(|key_map| key_map.get(name))
+                });
+            if let Some((file, _, _)) = location {
+                return Some(PathBuf::from(file));
+            }
+        }
+        None
+    }
+
+    fn endpoint_definition_file(&self, paths: &[PathBuf], name: &str) -> Option<PathBuf> {
+        for path in paths {
+            let Some(rq_file) = self.load_rq_file_lenient(path) else {
+                continue;
+            };
+            if let Some(endpoint) = rq_file.endpoints.get(name) {
+                return Some(
+                    endpoint
+                        .source_path
+                        .as_deref()
+                        .map(PathBuf::from)
+                        .unwrap_or_else(|| rq_file.path.clone()),
+                );
+            }
+        }
+        None
+    }
+
+    fn import_closure_sorted(&self, file: &Path) -> Vec<PathBuf> {
+        let mut paths = self.collect_import_closure(file);
+        paths.sort();
+        paths.dedup();
+        paths
+    }
+
+    fn canonical(&self, path: &Path) -> Option<PathBuf> {
+        self.fs.canonicalize(path).ok()
+    }
+
     fn collect_auth_entries(
         &self,
         dir: &Path,
@@ -1838,5 +1932,168 @@ mod check_source_tests {
             .check_source("rq basic(\"http://localhost:8080/get\");\n", &draft, None)
             .expect("check_source failed");
         assert!(!draft.exists());
+    }
+}
+
+#[cfg(all(test, feature = "native"))]
+mod scope_file_tests {
+    use super::RqClient;
+    use std::path::{Path, PathBuf};
+    use tempfile::TempDir;
+
+    fn workspace() -> TempDir {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root = dir.path();
+        std::fs::create_dir_all(root.join("image")).expect("image dir");
+        std::fs::create_dir_all(root.join("inma")).expect("inma dir");
+
+        std::fs::write(
+            root.join("_shared.rq"),
+            "let base_url = \"https://api.example.com\";\n",
+        )
+        .expect("_shared.rq");
+
+        std::fs::write(
+            root.join("image/static.rq"),
+            "import \"../_shared\";\n\nlet collection_id = \"static_collection\";\nlet only_static = \"static_only\";\n\nep inma_base(base_url);\n\nrq static(\"{{base_url}}/image/{{collection_id}}/{{only_static}}\");\n",
+        )
+        .expect("image/static.rq");
+
+        std::fs::write(
+            root.join("inma/_shared.rq"),
+            "import \"../_shared\";\n\nlet collection_id = \"inma_collection\";\n\nep inma_base(base_url);\n",
+        )
+        .expect("inma/_shared.rq");
+
+        std::fs::write(
+            root.join("inma/collections.rq"),
+            "import \"_shared\";\n\nep collections<inma_base>(\"/collections\") {\n    rq get(\"/{{collection_id}}\");\n}\n",
+        )
+        .expect("inma/collections.rq");
+
+        dir
+    }
+
+    fn ends_with(actual: &str, expected: &str) -> bool {
+        Path::new(actual).ends_with(PathBuf::from(expected))
+    }
+
+    #[test]
+    fn scoped_variable_resolves_through_the_import_chain() {
+        let dir = workspace();
+        let scope = dir.path().join("inma/collections.rq");
+
+        let target = RqClient::default()
+            .get_variable(dir.path(), "collection_id", None, false, Some(&scope))
+            .expect("get_variable failed");
+
+        assert!(
+            ends_with(&target.file, "inma/_shared.rq"),
+            "expected inma/_shared.rq, got {}",
+            target.file
+        );
+    }
+
+    #[test]
+    fn scoped_variable_follows_the_scope_file() {
+        let dir = workspace();
+        let scope = dir.path().join("image/static.rq");
+
+        let target = RqClient::default()
+            .get_variable(dir.path(), "collection_id", None, false, Some(&scope))
+            .expect("get_variable failed");
+
+        assert!(
+            ends_with(&target.file, "image/static.rq"),
+            "expected image/static.rq, got {}",
+            target.file
+        );
+    }
+
+    #[test]
+    fn scoped_variable_lookup_rejects_an_unreachable_definition() {
+        let dir = workspace();
+        let scope = dir.path().join("inma/collections.rq");
+
+        let target =
+            RqClient::default().get_variable(dir.path(), "only_static", None, false, Some(&scope));
+
+        assert!(target.is_err());
+    }
+
+    #[test]
+    fn unscoped_variable_lookup_spans_the_whole_directory() {
+        let dir = workspace();
+
+        let target = RqClient::default()
+            .get_variable(dir.path(), "only_static", None, false, None)
+            .expect("get_variable failed");
+
+        assert!(
+            ends_with(&target.file, "image/static.rq"),
+            "expected image/static.rq, got {}",
+            target.file
+        );
+    }
+
+    #[test]
+    fn scoped_variable_references_exclude_unreachable_files() {
+        let dir = workspace();
+        let scope = dir.path().join("inma/collections.rq");
+
+        let target = RqClient::default()
+            .list_variable_references(dir.path(), "collection_id", Some(&scope))
+            .expect("list_variable_references failed");
+
+        assert!(
+            !target.iter().any(|r| ends_with(&r.file, "image/static.rq")),
+            "image/static.rq must not be in scope, got {target:?}"
+        );
+        assert!(target
+            .iter()
+            .any(|r| ends_with(&r.file, "inma/collections.rq")));
+    }
+
+    #[test]
+    fn unscoped_variable_references_span_the_whole_directory() {
+        let dir = workspace();
+
+        let target = RqClient::default()
+            .list_variable_references(dir.path(), "collection_id", None)
+            .expect("list_variable_references failed");
+
+        assert!(target.iter().any(|r| ends_with(&r.file, "image/static.rq")));
+    }
+
+    #[test]
+    fn scoped_endpoint_resolves_through_the_import_chain() {
+        let dir = workspace();
+        let scope = dir.path().join("inma/collections.rq");
+
+        let target = RqClient::default()
+            .get_endpoint(dir.path(), "inma_base", Some(&scope))
+            .expect("get_endpoint failed");
+
+        assert!(
+            ends_with(&target.file, "inma/_shared.rq"),
+            "expected inma/_shared.rq, got {}",
+            target.file
+        );
+    }
+
+    #[test]
+    fn scoped_endpoint_references_exclude_unreachable_files() {
+        let dir = workspace();
+        let scope = dir.path().join("inma/collections.rq");
+
+        let target = RqClient::default()
+            .list_endpoint_references(dir.path(), "inma_base", Some(&scope))
+            .expect("list_endpoint_references failed");
+
+        assert!(
+            !target.iter().any(|r| ends_with(&r.file, "image/static.rq")),
+            "image/static.rq must not be in scope, got {target:?}"
+        );
+        assert!(target.iter().any(|r| ends_with(&r.file, "inma/_shared.rq")));
     }
 }

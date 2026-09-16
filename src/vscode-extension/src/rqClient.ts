@@ -148,6 +148,10 @@ function resolveSource(sourceDir?: string): string {
     return raw.replace(/\\/g, '/');
 }
 
+function resolveScopeFile(scopeFile?: string): string | undefined {
+    return scopeFile ? scopeFile.replace(/\\/g, '/') : undefined;
+}
+
 // ---------------------------------------------------------------------------
 // Raw output shapes returned by WASM bindings
 // ---------------------------------------------------------------------------
@@ -194,9 +198,10 @@ export async function listEnvironments(sourceDirectory?: string): Promise<string
     return entries.map(e => e.name);
 }
 
-export async function listAuthConfigs(sourceDirectory?: string): Promise<AuthListEntry[]> {
+export async function listAuthConfigs(sourceDirectory?: string, rootDirectory?: string): Promise<AuthListEntry[]> {
     const source = resolveSource(sourceDirectory);
-    const result = await wasmCall('list_auth', [await buildFilesMap(source), await buildSecretsMap(source), source]);
+    const root = resolveSource(rootDirectory ?? sourceDirectory);
+    const result = await wasmCall('list_auth', [await buildFilesMap(root), await buildSecretsMap(root), source]);
     return JSON.parse(result) as AuthListEntry[];
 }
 
@@ -207,44 +212,46 @@ export async function showEnvironment(name: string, sourceDirectory?: string): P
     return { ...raw, file: normalizePath(raw.file) };
 }
 
-export async function listEndpoints(sourceDirectory?: string): Promise<EndpointShowOutput[]> {
+export async function listEndpoints(sourceDirectory?: string, rootDirectory?: string): Promise<EndpointShowOutput[]> {
     const source = resolveSource(sourceDirectory);
-    const result = await wasmCall('list_endpoints', [await buildFilesMap(source), await buildSecretsMap(source), source]);
+    const root = resolveSource(rootDirectory ?? sourceDirectory);
+    const result = await wasmCall('list_endpoints', [await buildFilesMap(root), await buildSecretsMap(root), source]);
     const raw = JSON.parse(result) as EndpointShowOutput[];
     return raw.map(e => ({ ...e, file: normalizePath(e.file) }));
 }
 
-export async function showEndpoint(name: string, sourceDirectory?: string): Promise<EndpointShowOutput> {
+export async function showEndpoint(name: string, sourceDirectory?: string, scopeFile?: string): Promise<EndpointShowOutput> {
     const source = resolveSource(sourceDirectory);
-    const result = await wasmCall('get_endpoint', [await buildFilesMap(source), await buildSecretsMap(source), source, name]);
+    const result = await wasmCall('get_endpoint', [await buildFilesMap(source), await buildSecretsMap(source), source, name, resolveScopeFile(scopeFile)]);
     const raw = JSON.parse(result) as EndpointShowOutput;
     return { ...raw, file: normalizePath(raw.file) };
 }
 
-export async function showVariable(name: string, sourceDirectory?: string, environment?: string, interpolateVariables = true): Promise<VariableShowOutput> {
+export async function showVariable(name: string, sourceDirectory?: string, environment?: string, interpolateVariables = true, scopeFile?: string): Promise<VariableShowOutput> {
     const source = resolveSource(sourceDirectory);
-    const result = await wasmCall('get_variable', [await buildFilesMap(source), await buildSecretsMap(source), source, name, environment, interpolateVariables]);
+    const result = await wasmCall('get_variable', [await buildFilesMap(source), await buildSecretsMap(source), source, name, environment, interpolateVariables, resolveScopeFile(scopeFile)]);
     const raw = JSON.parse(result) as VariableShowOutput;
     return { ...raw, file: normalizePath(raw.file) };
 }
 
-export async function listVariables(sourceFile?: string, environment?: string): Promise<VariableShowOutput[]> {
+export async function listVariables(sourceFile?: string, environment?: string, rootDirectory?: string): Promise<VariableShowOutput[]> {
     const source = resolveSource(sourceFile);
-    const result = await wasmCall('list_variables', [await buildFilesMap(source), await buildSecretsMap(source), source, environment]);
+    const root = resolveSource(rootDirectory ?? sourceFile);
+    const result = await wasmCall('list_variables', [await buildFilesMap(root), await buildSecretsMap(root), source, environment]);
     const raw = JSON.parse(result) as VariableShowOutput[];
     return raw.map(v => ({ ...v, file: normalizePath(v.file) }));
 }
 
-export async function varRefs(name: string, sourceDirectory?: string): Promise<ReferenceLocation[]> {
+export async function varRefs(name: string, sourceDirectory?: string, scopeFile?: string): Promise<ReferenceLocation[]> {
     const source = resolveSource(sourceDirectory);
-    const result = await wasmCall('list_variable_refs', [await buildFilesMap(source), await buildSecretsMap(source), source, name]);
+    const result = await wasmCall('list_variable_refs', [await buildFilesMap(source), await buildSecretsMap(source), source, name, resolveScopeFile(scopeFile)]);
     const raw = JSON.parse(result) as ReferenceLocation[];
     return raw.map(r => ({ ...r, file: normalizePath(r.file) }));
 }
 
-export async function epRefs(name: string, sourceDirectory?: string): Promise<ReferenceLocation[]> {
+export async function epRefs(name: string, sourceDirectory?: string, scopeFile?: string): Promise<ReferenceLocation[]> {
     const source = resolveSource(sourceDirectory);
-    const result = await wasmCall('list_endpoint_refs', [await buildFilesMap(source), await buildSecretsMap(source), source, name]);
+    const result = await wasmCall('list_endpoint_refs', [await buildFilesMap(source), await buildSecretsMap(source), source, name, resolveScopeFile(scopeFile)]);
     const raw = JSON.parse(result) as ReferenceLocation[];
     return raw.map(r => ({ ...r, file: normalizePath(r.file) }));
 }

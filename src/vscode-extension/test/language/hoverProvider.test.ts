@@ -419,3 +419,208 @@ describe('local variable hover', () => {
         expect((result!.contents as unknown as vscode.MarkdownString).value).toContain('Defined on line 2');
     });
 });
+
+describe('required variable hover', () => {
+    function documentWithRequired(lines: string[], line: number, word: string) {
+        const column = lines[line].indexOf(word);
+        return {
+            doc: {
+                uri: { fsPath: '/workspace/inma/collections.rq' },
+                lineCount: lines.length,
+                lineAt: (i: number | vscode.Position) => {
+                    const idx = typeof i === 'number' ? i : i.line;
+                    return { text: lines[idx] };
+                },
+                getText: (range?: vscode.Range) =>
+                    range ? lines[range.start.line].slice(range.start.character, range.end.character) : lines.join('\n'),
+                getWordRangeAtPosition: jest.fn().mockReturnValue(
+                    new vscode.Range(pos(line, column), pos(line, column + word.length))
+                )
+            },
+            column
+        };
+    }
+
+    test('states the value arrives at runtime without naming a CLI flag', async () => {
+        const lines = ['[required(collection_id)]', 'rq delete(collection_id);'];
+        const { doc, column } = documentWithRequired(lines, 1, 'collection_id');
+
+        const result = await provideHover(doc as any, pos(1, column)) as vscode.Hover;
+
+        const value = (result!.contents as unknown as vscode.MarkdownString).value;
+        expect(value).toContain('**Variable: `collection_id`** *(required)*');
+        expect(value).toContain('Value provided at runtime.');
+        expect(value).not.toContain('--var');
+    });
+
+    test('does not consult the resolver for a required variable', async () => {
+        const lines = ['[required(collection_id)]', 'rq delete(collection_id);'];
+        const { doc, column } = documentWithRequired(lines, 1, 'collection_id');
+
+        await provideHover(doc as any, pos(1, column));
+
+        expect(cliService.showVariable).not.toHaveBeenCalled();
+    });
+
+    test('reads the same on the attribute argument as on the usage', async () => {
+        const lines = ['[required(collection_id)]', 'rq delete(collection_id);'];
+        const onAttribute = documentWithRequired(lines, 0, 'collection_id');
+        const onUsage = documentWithRequired(lines, 1, 'collection_id');
+
+        const fromAttribute = await provideHover(onAttribute.doc as any, pos(0, onAttribute.column)) as vscode.Hover;
+        const fromUsage = await provideHover(onUsage.doc as any, pos(1, onUsage.column)) as vscode.Hover;
+
+        expect((fromAttribute!.contents as unknown as vscode.MarkdownString).value)
+            .toBe((fromUsage!.contents as unknown as vscode.MarkdownString).value);
+    });
+
+    test('does not resolve a same-named variable when hovering the attribute argument', async () => {
+        const lines = [
+            '    rq put(collection_id);',
+            '    [required(collection_id)]',
+            '    rq delete(collection_id);'
+        ];
+        const { doc, column } = documentWithRequired(lines, 1, 'collection_id');
+        (cliService.showVariable as jest.Mock).mockResolvedValue({
+            name: 'collection_id',
+            value: 'us-rail-collection',
+            file: '/workspace/inma/_shared.rq',
+            line: 6,
+            character: 4,
+            source: 'let'
+        });
+
+        const result = await provideHover(doc as any, pos(1, column)) as vscode.Hover;
+
+        expect(cliService.showVariable).not.toHaveBeenCalled();
+        const value = (result!.contents as unknown as vscode.MarkdownString).value;
+        expect(value).toContain('Value provided at runtime.');
+        expect(value).not.toContain('us-rail-collection');
+    });
+});
+
+describe('imported variable hover', () => {
+    function documentAt(line: string, word: string) {
+        const column = line.indexOf(word);
+        return {
+            doc: {
+                uri: { fsPath: '/workspace/inma/collections.rq' },
+                lineCount: 1,
+                lineAt: () => ({ text: line }),
+                getText: (range?: vscode.Range) =>
+                    range ? line.slice(range.start.character, range.end.character) : line,
+                getWordRangeAtPosition: jest.fn().mockReturnValue(
+                    new vscode.Range(pos(0, column), pos(0, column + word.length))
+                )
+            },
+            column
+        };
+    }
+
+    beforeEach(() => {
+        (vscode.workspace as any).workspaceFolders = [{ uri: { fsPath: '/workspace' } }];
+    });
+
+    test('resolves a variable defined in an imported file when no environment is selected', async () => {
+        const { doc, column } = documentAt('    rq put(collection_id);', 'collection_id');
+        setEnvironmentProvider({ getSelectedEnvironment: () => undefined });
+        (cliService.showVariable as jest.Mock).mockResolvedValue({
+            name: 'collection_id',
+            value: 'us-rail-collection',
+            file: '/workspace/inma/_shared.rq',
+            line: 6,
+            character: 4,
+            source: 'let'
+        });
+
+        const result = await provideHover(doc as any, pos(0, column)) as vscode.Hover;
+
+        expect(cliService.showVariable).toHaveBeenCalledWith(
+            'collection_id',
+            '/workspace',
+            undefined,
+            true,
+            '/workspace/inma/collections.rq'
+        );
+        const value = (result!.contents as unknown as vscode.MarkdownString).value;
+        expect(value).toContain('**Variable: `collection_id`**');
+        expect(value).toContain('us-rail-collection');
+    });
+
+    test('resolves an interpolated variable defined in an imported file', async () => {
+        const { doc, column } = documentAt('ep collections<spatio>("{{stac_url}}/collections") {', 'stac_url');
+        setEnvironmentProvider({ getSelectedEnvironment: () => undefined });
+        (cliService.showVariable as jest.Mock).mockResolvedValue({
+            name: 'stac_url',
+            value: 'https://example.com/stac',
+            file: '/workspace/inma/_shared.rq',
+            line: 3,
+            character: 4,
+            source: 'let'
+        });
+
+        const result = await provideHover(doc as any, pos(0, column)) as vscode.Hover;
+
+        const value = (result!.contents as unknown as vscode.MarkdownString).value;
+        expect(value).toContain('**Variable: `stac_url`**');
+        expect(value).toContain('https://example.com/stac');
+    });
+
+    test('prefers the local declaration over the resolver when no environment is selected', async () => {
+        const { doc, column } = documentAt('let token = "abc"; rq get(token);', 'token');
+        setEnvironmentProvider({ getSelectedEnvironment: () => undefined });
+
+        const result = await provideHover(doc as any, pos(0, column)) as vscode.Hover;
+
+        expect(cliService.showVariable).not.toHaveBeenCalled();
+        expect((result!.contents as unknown as vscode.MarkdownString).value).toContain('Defined on line 1');
+    });
+
+    test('returns no hover when the variable is unreachable from the document', async () => {
+        const { doc, column } = documentAt('    rq put(only_static);', 'only_static');
+        setEnvironmentProvider({ getSelectedEnvironment: () => undefined });
+        (cliService.showVariable as jest.Mock).mockRejectedValue(new Error('not found'));
+
+        const result = await provideHover(doc as any, pos(0, column));
+
+        expect(result).toBeUndefined();
+    });
+});
+
+describe('resolution scope', () => {
+    test('scopes variable lookup to the document that requested it', async () => {
+        const line = 'rq get("/{{collection_id}}");';
+        const column = line.indexOf('collection_id');
+        const doc = {
+            uri: { fsPath: '/workspace/inma/collections.rq' },
+            lineCount: 1,
+            lineAt: () => ({ text: line }),
+            getText: (range?: vscode.Range) =>
+                range ? line.slice(range.start.character, range.end.character) : line,
+            getWordRangeAtPosition: jest.fn().mockReturnValue(
+                new vscode.Range(pos(0, column), pos(0, column + 'collection_id'.length))
+            )
+        };
+
+        setEnvironmentProvider({ getSelectedEnvironment: () => 'local' });
+        (vscode.workspace as any).workspaceFolders = [{ uri: { fsPath: '/workspace' } }];
+        (cliService.showVariable as jest.Mock).mockResolvedValue({
+            name: 'collection_id',
+            value: 'inma_collection',
+            file: '/workspace/inma/_shared.rq',
+            line: 6,
+            character: 4,
+            source: 'let'
+        });
+
+        await provideHover(doc as any, pos(0, column));
+
+        expect(cliService.showVariable).toHaveBeenCalledWith(
+            'collection_id',
+            '/workspace',
+            'local',
+            true,
+            '/workspace/inma/collections.rq'
+        );
+    });
+});

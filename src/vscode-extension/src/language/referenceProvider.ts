@@ -18,7 +18,7 @@ export const referenceProvider = vscode.languages.registerReferenceProvider('rq'
 
             if (position.character >= parentStart && position.character <= parentEnd) {
                 try {
-                    const refs = await rqClient.epRefs(parentName, sourceDirectory);
+                    const refs = await rqClient.epRefs(parentName, sourceDirectory, document.uri.fsPath);
                     return refs.map(r => new vscode.Location(
                         vscode.Uri.file(r.file),
                         new vscode.Position(r.line, r.character)
@@ -36,7 +36,7 @@ export const referenceProvider = vscode.languages.registerReferenceProvider('rq'
         const word = document.getText(wordRange);
 
         try {
-            const refs = await rqClient.varRefs(word, sourceDirectory);
+            const refs = await rqClient.varRefs(word, sourceDirectory, document.uri.fsPath);
             return refs.map(r => new vscode.Location(
                 vscode.Uri.file(r.file),
                 new vscode.Position(r.line, r.character)

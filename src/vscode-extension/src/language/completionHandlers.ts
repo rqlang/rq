@@ -47,7 +47,7 @@ export const epTemplateHandler: CompletionHandler = {
             replaceRange = new vscode.Range(position.line, position.character - partial.length, position.line, position.character + trailingWord.length);
         }
         try {
-            const endpoints = await rqClient.listEndpoints(await ctx.getCliFilePath());
+            const endpoints = await rqClient.listEndpoints(await ctx.getCliFilePath(), await ctx.getCliRootPath());
             return endpoints.filter(ep => ep.is_template).map(ep => {
                 const item = new vscode.CompletionItem(ep.name, vscode.CompletionItemKind.Reference);
                 item.detail = 'Endpoint template';
@@ -156,7 +156,7 @@ export const interpolationHandler: CompletionHandler = {
         if (replaceRange) { builtins.forEach(i => { i.range = replaceRange; }); }
         try {
             const cliFilePath = await ctx.getCliFilePath();
-            const raw = await rqClient.listVariables(cliFilePath, ctx.getEnvironment());
+            const raw = await rqClient.listVariables(cliFilePath, ctx.getEnvironment(), await ctx.getCliRootPath());
             const variables = filterRequiredVars(raw, documentPrefix, cliFilePath);
             if (variables.length > 0) {
                 const varItems = variables.map(v => {
@@ -334,7 +334,7 @@ function buildRqEpHandler(
             try {
                 const cliFilePath = await ctx.getCliFilePath();
                 const variables = filterRequiredVars(
-                    await rqClient.listVariables(cliFilePath, ctx.getEnvironment()),
+                    await rqClient.listVariables(cliFilePath, ctx.getEnvironment(), await ctx.getCliRootPath()),
                     documentPrefix,
                     cliFilePath
                 );
@@ -384,7 +384,7 @@ export const authNameValueHandler: CompletionHandler = {
         const authContext = getAuthAttributeContext(ctx.documentPrefix);
         if (!authContext) { return undefined; }
         try {
-            const authConfigs = await rqClient.listAuthConfigs(await ctx.getCliFilePath());
+            const authConfigs = await rqClient.listAuthConfigs(await ctx.getCliFilePath(), await ctx.getCliRootPath());
             const range = authNameReplaceRange(ctx, authContext);
             return authConfigs.map(a => {
                 const item = new vscode.CompletionItem(a.name, vscode.CompletionItemKind.Reference);

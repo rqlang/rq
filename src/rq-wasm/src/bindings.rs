@@ -386,13 +386,18 @@ pub fn get_endpoint(
     secrets_json: &str,
     source: &str,
     name: &str,
+    scope_file: Option<String>,
 ) -> Result<String, JsError> {
     let entry = make_client(
         parse_files(files_json)?,
         parse_secrets(secrets_json),
         source,
     )
-    .get_endpoint(Path::new(source), name)
+    .get_endpoint(
+        Path::new(source),
+        name,
+        scope_file.as_deref().map(Path::new),
+    )
     .map_err(rq_err)?;
     serde_json::to_string(&entry).map_err(|e| JsError::new(&e.to_string()))
 }
@@ -405,13 +410,20 @@ pub fn get_variable(
     name: &str,
     env: Option<String>,
     interpolate: bool,
+    scope_file: Option<String>,
 ) -> Result<String, JsError> {
     let entry = make_client(
         parse_files(files_json)?,
         parse_secrets(secrets_json),
         source,
     )
-    .get_variable(Path::new(source), name, env.as_deref(), interpolate)
+    .get_variable(
+        Path::new(source),
+        name,
+        env.as_deref(),
+        interpolate,
+        scope_file.as_deref().map(Path::new),
+    )
     .map_err(rq_err)?;
     serde_json::to_string(&entry).map_err(|e| JsError::new(&e.to_string()))
 }
@@ -422,13 +434,18 @@ pub fn list_variable_refs(
     secrets_json: &str,
     source: &str,
     name: &str,
+    scope_file: Option<String>,
 ) -> Result<String, JsError> {
     let refs: Vec<ReferenceLocation> = make_client(
         parse_files(files_json)?,
         parse_secrets(secrets_json),
         source,
     )
-    .list_variable_references(Path::new(source), name)
+    .list_variable_references(
+        Path::new(source),
+        name,
+        scope_file.as_deref().map(Path::new),
+    )
     .map_err(rq_err)?;
     serde_json::to_string(&refs).map_err(|e| JsError::new(&e.to_string()))
 }
@@ -439,13 +456,18 @@ pub fn list_endpoint_refs(
     secrets_json: &str,
     source: &str,
     name: &str,
+    scope_file: Option<String>,
 ) -> Result<String, JsError> {
     let refs: Vec<ReferenceLocation> = make_client(
         parse_files(files_json)?,
         parse_secrets(secrets_json),
         source,
     )
-    .list_endpoint_references(Path::new(source), name)
+    .list_endpoint_references(
+        Path::new(source),
+        name,
+        scope_file.as_deref().map(Path::new),
+    )
     .map_err(rq_err)?;
     serde_json::to_string(&refs).map_err(|e| JsError::new(&e.to_string()))
 }

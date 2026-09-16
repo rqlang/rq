@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as rqClient from '../rqClient';
-import { parseVariables, findRequiredAttributeLineInScope } from './definitions';
+import { parseVariables, findRequiredAttributeLineInScope, isRequiredAttributeFor } from './definitions';
 
 const EP_TEMPLATE_PATTERN = /^\s*ep\s+[a-zA-Z_][a-zA-Z0-9_-]*\s*<\s*([a-zA-Z_][a-zA-Z0-9_-]*)\s*>/;
 const VAR_NAME_PATTERN = /[a-zA-Z_][a-zA-Z0-9_-]*/;
@@ -25,7 +25,7 @@ export const definitionProvider = vscode.languages.registerDefinitionProvider('r
             if (position.character >= parentStart && position.character <= parentEnd) {
                 try {
                     const sourceDirectory = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-                    const result = await rqClient.showEndpoint(parentName, sourceDirectory);
+                    const result = await rqClient.showEndpoint(parentName, sourceDirectory, document.uri.fsPath);
                     return new vscode.Location(
                         vscode.Uri.file(result.file),
                         new vscode.Position(result.line, result.character)
@@ -41,6 +41,10 @@ export const definitionProvider = vscode.languages.registerDefinitionProvider('r
             return null;
         }
         const word = document.getText(wordRange);
+
+        if (isRequiredAttributeFor(line, word)) {
+            return new vscode.Location(document.uri, new vscode.Position(position.line, 0));
+        }
 
         const requiredLine = findRequiredAttributeLineInScope(document, position.line, word);
         if (requiredLine !== -1) {
@@ -62,7 +66,7 @@ export const definitionProvider = vscode.languages.registerDefinitionProvider('r
         }
 
         try {
-            const result = await rqClient.showVariable(word, sourceDirectory, environment, false);
+            const result = await rqClient.showVariable(word, sourceDirectory, environment, false, document.uri.fsPath);
             return new vscode.Location(
                 vscode.Uri.file(result.file),
                 new vscode.Position(result.line, result.character)

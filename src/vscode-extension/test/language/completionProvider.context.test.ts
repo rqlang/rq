@@ -41,7 +41,7 @@ describe('resolveCliPath — temp mirroring for unsaved files', () => {
         await provideCompletionItems(doc, position);
 
         expect(utils.mirrorToTemp).not.toHaveBeenCalled();
-        expect(cliService.listVariables).toHaveBeenCalledWith('/workspace/current.rq', undefined);
+        expect(cliService.listVariables).toHaveBeenCalledWith('/workspace/current.rq', undefined, '/workspace');
     });
 
     test('uses temp path when current document is dirty', async () => {
@@ -63,7 +63,7 @@ describe('resolveCliPath — temp mirroring for unsaved files', () => {
         await provideCompletionItems(doc, position);
 
         expect(utils.mirrorToTemp).toHaveBeenCalled();
-        expect(cliService.listVariables).toHaveBeenCalledWith('/tmp/rq-check-mock/current.rq', undefined);
+        expect(cliService.listVariables).toHaveBeenCalledWith('/tmp/rq-check-mock/current.rq', undefined, '/tmp/rq-check-mock');
     });
 
     test('uses temp path when a different rq file is dirty', async () => {
@@ -85,7 +85,7 @@ describe('resolveCliPath — temp mirroring for unsaved files', () => {
         await provideCompletionItems(doc, position);
 
         expect(utils.mirrorToTemp).toHaveBeenCalled();
-        expect(cliService.listVariables).toHaveBeenCalledWith('/tmp/rq-check-mock/current.rq', undefined);
+        expect(cliService.listVariables).toHaveBeenCalledWith('/tmp/rq-check-mock/current.rq', undefined, '/tmp/rq-check-mock');
     });
 
     test('passes dirty doc content as overrides to mirrorToTemp', async () => {
@@ -124,5 +124,52 @@ describe('resolveCliPath — temp mirroring for unsaved files', () => {
         await provideCompletionItems(doc, position);
 
         expect(utils.mirrorToTemp).not.toHaveBeenCalled();
+    });
+});
+
+describe('workspace root seeding for nested files', () => {
+    test('seeds variables from the workspace root, not the file directory', async () => {
+        (vscode.workspace.getWorkspaceFolder as jest.Mock).mockReturnValue({ uri: { fsPath: '/workspace' } });
+        (cliService.listVariables as jest.Mock).mockResolvedValue([
+            { name: 'base_url', value: 'https://example.com', source: 'let' }
+        ]);
+
+        const doc = makeDocument(['let a = '], { fsPath: '/workspace/inma/collections.rq' });
+
+        await provideCompletionItems(doc, new vscode.Position(0, 8));
+
+        expect(cliService.listVariables).toHaveBeenCalledWith(
+            '/workspace/inma/collections.rq',
+            undefined,
+            '/workspace'
+        );
+    });
+
+    test('seeds endpoints from the workspace root, not the file directory', async () => {
+        (vscode.workspace.getWorkspaceFolder as jest.Mock).mockReturnValue({ uri: { fsPath: '/workspace' } });
+        (cliService.listEndpoints as jest.Mock).mockResolvedValue([]);
+
+        const doc = makeDocument(['ep child<'], { fsPath: '/workspace/inma/collections.rq' });
+
+        await provideCompletionItems(doc, new vscode.Position(0, 9));
+
+        expect(cliService.listEndpoints).toHaveBeenCalledWith(
+            '/workspace/inma/collections.rq',
+            '/workspace'
+        );
+    });
+
+    test('seeds auth configs from the workspace root, not the file directory', async () => {
+        (vscode.workspace.getWorkspaceFolder as jest.Mock).mockReturnValue({ uri: { fsPath: '/workspace' } });
+        (cliService.listAuthConfigs as jest.Mock).mockResolvedValue([]);
+
+        const doc = makeDocument(['[auth("'], { fsPath: '/workspace/inma/collections.rq' });
+
+        await provideCompletionItems(doc, new vscode.Position(0, 7));
+
+        expect(cliService.listAuthConfigs).toHaveBeenCalledWith(
+            '/workspace/inma/collections.rq',
+            '/workspace'
+        );
     });
 });

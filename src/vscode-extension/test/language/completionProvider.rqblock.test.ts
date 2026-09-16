@@ -29,20 +29,65 @@ beforeEach(() => {
 });
 
 describe('rq block param completion — comma trigger', () => {
-    test('does not suggest params on bare comma inside rq()', async () => {
+    test('does not suggest params on bare comma typed inside rq()', async () => {
         const lines = ['rq my_rq(', '    "url",'];
         const doc = makeDocument(lines);
         const position = new vscode.Position(1, lines[1].length);
+        const context = { triggerKind: vscode.CompletionTriggerKind.TriggerCharacter };
+
+        const items = await provideCompletionItems(doc, position, undefined, context);
+
+        expect(items === undefined || !items.some((i: any) => i.label === 'headers')).toBe(true);
+    });
+
+    test('suggests params on bare comma when explicitly invoked inside rq()', async () => {
+        const lines = ['rq my_rq(', '    "url",'];
+        const doc = makeDocument(lines);
+        const position = new vscode.Position(1, lines[1].length);
+        const context = { triggerKind: vscode.CompletionTriggerKind.Invoke };
+
+        const items = await provideCompletionItems(doc, position, undefined, context);
+
+        expect(items).not.toBeUndefined();
+        expect(items.some((i: any) => i.label === 'headers')).toBe(true);
+    });
+
+    test('suggests params inside rq() declared with a hyphenated name', async () => {
+        const lines = ['rq my-rq("/users", '];
+        const doc = makeDocument(lines);
+        const position = new vscode.Position(0, lines[0].length);
 
         const items = await provideCompletionItems(doc, position);
 
-        expect(items === undefined || !items.some((i: any) => i.label === 'headers')).toBe(true);
+        expect(items).not.toBeUndefined();
+        expect(items.some((i: any) => i.label === 'headers')).toBe(true);
     });
 
     test('suggests params after comma + space inside rq()', async () => {
         const lines = ['rq my_rq(', '    "url", '];
         const doc = makeDocument(lines);
         const position = new vscode.Position(1, lines[1].length);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items).not.toBeUndefined();
+        expect(items.some((i: any) => i.label === 'headers')).toBe(true);
+    });
+
+    test('does not suggest params on a new line when the previous argument has no comma', async () => {
+        const lines = ['rq my_rq(', '    "url"', '    '];
+        const doc = makeDocument(lines);
+        const position = new vscode.Position(2, lines[2].length);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items === undefined || !items.some((i: any) => i.label === 'headers')).toBe(true);
+    });
+
+    test('suggests params on a new line after a comma', async () => {
+        const lines = ['rq my_rq(', '    "url",', '    '];
+        const doc = makeDocument(lines);
+        const position = new vscode.Position(2, lines[2].length);
 
         const items = await provideCompletionItems(doc, position);
 
@@ -70,14 +115,73 @@ describe('rq block param completion — comma trigger', () => {
 });
 
 describe('ep block param completion — comma trigger', () => {
-    test('does not suggest params on bare comma inside ep()', async () => {
+    test('does not suggest params on bare comma typed inside ep()', async () => {
         const lines = ['ep my_ep(', '    "url",'];
         const doc = makeDocument(lines);
         const position = new vscode.Position(1, lines[1].length);
+        const context = { triggerKind: vscode.CompletionTriggerKind.TriggerCharacter };
+
+        const items = await provideCompletionItems(doc, position, undefined, context);
+
+        expect(items === undefined || !items.some((i: any) => i.label === 'headers')).toBe(true);
+    });
+
+    test('suggests params on bare comma when explicitly invoked inside ep()', async () => {
+        const lines = ['ep my_ep("/users",'];
+        const doc = makeDocument(lines);
+        const position = new vscode.Position(0, lines[0].length);
+        const context = { triggerKind: vscode.CompletionTriggerKind.Invoke };
+
+        const items = await provideCompletionItems(doc, position, undefined, context);
+
+        expect(items).not.toBeUndefined();
+        expect(items.some((i: any) => i.label === 'headers')).toBe(true);
+        expect(items.some((i: any) => i.label === 'qs')).toBe(true);
+    });
+
+    test('suggests params inside a templated ep() on comma + space', async () => {
+        const lines = ['ep widgets<base>("/widgets", ) {', '    rq list();', '}'];
+        const doc = makeDocument(lines);
+        const position = new vscode.Position(0, 'ep widgets<base>("/widgets", '.length);
 
         const items = await provideCompletionItems(doc, position);
 
-        expect(items === undefined || !items.some((i: any) => i.label === 'headers')).toBe(true);
+        expect(items).not.toBeUndefined();
+        expect(items.some((i: any) => i.label === 'qs')).toBe(true);
+    });
+
+    test('suggests params inside a templated ep() on bare comma when explicitly invoked', async () => {
+        const lines = ['ep widgets<base>("/widgets",) {', '    rq list();', '}'];
+        const doc = makeDocument(lines);
+        const position = new vscode.Position(0, 'ep widgets<base>("/widgets",'.length);
+        const context = { triggerKind: vscode.CompletionTriggerKind.Invoke };
+
+        const items = await provideCompletionItems(doc, position, undefined, context);
+
+        expect(items).not.toBeUndefined();
+        expect(items.some((i: any) => i.label === 'qs')).toBe(true);
+    });
+
+    test('suggests url at the start of a templated ep() param list', async () => {
+        const lines = ['ep widgets < base > ('];
+        const doc = makeDocument(lines);
+        const position = new vscode.Position(0, lines[0].length);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items).not.toBeUndefined();
+        expect(items.some((i: any) => i.label === 'url')).toBe(true);
+    });
+
+    test('suggests params inside ep() declared with a hyphenated name', async () => {
+        const lines = ['ep user-api("/users", ) {', '    rq list("?v=1");', '}'];
+        const doc = makeDocument(lines);
+        const position = new vscode.Position(0, 'ep user-api("/users", '.length);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items).not.toBeUndefined();
+        expect(items.some((i: any) => i.label === 'qs')).toBe(true);
     });
 
     test('suggests params after comma + space inside ep()', async () => {
@@ -89,6 +193,48 @@ describe('ep block param completion — comma trigger', () => {
 
         expect(items).not.toBeUndefined();
         expect(items.some((i: any) => i.label === 'headers')).toBe(true);
+    });
+
+    test('does not suggest params on a new line when the previous argument has no comma', async () => {
+        const lines = ['[auth("my_auth2")]', 'ep base(url: "http://localhost:8080"', '    ', ');'];
+        const doc = makeDocument(lines);
+        const position = new vscode.Position(2, lines[2].length);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items === undefined || !items.some((i: any) => i.label === 'qs')).toBe(true);
+    });
+
+    test('suggests params on a new line after a comma', async () => {
+        const lines = ['[auth("my_auth2")]', 'ep base(url: "http://localhost:8080",', '    ', ');'];
+        const doc = makeDocument(lines);
+        const position = new vscode.Position(2, lines[2].length);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items).not.toBeUndefined();
+        expect(items.some((i: any) => i.label === 'qs')).toBe(true);
+    });
+
+    test('does not suggest a partial param on a new line when the previous argument has no comma', async () => {
+        const lines = ['ep base(url: "http://localhost:8080"', '    he', ');'];
+        const doc = makeDocument(lines);
+        const position = new vscode.Position(1, lines[1].length);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items === undefined || !items.some((i: any) => i.label === 'headers')).toBe(true);
+    });
+
+    test('suggests params on a new line right after the opening paren', async () => {
+        const lines = ['ep base(', '    '];
+        const doc = makeDocument(lines);
+        const position = new vscode.Position(1, lines[1].length);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items).not.toBeUndefined();
+        expect(items.some((i: any) => i.label === 'url')).toBe(true);
     });
 
     test('does not suggest params inside ${ } json literal in ep()', async () => {
@@ -151,5 +297,37 @@ describe('rq block param completion — partial word typed', () => {
         const target = items.find((i: any) => i.label === 'headers');
         expect(target.range.start.character).toBe(36);
         expect(target.range.end.character).toBe(39);
+    });
+});
+
+describe('rq block param completion — slots already claimed', () => {
+    test('does not suggest headers when a positional headers array follows a named url', async () => {
+        const doc = makeDocument(['rq my_rq(url: "http://x", $["A": "1"], ']);
+        const position = new vscode.Position(0, 39);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items).toBeDefined();
+        expect(items.some((i: any) => i.label === 'headers')).toBe(false);
+        expect(items.some((i: any) => i.label === 'body')).toBe(true);
+    });
+
+    test('does not treat a header key as a named argument', async () => {
+        const doc = makeDocument(['rq my_rq(url: "http://x", $["body": "1"], ']);
+        const position = new vscode.Position(0, 42);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items).toBeDefined();
+        expect(items.some((i: any) => i.label === 'body')).toBe(true);
+    });
+
+    test('does not suggest qs when an ep has claimed every slot', async () => {
+        const doc = makeDocument(['ep base(headers: $["A": "1"], "http://x", "v=1", ']);
+        const position = new vscode.Position(0, 48);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items === undefined || !items.some((i: any) => i.label === 'qs')).toBe(true);
     });
 });

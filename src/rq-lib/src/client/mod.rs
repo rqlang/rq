@@ -1003,7 +1003,7 @@ impl RqClient {
                     errors.push(e);
                 }
             }
-            return Ok(errors);
+            return Ok(Self::dedup_syntax_errors(errors));
         }
         if !self.fs.is_dir(path) {
             return Err(RqError::DirectoryNotFound(path.display().to_string()));
@@ -1014,7 +1014,7 @@ impl RqClient {
             errors.extend(self.check_variables(rq_file, source_path, env_name));
             errors.extend(self.check_auth_references(rq_file));
         }
-        Ok(errors)
+        Ok(Self::dedup_syntax_errors(errors))
     }
 
     pub fn check_source(
@@ -1032,7 +1032,7 @@ impl RqClient {
             }
             Err(e) => errors.push(Self::map_parse_error(e)),
         }
-        Ok(errors)
+        Ok(Self::dedup_syntax_errors(errors))
     }
 
     fn load_rq_file(&self, path: &Path) -> Result<RqFile, RqError> {
@@ -1466,6 +1466,19 @@ impl RqClient {
             }
         }
         Ok(parse_errors)
+    }
+
+    fn dedup_syntax_errors(errors: Vec<RqError>) -> Vec<RqError> {
+        let mut seen = HashSet::new();
+        errors
+            .into_iter()
+            .filter(|error| match error {
+                RqError::Syntax(e) => {
+                    seen.insert((e.file_path.clone(), e.line, e.column, e.message.clone()))
+                }
+                _ => true,
+            })
+            .collect()
     }
 
     fn build_search_paths(

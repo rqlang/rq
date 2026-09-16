@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { declarationPattern } from './definitions';
 
 const RQ_PARAM_NAMES = ['url', 'headers', 'body'];
 const EP_PARAM_NAMES = ['url', 'headers', 'qs'];
@@ -81,7 +82,7 @@ export const signatureHelpProvider = vscode.languages.registerSignatureHelpProvi
                 position
             ));
 
-            const rqMatch = textBeforeCursor.match(/\brq\s+([a-zA-Z_][a-zA-Z0-9_-]*)\s*\(([^;]*)$/s);
+            const rqMatch = textBeforeCursor.match(new RegExp(`${declarationPattern('rq', true)}\\(([^;]*)$`, 's'));
             if (rqMatch) {
                 const sig = buildSignature('rq', rqMatch[1], ['url', 'headers?', 'body?']);
                 const help = new vscode.SignatureHelp();
@@ -91,7 +92,7 @@ export const signatureHelpProvider = vscode.languages.registerSignatureHelpProvi
                 return help;
             }
 
-            const epMatch = textBeforeCursor.match(/\bep\s+([a-zA-Z_][a-zA-Z0-9_-]*)\s*\(([^{;]*)$/s);
+            const epMatch = textBeforeCursor.match(new RegExp(`${declarationPattern('ep', true)}\\(([^{;]*)$`, 's'));
             if (epMatch) {
                 const sig = buildSignature('ep', epMatch[1], ['url', 'headers?', 'qs?']);
                 const help = new vscode.SignatureHelp();
@@ -101,7 +102,7 @@ export const signatureHelpProvider = vscode.languages.registerSignatureHelpProvi
                 return help;
             }
 
-            const authMatch = textBeforeCursor.match(/\bauth\s+([a-zA-Z_][a-zA-Z0-9_-]*)\s*\(([^{;]*)$/s);
+            const authMatch = textBeforeCursor.match(new RegExp(`${declarationPattern('auth', true)}\\(([^{;]*)$`, 's'));
             if (authMatch) {
                 const sig = buildSignature('auth', authMatch[1], ['auth_type']);
                 const help = new vscode.SignatureHelp();

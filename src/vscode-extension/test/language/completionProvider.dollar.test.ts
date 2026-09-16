@@ -72,6 +72,19 @@ describe('dollar prefix completion', () => {
         expect(headers.insertText.value).not.toContain(';');
     });
 
+    test('suggests compact completions inside a templated ep param list', async () => {
+        const lines = ['ep widgets<base>("/widgets", headers: $'];
+        const doc = makeDocument(lines);
+        const position = new vscode.Position(0, lines[0].length);
+
+        const items = await provideCompletionItems(doc, position);
+
+        const headers = items.find((i: any) => i.label === '$[ ]');
+        expect(headers).toBeDefined();
+        expect(headers.insertText.value).not.toContain('\n');
+        expect(headers.insertText.value).not.toContain(';');
+    });
+
     test('suggests compact completions inside ep block rq call', async () => {
         const lines = ['ep api("http://api") {', '    rq get(headers: $'];
         const doc = makeDocument(lines);

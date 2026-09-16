@@ -1,4 +1,49 @@
-import { insideJsonLiteral, insideUnclosedAttribute, getAuthAttributeContext } from '../../src/language/completionHelpers';
+import * as vscode from 'vscode';
+import { insideJsonLiteral, insideUnclosedAttribute, getAuthAttributeContext, afterCommaTrigger, followsArgumentSeparator, claimedParams } from '../../src/language/completionHelpers';
+
+describe('followsArgumentSeparator', () => {
+    test('returns true when the previous line ends with a comma', () => {
+        expect(followsArgumentSeparator('rq a(\n  "u",\n  ', '  ')).toBe(true);
+    });
+
+    test('returns false when the previous line ends with a closed argument', () => {
+        expect(followsArgumentSeparator('rq a(\n  "u"\n  ', '  ')).toBe(false);
+    });
+
+    test('returns true right after the opening paren', () => {
+        expect(followsArgumentSeparator('rq a(\n  ', '  ')).toBe(true);
+    });
+
+    test('returns true right after an opening headers bracket', () => {
+        expect(followsArgumentSeparator('rq a("u", $[\n  ', '  ')).toBe(true);
+    });
+
+    test('ignores a trailing line comment after the comma', () => {
+        expect(followsArgumentSeparator('rq a(\n  "u", // the url\n  ', '  ')).toBe(true);
+    });
+
+    test('is not fooled by a double slash inside a string', () => {
+        expect(followsArgumentSeparator('rq a(\n  "http://x"\n  ', '  ')).toBe(false);
+    });
+});
+
+describe('afterCommaTrigger', () => {
+    test('returns true on a bare comma when explicitly invoked', () => {
+        expect(afterCommaTrigger('ep users("/users",', vscode.CompletionTriggerKind.Invoke)).toBe(true);
+    });
+
+    test('returns false on a bare comma typed as a trigger character', () => {
+        expect(afterCommaTrigger('ep users("/users",', vscode.CompletionTriggerKind.TriggerCharacter)).toBe(false);
+    });
+
+    test('returns true after a comma plus space typed as a trigger character', () => {
+        expect(afterCommaTrigger('ep users("/users", ', vscode.CompletionTriggerKind.TriggerCharacter)).toBe(true);
+    });
+
+    test('returns false when the line does not end after a comma', () => {
+        expect(afterCommaTrigger('ep users("/users", qs', vscode.CompletionTriggerKind.Invoke)).toBe(false);
+    });
+});
 
 describe('insideJsonLiteral', () => {
     test('returns false for empty string', () => {
@@ -151,5 +196,47 @@ describe('insideUnclosedAttribute', () => {
 
     test('returns false when the cursor is inside a line comment', () => {
         expect(insideUnclosedAttribute('[auth("x")]\n// note: don\'t')).toBe(false);
+    });
+});
+
+describe('claimedParams', () => {
+    const requestParams = ['url', 'headers', 'body'];
+
+    test('returns an empty set right after the opening paren', () => {
+        expect(claimedParams('rq a(', requestParams)).toEqual(new Set());
+    });
+
+    test('claims the slot named by a named argument', () => {
+        expect(claimedParams('rq a(url: "http://x", ', requestParams)).toEqual(new Set(['url']));
+    });
+
+    test('claims slots in order for positional arguments', () => {
+        expect(claimedParams('rq a("http://x", $["A": "1"], ', requestParams)).toEqual(new Set(['url', 'headers']));
+    });
+
+    test('gives a positional argument the first slot left free by a named one', () => {
+        expect(claimedParams('rq a(url: "http://x", $["A": "1"], ', requestParams)).toEqual(new Set(['url', 'headers']));
+    });
+
+    test('gives a positional argument the first slot when a later one is named', () => {
+        expect(claimedParams('rq a(headers: $["A": "1"], "http://x", ', requestParams)).toEqual(new Set(['headers', 'url']));
+    });
+
+    test('does not count a header key that looks like a parameter name', () => {
+        expect(claimedParams('rq a(url: "http://x", $["body": "1"], ', requestParams))
+            .toEqual(new Set(['url', 'headers']));
+    });
+
+    test('ignores the argument still being typed', () => {
+        expect(claimedParams('rq a("http://x", $["A": "1"]', requestParams)).toEqual(new Set(['url']));
+    });
+
+    test('is not fooled by a comma inside a string', () => {
+        expect(claimedParams('rq a("http://x?a=1,2", ', requestParams)).toEqual(new Set(['url']));
+    });
+
+    test('claims the qs slot for an endpoint positional after a named headers', () => {
+        expect(claimedParams('ep base(headers: $["A": "1"], "http://x", "v=1", ', ['url', 'headers', 'qs']))
+            .toEqual(new Set(['headers', 'url', 'qs']));
     });
 });

@@ -1,0 +1,12 @@
+ep base(url: "http://localhost:8080"
+, $["X-Base": "1"]);
+
+ep users<base>(url: "/users", $["X-U": "1"], "v=1") {
+    rq list();
+}
+
+rq mixed(url: "http://localhost:8080/post", headers: $["X-M": "1"], "the-body");
+
+rq positional_then_named("http://localhost:8080/get", headers: $["X-P": "1"]);
+
+rq headers_named_first(headers: $["X-H": "1"], "http://localhost:8080/get");

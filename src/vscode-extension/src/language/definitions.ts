@@ -1,5 +1,13 @@
 import * as vscode from 'vscode';
 
+export const IDENTIFIER_PATTERN = '[a-zA-Z_][a-zA-Z0-9_-]*';
+
+export function declarationPattern(keyword: 'rq' | 'ep' | 'auth', captureName = false): string {
+    const name = captureName ? `(${IDENTIFIER_PATTERN})` : IDENTIFIER_PATTERN;
+    const template = keyword === 'ep' ? `(?:<\\s*${IDENTIFIER_PATTERN}\\s*>)?` : '';
+    return `\\b${keyword}\\s+${name}\\s*${template}\\s*`;
+}
+
 export interface FunctionDefinition {
     name: string;
     signature: string;
@@ -86,6 +94,156 @@ export const ENDPOINT_PROPERTIES = [
     }
 ];
 
+export const REQUEST_PARAM_NAMES = REQUEST_PROPERTIES.map(p => p.name);
+
+export const ENDPOINT_PARAM_NAMES = ENDPOINT_PROPERTIES.map(p => p.name);
+
+export const AUTH_PROPERTIES: Record<string, { name: string; required: boolean }[]> = {
+    bearer: [
+        { name: 'token', required: true },
+    ],
+    oauth2_client_credentials: [
+        { name: 'client_id', required: true },
+        { name: 'token_url', required: true },
+        { name: 'client_secret', required: false },
+        { name: 'cert_file', required: false },
+        { name: 'cert_password', required: false },
+        { name: 'scope', required: false },
+    ],
+    oauth2_authorization_code: [
+        { name: 'client_id', required: true },
+        { name: 'authorization_url', required: true },
+        { name: 'token_url', required: true },
+        { name: 'redirect_uri', required: false },
+        { name: 'client_secret', required: false },
+        { name: 'scope', required: false },
+        { name: 'code_challenge_method', required: false },
+        { name: 'use_state', required: false },
+    ],
+    oauth2_implicit: [
+        { name: 'client_id', required: true },
+        { name: 'authorization_url', required: true },
+        { name: 'redirect_uri', required: false },
+        { name: 'scope', required: false },
+    ],
+};
+
+export interface AttributeDefinition {
+    name: string;
+    signature: string;
+    description: string;
+    targets: string;
+    values?: string;
+}
+
+export const ATTRIBUTE_DEFINITIONS: AttributeDefinition[] = [
+    {
+        name: 'method',
+        signature: '[method(VERB)]',
+        description: 'Overrides the HTTP method regardless of the request name.',
+        targets: 'rq',
+        values: 'GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS'
+    },
+    {
+        name: 'timeout',
+        signature: '[timeout(seconds)]',
+        description: 'Per-request timeout in seconds. On an ep it becomes the default for every child request.',
+        targets: 'rq, ep'
+    },
+    {
+        name: 'auth',
+        signature: '[auth("provider_name")]',
+        description: 'Attaches an auth provider. A name that resolves to an empty string disables auth for that request.',
+        targets: 'rq, ep'
+    },
+    {
+        name: 'required',
+        signature: '[required(var_name)]',
+        description: 'Declares a variable that must be supplied at runtime. May appear several times.',
+        targets: 'rq'
+    }
+];
+
+export function readDeclarationText(document: vscode.TextDocument, startLine: number, maxLines = 40): string {
+    const lastLine = Math.min(document.lineCount - 1, startLine + maxLines);
+    const lines: string[] = [];
+    for (let i = startLine; i <= lastLine; i++) {
+        lines.push(document.lineAt(i).text);
+    }
+    return lines.join('\n');
+}
+
+export function extractArgumentList(text: string, openIndex: number): string {
+    let depth = 0;
+    let inString = false;
+    let stringChar = '';
+    for (let i = openIndex; i < text.length; i++) {
+        const ch = text[i];
+        if (inString) {
+            if (ch === '\\') { i++; }
+            else if (ch === stringChar) { inString = false; }
+            continue;
+        }
+        if (ch === '"' || ch === "'") { inString = true; stringChar = ch; }
+        else if (ch === '(' || ch === '[' || ch === '{') { depth++; }
+        else if (ch === ')' || ch === ']' || ch === '}') {
+            depth--;
+            if (depth === 0) { return text.slice(openIndex + 1, i); }
+        }
+    }
+    return text.slice(openIndex + 1);
+}
+
+export function splitArguments(argsText: string): string[] {
+    const segments: string[] = [];
+    let current = '';
+    let depth = 0;
+    let inString = false;
+    let stringChar = '';
+    for (let i = 0; i < argsText.length; i++) {
+        const ch = argsText[i];
+        if (inString) {
+            current += ch;
+            if (ch === '\\' && i + 1 < argsText.length) { current += argsText[++i]; }
+            else if (ch === stringChar) { inString = false; }
+            continue;
+        }
+        if (ch === '"' || ch === "'") { inString = true; stringChar = ch; }
+        else if (ch === '(' || ch === '[' || ch === '{') { depth++; }
+        else if (ch === ')' || ch === ']' || ch === '}') { depth--; }
+        else if (ch === ',' && depth === 0) {
+            segments.push(current);
+            current = '';
+            continue;
+        }
+        current += ch;
+    }
+    segments.push(current);
+    return segments.map(segment => segment.trim()).filter(segment => segment.length > 0);
+}
+
+export function assignArguments(argsText: string, paramNames: string[]): Map<string, string> {
+    const assigned = new Map<string, string>();
+    const namedPattern = new RegExp(`^(${paramNames.join('|')})\\s*:\\s*`);
+    const positional: string[] = [];
+    for (const segment of splitArguments(argsText)) {
+        const named = namedPattern.exec(segment);
+        if (named) {
+            assigned.set(named[1], segment.slice(named[0].length).trim());
+        } else {
+            positional.push(segment);
+        }
+    }
+    let index = 0;
+    for (const value of positional) {
+        while (index < paramNames.length && assigned.has(paramNames[index])) { index++; }
+        if (index >= paramNames.length) { break; }
+        assigned.set(paramNames[index], value);
+        index++;
+    }
+    return assigned;
+}
+
 export interface Variable {
     name: string;
     value: string;
@@ -106,7 +264,7 @@ export function parseVariables(document: vscode.TextDocument): Variable[] {
         if (match) {
             variables.push({
                 name: match[1],
-                value: match[2].trim(),
+                value: match[2].trim().replace(/;$/, ''),
                 line: i
             });
         }

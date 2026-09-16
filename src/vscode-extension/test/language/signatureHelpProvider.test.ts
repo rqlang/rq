@@ -215,6 +215,34 @@ describe('signatureHelpProvider', () => {
             expect(result?.signatures[0].label).toMatch(/^rq get/);
         });
 
+        test('shows ep signature for an ep declared from a template', () => {
+            const text = 'ep widgets<base>(';
+            const doc = makeDocument(text);
+            const pos = makePosition(text);
+            const result = provideSignatureHelp(doc, pos);
+            expect(result).toBeDefined();
+            expect(result.signatures[0].label).toBe('ep widgets(url, headers?, qs?)');
+            expect(result.activeParameter).toBe(0);
+        });
+
+        test('highlights headers after first comma in a templated ep', () => {
+            const text = 'ep widgets<base>("/widgets",';
+            const doc = makeDocument(text);
+            const pos = makePosition(text);
+            const result = provideSignatureHelp(doc, pos);
+            expect(result).toBeDefined();
+            expect(result.activeParameter).toBe(1);
+        });
+
+        test('highlights qs for named qs: param in a templated ep', () => {
+            const text = 'ep widgets < base > (\n    url: "/widgets",\n    qs: "';
+            const doc = makeDocument(text);
+            const pos = makePosition(text);
+            const result = provideSignatureHelp(doc, pos);
+            expect(result).toBeDefined();
+            expect(result.activeParameter).toBe(2);
+        });
+
         test('triggers for hyphenated ep name', () => {
             const text = 'ep my-api(';
             const doc = makeDocument(text);

@@ -369,6 +369,36 @@ pub fn can_parse_attributed(r: &TokenReader, keyword: &str) -> bool {
     false
 }
 
+pub struct ParameterSlots {
+    names: [&'static str; 3],
+    assigned: [bool; 3],
+}
+
+impl ParameterSlots {
+    pub fn new(names: [&'static str; 3]) -> Self {
+        Self {
+            names,
+            assigned: [false; 3],
+        }
+    }
+
+    pub fn index_of(&self, name: &str) -> Option<usize> {
+        self.names.iter().position(|slot| *slot == name)
+    }
+
+    pub fn next_free(&self) -> Option<usize> {
+        self.assigned.iter().position(|assigned| !assigned)
+    }
+
+    pub fn claim(&mut self, index: usize) -> bool {
+        if self.assigned[index] {
+            return false;
+        }
+        self.assigned[index] = true;
+        true
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -69,9 +69,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           PR: ${{ github.event.pull_request.number }}
+          EXECUTION_FILE: ${{ steps.claude-review.outputs.execution_file }}
           BEFORE_CONVERSATION: ${{ steps.before.outputs.conversation }}
           BEFORE_INLINE: ${{ steps.before.outputs.inline }}
         run: |
+          if [ -z "$EXECUTION_FILE" ]; then
+            echo "The action skipped itself without running the review, so there is nothing to verify."
+            echo "On a pull request that edits this workflow the action refuses to run until the change is on the default branch."
+            exit 0
+          fi
           conversation=$(gh api "repos/$REPO/issues/$PR/comments" --paginate --jq 'length' | awk '{total += $1} END {print total + 0}')
           inline=$(gh api "repos/$REPO/pulls/$PR/comments" --paginate --jq 'length' | awk '{total += $1} END {print total + 0}')
           echo "conversation comments: $BEFORE_CONVERSATION -> $conversation"

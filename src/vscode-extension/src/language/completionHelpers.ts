@@ -8,36 +8,6 @@ export const COMMON_HEADERS = [
     'X-Correlation-Id', 'X-Forwarded-For', 'X-Request-Id',
 ];
 
-export const AUTH_PROPERTIES: Record<string, { name: string; required: boolean }[]> = {
-    bearer: [
-        { name: 'token', required: true },
-    ],
-    oauth2_client_credentials: [
-        { name: 'client_id', required: true },
-        { name: 'token_url', required: true },
-        { name: 'client_secret', required: false },
-        { name: 'cert_file', required: false },
-        { name: 'cert_password', required: false },
-        { name: 'scope', required: false },
-    ],
-    oauth2_authorization_code: [
-        { name: 'client_id', required: true },
-        { name: 'authorization_url', required: true },
-        { name: 'token_url', required: true },
-        { name: 'redirect_uri', required: false },
-        { name: 'client_secret', required: false },
-        { name: 'scope', required: false },
-        { name: 'code_challenge_method', required: false },
-        { name: 'use_state', required: false },
-    ],
-    oauth2_implicit: [
-        { name: 'client_id', required: true },
-        { name: 'authorization_url', required: true },
-        { name: 'redirect_uri', required: false },
-        { name: 'scope', required: false },
-    ],
-};
-
 export function builtinFunctionItems(): vscode.CompletionItem[] {
     return [
         (() => {
@@ -121,6 +91,49 @@ export function insideOpenBlock(text: string, blockPattern: RegExp): boolean {
 }
 
 export const ATTRIBUTE_NAMES = ['method', 'timeout', 'auth', 'required'];
+
+export function lastSignificantChar(text: string): string {
+    let result = '';
+    let inString = false;
+    let stringChar = '';
+    for (let i = 0; i < text.length; i++) {
+        const ch = text[i];
+        if (inString) {
+            if (ch === '\\') { i++; }
+            else if (ch === stringChar) { inString = false; result = ch; }
+            continue;
+        }
+        if (ch === '/' && text[i + 1] === '/') {
+            const lineEnd = text.indexOf('\n', i);
+            if (lineEnd === -1) { return result; }
+            i = lineEnd;
+        } else if (ch === '/' && text[i + 1] === '*') {
+            const commentEnd = text.indexOf('*/', i + 2);
+            if (commentEnd === -1) { return result; }
+            i = commentEnd + 1;
+        } else if (ch === '"' || ch === "'") {
+            inString = true;
+            stringChar = ch;
+            result = ch;
+        } else if (!/\s/.test(ch)) {
+            result = ch;
+        }
+    }
+    return result;
+}
+
+export function followsArgumentSeparator(documentPrefix: string, linePrefix: string): boolean {
+    const preceding = documentPrefix.slice(0, documentPrefix.length - linePrefix.length);
+    const last = lastSignificantChar(preceding);
+    return last === ',' || last === '(' || last === '[';
+}
+
+export function afterCommaTrigger(linePrefix: string, triggerKind: vscode.CompletionTriggerKind): boolean {
+    if (triggerKind === vscode.CompletionTriggerKind.TriggerCharacter) {
+        return /,\s+$/.test(linePrefix);
+    }
+    return /,\s*$/.test(linePrefix);
+}
 
 export interface AuthAttributeContext {
     quoted: boolean;

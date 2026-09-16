@@ -1,4 +1,78 @@
 import { parseVariables } from '../../src/language/definitions';
+
+import { splitArguments, assignArguments, extractArgumentList } from '../../src/language/definitions';
+
+describe('extractArgumentList', () => {
+    test('returns the text between the outer parens', () => {
+        expect(extractArgumentList('rq a("u", "b");', 4)).toBe('"u", "b"');
+    });
+
+    test('ignores brackets that live inside a string', () => {
+        expect(extractArgumentList('rq a("a)b");', 4)).toBe('"a)b"');
+    });
+
+    test('returns everything left when the list is never closed', () => {
+        expect(extractArgumentList('rq a("u",', 4)).toBe('"u",');
+    });
+
+    test('spans several lines', () => {
+        expect(extractArgumentList('rq a(\n  "u",\n  "h"\n)', 4)).toBe('\n  "u",\n  "h"\n');
+    });
+});
+
+describe('splitArguments', () => {
+    test('splits top-level segments only', () => {
+        expect(splitArguments('"u", $["A": "1", "B": "2"], ${"k": 1}')).toEqual([
+            '"u"', '$["A": "1", "B": "2"]', '${"k": 1}'
+        ]);
+    });
+
+    test('ignores a comma inside a string', () => {
+        expect(splitArguments('"a,b", "c"')).toEqual(['"a,b"', '"c"']);
+    });
+
+    test('drops a trailing comma', () => {
+        expect(splitArguments('"u", ')).toEqual(['"u"']);
+    });
+
+    test('returns an empty list for an empty argument list', () => {
+        expect(splitArguments('   ')).toEqual([]);
+    });
+});
+
+describe('assignArguments', () => {
+    const params = ['url', 'headers', 'body'];
+
+    test('maps positional arguments in order', () => {
+        const result = assignArguments('"u", $[], ${}', params);
+        expect(result.get('url')).toBe('"u"');
+        expect(result.get('headers')).toBe('$[]');
+        expect(result.get('body')).toBe('${}');
+    });
+
+    test('maps named arguments regardless of order', () => {
+        const result = assignArguments('body: "b", url: "u"', params);
+        expect(result.get('url')).toBe('"u"');
+        expect(result.get('body')).toBe('"b"');
+        expect(result.has('headers')).toBe(false);
+    });
+
+    test('mixes positional and named arguments', () => {
+        const result = assignArguments('"u", headers: $["A": "1"]', params);
+        expect(result.get('url')).toBe('"u"');
+        expect(result.get('headers')).toBe('$["A": "1"]');
+    });
+
+    test('does not treat a header entry as a named argument', () => {
+        const result = assignArguments('"u", $["url": "1"]', params);
+        expect(result.get('url')).toBe('"u"');
+        expect(result.get('headers')).toBe('$["url": "1"]');
+    });
+
+    test('leaves unspecified parameters out of the map', () => {
+        expect(assignArguments('"u"', params).size).toBe(1);
+    });
+});
 import type * as vscode from 'vscode';
 
 function makeDocument(lines: string[]): vscode.TextDocument {

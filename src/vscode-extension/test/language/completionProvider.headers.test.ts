@@ -73,7 +73,28 @@ describe('header key completion', () => {
         expect(items === undefined || !items.some((i: any) => i.label === 'Content-Type')).toBe(true);
     });
 
-    test('does not suggest headers immediately after bare comma inside $[...]', async () => {
+    test('does not suggest header keys on a new line when the previous entry has no comma', async () => {
+        const lines = ['rq my_rq(', '    $[', '        "Accept": "application/json"', '        '];
+        const doc = makeDocument(lines);
+        const position = new vscode.Position(3, lines[3].length);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items === undefined || !items.some((i: any) => i.label === 'Content-Type')).toBe(true);
+    });
+
+    test('suggests header keys on a new line after a comma', async () => {
+        const lines = ['rq my_rq(', '    $[', '        "Accept": "application/json",', '        '];
+        const doc = makeDocument(lines);
+        const position = new vscode.Position(3, lines[3].length);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items).not.toBeUndefined();
+        expect(items.some((i: any) => i.label === 'Content-Type')).toBe(true);
+    });
+
+    test('does not suggest headers on bare comma typed inside $[...]', async () => {
         const lines = [
             'rq my_rq(',
             '    $[',
@@ -81,10 +102,27 @@ describe('header key completion', () => {
         ];
         const doc = makeDocument(lines);
         const position = new vscode.Position(2, lines[2].length);
+        const context = { triggerKind: vscode.CompletionTriggerKind.TriggerCharacter };
 
-        const items = await provideCompletionItems(doc, position);
+        const items = await provideCompletionItems(doc, position, undefined, context);
 
         expect(items === undefined || !items.some((i: any) => i.label === 'Content-Type')).toBe(true);
+    });
+
+    test('suggests headers on bare comma when explicitly invoked inside $[...]', async () => {
+        const lines = [
+            'rq my_rq(',
+            '    $[',
+            '        "Accept": "application/json",',
+        ];
+        const doc = makeDocument(lines);
+        const position = new vscode.Position(2, lines[2].length);
+        const context = { triggerKind: vscode.CompletionTriggerKind.Invoke };
+
+        const items = await provideCompletionItems(doc, position, undefined, context);
+
+        expect(items).not.toBeUndefined();
+        expect(items.some((i: any) => i.label === 'Content-Type')).toBe(true);
     });
 
     test('suggests headers after comma + space inside $[...]', async () => {

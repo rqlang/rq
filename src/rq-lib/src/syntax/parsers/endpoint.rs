@@ -7,7 +7,7 @@ use super::{
     request::parse_request_with_context,
     utils::{
         can_parse_attributed, check_variable_type, is_headers_like, is_string_like,
-        parse_headers_array, parse_string_value,
+        parse_headers_array, parse_string_value, ParameterSlots,
     },
     variable::parse_variable_declaration,
 };
@@ -69,7 +69,7 @@ pub fn parse_endpoint_constructor_params(
     let mut headers = Vec::new();
     let mut headers_var: Option<String> = None;
     let mut qs: Option<String> = None;
-    let mut positional_index = 0;
+    let mut slots = ParameterSlots::new(["url", "headers", "qs"]);
     loop {
         r.skip_ignorable();
         if let Some(t) = r.cur() {
@@ -103,13 +103,22 @@ pub fn parse_endpoint_constructor_params(
         } else {
             false
         };
-        if is_named {
+        let slot = if is_named {
             let name_tok = expect(
                 r,
                 |t| t.token_type == TokenType::Identifier,
                 "Expected identifier",
             )?;
             let param_name = name_tok.value.clone();
+            let name_span = name_tok.span.clone();
+            let Some(index) = slots.index_of(&param_name) else {
+                return Err(
+                    r.create_error(format!("Unknown parameter name: {param_name}"), name_span)
+                );
+            };
+            if !slots.claim(index) {
+                return Err(r.create_error(format!("Duplicate parameter: {param_name}"), name_span));
+            }
             r.advance();
             r.skip_ignorable();
             expect(
@@ -119,97 +128,57 @@ pub fn parse_endpoint_constructor_params(
             )?;
             r.advance();
             r.skip_ignorable();
-            match param_name.as_str() {
-                "url" => {
-                    if let Some(t) = r.cur() {
-                        if t.token_type == TokenType::Identifier {
-                            check_variable_type(&t.value, &[is_string_like], file_vars, t, r)?;
-                        }
-                    }
-                    url = parse_string_value(r, "")?;
-                }
-                "headers" => {
-                    if let Some(tk) = r.cur() {
-                        if tk.token_type == TokenType::Identifier {
-                            check_variable_type(&tk.value, &[is_headers_like], file_vars, tk, r)?;
-                            headers_var = Some(tk.value.clone());
-                            r.advance();
-                        } else {
-                            headers = parse_headers_array(r)?;
-                        }
-                    } else {
-                        return Err(r.create_error(
-                            "Expected headers value".into(),
-                            r.source.len()..r.source.len(),
-                        ));
-                    }
-                }
-                "qs" => {
-                    if let Some(t) = r.cur() {
-                        if t.token_type == TokenType::Identifier {
-                            check_variable_type(&t.value, &[is_string_like], file_vars, t, r)?;
-                        }
-                    }
-                    let raw_qs = parse_string_value(r, "")?;
-                    let cleaned = raw_qs.strip_prefix('?').unwrap_or(&raw_qs).to_string();
-                    qs = Some(cleaned);
-                }
-                _ => {
-                    return Err(r.create_error(
-                        format!("Unknown parameter name: {param_name}"),
-                        name_tok.span.clone(),
-                    ));
-                }
-            }
+            index
         } else {
-            match positional_index {
-                0 => {
-                    if let Some(t) = r.cur() {
-                        if t.token_type == TokenType::Identifier {
-                            check_variable_type(&t.value, &[is_string_like], file_vars, t, r)?;
-                        }
+            let Some(index) = slots.next_free() else {
+                let span = if let Some(t) = r.cur() {
+                    t.span.clone()
+                } else {
+                    r.source.len()..r.source.len()
+                };
+                return Err(r.create_error(
+                    "Too many positional parameters (max 3: url, headers, qs)".into(),
+                    span,
+                ));
+            };
+            slots.claim(index);
+            index
+        };
+        match slot {
+            0 => {
+                if let Some(t) = r.cur() {
+                    if t.token_type == TokenType::Identifier {
+                        check_variable_type(&t.value, &[is_string_like], file_vars, t, r)?;
                     }
-                    url = parse_string_value(r, "")?;
                 }
-                1 => {
-                    if let Some(tk) = r.cur() {
-                        if tk.token_type == TokenType::Identifier {
-                            check_variable_type(&tk.value, &[is_headers_like], file_vars, tk, r)?;
-                            headers_var = Some(tk.value.clone());
-                            r.advance();
-                        } else {
-                            headers = parse_headers_array(r)?;
-                        }
+                url = parse_string_value(r, "")?;
+            }
+            1 => {
+                if let Some(tk) = r.cur() {
+                    if tk.token_type == TokenType::Identifier {
+                        check_variable_type(&tk.value, &[is_headers_like], file_vars, tk, r)?;
+                        headers_var = Some(tk.value.clone());
+                        r.advance();
                     } else {
-                        return Err(r.create_error(
-                            "Expected headers value".into(),
-                            r.source.len()..r.source.len(),
-                        ));
+                        headers = parse_headers_array(r)?;
                     }
-                }
-                2 => {
-                    if let Some(t) = r.cur() {
-                        if t.token_type == TokenType::Identifier {
-                            check_variable_type(&t.value, &[is_string_like], file_vars, t, r)?;
-                        }
-                    }
-                    let raw_qs = parse_string_value(r, "")?;
-                    let cleaned = raw_qs.strip_prefix('?').unwrap_or(&raw_qs).to_string();
-                    qs = Some(cleaned);
-                }
-                _ => {
-                    let span = if let Some(t) = r.cur() {
-                        t.span.clone()
-                    } else {
-                        r.source.len()..r.source.len()
-                    };
+                } else {
                     return Err(r.create_error(
-                        "Too many positional parameters (max 3: url, headers, qs)".into(),
-                        span,
+                        "Expected headers value".into(),
+                        r.source.len()..r.source.len(),
                     ));
                 }
             }
-            positional_index += 1;
+            _ => {
+                if let Some(t) = r.cur() {
+                    if t.token_type == TokenType::Identifier {
+                        check_variable_type(&t.value, &[is_string_like], file_vars, t, r)?;
+                    }
+                }
+                let raw_qs = parse_string_value(r, "")?;
+                let cleaned = raw_qs.strip_prefix('?').unwrap_or(&raw_qs).to_string();
+                qs = Some(cleaned);
+            }
         }
         r.skip_ignorable();
         if let Some(t) = r.cur() {

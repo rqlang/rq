@@ -9,69 +9,23 @@ import {
     REQUEST_PROPERTIES,
     ENDPOINT_PROPERTIES,
     parseVariables,
-    findRequiredAttributeLineInScope
+    findRequiredAttributeLineInScope,
+    declarationPattern,
+    ATTRIBUTE_DEFINITIONS
 } from './definitions';
+import {
+    buildRequestHover,
+    buildEndpointHover,
+    buildAuthHover,
+    buildEnvironmentHover,
+    buildImportHover,
+    buildAttributeHover
+} from './artifactHover';
 
 let environmentProvider: { getSelectedEnvironment(): string | undefined } | undefined;
 
 export function setEnvironmentProvider(provider: { getSelectedEnvironment(): string | undefined }) {
     environmentProvider = provider;
-}
-
-function resolveRequestMethod(document: vscode.TextDocument, lineNum: number, name: string): string {
-    const httpMethods = ['get', 'post', 'put', 'delete', 'patch', 'head', 'options'];
-    if (httpMethods.includes(name.toLowerCase())) {
-        return name.toUpperCase();
-    }
-    for (let i = lineNum - 1; i >= Math.max(0, lineNum - 5); i--) {
-        const prevLine = document.lineAt(i).text.trim();
-        const methodMatch = /\[method\((\w+)\)\]/.exec(prevLine);
-        if (methodMatch) {
-            return methodMatch[1].toUpperCase();
-        }
-        if (!/^\[/.test(prevLine) && prevLine.length > 0) {
-            break;
-        }
-    }
-    return 'GET';
-}
-
-function formatAuthType(authType: string): string {
-    const types: Record<string, string> = {
-        bearer: 'Bearer Token',
-        oauth2_client_credentials: 'OAuth2 Client Credentials',
-        oauth2_authorization_code: 'OAuth2 Authorization Code (PKCE)',
-        oauth2_implicit: 'OAuth2 Implicit Flow',
-    };
-    return types[authType] ?? authType;
-}
-
-function parseEnvVariables(document: vscode.TextDocument, startLine: number): string[] {
-    const vars: string[] = [];
-    let depth = 0;
-    for (let i = startLine; i < document.lineCount; i++) {
-        const line = document.lineAt(i).text;
-        let inString = false;
-        let stringChar = '';
-        for (const ch of line) {
-            if (inString) {
-                if (ch === stringChar) { inString = false; }
-            } else if (ch === '"' || ch === "'") {
-                inString = true;
-                stringChar = ch;
-            } else if (ch === '{') {
-                depth++;
-            } else if (ch === '}') {
-                depth--;
-                if (depth <= 0) { return vars; }
-            }
-        }
-        const varMatch = /^\s+(\w+)\s*:/.exec(line);
-        if (varMatch && depth > 0) {
-            vars.push(varMatch[1]);
-        }
-    }
-    return vars;
 }
 
 function buildFunctionHover(func: FunctionDefinition): vscode.MarkdownString {
@@ -90,48 +44,40 @@ export const hoverProvider = vscode.languages.registerHoverProvider('rq', {
         const lineText = document.lineAt(position.line).text;
         const col = position.character;
 
+        const attributeMatch = /^\s*\[\s*([a-zA-Z_]\w*)/.exec(lineText);
+        if (attributeMatch) {
+            const nameStart = lineText.indexOf(attributeMatch[1]);
+            if (col >= nameStart && col <= nameStart + attributeMatch[1].length) {
+                const definition = ATTRIBUTE_DEFINITIONS.find(a => a.name === attributeMatch[1]);
+                if (definition) { return new vscode.Hover(buildAttributeHover(definition)); }
+            }
+        }
+
+        const importMatch = /^\s*(import)\s+"([^"]*)"/.exec(lineText);
+        if (importMatch) {
+            const keywordStart = lineText.indexOf(importMatch[1]);
+            if (col >= keywordStart) {
+                return new vscode.Hover(buildImportHover(importMatch[2]));
+            }
+        }
+
         // Check for rq declaration hover (cursor on keyword or name)
-        const rqDeclMatch = /^\s*(rq)\s+([a-zA-Z_][a-zA-Z0-9_-]*)\s*\(([^)]*)/.exec(lineText);
+        const rqDeclMatch = /^\s*(rq)\s+([a-zA-Z_][a-zA-Z0-9_-]*)\s*\(/.exec(lineText);
         if (rqDeclMatch) {
             const keywordStart = lineText.indexOf(rqDeclMatch[1]);
-            const nameEnd = lineText.indexOf('(');
-            if (col >= keywordStart && col < nameEnd) {
-                const name = rqDeclMatch[2];
-                const argsText = rqDeclMatch[3];
-                const method = resolveRequestMethod(document, position.line, name);
-                const urlMatch = /"([^"]*)"/.exec(argsText);
-                const url = urlMatch ? urlMatch[1] : undefined;
-                const contents = new vscode.MarkdownString();
-                contents.appendMarkdown(`**Request: \`${name}\`**\n\n`);
-                contents.appendCodeblock(`rq ${name}(${url ? `"${url}"` : '...'})`, 'rq');
-                contents.appendMarkdown(`\n**Method:** \`${method}\``);
-                if (url) {
-                    contents.appendMarkdown(`\n\n**URL:** \`${url}\``);
-                }
-                return new vscode.Hover(contents);
+            const openParen = lineText.indexOf('(');
+            if (col >= keywordStart && col < openParen) {
+                return new vscode.Hover(buildRequestHover(document, position.line, rqDeclMatch[2], openParen));
             }
         }
 
         // Check for ep declaration hover (cursor on keyword or name)
-        const epDeclMatch = /^\s*(ep)\s+([a-zA-Z_][a-zA-Z0-9_-]*)(?:<([a-zA-Z_][a-zA-Z0-9_-]*)>)?\s*[\({]/.exec(lineText);
+        const epDeclMatch = /^\s*(ep)\s+([a-zA-Z_][a-zA-Z0-9_-]*)\s*(?:<\s*([a-zA-Z_][a-zA-Z0-9_-]*)\s*>)?\s*[({]/.exec(lineText);
         if (epDeclMatch) {
             const keywordStart = lineText.indexOf(epDeclMatch[1]);
-            const openParen = lineText.search(/[\({]/);
-            if (col >= keywordStart && col < openParen) {
-                const name = epDeclMatch[2];
-                const parent = epDeclMatch[3];
-                const argsText = lineText.slice(openParen + 1);
-                const urlMatch = /"([^"]*)"/.exec(argsText);
-                const url = urlMatch ? urlMatch[1] : undefined;
-                let sig = `ep ${name}`;
-                if (parent) { sig += `<${parent}>`; }
-                sig += `(${url ? `"${url}"` : '...'})`;
-                const contents = new vscode.MarkdownString();
-                contents.appendMarkdown(`**Endpoint: \`${name}\`**\n\n`);
-                contents.appendCodeblock(sig, 'rq');
-                if (parent) { contents.appendMarkdown(`\n**Extends:** \`${parent}\``); }
-                if (url) { contents.appendMarkdown(`\n**Base URL:** \`${url}\``); }
-                return new vscode.Hover(contents);
+            const openIndex = lineText.search(/[({]/);
+            if (col >= keywordStart && col < openIndex) {
+                return new vscode.Hover(buildEndpointHover(document, position.line, epDeclMatch[2], epDeclMatch[3], openIndex));
             }
         }
 
@@ -141,13 +87,7 @@ export const hoverProvider = vscode.languages.registerHoverProvider('rq', {
             const keywordStart = lineText.indexOf(authDeclMatch[1]);
             const openParen = lineText.indexOf('(');
             if (col >= keywordStart && col < openParen) {
-                const name = authDeclMatch[2];
-                const authType = authDeclMatch[3];
-                const contents = new vscode.MarkdownString();
-                contents.appendMarkdown(`**Auth: \`${name}\`**\n\n`);
-                contents.appendCodeblock(`auth ${name}(auth_type.${authType})`, 'rq');
-                contents.appendMarkdown(`\n**Type:** ${formatAuthType(authType)}`);
-                return new vscode.Hover(contents);
+                return new vscode.Hover(buildAuthHover(document, position.line, authDeclMatch[2], authDeclMatch[3]));
             }
         }
 
@@ -157,17 +97,7 @@ export const hoverProvider = vscode.languages.registerHoverProvider('rq', {
             const keywordStart = lineText.indexOf(envDeclMatch[1]);
             const bracePos = lineText.indexOf('{');
             if (col >= keywordStart && col < bracePos) {
-                const name = envDeclMatch[2];
-                const vars = parseEnvVariables(document, position.line);
-                const contents = new vscode.MarkdownString();
-                contents.appendMarkdown(`**Environment: \`${name}\`**\n\n`);
-                contents.appendCodeblock(`env ${name} { ... }`, 'rq');
-                if (vars.length > 0) {
-                    const preview = vars.slice(0, 5).map(v => `\`${v}\``).join(', ');
-                    const more = vars.length > 5 ? ` *(+${vars.length - 5} more)*` : '';
-                    contents.appendMarkdown(`\n**Variables:** ${preview}${more}`);
-                }
-                return new vscode.Hover(contents);
+                return new vscode.Hover(buildEnvironmentHover(document, position.line, envDeclMatch[2]));
             }
         }
 
@@ -182,7 +112,7 @@ export const hoverProvider = vscode.languages.registerHoverProvider('rq', {
                 position
             ));
             
-            if (/\bep\s+\w+\s*\(/.test(surroundingText)) {
+            if (new RegExp(`${declarationPattern('ep')}\\(`).test(surroundingText)) {
                 const prop = ENDPOINT_PROPERTIES.find(p => p.name === word);
                 if (prop) {
                     const contents = new vscode.MarkdownString();
@@ -287,9 +217,8 @@ export const hoverProvider = vscode.languages.registerHoverProvider('rq', {
             if (variable) {
                 const contents = new vscode.MarkdownString();
                 contents.appendMarkdown(`**Variable: \`${variable.name}\`**\n\n`);
-                contents.appendMarkdown(`Defined on line ${variable.line + 1}\n\n`);
-                contents.appendMarkdown('**Value:**\n');
-                contents.appendCodeblock(variable.value, 'rq');
+                contents.appendCodeblock(`let ${variable.name} = ${variable.value};`, 'rq');
+                contents.appendMarkdown(`\nDefined on line ${variable.line + 1}`);
                 return new vscode.Hover(contents);
             }
         }

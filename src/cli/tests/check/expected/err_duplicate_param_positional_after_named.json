@@ -1,0 +1,10 @@
+{
+  "errors": [
+    {
+      "file": "{{*}}",
+      "line": 1,
+      "column": 34,
+      "message": "Duplicate parameter: url"
+    }
+  ]
+}

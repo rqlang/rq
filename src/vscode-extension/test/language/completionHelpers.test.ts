@@ -1,4 +1,49 @@
-import { insideJsonLiteral, insideUnclosedAttribute, getAuthAttributeContext } from '../../src/language/completionHelpers';
+import * as vscode from 'vscode';
+import { insideJsonLiteral, insideUnclosedAttribute, getAuthAttributeContext, afterCommaTrigger, followsArgumentSeparator } from '../../src/language/completionHelpers';
+
+describe('followsArgumentSeparator', () => {
+    test('returns true when the previous line ends with a comma', () => {
+        expect(followsArgumentSeparator('rq a(\n  "u",\n  ', '  ')).toBe(true);
+    });
+
+    test('returns false when the previous line ends with a closed argument', () => {
+        expect(followsArgumentSeparator('rq a(\n  "u"\n  ', '  ')).toBe(false);
+    });
+
+    test('returns true right after the opening paren', () => {
+        expect(followsArgumentSeparator('rq a(\n  ', '  ')).toBe(true);
+    });
+
+    test('returns true right after an opening headers bracket', () => {
+        expect(followsArgumentSeparator('rq a("u", $[\n  ', '  ')).toBe(true);
+    });
+
+    test('ignores a trailing line comment after the comma', () => {
+        expect(followsArgumentSeparator('rq a(\n  "u", // the url\n  ', '  ')).toBe(true);
+    });
+
+    test('is not fooled by a double slash inside a string', () => {
+        expect(followsArgumentSeparator('rq a(\n  "http://x"\n  ', '  ')).toBe(false);
+    });
+});
+
+describe('afterCommaTrigger', () => {
+    test('returns true on a bare comma when explicitly invoked', () => {
+        expect(afterCommaTrigger('ep users("/users",', vscode.CompletionTriggerKind.Invoke)).toBe(true);
+    });
+
+    test('returns false on a bare comma typed as a trigger character', () => {
+        expect(afterCommaTrigger('ep users("/users",', vscode.CompletionTriggerKind.TriggerCharacter)).toBe(false);
+    });
+
+    test('returns true after a comma plus space typed as a trigger character', () => {
+        expect(afterCommaTrigger('ep users("/users", ', vscode.CompletionTriggerKind.TriggerCharacter)).toBe(true);
+    });
+
+    test('returns false when the line does not end after a comma', () => {
+        expect(afterCommaTrigger('ep users("/users", qs', vscode.CompletionTriggerKind.Invoke)).toBe(false);
+    });
+});
 
 describe('insideJsonLiteral', () => {
     test('returns false for empty string', () => {

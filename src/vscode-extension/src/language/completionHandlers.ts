@@ -19,12 +19,15 @@ import {
     countPositionalArgs,
     filterRequiredVars,
     COMMON_HEADERS,
-    AUTH_PROPERTIES,
+    afterCommaTrigger,
+    followsArgumentSeparator,
 } from './completionHelpers';
 import {
     REQUEST_PROPERTIES,
     ENDPOINT_PROPERTIES,
     parseVariables,
+    declarationPattern,
+    AUTH_PROPERTIES,
 } from './definitions';
 
 export interface CompletionHandler {
@@ -87,7 +90,7 @@ export const importHandler: CompletionHandler = {
 export const dollarPrefixHandler: CompletionHandler = {
     canHandle: ({ linePrefix }) => linePrefix.endsWith('$'),
     async provide({ documentPrefix }) {
-        const inline = /\b(rq|ep)\s+\w+\s*\([^;]*$/s.test(documentPrefix);
+        const inline = new RegExp(`(?:${declarationPattern('rq')}|${declarationPattern('ep')})\\([^;]*$`, 's').test(documentPrefix);
         return dollarPrefixItems(inline);
     },
 };
@@ -278,15 +281,14 @@ function buildRqEpHandler(
     isRq: boolean
 ): CompletionHandler {
     return {
-        canHandle({ documentPrefix, linePrefix }) {
+        canHandle({ documentPrefix, linePrefix, triggerKind }) {
             if (!blockPattern.test(documentPrefix)) { return false; }
             if (insideHeadersLiteral(documentPrefix)) { return false; }
             if (insideJsonLiteral(documentPrefix)) { return false; }
-            const atStartOfParams = isRq
-                ? /\brq\s+\w+\s*\(\s*$/.test(linePrefix)
-                : /\bep\s+\w+\s*\(\s*$/.test(linePrefix);
-            const afterComma = /,\s+$/.test(linePrefix);
-            const onNewLine = /^\s*\w*$/.test(linePrefix);
+            const atStartOfParams = new RegExp(`${declarationPattern(isRq ? 'rq' : 'ep')}\\(\\s*$`).test(linePrefix);
+            const afterComma = afterCommaTrigger(linePrefix, triggerKind);
+            const onNewLine = /^\s*\w*$/.test(linePrefix)
+                && followsArgumentSeparator(documentPrefix, linePrefix);
             const atNamedValue = new RegExp(`\\b(${propNames.join('|')})\\s*:\\s*[a-zA-Z0-9_-]*$`).test(linePrefix);
             const partialInArgs = /[,(]\s*[a-zA-Z0-9_-]+$/.test(linePrefix);
             return atStartOfParams || afterComma || onNewLine || atNamedValue || partialInArgs;
@@ -354,14 +356,14 @@ function buildRqEpHandler(
 }
 
 export const rqBlockHandler = buildRqEpHandler(
-    /\brq\s+\w+\s*\([^;]*$/s,
+    new RegExp(`${declarationPattern('rq')}\\([^;]*$`, 's'),
     REQUEST_PROPERTIES,
     ['url', 'headers', 'body', 'method'],
     true
 );
 
 export const epBlockHandler = buildRqEpHandler(
-    /\bep\s+\w+\s*\([^{;]*$/s,
+    new RegExp(`${declarationPattern('ep')}\\([^{;]*$`, 's'),
     ENDPOINT_PROPERTIES,
     ['url', 'headers', 'qs'],
     false
@@ -438,16 +440,16 @@ export const attributeHandler: CompletionHandler = {
 };
 
 export const headerKeyHandler: CompletionHandler = {
-    canHandle: ({ linePrefix, documentPrefix }) => {
+    canHandle: ({ linePrefix, documentPrefix, triggerKind }) => {
         if (linePrefix.endsWith('$[')) { return true; }
-        if (/,\s+$/.test(linePrefix)) { return insideHeadersLiteral(documentPrefix); }
+        if (afterCommaTrigger(linePrefix, triggerKind)) { return insideHeadersLiteral(documentPrefix); }
         if (!/^\s*"?([a-zA-Z0-9_-]*)$/.test(linePrefix)) { return false; }
-        return insideHeadersLiteral(documentPrefix);
+        return insideHeadersLiteral(documentPrefix) && followsArgumentSeparator(documentPrefix, linePrefix);
     },
     async provide(ctx) {
-        const { linePrefix, document, position } = ctx;
+        const { linePrefix, document, position, triggerKind } = ctx;
         const isFreshOpen = linePrefix.endsWith('$[');
-        const isAfterComma = !isFreshOpen && /,\s+$/.test(linePrefix);
+        const isAfterComma = !isFreshOpen && afterCommaTrigger(linePrefix, triggerKind);
         const headerKeyMatch = (isFreshOpen || isAfterComma) ? null : linePrefix.match(/^\s*"?([a-zA-Z0-9_-]*)$/);
         if (!isFreshOpen && !isAfterComma && !headerKeyMatch) { return undefined; }
         const partial = headerKeyMatch?.[1] ?? '';

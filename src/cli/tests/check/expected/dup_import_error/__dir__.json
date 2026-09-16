@@ -1,0 +1,10 @@
+{
+  "errors": [
+    {
+      "file": "{{regex:.*a\\.rq}}",
+      "line": 1,
+      "column": 39,
+      "message": "Expected '$'"
+    }
+  ]
+}

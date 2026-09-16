@@ -379,3 +379,43 @@ describe('attribute hover', () => {
         expect(result).toBeUndefined();
     });
 });
+
+describe('local variable hover', () => {
+    function documentWithWordAt(lines: string[], line: number, word: string) {
+        const column = lines[line].indexOf(word);
+        return {
+            lineCount: lines.length,
+            lineAt: (i: number | vscode.Position) => {
+                const idx = typeof i === 'number' ? i : i.line;
+                return { text: lines[idx] };
+            },
+            getText: (range?: vscode.Range) => {
+                if (!range) { return lines.join('\n'); }
+                if (range.start.line === range.end.line) {
+                    return lines[range.start.line].slice(range.start.character, range.end.character);
+                }
+                return lines.slice(range.start.line, range.end.line + 1).join('\n');
+            },
+            getWordRangeAtPosition: jest.fn().mockImplementation((_p: vscode.Position, re: RegExp) =>
+                re.test(word) ? new vscode.Range(pos(line, column), pos(line, column + word.length)) : undefined
+            )
+        };
+    }
+
+    test('renders the declaration with a single statement terminator', async () => {
+        const lines = ['let token = "abc";', 'let header = "Bearer {{token}}";'];
+        const doc = documentWithWordAt(lines, 1, 'token');
+        const result = await provideHover(doc, pos(1, lines[1].indexOf('token'))) as vscode.Hover;
+        const value = (result!.contents as unknown as vscode.MarkdownString).value;
+        expect(value).toContain('**Variable: `token`**');
+        expect(value).toContain('let token = "abc";');
+        expect(value).not.toContain(';;');
+    });
+
+    test('reports the line the variable was declared on', async () => {
+        const lines = ['let a = "1";', 'let token = "abc";', 'let header = "{{token}}";'];
+        const doc = documentWithWordAt(lines, 2, 'token');
+        const result = await provideHover(doc, pos(2, lines[2].indexOf('token'))) as vscode.Hover;
+        expect((result!.contents as unknown as vscode.MarkdownString).value).toContain('Defined on line 2');
+    });
+});

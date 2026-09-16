@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { insideJsonLiteral, insideUnclosedAttribute, getAuthAttributeContext, afterCommaTrigger, followsArgumentSeparator } from '../../src/language/completionHelpers';
+import { insideJsonLiteral, insideUnclosedAttribute, getAuthAttributeContext, afterCommaTrigger, followsArgumentSeparator, claimedParams } from '../../src/language/completionHelpers';
 
 describe('followsArgumentSeparator', () => {
     test('returns true when the previous line ends with a comma', () => {
@@ -196,5 +196,47 @@ describe('insideUnclosedAttribute', () => {
 
     test('returns false when the cursor is inside a line comment', () => {
         expect(insideUnclosedAttribute('[auth("x")]\n// note: don\'t')).toBe(false);
+    });
+});
+
+describe('claimedParams', () => {
+    const requestParams = ['url', 'headers', 'body'];
+
+    test('returns an empty set right after the opening paren', () => {
+        expect(claimedParams('rq a(', requestParams)).toEqual(new Set());
+    });
+
+    test('claims the slot named by a named argument', () => {
+        expect(claimedParams('rq a(url: "http://x", ', requestParams)).toEqual(new Set(['url']));
+    });
+
+    test('claims slots in order for positional arguments', () => {
+        expect(claimedParams('rq a("http://x", $["A": "1"], ', requestParams)).toEqual(new Set(['url', 'headers']));
+    });
+
+    test('gives a positional argument the first slot left free by a named one', () => {
+        expect(claimedParams('rq a(url: "http://x", $["A": "1"], ', requestParams)).toEqual(new Set(['url', 'headers']));
+    });
+
+    test('gives a positional argument the first slot when a later one is named', () => {
+        expect(claimedParams('rq a(headers: $["A": "1"], "http://x", ', requestParams)).toEqual(new Set(['headers', 'url']));
+    });
+
+    test('does not count a header key that looks like a parameter name', () => {
+        expect(claimedParams('rq a(url: "http://x", $["body": "1"], ', requestParams))
+            .toEqual(new Set(['url', 'headers']));
+    });
+
+    test('ignores the argument still being typed', () => {
+        expect(claimedParams('rq a("http://x", $["A": "1"]', requestParams)).toEqual(new Set(['url']));
+    });
+
+    test('is not fooled by a comma inside a string', () => {
+        expect(claimedParams('rq a("http://x?a=1,2", ', requestParams)).toEqual(new Set(['url']));
+    });
+
+    test('claims the qs slot for an endpoint positional after a named headers', () => {
+        expect(claimedParams('ep base(headers: $["A": "1"], "http://x", "v=1", ', ['url', 'headers', 'qs']))
+            .toEqual(new Set(['headers', 'url', 'qs']));
     });
 });

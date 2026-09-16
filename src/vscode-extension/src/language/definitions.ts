@@ -264,7 +264,7 @@ export function parseVariables(document: vscode.TextDocument): Variable[] {
         if (match) {
             variables.push({
                 name: match[1],
-                value: match[2].trim(),
+                value: match[2].trim().replace(/;$/, ''),
                 line: i
             });
         }

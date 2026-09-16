@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { assignArguments } from './definitions';
 
 export const COMMON_HEADERS = [
     'Accept', 'Accept-Encoding', 'Accept-Language', 'Authorization',
@@ -340,46 +341,31 @@ export function filterRequiredVars<T extends { source: string; line: number; fil
     );
 }
 
-export function collectNamedProps(text: string, propNames: string[]): Set<string> {
-    const names = new Set<string>();
-    const pattern = propNames.join('|');
-    const re = new RegExp(`\\b(${pattern})\\s*:`, 'g');
-    let m: RegExpExecArray | null;
-    while ((m = re.exec(text)) !== null) {
-        names.add(m[1]);
-    }
-    return names;
-}
-
-export function countPositionalArgs(matchedText: string): number {
-    const parenIdx = matchedText.indexOf('(');
-    if (parenIdx === -1) { return 0; }
-    const argsText = matchedText.slice(parenIdx + 1);
+function lastArgumentSeparator(argsText: string): number {
     let depth = 0;
     let inString = false;
     let stringChar = '';
-    let positional = 0;
-    let segHasContent = false;
-    let segIsNamed = false;
-    for (const ch of argsText) {
+    let separator = -1;
+    for (let i = 0; i < argsText.length; i++) {
+        const ch = argsText[i];
         if (inString) {
-            if (ch === stringChar) { inString = false; }
-            segHasContent = true;
-        } else if (ch === '"' || ch === "'") {
-            inString = true; stringChar = ch; segHasContent = true;
-        } else if (ch === '(' || ch === '[' || ch === '{') {
-            depth++; segHasContent = true;
-        } else if (ch === ')' || ch === ']' || ch === '}') {
-            if (depth > 0) { depth--; }
-        } else if (ch === ':' && depth === 0) {
-            segIsNamed = true;
-        } else if (ch === ',' && depth === 0) {
-            if (!segIsNamed && segHasContent) { positional++; }
-            segHasContent = false;
-            segIsNamed = false;
-        } else if (!/\s/.test(ch)) {
-            segHasContent = true;
+            if (ch === '\\') { i++; }
+            else if (ch === stringChar) { inString = false; }
+            continue;
         }
+        if (ch === '"' || ch === "'") { inString = true; stringChar = ch; }
+        else if (ch === '(' || ch === '[' || ch === '{') { depth++; }
+        else if (ch === ')' || ch === ']' || ch === '}') { if (depth > 0) { depth--; } }
+        else if (ch === ',' && depth === 0) { separator = i; }
     }
-    return positional;
+    return separator;
+}
+
+export function claimedParams(matchedText: string, propNames: string[]): Set<string> {
+    const parenIdx = matchedText.indexOf('(');
+    if (parenIdx === -1) { return new Set(); }
+    const argsText = matchedText.slice(parenIdx + 1);
+    const separator = lastArgumentSeparator(argsText);
+    if (separator === -1) { return new Set(); }
+    return new Set(assignArguments(argsText.slice(0, separator), propNames).keys());
 }

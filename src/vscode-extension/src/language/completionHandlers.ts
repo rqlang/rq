@@ -15,8 +15,7 @@ import {
     getAuthAttributeContext,
     insideUnclosedAttribute,
     AuthAttributeContext,
-    collectNamedProps,
-    countPositionalArgs,
+    claimedParams,
     filterRequiredVars,
     COMMON_HEADERS,
     afterCommaTrigger,
@@ -324,12 +323,9 @@ function buildRqEpHandler(
                 replaceRange = new vscode.Range(position.line, position.character - argPartial.length, position.line, position.character + trailingWord.length);
             }
 
-            const existingNamed = collectNamedProps(matchedText, propNames);
-            const positionalCount = countPositionalArgs(matchedText);
-            propNames.slice(0, positionalCount).forEach(p => existingNamed.add(p));
-
-            const hasNamedParams = props.some(p => existingNamed.has(p.name));
-            const remainingProps = propertyItems(props, existingNamed, !hasNamedParams);
+            const claimed = claimedParams(matchedText, propNames);
+            const hasClaimedParams = props.some(p => claimed.has(p.name));
+            const remainingProps = propertyItems(props, claimed, !hasClaimedParams);
             if (remainingProps.length === 0 && /^\s*$/.test(linePrefix)) { return undefined; }
             const suggestions: vscode.CompletionItem[] = [
                 ...builtinFunctionItems(),

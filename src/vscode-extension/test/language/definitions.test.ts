@@ -90,8 +90,16 @@ describe('parseVariables', () => {
         const result = parseVariables(target);
         expect(result).toHaveLength(1);
         expect(result[0].name).toBe('my_url');
-        expect(result[0].value).toBe('"http://example.com";');
+        expect(result[0].value).toBe('"http://example.com"');
         expect(result[0].line).toBe(0);
+    });
+
+    test('keeps a semicolon that is part of the value', () => {
+        const target = makeDocument([
+            'let separator = "a;b";'
+        ]);
+        const result = parseVariables(target);
+        expect(result[0].value).toBe('"a;b"');
     });
 
     test('returns correct line numbers with imports and empty lines', () => {

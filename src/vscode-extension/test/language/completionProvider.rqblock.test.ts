@@ -299,3 +299,35 @@ describe('rq block param completion — partial word typed', () => {
         expect(target.range.end.character).toBe(39);
     });
 });
+
+describe('rq block param completion — slots already claimed', () => {
+    test('does not suggest headers when a positional headers array follows a named url', async () => {
+        const doc = makeDocument(['rq my_rq(url: "http://x", $["A": "1"], ']);
+        const position = new vscode.Position(0, 39);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items).toBeDefined();
+        expect(items.some((i: any) => i.label === 'headers')).toBe(false);
+        expect(items.some((i: any) => i.label === 'body')).toBe(true);
+    });
+
+    test('does not treat a header key as a named argument', async () => {
+        const doc = makeDocument(['rq my_rq(url: "http://x", $["body": "1"], ']);
+        const position = new vscode.Position(0, 42);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items).toBeDefined();
+        expect(items.some((i: any) => i.label === 'body')).toBe(true);
+    });
+
+    test('does not suggest qs when an ep has claimed every slot', async () => {
+        const doc = makeDocument(['ep base(headers: $["A": "1"], "http://x", "v=1", ']);
+        const position = new vscode.Position(0, 48);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items === undefined || !items.some((i: any) => i.label === 'qs')).toBe(true);
+    });
+});

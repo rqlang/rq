@@ -109,6 +109,7 @@ pub fn execute_show(args: &ShowArgs) -> Result<(), Box<dyn std::error::Error>> {
         &args.name,
         args.env.environment.as_deref(),
         !args.no_var_interpolation,
+        None,
     )?;
     match args.output.output {
         OutputFormat::Json => {
@@ -127,7 +128,7 @@ pub fn execute_show(args: &ShowArgs) -> Result<(), Box<dyn std::error::Error>> {
 
 pub fn execute_refs(args: &RefsArgs) -> Result<(), Box<dyn std::error::Error>> {
     let path = std::path::Path::new(&args.source.source);
-    let refs = RqClient::default().list_variable_references(path, &args.name)?;
+    let refs = RqClient::default().list_variable_references(path, &args.name, None)?;
     let formatter = crate::core::formatter::get_formatter(&args.output.output);
     print!(
         "{}",

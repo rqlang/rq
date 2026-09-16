@@ -4,8 +4,9 @@ import * as vscode from 'vscode';
 import * as cliService from '../../src/rqClient';
 import '../../src/language/referenceProvider';
 
-function makeDocument(lines: string[]) {
+function makeDocument(lines: string[], uri: any = { fsPath: '/test/file.rq' }) {
     return {
+        uri,
         lineAt: (i: number | vscode.Position) => {
             const idx = typeof i === 'number' ? i : (i as vscode.Position).line;
             return { text: lines[idx] };
@@ -41,7 +42,7 @@ describe('variable references', () => {
 
         const result = await provideReferences(doc, position);
 
-        expect(cliService.varRefs).toHaveBeenCalledWith('base_url', '/workspace');
+        expect(cliService.varRefs).toHaveBeenCalledWith('base_url', '/workspace', '/test/file.rq');
         expect(result).toHaveLength(2);
         expect(result[0]).toBeInstanceOf(vscode.Location);
         expect((result[0] as vscode.Location).range.start).toEqual(new vscode.Position(2, 5));
@@ -86,7 +87,7 @@ describe('variable references', () => {
 
         await provideReferences(doc, position);
 
-        expect(cliService.varRefs).toHaveBeenCalledWith('my_var', undefined);
+        expect(cliService.varRefs).toHaveBeenCalledWith('my_var', undefined, '/test/file.rq');
     });
 });
 
@@ -103,7 +104,7 @@ describe('endpoint template references', () => {
 
         const result = await provideReferences(doc, position);
 
-        expect(cliService.epRefs).toHaveBeenCalledWith('base', '/workspace');
+        expect(cliService.epRefs).toHaveBeenCalledWith('base', '/workspace', '/test/file.rq');
         expect(cliService.varRefs).not.toHaveBeenCalled();
         expect(result).toHaveLength(1);
         expect(result[0]).toBeInstanceOf(vscode.Location);
@@ -135,5 +136,40 @@ describe('endpoint template references', () => {
         await provideReferences(doc, position);
 
         expect(cliService.epRefs).not.toHaveBeenCalled();
+    });
+});
+
+describe('resolution scope', () => {
+    test('scopes variable references to the document that requested them', async () => {
+        const doc = makeDocument(['rq get("/{{collection_id}}");'], { fsPath: '/workspace/inma/collections.rq' });
+        const position = new vscode.Position(0, 12);
+
+        (doc.getWordRangeAtPosition as jest.Mock).mockReturnValue({ start: position, end: position });
+        (doc.getText as jest.Mock).mockReturnValue('collection_id');
+        (cliService.varRefs as jest.Mock).mockResolvedValue([]);
+
+        await provideReferences(doc, position);
+
+        expect(cliService.varRefs).toHaveBeenCalledWith(
+            'collection_id',
+            '/workspace',
+            '/workspace/inma/collections.rq'
+        );
+    });
+
+    test('scopes endpoint references to the document that requested them', async () => {
+        const line = 'ep collections<spatio>("/collections") {';
+        const doc = makeDocument([line], { fsPath: '/workspace/inma/collections.rq' });
+        const position = new vscode.Position(0, line.indexOf('spatio') + 1);
+
+        (cliService.epRefs as jest.Mock).mockResolvedValue([]);
+
+        await provideReferences(doc, position);
+
+        expect(cliService.epRefs).toHaveBeenCalledWith(
+            'spatio',
+            '/workspace',
+            '/workspace/inma/collections.rq'
+        );
     });
 });

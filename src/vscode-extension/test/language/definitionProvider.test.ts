@@ -73,7 +73,7 @@ describe('when no environment is selected', () => {
 
         const result = await provideDefinition(doc, position);
 
-        expect(cliService.showVariable).toHaveBeenCalledWith('remote_var', '/test', undefined, false);
+        expect(cliService.showVariable).toHaveBeenCalledWith('remote_var', '/test', undefined, false, '/test/file.rq');
         expect(result).toBeInstanceOf(vscode.Location);
         expect((result as vscode.Location).range.start).toEqual(new vscode.Position(5, 4));
     });
@@ -134,7 +134,7 @@ describe('when environment is selected', () => {
 
         const result = await provideDefinition(doc, position);
 
-        expect(cliService.showVariable).toHaveBeenCalledWith('api_url', '/test', 'local', false);
+        expect(cliService.showVariable).toHaveBeenCalledWith('api_url', '/test', 'local', false, '/test/file.rq');
         expect(result).toBeInstanceOf(vscode.Location);
         expect((result as vscode.Location).range.start).toEqual(new vscode.Position(1, 4));
     });
@@ -150,5 +150,105 @@ describe('when environment is selected', () => {
         const result = await provideDefinition(doc, position);
 
         expect(result).toBeNull();
+    });
+});
+
+describe('resolution scope', () => {
+    beforeEach(() => {
+        setEnvironmentProvider({ getSelectedEnvironment: () => undefined });
+        (vscode.workspace as any).workspaceFolders = [{ uri: { fsPath: '/workspace' } }];
+    });
+
+    test('scopes variable lookup to the document that requested it', async () => {
+        const doc = makeDocument(['rq get("/{{collection_id}}");'], { fsPath: '/workspace/inma/collections.rq' });
+        const position = new vscode.Position(0, 12);
+
+        (doc.getWordRangeAtPosition as jest.Mock).mockReturnValue({ start: position, end: position });
+        (doc.getText as jest.Mock).mockReturnValue('collection_id');
+        (cliService.showVariable as jest.Mock).mockResolvedValue({
+            name: 'collection_id',
+            file: '/workspace/inma/_shared.rq',
+            line: 6,
+            character: 4,
+            source: 'let'
+        });
+
+        await provideDefinition(doc, position);
+
+        expect(cliService.showVariable).toHaveBeenCalledWith(
+            'collection_id',
+            '/workspace',
+            undefined,
+            false,
+            '/workspace/inma/collections.rq'
+        );
+    });
+
+    test('scopes endpoint template lookup to the document that requested it', async () => {
+        const line = 'ep collections<spatio>("/collections") {';
+        const doc = makeDocument([line], { fsPath: '/workspace/inma/collections.rq' });
+        const position = new vscode.Position(0, line.indexOf('spatio') + 1);
+
+        (cliService.showEndpoint as jest.Mock).mockResolvedValue({
+            name: 'spatio',
+            file: '/workspace/inma/_shared.rq',
+            line: 3,
+            character: 3
+        });
+
+        await provideDefinition(doc, position);
+
+        expect(cliService.showEndpoint).toHaveBeenCalledWith(
+            'spatio',
+            '/workspace',
+            '/workspace/inma/collections.rq'
+        );
+    });
+});
+
+describe('required attribute declarations', () => {
+    beforeEach(() => {
+        setEnvironmentProvider({ getSelectedEnvironment: () => undefined });
+        (vscode.workspace as any).workspaceFolders = [{ uri: { fsPath: '/workspace' } }];
+    });
+
+    test('jumps from the usage up to the required attribute', async () => {
+        const lines = ['[required(collection_id)]', 'rq delete(collection_id);'];
+        const doc = makeDocument(lines, { fsPath: '/workspace/inma/collections.rq' });
+        const position = new vscode.Position(1, lines[1].indexOf('collection_id'));
+
+        (doc.getWordRangeAtPosition as jest.Mock).mockReturnValue({ start: position, end: position });
+        (doc.getText as jest.Mock).mockReturnValue('collection_id');
+
+        const result = await provideDefinition(doc, position);
+
+        expect((result as vscode.Location).range.start).toEqual(new vscode.Position(0, 0));
+        expect(cliService.showVariable).not.toHaveBeenCalled();
+    });
+
+    test('stays on the required attribute instead of resolving a same-named variable', async () => {
+        const lines = [
+            '    rq put(collection_id);',
+            '    [required(collection_id)]',
+            '    rq delete(collection_id);'
+        ];
+        const doc = makeDocument(lines, { fsPath: '/workspace/inma/collections.rq' });
+        const position = new vscode.Position(1, lines[1].indexOf('collection_id'));
+
+        (doc.getWordRangeAtPosition as jest.Mock).mockReturnValue({ start: position, end: position });
+        (doc.getText as jest.Mock).mockReturnValue('collection_id');
+        (cliService.showVariable as jest.Mock).mockResolvedValue({
+            name: 'collection_id',
+            file: '/workspace/inma/_shared.rq',
+            line: 6,
+            character: 4,
+            source: 'let'
+        });
+
+        const result = await provideDefinition(doc, position);
+
+        expect(cliService.showVariable).not.toHaveBeenCalled();
+        expect((result as vscode.Location).uri).toBe(doc.uri);
+        expect((result as vscode.Location).range.start).toEqual(new vscode.Position(1, 0));
     });
 });

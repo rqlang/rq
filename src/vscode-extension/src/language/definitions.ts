@@ -293,15 +293,18 @@ export function findRequiredAttributeLineInScope(
         return -1;
     }
 
-    const pattern = new RegExp(`\\[\\s*required\\s*\\(\\s*${escapeRegex(varName)}\\s*\\)`);
     for (let i = rqLine - 1; i >= 0; i--) {
         const text = document.lineAt(i).text;
         if (!/^\s*\[/.test(text)) {
             break;
         }
-        if (pattern.test(text)) {
+        if (isRequiredAttributeFor(text, varName)) {
             return i;
         }
     }
     return -1;
+}
+
+export function isRequiredAttributeFor(lineText: string, varName: string): boolean {
+    return new RegExp(`\\[\\s*required\\s*\\(\\s*${escapeRegex(varName)}\\s*\\)`).test(lineText);
 }

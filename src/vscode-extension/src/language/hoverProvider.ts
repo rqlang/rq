@@ -9,7 +9,9 @@ import {
     REQUEST_PROPERTIES,
     ENDPOINT_PROPERTIES,
     parseVariables,
+    Variable,
     findRequiredAttributeLineInScope,
+    isRequiredAttributeFor,
     declarationPattern,
     ATTRIBUTE_DEFINITIONS
 } from './definitions';
@@ -26,6 +28,32 @@ let environmentProvider: { getSelectedEnvironment(): string | undefined } | unde
 
 export function setEnvironmentProvider(provider: { getSelectedEnvironment(): string | undefined }) {
     environmentProvider = provider;
+}
+
+function buildRequiredVariableHover(name: string): vscode.MarkdownString {
+    const contents = new vscode.MarkdownString();
+    contents.appendMarkdown(`**Variable: \`${name}\`** *(required)*\n\n`);
+    contents.appendMarkdown('Value provided at runtime.');
+    return contents;
+}
+
+function buildResolvedVariableHover(entry: rqClient.VariableShowOutput): vscode.MarkdownString {
+    if (entry.source === 'required') {
+        return buildRequiredVariableHover(entry.name);
+    }
+    const contents = new vscode.MarkdownString();
+    contents.appendMarkdown(`**Variable: \`${entry.name}\`** *(${entry.source})*\n\n`);
+    contents.appendMarkdown('**Value:**\n');
+    contents.appendCodeblock(entry.value, 'rq');
+    return contents;
+}
+
+function buildLocalVariableHover(variable: Variable): vscode.MarkdownString {
+    const contents = new vscode.MarkdownString();
+    contents.appendMarkdown(`**Variable: \`${variable.name}\`**\n\n`);
+    contents.appendCodeblock(`let ${variable.name} = ${variable.value};`, 'rq');
+    contents.appendMarkdown(`\nDefined on line ${variable.line + 1}`);
+    return contents;
 }
 
 function buildFunctionHover(func: FunctionDefinition): vscode.MarkdownString {
@@ -183,43 +211,26 @@ export const hoverProvider = vscode.languages.registerHoverProvider('rq', {
                 return undefined;
             }
 
-            const requiredLine = findRequiredAttributeLineInScope(document, position.line, word);
-            if (requiredLine !== -1) {
-                const contents = new vscode.MarkdownString();
-                contents.appendMarkdown(`**Variable: \`${word}\`** *(required)*\n\n`);
-                contents.appendMarkdown('Must be provided at runtime via `--var`.');
-                return new vscode.Hover(contents);
+            if (isRequiredAttributeFor(lineText, word)
+                || findRequiredAttributeLineInScope(document, position.line, word) !== -1) {
+                return new vscode.Hover(buildRequiredVariableHover(word));
             }
 
             const environment = environmentProvider?.getSelectedEnvironment();
+            const localVariable = parseVariables(document).find(v => v.name === word);
 
-            if (environment) {
-                try {
-                    const sourceDirectory = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-                    const result = await rqClient.showVariable(word, sourceDirectory, environment);
-                    const contents = new vscode.MarkdownString();
-                    if (result.source === 'required') {
-                        contents.appendMarkdown(`**Variable: \`${result.name}\`** *(required)*\n\n`);
-                        contents.appendMarkdown('Must be provided at runtime via `--var`.');
-                    } else {
-                        contents.appendMarkdown(`**Variable: \`${result.name}\`** *(${result.source})*\n\n`);
-                        contents.appendMarkdown('**Value:**\n');
-                        contents.appendCodeblock(result.value, 'rq');
-                    }
-                    return new vscode.Hover(contents);
-                } catch {
-                    // fall through to local variable hover
-                }
+            if (!environment && localVariable) {
+                return new vscode.Hover(buildLocalVariableHover(localVariable));
             }
 
-            const variables = parseVariables(document);
-            const variable = variables.find(v => v.name === word);
-            if (variable) {
-                const contents = new vscode.MarkdownString();
-                contents.appendMarkdown(`**Variable: \`${variable.name}\`**\n\n`);
-                contents.appendCodeblock(`let ${variable.name} = ${variable.value};`, 'rq');
-                contents.appendMarkdown(`\nDefined on line ${variable.line + 1}`);
-                return new vscode.Hover(contents);
+            try {
+                const sourceDirectory = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+                const result = await rqClient.showVariable(word, sourceDirectory, environment, true, document.uri.fsPath);
+                return new vscode.Hover(buildResolvedVariableHover(result));
+            } catch {
+                if (localVariable) {
+                    return new vscode.Hover(buildLocalVariableHover(localVariable));
+                }
             }
         }
 

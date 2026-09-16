@@ -16,8 +16,8 @@ export function normalizePath(p: string): string {
 
 const SKIPPED_DIRECTORIES = new Set(['node_modules', '.git', 'target']);
 
-export function collectRqFiles(dir: string): string[] {
-    return collectAllFiles(dir).filter(f => f.endsWith('.rq'));
+export function collectMirroredFiles(dir: string): string[] {
+    return collectAllFiles(dir).filter(f => f.endsWith('.rq') || path.basename(f) === '.env');
 }
 
 export function collectAllFiles(dir: string): string[] {
@@ -64,7 +64,7 @@ export async function collectAllFilesAsync(dir: string): Promise<string[]> {
 export function mirrorToTemp(folderPath: string, overrides: Map<string, string>): string {
     const tempDir = normalizePath(fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'rq-check-'))));
     try {
-        for (const filePath of collectRqFiles(folderPath)) {
+        for (const filePath of collectMirroredFiles(folderPath)) {
             const relative = path.relative(folderPath, filePath);
             const dest = path.join(tempDir, relative);
             fs.mkdirSync(path.dirname(dest), { recursive: true });

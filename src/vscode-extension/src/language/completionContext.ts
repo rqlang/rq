@@ -12,12 +12,13 @@ export interface CompletionContext {
     documentPrefix: string;
     triggerKind: vscode.CompletionTriggerKind;
     getCliFilePath(): Promise<string>;
+    getCliRootPath(): Promise<string>;
     getEnvironment(): string | undefined;
 }
 
 export type EnvironmentProvider = { getSelectedEnvironment(): string | undefined };
 
-async function resolveCliPath(document: vscode.TextDocument): Promise<{ filePath: string; tempDir: string | null }> {
+async function resolveCliPath(document: vscode.TextDocument): Promise<{ filePath: string; root: string; tempDir: string | null }> {
     const workspaceRoot = vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath
         ?? path.dirname(document.uri.fsPath);
     const overrides = new Map<string, string>();
@@ -27,14 +28,14 @@ async function resolveCliPath(document: vscode.TextDocument): Promise<{ filePath
         }
     }
     if (overrides.size === 0) {
-        return { filePath: document.uri.fsPath, tempDir: null };
+        return { filePath: document.uri.fsPath, root: workspaceRoot, tempDir: null };
     }
     const tempDir = mirrorToTemp(workspaceRoot, overrides);
     const relPath = path.relative(workspaceRoot, document.uri.fsPath);
     if (relPath.startsWith('..')) {
-        return { filePath: document.uri.fsPath, tempDir };
+        return { filePath: document.uri.fsPath, root: workspaceRoot, tempDir };
     }
-    return { filePath: path.join(tempDir, relPath), tempDir };
+    return { filePath: path.join(tempDir, relPath), root: tempDir, tempDir };
 }
 
 export function buildContext(
@@ -43,18 +44,25 @@ export function buildContext(
     vsContext: vscode.CompletionContext | undefined,
     environmentProvider: EnvironmentProvider | undefined
 ): { ctx: CompletionContext; cleanup: () => void } {
-    let cliPathResult: { filePath: string; tempDir: string | null } | undefined;
+    let cliPathResult: { filePath: string; root: string; tempDir: string | null } | undefined;
 
-    const getCliFilePath = async (): Promise<string> => {
+    const resolveCliPathResult = async () => {
         if (!cliPathResult) {
             try {
                 cliPathResult = await resolveCliPath(document);
             } catch {
-                cliPathResult = { filePath: document.uri.fsPath, tempDir: null };
+                cliPathResult = {
+                    filePath: document.uri.fsPath,
+                    root: path.dirname(document.uri.fsPath),
+                    tempDir: null
+                };
             }
         }
-        return cliPathResult.filePath;
+        return cliPathResult;
     };
+
+    const getCliFilePath = async (): Promise<string> => (await resolveCliPathResult()).filePath;
+    const getCliRootPath = async (): Promise<string> => (await resolveCliPathResult()).root;
 
     const ctx: CompletionContext = {
         document,
@@ -63,6 +71,7 @@ export function buildContext(
         documentPrefix: document.getText(new vscode.Range(new vscode.Position(0, 0), position)),
         triggerKind: vsContext?.triggerKind ?? vscode.CompletionTriggerKind.Invoke,
         getCliFilePath,
+        getCliRootPath,
         getEnvironment: () => environmentProvider?.getSelectedEnvironment(),
     };
 
@@ -78,7 +87,7 @@ export function buildContext(
 export async function listVariablesWithFallback(ctx: CompletionContext): Promise<vscode.CompletionItem[]> {
     try {
         const cliFilePath = await ctx.getCliFilePath();
-        const raw = await rqClient.listVariables(cliFilePath, ctx.getEnvironment());
+        const raw = await rqClient.listVariables(cliFilePath, ctx.getEnvironment(), await ctx.getCliRootPath());
         const variables = filterRequiredVars(raw, ctx.documentPrefix, cliFilePath);
         if (variables.length > 0) {
             return variables.map(v => {

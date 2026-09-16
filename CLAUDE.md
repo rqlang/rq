@@ -100,6 +100,15 @@ cargo clippy --all-targets --all-features -- -D warnings
 cargo test
 ```
 
+`src/rq-wasm/` is **not** a workspace member, so the commands above skip it entirely. After touching `rq-wasm/src/` — or any `rq-lib` signature that `bindings.rs` calls — run its own pass from that directory, which is what `wasm_bvt.yaml` checks in CI:
+```bash
+cd src/rq-wasm
+cargo fmt --all
+cargo clippy --all-targets --all-features -- -D warnings
+cargo test
+cargo check --target wasm32-unknown-unknown
+```
+
 Specific test runs:
 ```bash
 cargo test --test request_run        # integration tests
@@ -112,6 +121,7 @@ VSCode extension (`src/vscode-extension/`):
 npm install && npm run compile
 npm run watch   # during development
 npm run test
+npm run build-wasm   # after changing rq-wasm or rq-lib; compile only copies the built artifacts
 ```
 
 ---

@@ -58,6 +58,12 @@ jobs:
             would end unfinished. Run every review agent as a blocking Task call, several in
             a single message when you want them to run in parallel, and never launch an async
             or background agent. Do not end your turn before the review comment is posted.
+
+            This pull request may already carry a review of yours from an earlier commit.
+            That is not a reason to stand down: this workflow runs on every push, and each
+            run is expected to review the changes made since your last review and post a
+            comment of its own. Never stop without posting because the pull request has
+            been reviewed before.
           show_full_output: true
           claude_args: >-
             --allowedTools "Task,Read,Glob,Grep,TodoWrite,mcp__github_inline_comment__create_inline_comment,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh pr list:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search:*),Bash(gh api:*),Bash(git log:*),Bash(git blame:*),Bash(git show:*),Bash(git diff:*),Bash(git rev-parse:*),Bash(find:*),Bash(ls:*),Bash(cat:*)"

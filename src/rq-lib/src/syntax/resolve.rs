@@ -2,7 +2,7 @@ use super::{
     error::SyntaxError,
     fs::Fs,
     functions::{self, traits::FunctionContext},
-    parse_result::Request,
+    parse_result::{EndpointDefinition, Request},
     parsers::utils::parse_system_function,
     reader::TokenReader,
     token::TokenType,
@@ -902,6 +902,7 @@ fn normalize_url_slashes(url: &str) -> String {
 
 pub fn collect_variable_errors(
     request: &Request,
+    endpoint: Option<&EndpointDefinition>,
     context: &VariableContext,
     source_files: &[PathBuf],
     fs: &dyn Fs,
@@ -912,7 +913,7 @@ pub fn collect_variable_errors(
     let mut error_index = 0usize;
     let mut try_resolve = |s: &str| {
         if let Err(mut e) = check_string(s, context, source_files, fs) {
-            if e.line == 0 || e.line < request_line_1 {
+            if !points_at_request_or_its_endpoint(&e, request_line_1, endpoint) {
                 e.line = request_line_1;
                 e.column = request_col_1 + error_index;
                 if let Some(ref path) = request.source_path {
@@ -947,6 +948,32 @@ pub fn collect_variable_errors(
         try_resolve(auth);
     }
     errors
+}
+
+fn points_at_request_or_its_endpoint(
+    error: &SyntaxError,
+    request_line_1: usize,
+    endpoint: Option<&EndpointDefinition>,
+) -> bool {
+    if error.line == 0 {
+        return false;
+    }
+    if error.line >= request_line_1 {
+        return true;
+    }
+    let Some(endpoint) = endpoint else {
+        return false;
+    };
+    if error.line < endpoint.declaration_line + 1 || error.line > endpoint.declaration_end_line + 1
+    {
+        return false;
+    }
+    match (&error.file_path, &endpoint.source_path) {
+        (Some(error_file), Some(endpoint_file)) => {
+            Path::new(error_file) == Path::new(endpoint_file)
+        }
+        _ => false,
+    }
 }
 
 pub fn collect_declared_variable_errors(

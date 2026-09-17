@@ -1,0 +1,4 @@
+[auth("{{ghost_auth}}")]
+ep api("http://localhost:8080") {
+    rq get_thing("/thing");
+}

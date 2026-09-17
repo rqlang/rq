@@ -202,6 +202,7 @@ pub(crate) fn parse_endpoint_with_context(
     existing_requests: &[crate::syntax::parse_result::RequestWithVariables],
     existing_endpoints: &std::collections::HashMap<String, EndpointDefinition>,
 ) -> Result<EndpointParseResult, SyntaxError> {
+    let declaration_start = r.cur().map(|t| t.span.start);
     let mut ctx = AttributeContext::default();
     let parsers: Vec<&dyn AttributeParser> = vec![&AuthAttributeParser, &TimeoutAttributeParser];
     parse_attributes(r, &parsers, &["method", "required"], &mut ctx)?;
@@ -222,6 +223,9 @@ pub(crate) fn parse_endpoint_with_context(
     let (line_1, col_1) = r.get_line_col(name_tok.span.start);
     let ep_line = line_1.saturating_sub(1);
     let ep_character = col_1.saturating_sub(1);
+    let ep_declaration_line = declaration_start
+        .map(|start| r.get_line_col(start).0.saturating_sub(1))
+        .unwrap_or(ep_line);
 
     if existing_endpoints.contains_key(&ep_name) {
         return Err(r.create_error_with_file(
@@ -353,6 +357,11 @@ pub(crate) fn parse_endpoint_with_context(
         }
     }
 
+    let declaration_end = r.cur().map(|t| t.span.start);
+    let ep_declaration_end_line = declaration_end
+        .map(|start| r.get_line_col(start).0.saturating_sub(1))
+        .unwrap_or(ep_line);
+
     let mut children = Vec::new();
     let mut required_locations: Vec<(String, String, usize, usize)> = Vec::new();
 
@@ -376,6 +385,8 @@ pub(crate) fn parse_endpoint_with_context(
                 related_files,
                 line: ep_line,
                 character: ep_character,
+                declaration_line: ep_declaration_line,
+                declaration_end_line: ep_declaration_end_line,
             };
             return Ok((children, ep_def, required_locations));
         }
@@ -527,6 +538,8 @@ pub(crate) fn parse_endpoint_with_context(
         related_files,
         line: ep_line,
         character: ep_character,
+        declaration_line: ep_declaration_line,
+        declaration_end_line: ep_declaration_end_line,
     };
 
     Ok((children, ep_def, required_locations))

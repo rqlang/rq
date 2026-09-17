@@ -1301,8 +1301,15 @@ impl RqClient {
                 source_path,
             );
 
+            let owning_endpoint = req_with_vars
+                .request
+                .endpoint
+                .as_ref()
+                .and_then(|name| rq_file.endpoints.get(name));
+
             for e in crate::syntax::resolve::collect_variable_errors(
                 &req_with_vars.request,
+                owning_endpoint,
                 &context,
                 &search_paths,
                 &*self.fs,

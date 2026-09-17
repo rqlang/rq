@@ -357,6 +357,11 @@ pub(crate) fn parse_endpoint_with_context(
         }
     }
 
+    let declaration_end = r.cur().map(|t| t.span.start);
+    let ep_declaration_end_line = declaration_end
+        .map(|start| r.get_line_col(start).0.saturating_sub(1))
+        .unwrap_or(ep_line);
+
     let mut children = Vec::new();
     let mut required_locations: Vec<(String, String, usize, usize)> = Vec::new();
 
@@ -381,6 +386,7 @@ pub(crate) fn parse_endpoint_with_context(
                 line: ep_line,
                 character: ep_character,
                 declaration_line: ep_declaration_line,
+                declaration_end_line: ep_declaration_end_line,
             };
             return Ok((children, ep_def, required_locations));
         }
@@ -533,6 +539,7 @@ pub(crate) fn parse_endpoint_with_context(
         line: ep_line,
         character: ep_character,
         declaration_line: ep_declaration_line,
+        declaration_end_line: ep_declaration_end_line,
     };
 
     Ok((children, ep_def, required_locations))

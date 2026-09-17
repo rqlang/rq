@@ -964,7 +964,8 @@ fn points_at_request_or_its_endpoint(
     let Some(endpoint) = endpoint else {
         return false;
     };
-    if error.line < endpoint.declaration_line + 1 {
+    if error.line < endpoint.declaration_line + 1 || error.line > endpoint.declaration_end_line + 1
+    {
         return false;
     }
     match (&error.file_path, &endpoint.source_path) {

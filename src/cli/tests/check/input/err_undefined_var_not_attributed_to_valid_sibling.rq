@@ -1,0 +1,5 @@
+ep api("http://localhost:8080") {
+    [required(token)]
+    rq first("/a/{{token}}");
+    rq second("/b/{{token}}");
+}

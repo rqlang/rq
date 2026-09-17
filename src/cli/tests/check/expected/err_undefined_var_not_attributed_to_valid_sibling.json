@@ -1,0 +1,10 @@
+{
+  "errors": [
+    {
+      "file": "{{*}}",
+      "line": 4,
+      "column": 8,
+      "message": "Unresolved variable: 'token'"
+    }
+  ]
+}

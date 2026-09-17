@@ -27,6 +27,7 @@ pub struct EndpointDefinition {
     pub line: usize,
     pub character: usize,
     pub declaration_line: usize,
+    pub declaration_end_line: usize,
 }
 
 #[derive(Debug, Clone, PartialEq)]

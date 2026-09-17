@@ -1,0 +1,3 @@
+ep api(missing_url) {
+    rq get_thing("/thing");
+}

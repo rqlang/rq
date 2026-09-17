@@ -1,0 +1,10 @@
+{
+  "errors": [
+    {
+      "file": "{{*}}",
+      "line": 1,
+      "column": 8,
+      "message": "Unresolved variable: 'missing_url'"
+    }
+  ]
+}

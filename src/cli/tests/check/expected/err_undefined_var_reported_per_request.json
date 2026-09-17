@@ -1,0 +1,16 @@
+{
+  "errors": [
+    {
+      "file": "{{*}}",
+      "line": 1,
+      "column": 33,
+      "message": "Unresolved variable: 'missing'"
+    },
+    {
+      "file": "{{*}}",
+      "line": 3,
+      "column": 4,
+      "message": "Unresolved variable: 'missing'"
+    }
+  ]
+}

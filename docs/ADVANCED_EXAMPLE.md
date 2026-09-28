@@ -40,7 +40,7 @@ Hardcoding `1` works, but it's a value you'll want to change constantly — that
 Pull that `1` out into a variable with `let`, then interpolate it into the path with `{{ }}`:
 
 ```
-let user_id = 1;
+let user_id = "1";
 
 rq get_users("https://httpbin.org/anything/users");
 rq get_user("https://httpbin.org/anything/users/{{user_id}}");
@@ -56,7 +56,7 @@ Both requests repeat `https://httpbin.org/anything`. Pull that into its own vari
 
 ```
 let base_url = "https://httpbin.org/anything";
-let user_id = 1;
+let user_id = "1";
 
 rq get_users("{{base_url}}/users");
 rq get_user("{{base_url}}/users/{{user_id}}");
@@ -79,7 +79,7 @@ env remote {
   base_url: "https://httpbin.org/anything",
 }
 
-let user_id = 1;
+let user_id = "1";
 
 rq get_users("{{base_url}}/users");
 rq get_user("{{base_url}}/users/{{user_id}}");
@@ -93,7 +93,7 @@ See [Environments](LANGUAGE_DEFINITION.md#environments) for how environments int
 
 ## Step 6 — Require the user id at run time
 
-A fixed `user_id = 1` isn't much of a "get user" — you want to ask for a *different* user each time you run. Drop the `let` and mark the id as **required** with an attribute on `get_user`:
+A fixed `user_id = "1"` isn't much of a "get user" — you want to ask for a *different* user each time you run. Drop the `let` and mark the id as **required** with an attribute on `get_user`:
 
 ```
 env local {

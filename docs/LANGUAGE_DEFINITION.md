@@ -586,7 +586,7 @@ In rq, an endpoint represents a concrete HTTP endpoint in your API (for example 
 At its simplest, an endpoint looks like this:
 
 ```
-let user_id = 123;
+let user_id = "123";
 
 ep users("http://localhost:8080/api/users") {
   rq list();
@@ -671,7 +671,7 @@ Using `method` or `required` on an `ep` statement is a parse error.
 Endpoints can be used as **templates** and extended by other endpoints using a simple templated-like syntax:
 
 ```
-let user_id = 123;
+let user_id = "123";
 ep base(url: "http://localhost:8080", headers: $["X-Base": "1"], qs: "v=1");
 
 ep users<base>("/users") {
@@ -811,7 +811,7 @@ An import pulls in everything defined in another `.rq` file: requests, variables
 
 ```
 // base.rq
-let user_id = 123;
+let user_id = "123";
 
 auth my_auth(auth_type.bearer) {
   token: "{{api_token}}",

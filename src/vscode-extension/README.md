@@ -6,7 +6,7 @@ Language support for [rq](https://rqlang.com) – a domain-specific language des
 rq get("https://rqlang.com");
 ```
 
-This extension adds syntax highlighting, a built-in language server, IntelliSense, and a Request Explorer for `.rq` files, with full support for auth flows including interactive OAuth.
+This extension adds syntax highlighting, a built-in language server, IntelliSense, and a Request Explorer for `.rq` files, with full support for auth flows including interactive OAuth. It also bundles an MCP server, so Copilot writes `.rq` files checked against rq's own parser and linter as it goes.
 
 ![rq animation](https://raw.githubusercontent.com/rqlang/rq/main/docs/media/rq.gif)
 
@@ -16,6 +16,7 @@ Want the full tour? Check out the [VS Code Extension docs](https://www.rqlang.co
 
 - [Getting Started](https://www.rqlang.com/docs/GETTING_STARTED.html) — new here? Start here.
 - [Advanced Example](https://www.rqlang.com/docs/ADVANCED_EXAMPLE.html) — grow a single request into a real API suite.
+- [AI-Assisted Authoring](https://www.rqlang.com/docs/AI_ASSISTED_AUTHORING.html) — build that suite by asking Copilot, ending with one generated from an OpenAPI spec.
 - [Language Definition](https://www.rqlang.com/docs/LANGUAGE_DEFINITION.html) — everything rq can do.
 - [Installation Guide](https://www.rqlang.com/docs/INSTALLATION.html) — get up and running.
 
@@ -24,7 +25,7 @@ Want the full tour? Check out the [VS Code Extension docs](https://www.rqlang.co
 - Syntax highlighting for rq keywords, HTTP methods, attributes and interpolations.
 - **Language server** — real-time diagnostics as you type: parse errors, semantic errors, and missing variables are surfaced in the Problems panel without running a request.
 - **Idiom linting** — style and idiom rules run alongside the parser and appear as warnings in the Problems panel, each tagged with its rule and a suggested fix. Turn it off with `rq.lint.enabled`.
-- **AI assistance (MCP server)** — a bundled Model Context Protocol server that lets Copilot Chat and other MCP-aware chats validate, lint, and explore `.rq` files. Registered automatically; nothing to install.
+- **AI assistance (MCP server)** — a bundled Model Context Protocol server that teaches Copilot Chat and other MCP-aware chats to write rqlang: it serves them the grammar and the style rules, then validates and lints every draft against the real parser before it reaches your workspace. Registered automatically; nothing to install. See [AI-Assisted Authoring](https://www.rqlang.com/docs/AI_ASSISTED_AUTHORING.html).
 - **IntelliSense** — autocomplete for variables, request names, environments, auth providers, object parameters, auth properties, attributes, and imports.
 - **Hover tooltips** — inline summaries for `rq`, `ep`, `env`, and `auth` statements.
 - **Navigation** — go to definition, find all references, and rename symbol across the workspace.

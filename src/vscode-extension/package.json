@@ -16,7 +16,8 @@
   "categories": [
     "Programming Languages",
     "Snippets",
-    "Other"
+    "Linters",
+    "AI"
   ],
   "keywords": [
     "rq",
@@ -26,7 +27,10 @@
     "request",
     "OAuth2",
     "language",
-    "API client"
+    "API client",
+    "MCP",
+    "Copilot",
+    "AI"
   ],
   "main": "./out/extension.js",
   "activationEvents": [],

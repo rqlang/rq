@@ -2,11 +2,32 @@
 
 ## [0.7.0]
 
+### Bug Fixes
+
+- Fixed the extension failing with a directory-not-found error in a workspace that contains no `.rq` files yet — listing requests, endpoints, environments, variables and auth configs now returns empty instead of erroring.
+- Fixed autocomplete stopping inside an `ep` parameter list — no suggestions after the first argument of a templated endpoint (`ep users<base>("/users", …)`). Argument positions are now detected with string- and comment-aware scanning, so completions are offered where an argument can actually go and nowhere else.
+- Fixed parameter autocomplete offering a parameter whose slot a positional argument had already claimed — accepting the suggestion produced a `Duplicate parameter` error. Completion now applies the same first-unclaimed-slot rule as the parser.
+- Fixed go-to-definition, find-all-references, rename and hover matching symbols by name across every `.rq` file in the workspace, which could jump to an unrelated file the current one never imports. They now resolve through the file's import graph.
+- Fixed autocomplete returning nothing — no variables, endpoints or auth configs — in a nested file whose `import` pointed outside its own directory.
+- Fixed hover showing no tooltip for a variable declared in an imported file unless an environment was selected.
+- Fixed `.env` secrets going missing while editing a file with unsaved changes.
+- Fixed unresolved-variable errors inherited from an endpoint being reported on the request line instead of the endpoint that declares them. A variable used in an `ep` attribute is now reported on the attribute, and sibling requests that resolve cleanly are no longer blamed.
+- Fixed `[auth("...")]` autocomplete suggesting auth provider types (`auth_type.*`) and top-level keywords alongside the auth blocks actually declared. It now lists only the providers reachable from the file and its imports, shows each one's auth type, and works unquoted and across lines.
+- Fixed a parse error in an imported file being reported once per importing file instead of once, on the file that contains it.
+- Fixed named and positional parameters not being mixable in `rq` and `ep` declarations (`ep users<base>(url: "/users", $["X-U": "1"], "v=1")` now parses). A parameter given twice — repeated by name, or positionally and by name — is reported as `Duplicate parameter`.
+- Fixed the hover tooltip for a local variable rendering a duplicate semicolon.
+- Fixed the `json_body_as_string` lint rule firing on a URL built out of `{{...}}` interpolations, and reporting it on the importing file instead of the file that declares the variable.
+- Fixed bare numeric values in the documented `let` examples (`let user_id = 1;`), which the parser rejects — the language reference and the advanced walkthrough now quote them.
+
 ### Enhancements
 
-- **Idiom linting in the editor.** rq's style and idiom rules now run alongside the parser and appear in the Problems panel as warnings, tagged with the rule that produced them (`rq lint` source) and, where the fix is mechanical, a suggested rewrite. Rules are workspace-aware, so an endpoint duplicating a query string or auth provider declared in another `.rq` file is flagged even when that file is not open. Unsaved edits are linted as you type. Disable with the new `rq.lint.enabled` setting.
+- **Idiom linting in the editor.** rq's style and idiom rules now run alongside the parser and appear in the Problems panel as warnings, tagged with the rule that produced them (`rq lint` source) and, where the fix is mechanical, a suggested rewrite. Rules are workspace-aware, so an endpoint duplicating a query string or auth provider declared in another `.rq` file is flagged even when that file is not open. Unsaved edits are linted as you type. Disable with the new `rq.lint.enabled` setting; toggling it revalidates the open files right away.
 - **AI assistance via a bundled MCP server.** The extension now ships a Model Context Protocol server and registers it automatically, so Copilot Chat and other MCP-aware chats in VS Code can validate `.rq` source, run the idiom linter, and enumerate existing requests. It also publishes the language definition and idioms guide as resources and a `generate_rq` prompt that drives the full generate → validate → lint loop. The server runs on the editor's own Node.js and reuses the extension's WebAssembly build of rq — no native binary and no platform-specific download.
-- New lint rules: `manual_auth_header` (a hand-written `Authorization: Bearer …` header that should be an `auth` provider), `hardcoded_secret` (a credential literal that belongs in `.env`), `duplicated_request_qs` and `query_param_as_header` (a query string repeated across sibling requests, or passed in the header position where rq silently sends it as a header), `duplicated_ep_config` (a `qs` or `[auth(...)]` duplicated across endpoints extending the same template, or re-declared on a child that already inherits it), and `redundant_content_type_on_json_body` (a hand-written `Content-Type: application/json` next to a JSON body, which rq already derives on its own).
+- Seventeen lint rules ship in this release, covering file and endpoint structure (`top_level_rq_should_be_ep`, `multiple_endpoints_per_file`, `duplicated_ep_base`, `duplicated_ep_config`, `base_ep_extension`, `duplicated_noun_in_ep`), requests and bodies (`empty_url_string`, `missing_body_on_write`, `json_body_as_string`, `redundant_content_type_on_json_body`, `duplicated_request_qs`, `query_param_as_header`), credentials (`manual_auth_header`, `hardcoded_secret`), and variables and imports (`single_brace_interpolation`, `let_default_instead_of_required`, `absolute_import_path`). Each rule and what it asks for is listed in the MCP Server guide.
+- An `[auth("name")]` referencing an auth block that is not declared in the file or its imports is now reported as an error. Previously the reference was ignored and the request was sent with no auth at all; it now fails with `Auth configuration 'name' not found`.
+- Reworked the code snippets so every one of them inserts parseable, idiomatic rq. The CRUD endpoint snippet covers `put` as well, marks each path identifier `[required(...)]` and no longer declares a `let` standing in for a runtime input; the `auth` snippets reference variables for credentials instead of inline empty strings; `rq`, `ep` and `env` come with placeholder URLs.
+- Added two documentation pages, linked from the extension README: **AI-Assisted Authoring**, a walkthrough that grows a request suite through eight prompts and ends with one generated from an OpenAPI spec, and **MCP Server**, which documents the tools, their parameters, the style rules, and the limits of what the checks guarantee.
+- The marketplace listing now says the extension does AI-assisted authoring and idiom linting: added the AI and Linters categories, plus MCP, Copilot and AI keywords.
 
 ### Performance
 

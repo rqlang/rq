@@ -22,4 +22,5 @@ exclude:
   - Makefile
   - README.md
   - docs/LOCAL_DEVELOPMENT.md
+  - docs/RQLANG_IDIOMS.md
   - CLAUDE.md

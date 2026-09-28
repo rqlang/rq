@@ -37,6 +37,7 @@ The viewer shows you the status, response time, headers, and body — JSON gets 
 ## Where to next
 
 - **[Advanced Example](ADVANCED_EXAMPLE.md)** — ready for more? Build a single request up into a real API suite, step by step.
+- **[AI-Assisted Authoring](AI_ASSISTED_AUTHORING.md)** — let Copilot write the `.rq` files for you, checked against rq's parser and linter.
 - **[Language Definition](LANGUAGE_DEFINITION.md)** — headers, bodies, variables, auth, and everything else the `.rq` syntax can do.
 - **[VS Code Extension](VSCODE_EXTENSION.md)** — environments, the request explorer, and other editor features.
 - **[CLI](CLI.md)** — prefer the terminal? Run the same file from the command line.

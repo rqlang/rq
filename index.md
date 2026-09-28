@@ -43,6 +43,14 @@ See [getting started](docs/GETTING_STARTED.md) for a guided introduction to rq a
 
 See [advanced example](docs/ADVANCED_EXAMPLE.md) for a step-by-step walkthrough that grows a single request into a real API suite using rq's more advanced features.
 
+## AI-Assisted Authoring
+
+See [AI-assisted authoring](docs/AI_ASSISTED_AUTHORING.md) for a ten-minute tutorial on building a request suite by asking Copilot — ending with one generated from an OpenAPI spec.
+
+## MCP Server
+
+See [MCP server](docs/MCP_SERVER.md) for the tools the bundled server exposes to AI assistants, the style rules it enforces, and what its checks do and don't guarantee.
+
 ## Installation
 
 See [installation](docs/INSTALLATION.md) for installation instructions.

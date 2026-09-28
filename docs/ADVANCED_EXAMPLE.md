@@ -609,4 +609,6 @@ That's the tour. You started with a one-line request and grew it into a full API
 
 For the complete reference on any of these, see the [Language Definition](LANGUAGE_DEFINITION.md).
 
+You can also build a suite like this one without writing it yourself: [AI-Assisted Authoring](AI_ASSISTED_AUTHORING.md) walks through the same ground prompt by prompt, with rq validating and linting every draft the assistant produces.
+
 {% endraw %}

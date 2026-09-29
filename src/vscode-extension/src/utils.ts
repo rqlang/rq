@@ -135,3 +135,5 @@ export async function buildSecretsMap(source: string): Promise<string> {
     }
     return JSON.stringify({ env_file: envFile, os_vars: osVars });
 }
+
+export const CANCELLED_MESSAGE = 'Cancelled by user';

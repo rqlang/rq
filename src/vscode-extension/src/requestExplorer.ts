@@ -47,6 +47,11 @@ export class RequestExplorerProvider implements vscode.TreeDataProvider<RequestT
         applyTreeItemLoading(item, loading, this.originalIcons, (i) => this._onDidChangeTreeData.fire(i as RequestTreeItem));
     }
 
+    setItemRunning(item: RequestTreeItem, running: boolean): void {
+        item.contextValue = running ? 'request-running' : 'request';
+        this.setItemLoading(item, running);
+    }
+
     getSelectedEnvironment(): string | undefined {
         return this.selectedEnvironment;
     }

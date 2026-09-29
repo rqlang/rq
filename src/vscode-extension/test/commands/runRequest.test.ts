@@ -17,6 +17,7 @@ jest.mock('../../src/requestExplorer', () => {
             getTreeItem: jest.fn(),
             getChildren: jest.fn(),
             setItemLoading: jest.fn(),
+            setItemRunning: jest.fn(),
             setTreeLoading: jest.fn()
         }))
     };
@@ -55,9 +56,10 @@ describe('runRequest Commands', () => {
 
         // Mock Webview Panel
         mockWebviewPanel = {
-            webview: { 
+            webview: {
                 html: '',
-                onDidReceiveMessage: jest.fn()
+                onDidReceiveMessage: jest.fn(),
+                postMessage: jest.fn()
             },
             reveal: jest.fn(),
             onDidDispose: jest.fn(),
@@ -67,7 +69,10 @@ describe('runRequest Commands', () => {
 
         // Mock withProgress to execute callback immediately
         (vscode.window.withProgress as jest.Mock).mockImplementation(async (options, callback) => {
-            return callback();
+            return callback(
+                { report: jest.fn() },
+                { isCancellationRequested: false, onCancellationRequested: jest.fn().mockReturnValue({ dispose: jest.fn() }) }
+            );
         });
 
         // Instantiate RequestRunner
@@ -134,9 +139,9 @@ describe('runRequest Commands', () => {
             }));
             expect(vscode.window.createWebviewPanel).toHaveBeenCalled();
             expect(mockWebviewPanel.webview.html).toBe('<html></html>');
-            expect(provider.setItemLoading).toHaveBeenCalledTimes(2);
-            expect(provider.setItemLoading).toHaveBeenNthCalledWith(1, item, true);
-            expect(provider.setItemLoading).toHaveBeenNthCalledWith(2, item, false);
+            expect(provider.setItemRunning).toHaveBeenCalledTimes(2);
+            expect(provider.setItemRunning).toHaveBeenNthCalledWith(1, item, true);
+            expect(provider.setItemRunning).toHaveBeenNthCalledWith(2, item, false);
         });
 
         test('handles OAuth2 auth', async () => {
@@ -158,9 +163,9 @@ describe('runRequest Commands', () => {
             expect(cliService.executeRequest).toHaveBeenCalledWith(expect.objectContaining({
                 variables: { auth_token: 'mock-token' }
             }));
-            expect(provider.setItemLoading).toHaveBeenCalledTimes(2);
-            expect(provider.setItemLoading).toHaveBeenNthCalledWith(1, item, true);
-            expect(provider.setItemLoading).toHaveBeenNthCalledWith(2, item, false);
+            expect(provider.setItemRunning).toHaveBeenCalledTimes(2);
+            expect(provider.setItemRunning).toHaveBeenNthCalledWith(1, item, true);
+            expect(provider.setItemRunning).toHaveBeenNthCalledWith(2, item, false);
         });
 
         test('handles OAuth2 auth with required variables', async () => {
@@ -202,9 +207,9 @@ describe('runRequest Commands', () => {
                 expect.anything()
             );
             expect(mockWebviewPanel.webview.html).toBe('<html>error</html>');
-            expect(provider.setItemLoading).toHaveBeenCalledTimes(2);
-            expect(provider.setItemLoading).toHaveBeenNthCalledWith(1, item, true);
-            expect(provider.setItemLoading).toHaveBeenNthCalledWith(2, item, false);
+            expect(provider.setItemRunning).toHaveBeenCalledTimes(2);
+            expect(provider.setItemRunning).toHaveBeenNthCalledWith(1, item, true);
+            expect(provider.setItemRunning).toHaveBeenNthCalledWith(2, item, false);
         });
 
         test('filters cargo output from error message', async () => {
@@ -234,9 +239,9 @@ describe('runRequest Commands', () => {
                 expect.anything()
             );
             expect(mockWebviewPanel.webview.html).toBe('<html>error</html>');
-            expect(provider.setItemLoading).toHaveBeenCalledTimes(2);
-            expect(provider.setItemLoading).toHaveBeenNthCalledWith(1, item, true);
-            expect(provider.setItemLoading).toHaveBeenNthCalledWith(2, item, false);
+            expect(provider.setItemRunning).toHaveBeenCalledTimes(2);
+            expect(provider.setItemRunning).toHaveBeenNthCalledWith(1, item, true);
+            expect(provider.setItemRunning).toHaveBeenNthCalledWith(2, item, false);
         });
     });
 
@@ -311,9 +316,9 @@ describe('runRequest Commands', () => {
             expect(cliService.executeRequest).toHaveBeenCalledWith(expect.objectContaining({
                 variables: { var1: 'val1', var2: 'val2' }
             }));
-            expect(provider.setItemLoading).toHaveBeenCalledTimes(2);
-            expect(provider.setItemLoading).toHaveBeenNthCalledWith(1, item, true);
-            expect(provider.setItemLoading).toHaveBeenNthCalledWith(2, item, false);
+            expect(provider.setItemRunning).toHaveBeenCalledTimes(2);
+            expect(provider.setItemRunning).toHaveBeenNthCalledWith(1, item, true);
+            expect(provider.setItemRunning).toHaveBeenNthCalledWith(2, item, false);
         });
 
         test('cancels if input cancelled', async () => {
@@ -326,9 +331,9 @@ describe('runRequest Commands', () => {
             await requestRunner.runRequestWithVariables(item, provider);
 
             expect(cliService.executeRequest).not.toHaveBeenCalled();
-            expect(provider.setItemLoading).toHaveBeenCalledTimes(2);
-            expect(provider.setItemLoading).toHaveBeenNthCalledWith(1, item, true);
-            expect(provider.setItemLoading).toHaveBeenNthCalledWith(2, item, false);
+            expect(provider.setItemRunning).toHaveBeenCalledTimes(2);
+            expect(provider.setItemRunning).toHaveBeenNthCalledWith(1, item, true);
+            expect(provider.setItemRunning).toHaveBeenNthCalledWith(2, item, false);
         });
 
         test('prompts for required variables not yet supplied', async () => {
@@ -369,9 +374,82 @@ describe('runRequest Commands', () => {
                 'CLI crashed',
                 expect.anything()
             );
-            expect(provider.setItemLoading).toHaveBeenCalledTimes(2);
-            expect(provider.setItemLoading).toHaveBeenNthCalledWith(1, item, true);
-            expect(provider.setItemLoading).toHaveBeenNthCalledWith(2, item, false);
+            expect(provider.setItemRunning).toHaveBeenCalledTimes(2);
+            expect(provider.setItemRunning).toHaveBeenNthCalledWith(1, item, true);
+            expect(provider.setItemRunning).toHaveBeenNthCalledWith(2, item, false);
+        });
+    });
+    describe('cancellation', () => {
+        function makeItem(name: string) {
+            return new RequestTreeItem(name, { name, endpoint: 'GET /', file: 'test.rq' }, 0);
+        }
+
+        test('passes a cancellation token to executeRequest', async () => {
+            (cliService.showRequest as jest.Mock).mockResolvedValue({ name: 'test-req', requiredVariables: [] });
+
+            await requestRunner.runRequest(makeItem('test-req'), provider);
+
+            expect(cliService.executeRequest).toHaveBeenCalledWith(expect.objectContaining({
+                cancellation: expect.objectContaining({ isCancellationRequested: false })
+            }));
+        });
+
+        test('sets and clears the running context key', async () => {
+            (cliService.showRequest as jest.Mock).mockResolvedValue({ name: 'test-req', requiredVariables: [] });
+
+            await requestRunner.runRequest(makeItem('test-req'), provider);
+
+            expect(vscode.commands.executeCommand).toHaveBeenCalledWith('setContext', 'rq.requestRunning', true);
+            expect(vscode.commands.executeCommand).toHaveBeenCalledWith('setContext', 'rq.requestRunning', false);
+        });
+
+        test('refuses to start a second request while one is running', async () => {
+            (cliService.showRequest as jest.Mock).mockResolvedValue({ name: 'test-req', requiredVariables: [] });
+            (cliService.executeRequest as jest.Mock).mockImplementation(() => new Promise(() => {}));
+
+            const first = requestRunner.runRequest(makeItem('test-req'), provider);
+            await new Promise(resolve => setImmediate(resolve));
+            await requestRunner.runRequest(makeItem('other-req'), provider);
+
+            expect(cliService.executeRequest).toHaveBeenCalledTimes(1);
+            expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+                expect.stringContaining('already running')
+            );
+            expect(requestRunner.isExecuting()).toBe(true);
+            void first;
+        });
+
+        test('cancelActiveExecution marks the token passed to executeRequest', async () => {
+            (cliService.showRequest as jest.Mock).mockResolvedValue({ name: 'test-req', requiredVariables: [] });
+            (cliService.executeRequest as jest.Mock).mockImplementation(() => new Promise(() => {}));
+
+            const pending = requestRunner.runRequest(makeItem('test-req'), provider);
+            await new Promise(resolve => setImmediate(resolve));
+            requestRunner.cancelActiveExecution();
+
+            const { cancellation } = (cliService.executeRequest as jest.Mock).mock.calls[0][0];
+            expect(cancellation.isCancellationRequested).toBe(true);
+            void pending;
+        });
+
+        test('does not open an error panel when the run is cancelled', async () => {
+            (cliService.showRequest as jest.Mock).mockResolvedValue({ name: 'test-req', requiredVariables: [] });
+            (cliService.executeRequest as jest.Mock).mockRejectedValue(new Error('Cancelled by user'));
+
+            await requestRunner.runRequest(makeItem('test-req'), provider);
+
+            expect(webviewGenerator.getErrorWebviewContent).not.toHaveBeenCalled();
+            expect(requestRunner.isExecuting()).toBe(false);
+        });
+
+        test('clears the running state on the tree item after cancelling', async () => {
+            const item = makeItem('test-req');
+            (cliService.showRequest as jest.Mock).mockResolvedValue({ name: 'test-req', requiredVariables: [] });
+            (cliService.executeRequest as jest.Mock).mockRejectedValue(new Error('Cancelled by user'));
+
+            await requestRunner.runRequest(item, provider);
+
+            expect(provider.setItemRunning).toHaveBeenNthCalledWith(2, item, false);
         });
     });
 });

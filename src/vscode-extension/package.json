@@ -113,13 +113,22 @@
         "command": "rq.runRequest",
         "title": "Run Request",
         "category": "RQ",
-        "icon": "$(play)"
+        "icon": "$(play)",
+        "enablement": "!rq.requestRunning"
       },
       {
         "command": "rq.runRequestWithVariables",
         "title": "Run Request with Variables",
         "category": "RQ",
-        "icon": "$(run-with-deps)"
+        "icon": "$(run-with-deps)",
+        "enablement": "!rq.requestRunning"
+      },
+      {
+        "command": "rq.cancelRequest",
+        "title": "Cancel Running Request",
+        "category": "RQ",
+        "icon": "$(stop-circle)",
+        "enablement": "rq.requestRunning"
       }
     ],
     "configuration": {
@@ -200,6 +209,11 @@
       ],
       "view/item/context": [
         {
+          "command": "rq.cancelRequest",
+          "when": "view == rqRequestExplorer && viewItem == request-running",
+          "group": "inline@1"
+        },
+        {
           "command": "rq.runRequest",
           "when": "view == rqRequestExplorer && viewItem == request",
           "group": "inline@1"
@@ -213,6 +227,12 @@
           "command": "rq.openRequestFile",
           "when": "view == rqRequestExplorer && viewItem == request",
           "group": "navigation"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "rq.cancelRequest",
+          "when": "rq.requestRunning"
         }
       ]
     }

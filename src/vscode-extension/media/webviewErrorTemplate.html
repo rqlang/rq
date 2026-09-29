@@ -151,7 +151,7 @@
     <div class="header">
         <div style="display: flex; justify-content: space-between; align-items: center;">
             <div class="request-name">{{REQUEST_NAME}}</div>
-            <button class="run-again-btn" onclick="runAgain()" title="Run this request again">
+            <button class="run-again-btn" id="action-btn" onclick="onActionClick()" title="Run this request again">
                 <span>&#x21bb;</span> Run Again
             </button>
         </div>
@@ -168,9 +168,25 @@
     <script>
         const vscode = acquireVsCodeApi();
 
-        function runAgain() {
-            vscode.postMessage({ command: 'runAgain' });
+        let isRunning = false;
+
+        function onActionClick() {
+            vscode.postMessage({ command: isRunning ? 'cancel' : 'runAgain' });
         }
+
+        function setRunning(running) {
+            isRunning = running;
+            const button = document.getElementById('action-btn');
+            if (!button) { return; }
+            button.innerHTML = running ? '<span>&#x25a0;</span> Cancel' : '<span>&#x21bb;</span> Run Again';
+            button.title = running ? 'Cancel the running request' : 'Run this request again';
+        }
+
+        window.addEventListener('message', event => {
+            if (event.data && event.data.command === 'executionState') {
+                setRunning(event.data.running);
+            }
+        });
 
         function toggleSection(element) {
             element.classList.toggle('collapsed');

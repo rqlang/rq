@@ -5,7 +5,7 @@ import * as http from 'http';
 import * as https from 'https';
 import * as crypto from 'crypto';
 import * as forge from 'node-forge';
-import { normalizePath, buildFilesMap, buildSecretsMap, DraftFile } from './utils';
+import { normalizePath, buildFilesMap, buildSecretsMap, DraftFile, CANCELLED_MESSAGE } from './utils';
 import { wasmCall } from './wasmHost';
 
 // ---------------------------------------------------------------------------
@@ -104,11 +104,17 @@ export interface LocationOutput {
     character: number;
 }
 
+export interface CancellationSignal {
+    readonly isCancellationRequested: boolean;
+    onCancellationRequested(listener: () => void): { dispose(): void };
+}
+
 export interface ExecuteRequestOptions {
     requestName: string;
     sourceDirectory?: string;
     environment?: string;
     variables?: Record<string, string>;
+    cancellation?: CancellationSignal;
 }
 
 export interface RequestExecutionResult {
@@ -361,6 +367,7 @@ export async function checkFolder(folderPath: string, envName?: string): Promise
 }
 
 export async function executeRequest(options: ExecuteRequestOptions): Promise<ExecuteRequestResult> {
+    throwIfCancelled(options.cancellation);
     const source = resolveSource(options.sourceDirectory);
     const [filesJson, secretsJson] = await Promise.all([buildFilesMap(source), buildSecretsMap(source)]);
 
@@ -372,6 +379,7 @@ export async function executeRequest(options: ExecuteRequestOptions): Promise<Ex
         options.requestName, options.environment, true, false,
         variablesList ? JSON.stringify(variablesList) : undefined,
     ]);
+    throwIfCancelled(options.cancellation);
     const raw = JSON.parse(detailsRaw) as RequestShowRaw;
 
     const url = raw.URL;
@@ -420,8 +428,10 @@ export async function executeRequest(options: ExecuteRequestOptions): Promise<Ex
         }
     }
 
+    throwIfCancelled(options.cancellation);
+
     const startTime = Date.now();
-    const response = await nodeHttpRequest(url, method, headers, body, timeoutMs);
+    const response = await nodeHttpRequest(url, method, headers, body, timeoutMs, options.cancellation);
     const elapsed = Date.now() - startTime;
 
     return {
@@ -445,8 +455,18 @@ interface NodeHttpResponse {
     body: string;
 }
 
-function nodeHttpRequest(url: string, method: string, reqHeaders: Record<string, string>, body?: string, timeoutMs?: number): Promise<NodeHttpResponse> {
+function throwIfCancelled(cancellation?: CancellationSignal): void {
+    if (cancellation?.isCancellationRequested) {
+        throw new Error(CANCELLED_MESSAGE);
+    }
+}
+
+function nodeHttpRequest(url: string, method: string, reqHeaders: Record<string, string>, body?: string, timeoutMs?: number, cancellation?: CancellationSignal): Promise<NodeHttpResponse> {
     return new Promise((resolve, reject) => {
+        if (cancellation?.isCancellationRequested) {
+            reject(new Error(CANCELLED_MESSAGE));
+            return;
+        }
         const parsed = new URL(url);
         const isHttps = parsed.protocol === 'https:';
         const mod = isHttps ? https : http;
@@ -457,9 +477,19 @@ function nodeHttpRequest(url: string, method: string, reqHeaders: Record<string,
         }
 
         let timer: ReturnType<typeof setTimeout> | undefined;
-        const cleanup = () => { if (timer !== undefined) { clearTimeout(timer); timer = undefined; } };
+        let cancellationSubscription: { dispose(): void } | undefined;
+        const cleanup = () => {
+            if (timer !== undefined) { clearTimeout(timer); timer = undefined; }
+            cancellationSubscription?.dispose();
+            cancellationSubscription = undefined;
+        };
 
-        const req = mod.request({
+        let req: http.ClientRequest | undefined;
+        cancellationSubscription = cancellation?.onCancellationRequested(() => {
+            req?.destroy(new Error(CANCELLED_MESSAGE));
+        });
+
+        req = mod.request({
             hostname: parsed.hostname,
             port: parsed.port || (isHttps ? 443 : 80),
             path: parsed.pathname + parsed.search,
@@ -488,7 +518,7 @@ function nodeHttpRequest(url: string, method: string, reqHeaders: Record<string,
         req.on('error', (err) => { cleanup(); reject(err); });
         if (timeoutMs !== undefined) {
             timer = setTimeout(() => {
-                req.destroy(new Error(`Request timed out after ${timeoutMs}ms`));
+                req?.destroy(new Error(`Request timed out after ${timeoutMs}ms`));
             }, timeoutMs);
         }
         if (body) { req.write(body, 'utf8'); }

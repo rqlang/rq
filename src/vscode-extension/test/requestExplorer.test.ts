@@ -152,6 +152,26 @@ describe('RequestExplorerProvider', () => {
         expect(item.iconPath).toEqual(originalIcon);
     });
 
+    test('setItemRunning(true) switches the context value to request-running', () => {
+        const item = new RequestTreeItem('req', { name: 'req', endpoint: null, file: '/root/req.rq' }, vscode.TreeItemCollapsibleState.None);
+
+        target.setItemRunning(item, true);
+
+        expect(item.contextValue).toBe('request-running');
+        expect(item.iconPath).toEqual(new vscode.ThemeIcon('sync~spin'));
+    });
+
+    test('setItemRunning(false) restores the request context value and icon', () => {
+        const item = new RequestTreeItem('req', { name: 'req', endpoint: null, file: '/root/req.rq' }, vscode.TreeItemCollapsibleState.None);
+        const originalIcon = item.iconPath;
+
+        target.setItemRunning(item, true);
+        target.setItemRunning(item, false);
+
+        expect(item.contextValue).toBe('request');
+        expect(item.iconPath).toEqual(originalIcon);
+    });
+
     test('setItemLoading fires onDidChangeTreeData for the item', () => {
         const item = new RequestTreeItem('req', { name: 'req', endpoint: null, file: '/root/req.rq' }, vscode.TreeItemCollapsibleState.None);
         const eventSpy = jest.fn();

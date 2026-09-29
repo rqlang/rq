@@ -56,6 +56,67 @@ beforeEach(() => {
 });
 
 describe('executeRequest', () => {
+    describe('cancellation', () => {
+        test('rejects without sending when cancellation was already requested', async () => {
+            mockGetRequestDetails.mockReturnValue(JSON.stringify(BASE_DETAILS));
+            makeHttpsMock();
+
+            await expect(executeRequest({
+                requestName: 'test-req',
+                sourceDirectory: '/tmp/project',
+                cancellation: { isCancellationRequested: true, onCancellationRequested: () => ({ dispose: () => {} }) },
+            })).rejects.toThrow('Cancelled by user');
+
+            expect(https.request).not.toHaveBeenCalled();
+        });
+
+        test('destroys the in-flight request when cancellation fires', async () => {
+            mockGetRequestDetails.mockReturnValue(JSON.stringify(BASE_DETAILS));
+
+            const listeners: (() => void)[] = [];
+            const cancellation = {
+                isCancellationRequested: false,
+                onCancellationRequested: (listener: () => void) => {
+                    listeners.push(listener);
+                    return { dispose: () => {} };
+                },
+            };
+
+            const handlers: Record<string, (err: Error) => void> = {};
+            const mockRequest: any = {
+                on: jest.fn().mockImplementation((event: string, cb: (err: Error) => void) => {
+                    handlers[event] = cb;
+                    return mockRequest;
+                }),
+                write: jest.fn().mockReturnThis(),
+                end: jest.fn(),
+                destroy: jest.fn().mockImplementation((err: Error) => handlers['error']?.(err)),
+            };
+            (https.request as jest.Mock).mockImplementation(() => mockRequest);
+
+            const pending = executeRequest({ requestName: 'test-req', sourceDirectory: '/tmp/project', cancellation });
+            await new Promise(resolve => setImmediate(resolve));
+            listeners.forEach(listener => listener());
+
+            await expect(pending).rejects.toThrow('Cancelled by user');
+            expect(mockRequest.destroy).toHaveBeenCalled();
+        });
+
+        test('disposes the cancellation subscription once the response completes', async () => {
+            mockGetRequestDetails.mockReturnValue(JSON.stringify(BASE_DETAILS));
+            makeHttpsMock();
+            const dispose = jest.fn();
+
+            await executeRequest({
+                requestName: 'test-req',
+                sourceDirectory: '/tmp/project',
+                cancellation: { isCancellationRequested: false, onCancellationRequested: () => ({ dispose }) },
+            });
+
+            expect(dispose).toHaveBeenCalled();
+        });
+    });
+
     describe('variable passing', () => {
         test('passes variables as key=value JSON array to get_request_details', async () => {
             mockGetRequestDetails.mockReturnValue(JSON.stringify(BASE_DETAILS));

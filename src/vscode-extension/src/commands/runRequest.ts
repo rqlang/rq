@@ -4,6 +4,9 @@ import { RequestExplorerProvider, RequestTreeItem } from '../requestExplorer';
 import { performOAuth2Flow } from '../auth';
 import { getWebviewContent, getErrorWebviewContent } from '../ui/webviewGenerator';
 import { Logger } from '../logger';
+import { CANCELLED_MESSAGE } from '../utils';
+
+const RUNNING_CONTEXT_KEY = 'rq.requestRunning';
 
 interface RequestExecutionContext {
     requestName: string;
@@ -12,11 +15,20 @@ interface RequestExecutionContext {
     variables: Record<string, string> | undefined;
 }
 
+interface ActiveExecution {
+    requestName: string;
+    cancellationSource: vscode.CancellationTokenSource;
+    treeItem: RequestTreeItem | undefined;
+}
+
 export class RequestRunner {
     private resultsPanel: vscode.WebviewPanel | undefined;
     private lastExecutionContext: RequestExecutionContext | undefined;
     private lastBody: string | undefined;
     private logger!: Logger;
+    private provider: RequestExplorerProvider | undefined;
+    private activeExecution: ActiveExecution | undefined;
+    private lastRequestItem: RequestTreeItem | undefined;
 
     constructor(
         private context: vscode.ExtensionContext,
@@ -24,10 +36,16 @@ export class RequestRunner {
     ) {}
 
     public registerCommands(provider: RequestExplorerProvider) {
+        this.provider = provider;
         this.context.subscriptions.push(
             vscode.commands.registerCommand('rq.runRequest', (item) => this.runRequest(item, provider)),
-            vscode.commands.registerCommand('rq.runRequestWithVariables', (item) => this.runRequestWithVariables(item, provider))
+            vscode.commands.registerCommand('rq.runRequestWithVariables', (item) => this.runRequestWithVariables(item, provider)),
+            vscode.commands.registerCommand('rq.cancelRequest', () => this.cancelActiveExecution())
         );
+    }
+
+    public isExecuting(): boolean {
+        return this.activeExecution !== undefined;
     }
 
     public async runRequest(requestItem: RequestTreeItem, provider: RequestExplorerProvider) {
@@ -35,25 +53,31 @@ export class RequestRunner {
             vscode.window.showErrorMessage('Cannot run: No request information available');
             return;
         }
+        if (!this.ensureNoActiveExecution()) {
+            return;
+        }
 
         this.logger = Logger.init(this.outputChannel);
-        provider.setItemLoading(requestItem, true);
+        this.provider = provider;
+        const requestName = requestItem.request.name;
+        this.beginExecution(requestName, requestItem);
         try {
-            const requestName = requestItem.request.name;
             const sourceDirectory = this.getSourceDirectory();
             const environment = provider.getSelectedEnvironment();
 
             this.logger.log(`Selected environment: ${environment || '(none)'}`);
 
             const variables = await this.handleOAuth2(requestName, sourceDirectory, environment) || {};
+            this.throwIfCancelled();
             await this.collectRequiredVariables(requestName, sourceDirectory, environment, variables);
+            this.throwIfCancelled();
 
             await this.executeRequestLogic(requestName, sourceDirectory, environment, Object.keys(variables).length > 0 ? variables : undefined);
 
         } catch (error) {
             await this.handleError(error);
         } finally {
-            provider.setItemLoading(requestItem, false);
+            this.endExecution();
         }
     }
 
@@ -62,29 +86,89 @@ export class RequestRunner {
             vscode.window.showErrorMessage('Cannot run: No request information available');
             return;
         }
+        if (!this.ensureNoActiveExecution()) {
+            return;
+        }
 
         this.logger = Logger.init(this.outputChannel);
-        provider.setItemLoading(requestItem, true);
+        this.provider = provider;
+        const requestName = requestItem.request.name;
+        this.beginExecution(requestName, requestItem);
         try {
-            const requestName = requestItem.request.name;
             const sourceDirectory = this.getSourceDirectory();
             const environment = provider.getSelectedEnvironment();
 
             const variables = await this.handleOAuth2(requestName, sourceDirectory, environment) || {};
+            this.throwIfCancelled();
             await this.collectUserVariables(variables);
+            this.throwIfCancelled();
             await this.collectRequiredVariables(requestName, sourceDirectory, environment, variables);
+            this.throwIfCancelled();
 
             await this.executeRequestLogic(requestName, sourceDirectory, environment, Object.keys(variables).length > 0 ? variables : undefined);
 
         } catch (error) {
             await this.handleError(error);
         } finally {
-            provider.setItemLoading(requestItem, false);
+            this.endExecution();
         }
+    }
+
+    public cancelActiveExecution() {
+        if (!this.activeExecution) {
+            return;
+        }
+        this.logger?.log(`Cancelling request: ${this.activeExecution.requestName}`);
+        this.activeExecution.cancellationSource.cancel();
     }
 
     private getSourceDirectory(): string | undefined {
         return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    }
+
+    private ensureNoActiveExecution(): boolean {
+        if (!this.activeExecution) {
+            return true;
+        }
+        vscode.window.showWarningMessage(
+            `Request '${this.activeExecution.requestName}' is already running. Cancel it before starting another one.`
+        );
+        return false;
+    }
+
+    private beginExecution(requestName: string, treeItem: RequestTreeItem | undefined) {
+        this.activeExecution = {
+            requestName,
+            cancellationSource: new vscode.CancellationTokenSource(),
+            treeItem
+        };
+        if (treeItem) {
+            this.lastRequestItem = treeItem;
+            this.provider?.setItemRunning(treeItem, true);
+        }
+        vscode.commands.executeCommand('setContext', RUNNING_CONTEXT_KEY, true);
+        this.postExecutionState(true);
+    }
+
+    private endExecution() {
+        const execution = this.activeExecution;
+        this.activeExecution = undefined;
+        if (execution?.treeItem) {
+            this.provider?.setItemRunning(execution.treeItem, false);
+        }
+        execution?.cancellationSource.dispose();
+        vscode.commands.executeCommand('setContext', RUNNING_CONTEXT_KEY, false);
+        this.postExecutionState(false);
+    }
+
+    private throwIfCancelled() {
+        if (this.activeExecution?.cancellationSource.token.isCancellationRequested) {
+            throw new Error(CANCELLED_MESSAGE);
+        }
+    }
+
+    private postExecutionState(running: boolean) {
+        this.resultsPanel?.webview.postMessage({ command: 'executionState', running });
     }
 
     private async handleOAuth2(
@@ -122,7 +206,7 @@ export class RequestRunner {
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
             if (errorMessage.startsWith('Authentication cancelled')) {
-                throw new Error('Cancelled by user');
+                throw new Error(CANCELLED_MESSAGE);
             }
             throw error;
         }
@@ -150,7 +234,7 @@ export class RequestRunner {
             });
 
             if (value === undefined) {
-                throw new Error('Cancelled by user');
+                throw new Error(CANCELLED_MESSAGE);
             }
 
             variables[varName] = value;
@@ -171,7 +255,7 @@ export class RequestRunner {
             });
 
             if (variableInput === undefined) {
-                throw new Error('Cancelled by user');
+                throw new Error(CANCELLED_MESSAGE);
             }
 
             if (!variableInput) {
@@ -207,14 +291,25 @@ export class RequestRunner {
         await vscode.window.withProgress({
             location: vscode.ProgressLocation.Notification,
             title: `Running request: ${requestName}`,
-            cancellable: false
-        }, async () => {
-            const result = await rqClient.executeRequest({ requestName, sourceDirectory, environment, variables });
+            cancellable: true
+        }, async (_progress, token) => {
+            const subscription = token.onCancellationRequested(() => this.cancelActiveExecution());
+            try {
+                const result = await rqClient.executeRequest({
+                    requestName,
+                    sourceDirectory,
+                    environment,
+                    variables,
+                    cancellation: this.activeExecution?.cancellationSource.token
+                });
 
-            if (result.results.length > 0) {
-                await this.handleSuccessfulExecution(requestName, variables, result);
-            } else {
-                await this.handleFailedExecution(requestName, variables, result);
+                if (result.results.length > 0) {
+                    await this.handleSuccessfulExecution(requestName, variables, result);
+                } else {
+                    await this.handleFailedExecution(requestName, variables, result);
+                }
+            } finally {
+                subscription.dispose();
             }
         });
     }
@@ -277,13 +372,11 @@ export class RequestRunner {
         });
 
         this.resultsPanel.webview.onDidReceiveMessage(message => {
-            if (message.command === 'runAgain' && this.lastExecutionContext) {
-                this.executeRequestLogic(
-                    this.lastExecutionContext.requestName,
-                    this.lastExecutionContext.sourceDirectory,
-                    this.lastExecutionContext.environment,
-                    this.lastExecutionContext.variables
-                ).catch(error => this.handleError(error));
+            if (message.command === 'runAgain') {
+                this.runAgain();
+            }
+            if (message.command === 'cancel') {
+                this.cancelActiveExecution();
             }
             if (message.command === 'copyBody' && this.lastBody !== undefined) {
                 vscode.env.clipboard.writeText(this.lastBody);
@@ -316,6 +409,25 @@ export class RequestRunner {
         this.logger.log(`${'='.repeat(80)}\n`);
     }
 
+    private async runAgain() {
+        if (!this.lastExecutionContext) {
+            return;
+        }
+        if (!this.ensureNoActiveExecution()) {
+            return;
+        }
+
+        const { requestName, sourceDirectory, environment, variables } = this.lastExecutionContext;
+        this.beginExecution(requestName, this.lastRequestItem);
+        try {
+            await this.executeRequestLogic(requestName, sourceDirectory, environment, variables);
+        } catch (error) {
+            await this.handleError(error);
+        } finally {
+            this.endExecution();
+        }
+    }
+
     private async handleError(error: unknown) {
         let errorMessage: string;
         const asAggregate = error as { errors?: unknown[] };
@@ -333,7 +445,8 @@ export class RequestRunner {
         } else {
             errorMessage = String(unwrapped) || 'Unknown error';
         }
-        if (errorMessage === 'Cancelled by user') {
+        if (errorMessage === CANCELLED_MESSAGE) {
+            this.logger?.log(`\n${CANCELLED_MESSAGE}\n`);
             return;
         }
         this.logger.log(`\nERROR: ${errorMessage}\n`);

@@ -47,8 +47,30 @@ export const window = {
 
 // Mock commands
 export const commands = {
-    registerCommand: jest.fn()
+    registerCommand: jest.fn(),
+    executeCommand: jest.fn()
 };
+
+export class CancellationTokenSource {
+    private listeners: (() => void)[] = [];
+
+    token = {
+        isCancellationRequested: false,
+        onCancellationRequested: (listener: () => void) => {
+            this.listeners.push(listener);
+            return { dispose: () => {} };
+        }
+    };
+
+    cancel() {
+        this.token.isCancellationRequested = true;
+        this.listeners.forEach(l => l());
+    }
+
+    dispose() {
+        this.listeners = [];
+    }
+}
 
 // Mock languages
 export const languages = {

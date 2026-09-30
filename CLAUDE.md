@@ -263,6 +263,13 @@ Add directly to `request_run.rs` using `Command::new(env!("CARGO_BIN_EXE_rq"))`.
 
 ---
 
+## Git commits
+
+- Subject line only, imperative, sentence case, no trailing period: `Type check endpoint parameters and header values`
+- Short and descriptive: one line saying what changed. Add a body only when a decision needs explaining, never to list the files touched
+- One commit per logical change — split unrelated work instead of bundling it
+- **Never add `Co-Authored-By`, `Generated with`, or any other attribution line** to a commit or a pull request description
+
 ## Working on a Task
 
 1. Identify affected crate(s): `src/rq-lib/` (core logic), `src/cli/` (commands/CLI), `src/vscode-extension/`

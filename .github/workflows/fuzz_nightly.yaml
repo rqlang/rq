@@ -45,7 +45,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             fuzz/target
-          key: ${{ runner.os }}-fuzz-build-${{ matrix.target }}-${{ hashFiles('Cargo.lock', 'fuzz/Cargo.toml') }}
+          key: ${{ runner.os }}-fuzz-build-${{ matrix.target }}-${{ hashFiles('fuzz/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-fuzz-build-${{ matrix.target }}-
 
@@ -72,7 +72,7 @@ jobs:
         run: cargo fuzz list
 
       - name: Fuzz
-        run: cargo fuzz run ${{ matrix.target }} -- -max_total_time=$MAX_TOTAL_TIME -print_final_stats=1
+        run: cargo fuzz run ${{ matrix.target }} -- -max_total_time=$MAX_TOTAL_TIME -timeout=10 -print_final_stats=1
 
       - name: Save the grown corpus
         if: always()
@@ -129,10 +129,12 @@ jobs:
             echo "\`src/rq-lib/tests/syntax_invariants.rs\` so \`cargo test\` covers it from now on."
           } > "$body"
 
-          existing=$(gh issue list --state open --search "in:title Fuzzing: $TARGET" --json number --jq '.[0].number // empty')
+          title="Fuzzing: $TARGET found a crash"
+          existing=$(gh issue list --state open --limit 100 --json number,title \
+            --jq "[.[] | select(.title == \"$title\")] | .[0].number // empty")
           if [ -n "$existing" ]; then
             echo "Commenting on the open issue #$existing instead of opening a duplicate."
             gh issue comment "$existing" --body-file "$body"
           else
-            gh issue create --title "Fuzzing: $TARGET found a crash" --body-file "$body"
+            gh issue create --title "$title" --body-file "$body"
           fi

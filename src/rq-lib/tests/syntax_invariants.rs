@@ -87,8 +87,10 @@ fn every_repository_fixture_holds_the_syntax_invariants() {
     let files = collect_rq_files(&repository_root());
     assert!(files.len() > 200, "the fixture corpus was not found");
     for file in files {
-        let source = std::fs::read_to_string(&file).unwrap_or_default();
-        assert_invariants(&source, &file.display().to_string());
+        let label = file.display().to_string();
+        let source = std::fs::read_to_string(&file)
+            .unwrap_or_else(|error| panic!("the fixture {label} must be readable UTF-8: {error}"));
+        assert_invariants(&source, &label);
     }
 }
 

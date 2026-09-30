@@ -1356,6 +1356,25 @@ impl RqClient {
             .build();
 
         for ep_def in rq_file.endpoints.values() {
+            let ep_context = crate::syntax::variable_context::VariableContext::builder()
+                .file_variables(rq_file.file_variables.clone())
+                .environment_variables(env_vars.clone())
+                .secret_variables(secret_vars.clone())
+                .endpoint_variables(ep_def.variables.clone())
+                .build();
+            let ep_type_errors = crate::syntax::resolve::collect_slot_type_errors(
+                &ep_def.slot_bindings,
+                ep_def.source_path.as_deref(),
+                &ep_context,
+            );
+            let ep_mistyped = crate::syntax::resolve::mistyped_variable_names(
+                &ep_def.slot_bindings,
+                &ep_type_errors,
+            );
+            for e in ep_type_errors {
+                errors.push(RqError::Syntax(e));
+            }
+
             if !ep_def.has_requests {
                 let ep_line_1 = ep_def.line + 1;
                 let ep_col_1 = ep_def.character + 1;
@@ -1368,6 +1387,12 @@ impl RqClient {
                         source_path_arr,
                         &*self.fs,
                     ) {
+                        if ep_mistyped
+                            .iter()
+                            .any(|name| e.message.contains(name.as_str()))
+                        {
+                            return None;
+                        }
                         if e.line == 0 || e.line != ep_line_1 {
                             e.line = ep_line_1;
                             e.column = ep_col_1 + error_index;

@@ -121,7 +121,7 @@ fn parse_endpoint_headers(
         ));
     };
     if tk.token_type != TokenType::Identifier {
-        *headers = parse_headers_array(r)?;
+        *headers = parse_headers_array(r, slot_bindings)?;
         return Ok(());
     }
     record_binding(r, slot_bindings, ParameterSlot::Headers);
@@ -248,12 +248,13 @@ pub(crate) fn parse_endpoint_with_context(
     let mut ep_headers = params.headers;
     let mut ep_headers_var = params.headers_var;
     let mut ep_qs = params.qs;
-    let ep_slot_bindings = params.slot_bindings;
+    let mut ep_slot_bindings = params.slot_bindings;
 
     let mut endpoint_variables = Vec::new();
     let mut related_files = Vec::new();
 
     if let Some(parent) = parent_ep {
+        ep_slot_bindings.extend(parent.slot_bindings.iter().cloned());
         if !parent.url.is_empty() {
             let is_absolute = base_url.to_lowercase().starts_with("http://")
                 || base_url.to_lowercase().starts_with("https://");

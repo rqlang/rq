@@ -1,0 +1,7 @@
+let conf = $["X-Token": "abc"];
+
+ep base(conf);
+
+ep api<base>("http://localhost:8080") {
+    rq list();
+}

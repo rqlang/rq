@@ -193,7 +193,7 @@ fn parse_headers_parameter(
         ));
     };
     if tk.token_type != TokenType::Identifier {
-        *headers = parse_headers_array(r)?;
+        *headers = parse_headers_array(r, slot_bindings)?;
         return Ok(());
     }
     record_binding(r, slot_bindings, ParameterSlot::Headers);

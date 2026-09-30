@@ -1001,7 +1001,7 @@ pub fn collect_variable_errors(
     errors
 }
 
-fn mistyped_variable_names(bindings: &[SlotBinding], errors: &[SyntaxError]) -> Vec<String> {
+pub fn mistyped_variable_names(bindings: &[SlotBinding], errors: &[SyntaxError]) -> Vec<String> {
     if errors.is_empty() {
         return Vec::new();
     }

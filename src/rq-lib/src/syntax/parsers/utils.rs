@@ -253,7 +253,10 @@ pub fn parse_string_value(
     }
 }
 
-pub fn parse_headers_array(r: &mut TokenReader) -> Result<Vec<(String, String)>, SyntaxError> {
+pub fn parse_headers_array(
+    r: &mut TokenReader,
+    slot_bindings: &mut Vec<SlotBinding>,
+) -> Result<Vec<(String, String)>, SyntaxError> {
     expect(
         r,
         |t| t.token_type == TokenType::Punctuation && t.value == PUNC_DOLLAR,
@@ -287,6 +290,7 @@ pub fn parse_headers_array(r: &mut TokenReader) -> Result<Vec<(String, String)>,
                 )?;
                 r.advance();
                 r.skip_ignorable();
+                record_binding(r, slot_bindings, ParameterSlot::HeaderValue);
                 let val = parse_string_value(r, " ", ParameterSlot::HeaderValue)?;
                 headers.push((key, val));
                 r.skip_ignorable();

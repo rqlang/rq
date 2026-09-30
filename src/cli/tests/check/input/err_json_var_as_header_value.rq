@@ -1,0 +1,3 @@
+let payload = ${"name": "alice"};
+
+rq get("http://localhost:8080", $["X-Data": payload]);

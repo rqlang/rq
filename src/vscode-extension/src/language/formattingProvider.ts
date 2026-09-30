@@ -71,27 +71,43 @@ function formatProtectedDocument(text: string, tabSize: number): string {
 
 function joinArrayClosers(lines: string[]): string[] {
     const result: string[] = [];
-    const openersWithParen: boolean[] = [];
+    const openParensEndLine: boolean[] = [];
     let i = 0;
     while (i < lines.length) {
         const trimmed = lines[i].trim();
-        let openerHasParen = true;
-        if (/^[\]}]/.test(trimmed)) {openerHasParen = openersWithParen.pop() ?? true;}
-        else if (/[[{]$/.test(trimmed)) {openersWithParen.push(parenDepthDelta(trimmed) > 0);}
         if (trimmed === ']' || trimmed === '}') {
             let j = i + 1;
             while (j < lines.length && lines[j].trim() === '') {j++;}
-            const closers = openerHasParen ? /^[);]/ : /^;/;
-            if (j < lines.length && closers.test(lines[j].trim())) {
-                result.push(trimmed + lines[j].trim());
+            const next = j < lines.length ? lines[j].trim() : '';
+            const closesLineEndParen = next.startsWith(')') && openParensEndLine[openParensEndLine.length - 1] === true;
+            if (/^[);]/.test(next) && !closesLineEndParen) {
+                result.push(trimmed + next);
+                trackOpenParens(trimmed + next, openParensEndLine);
                 i = j + 1;
                 continue;
             }
         }
+        trackOpenParens(trimmed, openParensEndLine);
         result.push(lines[i]);
         i++;
     }
     return result;
+}
+
+function trackOpenParens(trimmed: string, openParensEndLine: boolean[]): void {
+    let stringChar: string | null = null;
+    for (let i = 0; i < trimmed.length; i++) {
+        const ch = trimmed[i];
+        if (stringChar !== null) {
+            if (ch === '\\') { i++; continue; }
+            if (ch === stringChar) { stringChar = null; }
+            continue;
+        }
+        if (ch === '"' || ch === "'") { stringChar = ch; continue; }
+        if (ch === '(') { openParensEndLine.push(false); }
+        else if (ch === ')') { openParensEndLine.pop(); }
+    }
+    if (trimmed.endsWith('(') && openParensEndLine.length > 0) { openParensEndLine[openParensEndLine.length - 1] = true; }
 }
 
 function splitArrayEntries(lines: string[]): string[] {

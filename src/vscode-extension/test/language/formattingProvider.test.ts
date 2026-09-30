@@ -165,6 +165,11 @@ describe('formatRqDocument', () => {
             expect(fmt('ep ep_name() {\n    rq my("", [\n        "h": ""\n    ],\n    "");\n}')).toBe('ep ep_name() {\n    rq my("", [\n        "h": ""\n    ],\n    "");\n}\n');
         });
 
+        test('joins ] and ); when second array argument opens on its own line', () => {
+            const input = 'rq a(url: "x", headers: $[\n"a": "b"\n], body: $[\n"c": "d"\n]);\nrq b();';
+            expect(fmt(input)).toContain('    "c": "d"\n]);\nrq b();\n');
+        });
+
         test('correctly indents statement after rq call with joined ]) closer', () => {
             const input = 'ep ep_name() {\n    rq my("", [\n        "h": "v"\n    ]\n    );\n    rq other();\n}';
             const expected = 'ep ep_name() {\n    rq my("", [\n        "h": "v"\n    ]);\n    rq other();\n}\n';

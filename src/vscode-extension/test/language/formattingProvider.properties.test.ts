@@ -64,6 +64,47 @@ function contentSignature(text: string): string {
     return parts.join('');
 }
 
+function hasUnterminatedLiteral(text: string): boolean {
+    let i = 0;
+    while (i < text.length) {
+        const ch = text[i];
+        if (ch === '/' && text[i + 1] === '/') {
+            const end = text.indexOf('\n', i);
+            i = end === -1 ? text.length : end;
+            continue;
+        }
+        if (ch === '/' && text[i + 1] === '*') {
+            const end = text.indexOf('*/', i + 2);
+            i = end === -1 ? text.length : end + 2;
+            continue;
+        }
+        if (ch !== '"' && ch !== "'") {
+            i++;
+            continue;
+        }
+        let j = i + 1;
+        let closed = false;
+        while (j < text.length) {
+            if (text[j] === '\\') { j += 2; continue; }
+            if (text[j] === ch) { j++; closed = true; break; }
+            j++;
+        }
+        if (!closed) { return true; }
+        i = j;
+    }
+    return false;
+}
+
+function preservedSignature(text: string, sourceHasUnterminatedLiteral: boolean): string {
+    return sourceHasUnterminatedLiteral ? text.replace(/\s+/g, '') : contentSignature(text);
+}
+
+function expectContentPreserved(input: string): void {
+    const unterminated = hasUnterminatedLiteral(input);
+    const formatted = formatRqDocument(input, 4);
+    expect(preservedSignature(formatted, unterminated)).toBe(preservedSignature(input, unterminated));
+}
+
 function createRandom(seed: number): () => number {
     let state = seed >>> 0;
     return () => {
@@ -92,6 +133,10 @@ const generatorLines = [
     '',
     '   ',
     'rq nested(url: "u", qs: $["k": "v"]);',
+    'let bad = \'oops',
+    'let quote = ";',
+    'let single = \'Line 1\nLine 2\';',
+    'let json = "{\n  \\"k\\": \\"v\\"\n}";',
 ];
 
 function generateDocument(random: () => number): string {
@@ -119,7 +164,7 @@ describe('formatter properties', () => {
 
     describe('content preservation on the fixture corpus', () => {
         test.each(fixtures)('%s', (_name, text) => {
-            expect(contentSignature(formatRqDocument(text, 4))).toBe(contentSignature(text));
+            expectContentPreserved(text);
         });
     });
 
@@ -137,8 +182,25 @@ describe('formatter properties', () => {
         const seeds = Array.from({ length: 500 }, (_, i) => i + 1);
 
         test.each(seeds)('seed %i', seed => {
-            const document = generateDocument(createRandom(seed));
-            expect(contentSignature(formatRqDocument(document, 4))).toBe(contentSignature(document));
+            expectContentPreserved(generateDocument(createRandom(seed)));
+        });
+    });
+
+    describe('hasUnterminatedLiteral', () => {
+        test('accepts a document whose literals all close', () => {
+            expect(hasUnterminatedLiteral('let a = "x";\nlet b = \'y\';')).toBe(false);
+        });
+
+        test('accepts a multiline literal', () => {
+            expect(hasUnterminatedLiteral('let a = "x\ny";')).toBe(false);
+        });
+
+        test('flags a lone quote', () => {
+            expect(hasUnterminatedLiteral('let a = "x;')).toBe(true);
+        });
+
+        test('ignores a quote inside a comment', () => {
+            expect(hasUnterminatedLiteral("// don't\nrq a();")).toBe(false);
         });
     });
 

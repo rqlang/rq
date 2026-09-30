@@ -402,6 +402,11 @@ function isBlockOpener(trimmed: string): boolean {
 }
 
 function fixSpacing(trimmed: string): string {
+    const commentStart = commentStartIndex(trimmed);
+    if (commentStart !== -1) {
+        return fixSpacing(trimmed.slice(0, commentStart)) + trimmed.slice(commentStart);
+    }
+
     let result = trimmed
         .replace(/\b(import|let|rq|ep|auth|env)\s{2,}/g, '$1 ')
         .replace(/^(let\s+\w+)\s*=\s*/, '$1 = ')
@@ -417,6 +422,21 @@ function fixSpacing(trimmed: string): string {
     });
 
     return normalizeCommaSpacing(result);
+}
+
+function commentStartIndex(line: string): number {
+    let stringChar: string | null = null;
+    for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (stringChar !== null) {
+            if (ch === '\\') { i++; continue; }
+            if (ch === stringChar) { stringChar = null; }
+            continue;
+        }
+        if (ch === '"' || ch === "'") { stringChar = ch; continue; }
+        if (ch === '/' && (line[i + 1] === '/' || line[i + 1] === '*')) { return i; }
+    }
+    return -1;
 }
 
 function normalizeCommaSpacing(s: string): string {
@@ -451,6 +471,7 @@ const multilineStringMarker = '\u0000';
 
 function protectMultilineStrings(text: string): { text: string; literals: string[] } {
     const literals: string[] = [];
+    if (text.includes(multilineStringMarker)) { return { text, literals }; }
     let out = '';
     let i = 0;
     while (i < text.length) {
@@ -481,14 +502,19 @@ function protectMultilineStrings(text: string): { text: string; literals: string
             if (text[j] === ch) { j++; closed = true; break; }
             j++;
         }
-        const literal = text.slice(i, closed ? j : text.length);
-        if (closed && literal.includes('\n')) {
+        if (!closed) {
+            out += ch;
+            i++;
+            continue;
+        }
+        const literal = text.slice(i, j);
+        if (literal.includes('\n')) {
             out += `${ch}${multilineStringMarker}${literals.length}${multilineStringMarker}${ch}`;
             literals.push(literal);
         } else {
             out += literal;
         }
-        i = closed ? j : text.length;
+        i = j;
     }
     return { text: out, literals };
 }

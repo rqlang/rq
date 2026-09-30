@@ -287,7 +287,7 @@ Check these whenever a change touches the language, and state which ones you ver
 - **Error positions** — every diagnostic carries the line/column of the offending token, not of the construct or the file start. Multi-byte characters must not shift offsets.
 - **Parser robustness** — empty input, truncated constructs and unterminated strings/blocks produce a diagnostic, never a panic and never an infinite loop.
 - **Formatter idempotence** — `fmt(fmt(x)) == fmt(x)` for every input, valid or not.
-- **Formatter content preservation** — formatting only changes whitespace outside string literals: it never adds, drops or reorders tokens, and never edits the inside of a string literal.
+- **Formatter content preservation** — formatting only changes whitespace outside string literals and comments: it never adds, drops or reorders tokens, and never edits the inside of a literal or of a comment. In a document that leaves a quote unterminated the literal boundaries are undefined, so only the weaker guarantee holds there: no token is added, dropped or reordered.
 - **CLI ↔ extension parity** — a language-level feature is reachable from both surfaces: `rq-wasm/src/bindings.rs` plus the matching `rqClient.ts` method, not only the CLI.
 - **No panics on user input** — no `.unwrap()`, `.expect()`, `panic!`, slicing or indexing on any path reachable from a `.rq` file, a CLI argument or an HTTP response.
 - **Variable precedence** — `variable_context.rs` resolution order stays unchanged unless the change is explicitly about precedence, and then it comes with a test per level.

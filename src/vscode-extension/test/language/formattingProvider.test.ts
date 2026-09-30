@@ -476,6 +476,18 @@ describe('formatRqDocument', () => {
             expect(fmt('// comment\nrq get("url");')).toBe('// comment\nrq get("url");\n');
         });
 
+        test('does not insert spacing inside a line comment', () => {
+            expect(fmt('rq a(url: "u"); // see localhost:8080\n')).toBe('rq a(url: "u");\n// see localhost:8080\n');
+        });
+
+        test('does not insert spacing inside a trailing block comment', () => {
+            expect(fmt('rq a(url: "u"); /* TODO:fix */\n')).toBe('rq a(url: "u");\n/* TODO:fix */\n');
+        });
+
+        test('still fixes spacing in the code before a comment', () => {
+            expect(fmt('let  a  =  "x" ; // TODO:fix\n')).toBe('let a = "x";\n// TODO:fix\n');
+        });
+
         test('indents block comment inside ep', () => {
             expect(fmt('ep api("url") {\n/* comment */\nrq list();\n}')).toBe('ep api("url") {\n    /* comment */\n    rq list();\n}\n');
         });
@@ -500,6 +512,16 @@ describe('formatRqDocument', () => {
         test('still indents the statement holding a multiline string', () => {
             const input = 'ep api(url: "u") {\nrq post(url: "/p", body: "a\nb");\n}';
             expect(fmt(input)).toBe('ep api(url: "u") {\n    rq post(url: "/p", body: "a\nb");\n}\n');
+        });
+
+        test('still protects a literal that follows an unterminated string', () => {
+            const input = 'ep api(url: "u") {\nlet bad = \'oops\nrq b(url: "/b", body: "L1\nL2");\n}';
+            expect(fmt(input)).toContain('body: "L1\nL2"');
+        });
+
+        test('leaves a document containing the placeholder marker alone', () => {
+            const input = 'let a = "\u0000" + "L1\nL2";\n';
+            expect(fmt(fmt(input))).toBe(fmt(input));
         });
 
         test('does not merge the following line into an unterminated string', () => {

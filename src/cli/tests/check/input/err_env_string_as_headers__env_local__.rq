@@ -1,0 +1,5 @@
+env local {
+    conf: "not-a-headers-map",
+}
+
+rq get("http://localhost:8080", conf);

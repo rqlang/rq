@@ -1,0 +1,10 @@
+{
+  "errors": [
+    {
+      "file": "{{*}}",
+      "line": 1,
+      "column": 13,
+      "message": "Array values are not supported. Use '$[\"key\": \"value\"]' for a headers map."
+    }
+  ]
+}

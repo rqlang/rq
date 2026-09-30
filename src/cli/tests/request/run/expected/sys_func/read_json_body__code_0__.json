@@ -1,0 +1,8 @@
+{
+    "request": {
+        "body": {"name": "alice"},
+        "headers": {
+            "content-type": "application/json"
+        }
+    }
+}

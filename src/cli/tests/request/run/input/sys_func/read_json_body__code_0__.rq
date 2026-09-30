@@ -1,0 +1,1 @@
+rq post("http://localhost:8080/api/upload", body: io.read_json("payload.json"));

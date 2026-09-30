@@ -18,8 +18,8 @@ Style preferences (apply unless the user asks otherwise):
 - **Interpolation is always double-braced: `{{name}}`.** A single-braced `{name}` is not interpolation — rqlang sends it as literal text, so `rq get("/{widget_id}")` really requests the path `/{widget_id}` and fails against the API. Nothing about single braces is a syntax error, so the parser will not catch it for you. For a URL path parameter prefer the `[required(name)]` + bare identifier form above; use `{{name}}` elsewhere.
 - **A query string shared by every request in an `ep` goes on the `ep`, not on each `rq`.** `ep` takes a third parameter, `qs`: `ep users<base>("/users", qs: "v=1")` appends `?v=1` to every child, including the ones whose URL is a path parameter (`/users/1?v=1`). Do not write `rq list("?v=1")` on request after request — and note that **`rq` has no `qs` parameter at all**: its positional arguments are `url`, `headers`, `body`. Passing `rq get(user_id, $["v": "1"])` sends the HTTP header `v: 1` and no query string, which parses cleanly and silently hits the wrong URL. A query parameter that genuinely belongs to one request only is the exception — write it into that request's URL string.
 - **Never pass an empty URL string.** Inside an `ep` the endpoint already supplies the URL, so a child request that adds nothing takes no URL argument at all: write `rq list();`, never `rq list("");`.
-- For write actions, include a body. Default pattern: `body: io.read_file("<entity>-<verb>.json")` — a JSON fixture next to the .rq file named after the entity and verb (e.g. `users-post.json`, `users-put.json`, `users-patch.json`) so the user has a clear place to edit the payload. POST, PUT, and PATCH should generally have a body; DELETE typically should not. Omit the body only if the user explicitly says the request needs none.
-- **Do not declare `Content-Type` for a JSON body.** rq derives it: whenever the body it is about to send is JSON — a `${...}` literal, or a `.json` fixture loaded with `io.read_file(...)` — it adds `Content-Type: application/json` for you. Writing `headers: $["Content-Type": "application/json"]` next to such a body repeats a decision the tool already makes. This holds when the body is a `let` variable too — rq looks at what it is about to send, not at how you wrote it. Declare the header only to send something else (`application/merge-patch+json`, a charset parameter, a non-JSON payload); rq never overrides a content type you set yourself.
+- For write actions, include a body. Default pattern: `body: io.read_json("<entity>-<verb>.json")` — a JSON fixture next to the .rq file named after the entity and verb (e.g. `users-post.json`, `users-put.json`, `users-patch.json`) so the user has a clear place to edit the payload. POST, PUT, and PATCH should generally have a body; DELETE typically should not. Omit the body only if the user explicitly says the request needs none.
+- **Do not declare `Content-Type` for a JSON body.** rq derives it from the *type* of the body: a `${...}` literal or a fixture loaded with `io.read_json(...)` is a JSON value, so rq adds `Content-Type: application/json` for you. Writing `headers: $["Content-Type": "application/json"]` next to such a body repeats a decision the tool already makes. This holds when the body is a `let` variable too — rq follows the variable to the type it holds. Note that `io.read_file(...)` returns a **string** whatever the file is called, so a body loaded that way never gets the header; use `io.read_json(...)` for JSON payloads. Declare the header only to send something else (`application/merge-patch+json`, a charset parameter, a non-JSON payload); rq never overrides a content type you set yourself.
 - **JSON body syntax: always use the `${...}` prefix, never a quoted string.** For inline JSON, write `body: ${"name": "alice"}` or `body: ${}` for an empty object. NEVER write `body: "{}"` or `body: "{\"name\": \"alice\"}"` — those send a string body, not JSON, and will break the receiving API. The `${...}` form also auto-adds the `Accept: application/json` header.
 
 ## Examples
@@ -39,13 +39,13 @@ ep users("http://localhost:8080/users") {
     [required(user_id)]
     rq get(user_id);
 
-    rq post(body: io.read_file("users-post.json"));
+    rq post(body: io.read_json("users-post.json"));
 
     [required(user_id)]
-    rq put(user_id, body: io.read_file("users-put.json"));
+    rq put(user_id, body: io.read_json("users-put.json"));
 
     [required(user_id)]
-    rq patch(user_id, body: io.read_file("users-patch.json"));
+    rq patch(user_id, body: io.read_json("users-patch.json"));
 
     [required(user_id)]
     rq delete(user_id);
@@ -103,7 +103,7 @@ ep users<base>("/users", qs: "v=1") {
     [required(user_id)]
     rq get(user_id);
 
-    rq post(body: io.read_file("users-post.json"));
+    rq post(body: io.read_json("users-post.json"));
 
     [required(user_id)]
     rq delete(user_id);

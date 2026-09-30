@@ -57,6 +57,14 @@ fn main() {
             "request_required_variable_satisfied_by_cli",
             test_request_required_variable_satisfied_by_cli,
         ),
+        Trial::test(
+            "request_read_file_body_sends_no_content_type",
+            test_read_file_body_sends_no_content_type,
+        ),
+        Trial::test(
+            "request_read_json_body_sends_json_content_type",
+            test_read_json_body_sends_json_content_type,
+        ),
     ];
 
     // Discover tests from organized directories
@@ -336,6 +344,55 @@ fn test_request_run_invalid_variable_name() -> Result<(), Failed> {
     }
 
     Ok(())
+}
+
+fn sent_request_headers(
+    source: &str,
+) -> Result<serde_json::Map<String, serde_json::Value>, Failed> {
+    let output = rq_cmd()
+        .args(["request", "run", "-s", source, "-o", "json"])
+        .output()
+        .map_err(|e| format!("Failed to execute command: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Request failed: {stderr}").into());
+    }
+
+    let parsed: serde_json::Value = serde_json::from_slice(&output.stdout)
+        .map_err(|e| format!("Failed to parse JSON output: {e}"))?;
+    parsed
+        .get("results")
+        .and_then(|r| r.get(0))
+        .and_then(|r| r.get("request_headers"))
+        .and_then(|h| h.as_object())
+        .cloned()
+        .ok_or_else(|| Failed::from("Output carries no request_headers"))
+}
+
+fn test_read_file_body_sends_no_content_type() -> Result<(), Failed> {
+    let target = sent_request_headers("tests/request/run/input/sys_func/read_file_json_body.rq")?;
+
+    if let Some(content_type) = target.get("content-type") {
+        return Err(format!(
+            "io.read_file() returns a string, so its body must not derive a content type, got {content_type}"
+        )
+        .into());
+    }
+
+    Ok(())
+}
+
+fn test_read_json_body_sends_json_content_type() -> Result<(), Failed> {
+    let target =
+        sent_request_headers("tests/request/run/input/sys_func/read_json_body__code_0__.rq")?;
+
+    match target.get("content-type").and_then(|v| v.as_str()) {
+        Some("application/json") => Ok(()),
+        other => {
+            Err(format!("io.read_json() body must derive application/json, got {other:?}").into())
+        }
+    }
 }
 
 fn test_request_run_ep_dot_notation() -> Result<(), Failed> {

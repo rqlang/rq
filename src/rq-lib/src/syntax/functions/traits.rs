@@ -1,16 +1,10 @@
 use crate::syntax::fs::Fs;
+use crate::syntax::types::ValueType;
 use std::path::PathBuf;
 
 pub struct FunctionContext<'a> {
     pub source_files: &'a [PathBuf],
     pub fs: &'a dyn Fs,
-}
-
-#[derive(Debug, PartialEq)]
-#[allow(dead_code)]
-pub enum FunctionReturnType {
-    String,
-    Headers,
 }
 
 pub trait RqFunction: Send + Sync {
@@ -21,8 +15,8 @@ pub trait RqFunction: Send + Sync {
         format!("{}.{}", self.namespace(), self.name())
     }
 
-    fn return_type(&self) -> FunctionReturnType {
-        FunctionReturnType::String
+    fn return_type(&self) -> ValueType {
+        ValueType::String
     }
 
     fn validate_args(&self, _args: &[String]) -> Result<(), String> {

@@ -6,8 +6,8 @@ use super::{
     parse_trait::Parse,
     request::parse_request_with_context,
     utils::{
-        can_parse_attributed, check_variable_type, is_headers_like, is_string_like,
-        parse_headers_array, parse_string_value, ParameterSlots,
+        can_parse_attributed, claim_parameter_slot, parse_headers_array, parse_string_value,
+        peek_slot_value, record_binding, SlotTracker,
     },
     variable::parse_variable_declaration,
 };
@@ -15,15 +15,14 @@ use crate::syntax::fs::Fs;
 use crate::syntax::{
     error::SyntaxError,
     keywords::{
-        KW_EP, KW_LET, KW_RQ, OP_GT, OP_LT, PUNC_COLON, PUNC_COMMA, PUNC_LBRACE, PUNC_LBRACKET,
-        PUNC_LPAREN, PUNC_RBRACE, PUNC_RPAREN, PUNC_SEMI,
+        KW_EP, KW_LET, KW_RQ, OP_GT, OP_LT, PUNC_COMMA, PUNC_LBRACE, PUNC_LBRACKET, PUNC_LPAREN,
+        PUNC_RBRACE, PUNC_RPAREN, PUNC_SEMI,
     },
     parse_result::{EndpointDefinition, ParseResult},
     reader::{expect, TokenReader},
     token::TokenType,
+    types::{ParameterSlot, SlotBinding, SlotValue},
 };
-
-use crate::syntax::variable_context::Variable;
 
 pub struct EndpointParser;
 impl Parse for EndpointParser {
@@ -36,12 +35,8 @@ impl Parse for EndpointParser {
         result: &mut ParseResult,
         _fs: &dyn Fs,
     ) -> Result<(), SyntaxError> {
-        let (mut ep, ep_def, ep_locs) = parse_endpoint_with_context(
-            r,
-            &result.file_variables,
-            &result.requests,
-            &result.endpoints,
-        )?;
+        let (mut ep, ep_def, ep_locs) =
+            parse_endpoint_with_context(r, &result.requests, &result.endpoints)?;
         for (name, file, line, character) in ep_locs {
             result
                 .required_variable_locations
@@ -54,130 +49,47 @@ impl Parse for EndpointParser {
     }
 }
 
-pub type EndpointConstructorParams = (
-    String,                // url
-    Vec<(String, String)>, // headers
-    Option<String>,        // headers_var
-    Option<String>,        // qs (without leading '?')
-);
+pub struct EndpointConstructorParams {
+    pub url: String,
+    pub headers: Vec<(String, String)>,
+    pub headers_var: Option<String>,
+    pub qs: Option<String>,
+    pub slot_bindings: Vec<SlotBinding>,
+}
 
 pub fn parse_endpoint_constructor_params(
     r: &mut TokenReader,
-    file_vars: &[Variable],
 ) -> Result<EndpointConstructorParams, SyntaxError> {
     let mut url = String::new();
     let mut headers = Vec::new();
     let mut headers_var: Option<String> = None;
     let mut qs: Option<String> = None;
-    let mut slots = ParameterSlots::new(["url", "headers", "qs"]);
+    let mut slot_bindings = Vec::new();
+    let mut slots = SlotTracker::new(["url", "headers", "qs"]);
     loop {
         r.skip_ignorable();
         if let Some(t) = r.cur() {
-            if t.token_type == TokenType::Punctuation {
-                if t.value == PUNC_RPAREN {
-                    break;
-                }
-                if t.value == PUNC_LBRACE {
-                    // If we encounter a brace, we assume the parameter list is over (malformed or not).
-                    // We let the caller handle the missing ')' check.
-                    break;
-                }
+            if t.token_type == TokenType::Punctuation
+                && (t.value == PUNC_RPAREN || t.value == PUNC_LBRACE)
+            {
+                break;
             }
         } else {
             break;
         }
-        let is_named = if let Some(t) = r.cur() {
-            if t.token_type == TokenType::Identifier {
-                let save = r.idx;
-                r.advance();
-                r.skip_ignorable();
-                let has_colon = r
-                    .cur()
-                    .map(|t| t.token_type == TokenType::Punctuation && t.value == PUNC_COLON)
-                    .unwrap_or(false);
-                r.idx = save;
-                has_colon
-            } else {
-                false
-            }
-        } else {
-            false
-        };
-        let slot = if is_named {
-            let name_tok = expect(
-                r,
-                |t| t.token_type == TokenType::Identifier,
-                "Expected identifier",
-            )?;
-            let param_name = name_tok.value.clone();
-            let name_span = name_tok.span.clone();
-            let Some(index) = slots.index_of(&param_name) else {
-                return Err(
-                    r.create_error(format!("Unknown parameter name: {param_name}"), name_span)
-                );
-            };
-            if !slots.claim(index) {
-                return Err(r.create_error(format!("Duplicate parameter: {param_name}"), name_span));
-            }
-            r.advance();
-            r.skip_ignorable();
-            expect(
-                r,
-                |t| t.token_type == TokenType::Punctuation && t.value == PUNC_COLON,
-                format!("Expected '{PUNC_COLON}'"),
-            )?;
-            r.advance();
-            r.skip_ignorable();
-            index
-        } else {
-            let Some(index) = slots.next_free() else {
-                let span = if let Some(t) = r.cur() {
-                    t.span.clone()
-                } else {
-                    r.source.len()..r.source.len()
-                };
-                return Err(r.create_error(
-                    "Too many positional parameters (max 3: url, headers, qs)".into(),
-                    span,
-                ));
-            };
-            slots.claim(index);
-            index
-        };
+        let slot = claim_parameter_slot(r, &mut slots)?;
         match slot {
             0 => {
-                if let Some(t) = r.cur() {
-                    if t.token_type == TokenType::Identifier {
-                        check_variable_type(&t.value, &[is_string_like], file_vars, t, r)?;
-                    }
-                }
-                url = parse_string_value(r, "")?;
+                record_binding(r, &mut slot_bindings, ParameterSlot::Url);
+                url = parse_string_value(r, "", ParameterSlot::Url)?;
             }
             1 => {
-                if let Some(tk) = r.cur() {
-                    if tk.token_type == TokenType::Identifier {
-                        check_variable_type(&tk.value, &[is_headers_like], file_vars, tk, r)?;
-                        headers_var = Some(tk.value.clone());
-                        r.advance();
-                    } else {
-                        headers = parse_headers_array(r)?;
-                    }
-                } else {
-                    return Err(r.create_error(
-                        "Expected headers value".into(),
-                        r.source.len()..r.source.len(),
-                    ));
-                }
+                parse_endpoint_headers(r, &mut headers, &mut headers_var, &mut slot_bindings)?;
             }
             _ => {
-                if let Some(t) = r.cur() {
-                    if t.token_type == TokenType::Identifier {
-                        check_variable_type(&t.value, &[is_string_like], file_vars, t, r)?;
-                    }
-                }
-                let raw_qs = parse_string_value(r, "")?;
-                let cleaned = raw_qs.strip_prefix('?').unwrap_or(&raw_qs).to_string();
-                qs = Some(cleaned);
+                record_binding(r, &mut slot_bindings, ParameterSlot::QueryString);
+                let raw_qs = parse_string_value(r, "", ParameterSlot::QueryString)?;
+                qs = Some(raw_qs.strip_prefix('?').unwrap_or(&raw_qs).to_string());
             }
         }
         r.skip_ignorable();
@@ -187,7 +99,43 @@ pub fn parse_endpoint_constructor_params(
             }
         }
     }
-    Ok((url, headers, headers_var, qs))
+    Ok(EndpointConstructorParams {
+        url,
+        headers,
+        headers_var,
+        qs,
+        slot_bindings,
+    })
+}
+
+fn parse_endpoint_headers(
+    r: &mut TokenReader,
+    headers: &mut Vec<(String, String)>,
+    headers_var: &mut Option<String>,
+    slot_bindings: &mut Vec<SlotBinding>,
+) -> Result<(), SyntaxError> {
+    let Some(tk) = r.cur().cloned() else {
+        return Err(r.create_error(
+            "Expected headers value".into(),
+            r.source.len()..r.source.len(),
+        ));
+    };
+    if tk.token_type != TokenType::Identifier {
+        *headers = parse_headers_array(r, slot_bindings)?;
+        return Ok(());
+    }
+    record_binding(r, slot_bindings, ParameterSlot::Headers);
+    match peek_slot_value(r) {
+        Some(SlotValue::Variable(name)) => {
+            *headers_var = Some(name);
+            r.advance();
+            Ok(())
+        }
+        _ => {
+            parse_string_value(r, "", ParameterSlot::Headers)?;
+            Ok(())
+        }
+    }
 }
 
 type EndpointParseResult = (
@@ -198,7 +146,6 @@ type EndpointParseResult = (
 
 pub(crate) fn parse_endpoint_with_context(
     r: &mut TokenReader,
-    file_vars: &[crate::syntax::variable_context::Variable],
     existing_requests: &[crate::syntax::parse_result::RequestWithVariables],
     existing_endpoints: &std::collections::HashMap<String, EndpointDefinition>,
 ) -> Result<EndpointParseResult, SyntaxError> {
@@ -274,11 +221,18 @@ pub(crate) fn parse_endpoint_with_context(
         }
     }
 
-    let (mut base_url, mut ep_headers, mut ep_headers_var, mut ep_qs) = if let Some(t) = r.cur() {
-        if t.token_type == TokenType::Punctuation && t.value == PUNC_LPAREN {
+    let empty_params = || EndpointConstructorParams {
+        url: String::new(),
+        headers: Vec::new(),
+        headers_var: None,
+        qs: None,
+        slot_bindings: Vec::new(),
+    };
+    let params = match r.cur() {
+        Some(t) if t.token_type == TokenType::Punctuation && t.value == PUNC_LPAREN => {
             r.advance();
             r.skip_ignorable();
-            let params = parse_endpoint_constructor_params(r, file_vars)?;
+            let parsed = parse_endpoint_constructor_params(r)?;
             expect(
                 r,
                 |t| t.token_type == TokenType::Punctuation && t.value == PUNC_RPAREN,
@@ -286,18 +240,21 @@ pub(crate) fn parse_endpoint_with_context(
             )?;
             r.advance();
             r.skip_ignorable();
-            params
-        } else {
-            (String::new(), Vec::new(), None, None)
+            parsed
         }
-    } else {
-        (String::new(), Vec::new(), None, None)
+        _ => empty_params(),
     };
+    let mut base_url = params.url;
+    let mut ep_headers = params.headers;
+    let mut ep_headers_var = params.headers_var;
+    let mut ep_qs = params.qs;
+    let mut ep_slot_bindings = params.slot_bindings;
 
     let mut endpoint_variables = Vec::new();
     let mut related_files = Vec::new();
 
     if let Some(parent) = parent_ep {
+        ep_slot_bindings.extend(parent.slot_bindings.iter().cloned());
         if !parent.url.is_empty() {
             let is_absolute = base_url.to_lowercase().starts_with("http://")
                 || base_url.to_lowercase().starts_with("https://");
@@ -374,6 +331,7 @@ pub(crate) fn parse_endpoint_with_context(
                 url: base_url,
                 headers: ep_headers,
                 headers_var: ep_headers_var,
+                slot_bindings: ep_slot_bindings.clone(),
                 qs: ep_qs,
                 auth: ctx.auth,
                 auth_location: ctx.auth_location,
@@ -423,16 +381,12 @@ pub(crate) fn parse_endpoint_with_context(
             let mut all_requests = existing_requests.to_vec();
             all_requests.extend(children.clone());
 
-            let (mut req, req_vars, req_locs) = parse_request_with_context(
-                r,
-                file_vars,
-                &endpoint_variables,
-                Some(&ep_name),
-                &all_requests,
-            )?;
+            let (mut req, req_vars, req_locs) =
+                parse_request_with_context(r, &endpoint_variables, Some(&ep_name), &all_requests)?;
             for loc in req_locs {
                 required_locations.push(loc);
             }
+            req.slot_bindings.extend(ep_slot_bindings.iter().cloned());
             if req.url.is_empty() {
                 req.url = base_url.clone();
             } else if req.url.starts_with('?') || req.url.starts_with('#') {
@@ -527,6 +481,7 @@ pub(crate) fn parse_endpoint_with_context(
         url: base_url,
         headers: ep_headers,
         headers_var: ep_headers_var,
+        slot_bindings: ep_slot_bindings.clone(),
         qs: ep_qs,
         auth: ctx.auth,
         auth_location: ctx.auth_location,

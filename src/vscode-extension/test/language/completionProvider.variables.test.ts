@@ -414,6 +414,15 @@ describe('namespace function completion', () => {
         expect(items?.find((i: any) => i.label === 'read_file')).toBeDefined();
     });
 
+    test('suggests io.read_json when typing "io."', async () => {
+        const doc = makeDocument(['let body = io.']);
+        const position = new vscode.Position(0, 14);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items?.find((i: any) => i.label === 'read_json')).toBeDefined();
+    });
+
     test('suggests read_file when partial already typed after io.', async () => {
         const doc = makeDocument(['let body = io.rea']);
         const position = new vscode.Position(0, 17);

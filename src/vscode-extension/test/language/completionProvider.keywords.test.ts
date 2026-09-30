@@ -232,9 +232,9 @@ describe('top-level keyword completion', () => {
         expect(val).toContain('rq list();');
         expect(val).toContain('rq get($3);');
         expect(val).toContain('rq delete($3);');
-        expect(val).toContain('rq post(body: io.read_file("$1-post.json"));');
-        expect(val).toContain('rq put($3, body: io.read_file("$1-put.json"));');
-        expect(val).toContain('rq patch($3, body: io.read_file("$1-patch.json"));');
+        expect(val).toContain('rq post(body: io.read_json("$1-post.json"));');
+        expect(val).toContain('rq put($3, body: io.read_json("$1-put.json"));');
+        expect(val).toContain('rq patch($3, body: io.read_json("$1-patch.json"));');
     });
 
     test('suggests ep keyword item with Keyword kind when typing ep', async () => {

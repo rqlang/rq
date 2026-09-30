@@ -216,7 +216,7 @@ Rule of thumb: name a request after its verb and rq infers the method; give it a
 
 ## Step 9 — Read the body from a file
 
-Inlining JSON in a `let` is fine for a handful of fields, but real payloads grow, and you often want to keep them as plain `.json` files you can edit and validate on their own. The `io.read_file` built-in pulls a file's contents in as a string.
+Inlining JSON in a `let` is fine for a handful of fields, but real payloads grow, and you often want to keep them as plain `.json` files you can edit and validate on their own. The `io.read_json` built-in pulls a JSON file in as a JSON value, so rq sends it with `Content-Type: application/json`. (Its sibling `io.read_file` reads any file as a plain string.)
 
 Move the payload into a file next to your `.rq` — say `user.json`:
 
@@ -240,7 +240,7 @@ env remote {
   base_url: "https://httpbin.org/anything",
 }
 
-let user_body = io.read_file("user.json");
+let user_body = io.read_json("user.json");
 
 ep users("{{base_url}}/users", qs: "version=1") {
   rq list();
@@ -268,7 +268,7 @@ A few things worth knowing:
 
 Only `user_body` changed — every request still says `body: user_body`, none the wiser that the bytes now come from disk.
 
-`io.read_file` is just one of rq's built-in functions — there are others for things like generating IDs and timestamps. See [Functions](LANGUAGE_DEFINITION.md#functions) for the full list.
+`io.read_json` is just one of rq's built-in functions — there are others for things like generating IDs and timestamps. See [Functions](LANGUAGE_DEFINITION.md#functions) for the full list.
 
 ## Step 10 — Add a header
 
@@ -283,7 +283,7 @@ env remote {
   base_url: "https://httpbin.org/anything",
 }
 
-let user_body = io.read_file("user.json");
+let user_body = io.read_json("user.json");
 
 ep users("{{base_url}}/users", headers: $["X-Client": "rq-advanced-example"], qs: "version=1") {
   rq list();
@@ -328,7 +328,7 @@ env remote {
   api_token: "remote-token-456",
 }
 
-let user_body = io.read_file("user.json");
+let user_body = io.read_json("user.json");
 
 [auth("token_auth")]
 ep users("{{base_url}}/users", headers: $["X-Client": "rq-advanced-example"], qs: "version=1") {
@@ -387,7 +387,7 @@ env remote {
   base_url: "https://httpbin.org/anything",
 }
 
-let user_body = io.read_file("user.json");
+let user_body = io.read_json("user.json");
 
 [auth("token_auth")]
 ep users("{{base_url}}/users", headers: $["X-Client": "rq-advanced-example"], qs: "version=1") {
@@ -435,7 +435,7 @@ env remote {
   base_url: "https://httpbin.org/anything",
 }
 
-let user_body = io.read_file("user.json");
+let user_body = io.read_json("user.json");
 
 [auth("token_auth")]
 ep users("{{base_url}}/users", headers: $["X-Client": "rq-advanced-example"], qs: "version=1") {
@@ -492,7 +492,7 @@ env remote {
   base_url: "https://httpbin.org/anything",
 }
 
-let user_body = io.read_file("user.json");
+let user_body = io.read_json("user.json");
 
 [auth("token_auth")]
 ep api(url: "{{base_url}}", qs: "version=1");
@@ -564,7 +564,7 @@ Then give each resource its own file that imports it:
 // users.rq
 import "shared";
 
-let user_body = io.read_file("user.json");
+let user_body = io.read_json("user.json");
 
 ep users<api>("/users", headers: $["X-Client": "rq-advanced-example"]) {
   rq list();

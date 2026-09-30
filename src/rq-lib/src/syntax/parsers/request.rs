@@ -5,8 +5,8 @@ use super::{
     },
     parse_trait::Parse,
     utils::{
-        can_parse_attributed, check_variable_type, is_headers_like, is_string_like,
-        parse_headers_array, parse_string_value, ParameterSlots,
+        binding_position, can_parse_attributed, claim_parameter_slot, parse_headers_array,
+        parse_string_value, peek_slot_value, record_binding, SlotTracker,
     },
 };
 use crate::syntax::fs::Fs;
@@ -14,12 +14,13 @@ use crate::syntax::{
     error::SyntaxError,
     http_method::HttpMethod,
     keywords::{
-        KW_RQ, PUNC_COLON, PUNC_COMMA, PUNC_DOLLAR, PUNC_LBRACE, PUNC_LPAREN, PUNC_RBRACE,
-        PUNC_RPAREN, PUNC_SEMI,
+        KW_RQ, PUNC_COMMA, PUNC_DOLLAR, PUNC_LBRACE, PUNC_LPAREN, PUNC_RBRACE, PUNC_RPAREN,
+        PUNC_SEMI,
     },
     parse_result::{ParseResult, Request},
     reader::{expect, TokenReader},
     token::TokenType,
+    types::{ParameterSlot, SlotBinding, SlotValue, ValueType},
     variable_context::Variable,
 };
 
@@ -34,13 +35,8 @@ impl Parse for RequestParser {
         result: &mut ParseResult,
         _fs: &dyn Fs,
     ) -> Result<(), SyntaxError> {
-        let (req, req_vars, req_locs) = parse_request_with_context(
-            r,
-            &result.file_variables,
-            &Vec::new(),
-            None,
-            &result.requests,
-        )?;
+        let (req, req_vars, req_locs) =
+            parse_request_with_context(r, &Vec::new(), None, &result.requests)?;
         for (name, file, line, character) in req_locs {
             result
                 .required_variable_locations
@@ -58,72 +54,80 @@ impl Parse for RequestParser {
     }
 }
 
-pub fn parse_body_value(r: &mut TokenReader) -> Result<String, SyntaxError> {
-    if let Some(val) = r.cur() {
-        match val.token_type {
-            TokenType::String | TokenType::Identifier => parse_string_value(r, " "),
-            TokenType::Punctuation if val.value == PUNC_DOLLAR => {
-                r.advance();
-                r.skip_ignorable();
-                let _ = expect(
-                    r,
-                    |tk| tk.token_type == TokenType::Punctuation && tk.value == PUNC_LBRACE,
-                    format!("Expected '{PUNC_LBRACE}'"),
-                )?;
-                let mut depth = 0;
-                let mut collected = String::new();
-                while let Some(tok) = r.cur() {
-                    if tok.token_type == TokenType::Punctuation {
-                        if tok.value == PUNC_LBRACE {
-                            depth += 1;
-                        }
-                        if tok.value == PUNC_RBRACE {
-                            depth -= 1;
-                        }
-                        collected.push_str(&tok.value);
-                        r.advance();
-                        if depth == 0 {
-                            break;
-                        }
-                    } else {
-                        collected.push_str(&tok.value);
-                        r.advance();
-                    }
-                }
-                Ok(collected)
-            }
-            TokenType::Punctuation if val.value == PUNC_LBRACE => Err(r.create_error_with_file(
-                "Bare '{' syntax is not supported. Use '${' prefix.".into(),
-                val.span.clone(),
-            )),
-            _ => Err(r.create_error(
-                "Expected string, identifier, or JSON object for body".into(),
-                val.span.clone(),
-            )),
+pub fn parse_body_value(r: &mut TokenReader) -> Result<(String, SlotValue), SyntaxError> {
+    let Some(val) = r.cur().cloned() else {
+        return Err(r.create_error("Expected body value".into(), r.source.len()..r.source.len()));
+    };
+    match val.token_type {
+        TokenType::String => Ok((
+            parse_string_value(r, " ", ParameterSlot::Body)?,
+            SlotValue::Literal(ValueType::String),
+        )),
+        TokenType::Identifier => {
+            let slot_value = peek_slot_value(r).unwrap_or(SlotValue::Literal(ValueType::String));
+            Ok((parse_string_value(r, " ", ParameterSlot::Body)?, slot_value))
         }
-    } else {
-        Err(r.create_error("Expected body value".into(), r.source.len()..r.source.len()))
+        TokenType::Punctuation if val.value == PUNC_DOLLAR => {
+            Ok((parse_json_literal(r)?, SlotValue::Literal(ValueType::Json)))
+        }
+        TokenType::Punctuation if val.value == PUNC_LBRACE => Err(r.create_error_with_file(
+            "Bare '{' syntax is not supported. Use '${' prefix.".into(),
+            val.span.clone(),
+        )),
+        _ => Err(r.create_error(
+            "Expected string, identifier, or JSON object for body".into(),
+            val.span.clone(),
+        )),
     }
 }
 
-pub type ConstructorParams = (
-    String,                // url
-    Vec<(String, String)>, // headers
-    Option<String>,        // body (rq only; endpoints will reject)
-    Option<String>,        // headers_var
-    Vec<Variable>,         // variables (from attributes)
-);
+fn parse_json_literal(r: &mut TokenReader) -> Result<String, SyntaxError> {
+    r.advance();
+    r.skip_ignorable();
+    let _ = expect(
+        r,
+        |tk| tk.token_type == TokenType::Punctuation && tk.value == PUNC_LBRACE,
+        format!("Expected '{PUNC_LBRACE}'"),
+    )?;
+    let mut depth = 0;
+    let mut collected = String::new();
+    while let Some(tok) = r.cur() {
+        if tok.token_type == TokenType::Punctuation {
+            if tok.value == PUNC_LBRACE {
+                depth += 1;
+            }
+            if tok.value == PUNC_RBRACE {
+                depth -= 1;
+            }
+            collected.push_str(&tok.value);
+            r.advance();
+            if depth == 0 {
+                break;
+            }
+        } else {
+            collected.push_str(&tok.value);
+            r.advance();
+        }
+    }
+    Ok(collected)
+}
 
-pub fn parse_constructor_params(
-    r: &mut TokenReader,
-    file_vars: &[Variable],
-) -> Result<ConstructorParams, SyntaxError> {
+pub struct ConstructorParams {
+    pub url: String,
+    pub headers: Vec<(String, String)>,
+    pub body: Option<String>,
+    pub headers_var: Option<String>,
+    pub variables: Vec<Variable>,
+    pub slot_bindings: Vec<SlotBinding>,
+}
+
+pub fn parse_constructor_params(r: &mut TokenReader) -> Result<ConstructorParams, SyntaxError> {
     let mut url = String::new();
     let mut headers = Vec::new();
     let mut body = None;
     let mut headers_var: Option<String> = None;
-    let request_variables = Vec::new();
-    let mut slots = ParameterSlots::new(["url", "headers", "body"]);
+    let mut slot_bindings = Vec::new();
+    let mut slots = SlotTracker::new(["url", "headers", "body"]);
     loop {
         r.skip_ignorable();
         if let Some(t) = r.cur() {
@@ -132,99 +136,31 @@ pub fn parse_constructor_params(
                     break;
                 }
                 if t.value == PUNC_SEMI || t.value == PUNC_LBRACE {
-                    // If we encounter a semi or brace, we assume the parameter list is over.
-                    // We let the caller handle the missing ')' check.
                     break;
                 }
             }
         } else {
             break;
         }
-        let is_named = if let Some(t) = r.cur() {
-            if t.token_type == TokenType::Identifier {
-                let save = r.idx;
-                r.advance();
-                r.skip_ignorable();
-                let has_colon = r
-                    .cur()
-                    .map(|t| t.token_type == TokenType::Punctuation && t.value == PUNC_COLON)
-                    .unwrap_or(false);
-                r.idx = save;
-                has_colon
-            } else {
-                false
-            }
-        } else {
-            false
-        };
-        let slot = if is_named {
-            let name_tok = expect(
-                r,
-                |t| t.token_type == TokenType::Identifier,
-                "Expected identifier",
-            )?;
-            let param_name = name_tok.value.clone();
-            let name_span = name_tok.span.clone();
-            let Some(index) = slots.index_of(&param_name) else {
-                return Err(
-                    r.create_error(format!("Unknown parameter name: {param_name}"), name_span)
-                );
-            };
-            if !slots.claim(index) {
-                return Err(r.create_error(format!("Duplicate parameter: {param_name}"), name_span));
-            }
-            r.advance();
-            r.skip_ignorable();
-            expect(
-                r,
-                |t| t.token_type == TokenType::Punctuation && t.value == PUNC_COLON,
-                format!("Expected '{PUNC_COLON}'"),
-            )?;
-            r.advance();
-            r.skip_ignorable();
-            index
-        } else {
-            let Some(index) = slots.next_free() else {
-                let span = if let Some(t) = r.cur() {
-                    t.span.clone()
-                } else {
-                    r.source.len()..r.source.len()
-                };
-                return Err(r.create_error(
-                    "Too many positional parameters (max 3: url, headers, body)".into(),
-                    span,
-                ));
-            };
-            slots.claim(index);
-            index
-        };
+        let slot = claim_parameter_slot(r, &mut slots)?;
         match slot {
             0 => {
-                if let Some(t) = r.cur() {
-                    if t.token_type == TokenType::Identifier {
-                        check_variable_type(&t.value, &[is_string_like], file_vars, t, r)?;
-                    }
-                }
-                url = parse_string_value(r, "")?;
+                record_binding(r, &mut slot_bindings, ParameterSlot::Url);
+                url = parse_string_value(r, "", ParameterSlot::Url)?;
             }
             1 => {
-                if let Some(tk) = r.cur() {
-                    if tk.token_type == TokenType::Identifier {
-                        check_variable_type(&tk.value, &[is_headers_like], file_vars, tk, r)?;
-                        headers_var = Some(tk.value.clone());
-                        r.advance();
-                    } else {
-                        headers = parse_headers_array(r)?;
-                    }
-                } else {
-                    return Err(r.create_error(
-                        "Expected headers value".into(),
-                        r.source.len()..r.source.len(),
-                    ));
-                }
+                parse_headers_parameter(r, &mut headers, &mut headers_var, &mut slot_bindings)?;
             }
             _ => {
-                body = Some(parse_body_value(r)?);
+                let (line, character) = binding_position(r);
+                let (value, slot_value) = parse_body_value(r)?;
+                slot_bindings.push(SlotBinding {
+                    slot: ParameterSlot::Body,
+                    value: slot_value,
+                    line,
+                    character,
+                });
+                body = Some(value);
             }
         }
         r.skip_ignorable();
@@ -234,14 +170,50 @@ pub fn parse_constructor_params(
             }
         }
     }
-    Ok((url, headers, body, headers_var, request_variables))
+    Ok(ConstructorParams {
+        url,
+        headers,
+        body,
+        headers_var,
+        variables: Vec::new(),
+        slot_bindings,
+    })
+}
+
+fn parse_headers_parameter(
+    r: &mut TokenReader,
+    headers: &mut Vec<(String, String)>,
+    headers_var: &mut Option<String>,
+    slot_bindings: &mut Vec<SlotBinding>,
+) -> Result<(), SyntaxError> {
+    let Some(tk) = r.cur().cloned() else {
+        return Err(r.create_error(
+            "Expected headers value".into(),
+            r.source.len()..r.source.len(),
+        ));
+    };
+    if tk.token_type != TokenType::Identifier {
+        *headers = parse_headers_array(r, slot_bindings)?;
+        return Ok(());
+    }
+    record_binding(r, slot_bindings, ParameterSlot::Headers);
+    match peek_slot_value(r) {
+        Some(SlotValue::Variable(name)) => {
+            *headers_var = Some(name);
+            r.advance();
+            Ok(())
+        }
+        _ => {
+            parse_string_value(r, "", ParameterSlot::Headers)?;
+            Ok(())
+        }
+    }
 }
 
 type RequiredVarLocation = (String, String, usize, usize);
 
 pub(crate) fn parse_request_with_context(
     r: &mut TokenReader,
-    file_vars: &[Variable],
     _endpoint_vars: &[Variable],
     endpoint_name: Option<&str>,
     existing_requests: &[crate::syntax::parse_result::RequestWithVariables],
@@ -303,8 +275,7 @@ pub(crate) fn parse_request_with_context(
     )?;
     r.advance();
     r.skip_ignorable();
-    let (url, headers, body, headers_var, request_variables) =
-        parse_constructor_params(r, file_vars)?;
+    let params = parse_constructor_params(r)?;
     expect(
         r,
         |t| t.token_type == TokenType::Punctuation && t.value == PUNC_RPAREN,
@@ -313,7 +284,7 @@ pub(crate) fn parse_request_with_context(
     r.advance();
 
     r.skip_ignorable();
-    let vars = request_variables;
+    let vars = params.variables;
     expect(
         r,
         |t| t.token_type == TokenType::Punctuation && t.value == PUNC_SEMI,
@@ -329,12 +300,14 @@ pub(crate) fn parse_request_with_context(
         .collect();
     let request = Request {
         name,
-        url: url.clone(),
-        raw_url: url,
+        url: params.url.clone(),
+        raw_url: params.url,
         method,
-        headers,
-        body,
-        headers_var,
+        headers: params.headers,
+        body: params.body,
+        body_type: None,
+        headers_var: params.headers_var,
+        slot_bindings: params.slot_bindings,
         endpoint: endpoint_name.map(|s| s.to_string()),
         auth: ctx.auth,
         auth_location: ctx.auth_location,

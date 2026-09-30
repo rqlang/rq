@@ -1,0 +1,10 @@
+{
+  "errors": [
+    {
+      "file": "{{*}}",
+      "line": 3,
+      "column": 9,
+      "message": "Variable 'conf' is a headers map; parameter 'url' expects a string"
+    }
+  ]
+}

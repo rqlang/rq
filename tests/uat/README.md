@@ -509,7 +509,7 @@ Steps:
 
 Expected:
 
-- Built-in function snippets appear: `random.guid()`, `datetime.now()`, `io.read_file()`.
+- Built-in function snippets appear: `random.guid()`, `datetime.now()`, `io.read_file()`, `io.read_json()`.
 - No variables appear yet (file is empty).
 - Dismiss the list and finish typing `"http://localhost:8080";` manually.
 
@@ -705,8 +705,8 @@ Expected:
   ep {name}s(<cursor>) {
       rq list();
       rq get();
-      rq post(body: io.read_file("{name}-post.json"));
-      rq patch(url: {name}_id, body: io.read_file("{name}-patch.json"));
+      rq post(body: io.read_json("{name}-post.json"));
+      rq patch(url: {name}_id, body: io.read_json("{name}-patch.json"));
       rq delete();
   }
   ```

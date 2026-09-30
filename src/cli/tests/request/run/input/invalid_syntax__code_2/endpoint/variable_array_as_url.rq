@@ -1,4 +1,0 @@
-let a = ["item"];
-ep e(a) {
-    rq get("/get");
-}

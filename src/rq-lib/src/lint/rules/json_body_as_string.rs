@@ -21,7 +21,7 @@ impl LintRule for Rule {
 
     fn description(&self) -> &'static str {
         "A quoted string containing JSON is a string body, not a JSON body. \
-         Use a `${...}` literal or `io.read_file(\"...\")`."
+         Use a `${...}` literal or `io.read_json(\"...\")`."
     }
 
     fn check(&self, ctx: &LintContext, out: &mut Vec<LintDiagnostic>) {
@@ -51,7 +51,7 @@ fn check_let_with_json_string(ctx: &LintContext, out: &mut Vec<LintDiagnostic>) 
             message: format!(
                 "`let {}` holds a quoted string that looks like JSON. \
                  At runtime this is sent as a string, not JSON, and will break receiving APIs. \
-                 Use a JSON literal `${{ ... }}` instead, or `io.read_file(\"…\")` to load from a fixture file.",
+                 Use a JSON literal `${{ ... }}` instead, or `io.read_json(\"…\")` to load from a fixture file.",
                 var.name
             ),
             line,
@@ -70,7 +70,7 @@ fn check_inline_string_body(ctx: &LintContext, out: &mut Vec<LintDiagnostic>) {
             rule: "json_body_as_string",
             message: "Inline body is a quoted string that looks like JSON. \
                       At runtime this is sent as a string, not JSON, and will break receiving APIs. \
-                      Use a `${ ... }` literal or `io.read_file(\"…\")`."
+                      Use a `${ ... }` literal or `io.read_json(\"…\")`."
                 .into(),
             line,
             column,

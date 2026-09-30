@@ -309,6 +309,7 @@ The currently supported namespaces and functions are:
 - `random.guid()`
 - `datetime.now()` and `datetime.now(format)`
 - `io.read_file(path)`
+- `io.read_json(path)`
 
 ### `random.guid()`
 
@@ -375,7 +376,58 @@ rq test_import_reference(
 );
 ```
 
+### `io.read_json()`
+
+Reads a JSON file relative to the current `.rq` file and returns it as a **JSON value** rather than a string. The file must contain valid JSON; if it does not, rq reports the parse error before sending anything.
+
+Because the result is typed as JSON, rq sends it with `Content-Type: application/json` unless you declare a content type yourself:
+
+```
+// users-post.json lives next to this .rq file
+rq post(
+  "http://localhost:8080/users",
+  body: io.read_json("users-post.json"),
+);
+```
+
+This is the difference between the two: `io.read_file()` always yields a string, whatever the file is named, so a body loaded with it is sent without a derived content type. Use `io.read_json()` for JSON payloads and `io.read_file()` for everything else.
+
+Being JSON-typed also means `io.read_json()` cannot be used where a string is required — a url, a query string or a header value — and rq reports that as a type error during analysis.
+
 Unknown function namespaces or names, or invalid arguments (for example calling `datetime.now` with more than one argument) will result in errors during analysis before any request is executed.
+
+## Value types
+
+Every value in rqlang has one of three types:
+
+| Type | Written as |
+|---|---|
+| string | `"text"`, `io.read_file(...)`, `random.guid()`, `datetime.now()` |
+| JSON | `${ ... }`, `io.read_json(...)` |
+| headers map | `$[ "key": "value" ]` |
+
+Each parameter accepts only certain types:
+
+| Parameter | Accepts |
+|---|---|
+| `url` (on `rq` and `ep`) | string |
+| `headers` (on `rq` and `ep`) | headers map |
+| a header value inside `$[ ... ]` | string |
+| `body` (on `rq` only) | string or JSON |
+| `qs` (on `ep` only) | string |
+
+A variable takes the type of the value it holds, and a variable that references another takes that one's type. Using a value where its type is not accepted is a type error reported before any request runs, for example:
+
+```
+let h = $["X-Token": "abc"];
+rq get(h);
+```
+
+```
+Variable 'h' is a headers map; parameter 'url' expects a string
+```
+
+Arrays are not a type: `let a = ["x"];` is rejected at the declaration. A list of header entries is a headers map, written `$[...]`.
 
 ## Attributes
 

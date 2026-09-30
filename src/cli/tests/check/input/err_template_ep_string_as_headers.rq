@@ -1,0 +1,7 @@
+let conf = "not-a-headers-map";
+
+ep base("http://localhost:8080", conf);
+
+ep api<base> {
+    rq list();
+}

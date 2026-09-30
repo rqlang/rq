@@ -11,6 +11,7 @@ lazy_static! {
     static ref FUNCTIONS: HashMap<String, Box<dyn RqFunction>> = {
         let mut m = HashMap::new();
         register(io::read_file::IoReadFile, &mut m);
+        register(io::read_json::IoReadJson, &mut m);
         register(random::guid::RandomGuid, &mut m);
         register(datetime::now::DateTimeNow, &mut m);
         m

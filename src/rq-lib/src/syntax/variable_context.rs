@@ -1,7 +1,6 @@
 #[derive(Debug, Clone, PartialEq)]
 pub enum VariableValue {
     String(String),
-    Array(Vec<String>),
     Json(String),
     Reference(String),
     Headers(Vec<(String, String)>),
@@ -83,14 +82,6 @@ impl VariableValue {
             VariableValue::String(s) => format!("\"{s}\""),
             VariableValue::Reference(s) => s.clone(),
             VariableValue::Json(s) => format!("${{{s}}}"),
-            VariableValue::Array(items) => {
-                let inner = items
-                    .iter()
-                    .map(|s| format!("\"{s}\""))
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                format!("[{inner}]")
-            }
             VariableValue::Headers(pairs) => {
                 let inner = pairs
                     .iter()

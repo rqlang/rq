@@ -7,6 +7,7 @@ use super::{
     reader::TokenReader,
     token::TokenType,
     tokenizer::tokenize,
+    types::{slot_type_error, type_of_slot, ParameterSlot, SlotBinding, TypeLookup, ValueType},
     variable_context::{VariableContext, VariableValue},
 };
 use lazy_static::lazy_static;
@@ -440,10 +441,6 @@ fn resolve_variable_value(
     if let Some(v) = map.get(var_name) {
         match v {
             VariableValue::String(s) => ResolutionStatus::Resolved(s.clone()),
-            VariableValue::Array(_) => ResolutionStatus::Error(
-                format!("Variable '{var_name}' is an array and cannot be used in a string context"),
-                None,
-            ),
             VariableValue::Json(j) => ResolutionStatus::Resolved(j.clone()),
             VariableValue::Reference(rn) => {
                 let status = resolve_variable_value(rn, map, visited, source_files, dry_run, fs);
@@ -856,12 +853,55 @@ pub fn resolve_string(
     Ok(result)
 }
 
+pub fn collect_slot_type_errors(
+    bindings: &[SlotBinding],
+    source_path: Option<&str>,
+    context: &VariableContext,
+) -> Vec<SyntaxError> {
+    let variables = context.as_map();
+    bindings
+        .iter()
+        .filter_map(|binding| {
+            let message = slot_type_error(binding, &variables)?;
+            Some(SyntaxError {
+                message,
+                line: binding.line + 1,
+                column: binding.character + 1,
+                span: 0..0,
+                file_path: source_path.map(|path| path.to_string()),
+            })
+        })
+        .collect()
+}
+
+pub fn resolved_body_type(request: &Request, context: &VariableContext) -> Option<ValueType> {
+    let binding = request
+        .slot_bindings
+        .iter()
+        .find(|binding| binding.slot == ParameterSlot::Body)?;
+    match type_of_slot(&binding.value, &context.as_map()) {
+        TypeLookup::Known(value_type) => Some(value_type),
+        _ => None,
+    }
+}
+
 pub fn resolve_variables(
     mut request: Request,
     context: &VariableContext,
     source_files: &[PathBuf],
     fs: &dyn Fs,
 ) -> Result<Request, SyntaxError> {
+    if let Some(error) = collect_slot_type_errors(
+        &request.slot_bindings,
+        request.source_path.as_deref(),
+        context,
+    )
+    .into_iter()
+    .next()
+    {
+        return Err(error);
+    }
+    request.body_type = resolved_body_type(&request, context);
     request.url = normalize_url_slashes(&resolve_string(&request.url, context, source_files, fs)?);
     for (k, v) in &mut request.headers {
         *k = resolve_string(k, context, source_files, fs)?;
@@ -907,12 +947,23 @@ pub fn collect_variable_errors(
     source_files: &[PathBuf],
     fs: &dyn Fs,
 ) -> Vec<SyntaxError> {
-    let mut errors = Vec::new();
+    let mut errors = collect_slot_type_errors(
+        &request.slot_bindings,
+        request.source_path.as_deref(),
+        context,
+    );
+    let typed_variables = mistyped_variable_names(&request.slot_bindings, &errors);
     let request_line_1 = request.line + 1;
     let request_col_1 = request.character + 1;
     let mut error_index = 0usize;
     let mut try_resolve = |s: &str| {
         if let Err(mut e) = check_string(s, context, source_files, fs) {
+            if typed_variables
+                .iter()
+                .any(|name| e.message.contains(name.as_str()))
+            {
+                return;
+            }
             if !points_at_request_or_its_endpoint(&e, request_line_1, endpoint) {
                 e.line = request_line_1;
                 e.column = request_col_1 + error_index;
@@ -948,6 +999,20 @@ pub fn collect_variable_errors(
         try_resolve(auth);
     }
     errors
+}
+
+pub fn mistyped_variable_names(bindings: &[SlotBinding], errors: &[SyntaxError]) -> Vec<String> {
+    if errors.is_empty() {
+        return Vec::new();
+    }
+    bindings
+        .iter()
+        .filter_map(|binding| match &binding.value {
+            crate::syntax::types::SlotValue::Variable(name) => Some(format!("'{name}'")),
+            _ => None,
+        })
+        .filter(|quoted| errors.iter().any(|e| e.message.contains(quoted.as_str())))
+        .collect()
 }
 
 fn points_at_request_or_its_endpoint(

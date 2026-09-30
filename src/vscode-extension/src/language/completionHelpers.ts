@@ -31,6 +31,13 @@ export function builtinFunctionItems(): vscode.CompletionItem[] {
             i.command = { command: 'editor.action.triggerParameterHints', title: 'Trigger parameter hints' };
             return i;
         })(),
+        (() => {
+            const i = new vscode.CompletionItem('io.read_json()', vscode.CompletionItemKind.Function);
+            i.detail = 'io.read_json(path: string) → json';
+            i.insertText = new vscode.SnippetString('io.read_json($1)');
+            i.command = { command: 'editor.action.triggerParameterHints', title: 'Trigger parameter hints' };
+            return i;
+        })(),
     ];
 }
 

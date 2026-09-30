@@ -272,6 +272,19 @@ Add directly to `request_run.rs` using `Command::new(env!("CARGO_BIN_EXE_rq"))`.
 
 ---
 
+## Invariants every change must preserve
+
+Check these whenever a change touches the language, and state which ones you verified when reviewing:
+
+- **Spec conformance** — new syntax matches the rqlang reference (`rqlang-syntax` skill / `get_rq_reference`). The parser must not accept forms the reference does not define, and the reference is the source of truth over existing behaviour.
+- **Error positions** — every diagnostic carries the line/column of the offending token, not of the construct or the file start. Multi-byte characters must not shift offsets.
+- **Parser robustness** — empty input, truncated constructs and unterminated strings/blocks produce a diagnostic, never a panic and never an infinite loop.
+- **Formatter idempotence** — `fmt(fmt(x)) == fmt(x)` for every input, valid or not.
+- **Formatter content preservation** — formatting only changes whitespace outside string literals: it never adds, drops or reorders tokens, and never edits the inside of a string literal.
+- **CLI ↔ extension parity** — a language-level feature is reachable from both surfaces: `rq-wasm/src/bindings.rs` plus the matching `rqClient.ts` method, not only the CLI.
+- **No panics on user input** — no `.unwrap()`, `.expect()`, `panic!`, slicing or indexing on any path reachable from a `.rq` file, a CLI argument or an HTTP response.
+- **Variable precedence** — `variable_context.rs` resolution order stays unchanged unless the change is explicitly about precedence, and then it comes with a test per level.
+
 ## What NOT to Do
 
 - No comments in code

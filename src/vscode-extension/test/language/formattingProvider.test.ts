@@ -481,6 +481,33 @@ describe('formatRqDocument', () => {
         });
     });
 
+    describe('multiline string literals', () => {
+        test('keeps a multiline header value unindented', () => {
+            const input = 'rq post(url: "u", headers: $["X-Multiline": "Line 1\nLine 2"]);';
+            expect(fmt(input)).toContain('"X-Multiline": "Line 1\nLine 2"');
+        });
+
+        test('keeps a multiline body unindented inside an ep', () => {
+            const input = 'ep api(url: "u") {\nrq post(url: "/p", body: "Line 1\nLine 2");\n}';
+            expect(fmt(input)).toContain('body: "Line 1\nLine 2"');
+        });
+
+        test('keeps the original indentation inside a multiline string', () => {
+            const input = 'let body = "Line 1\n        Line 2";';
+            expect(fmt(input)).toBe('let body = "Line 1\n        Line 2";\n');
+        });
+
+        test('still indents the statement holding a multiline string', () => {
+            const input = 'ep api(url: "u") {\nrq post(url: "/p", body: "a\nb");\n}';
+            expect(fmt(input)).toBe('ep api(url: "u") {\n    rq post(url: "/p", body: "a\nb");\n}\n');
+        });
+
+        test('does not merge the following line into an unterminated string', () => {
+            const input = 'rq test(\n    "http://localhost",\n    $["header": "unclosed]\n);\n';
+            expect(fmt(input)).toBe('rq test(\n    "http://localhost",\n    $["header": "unclosed]\n);\n');
+        });
+    });
+
     describe('real-world documents', () => {
         test('formats a complete document', () => {
             const input = [

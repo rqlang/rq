@@ -1,0 +1,138 @@
+name: Fuzz Nightly
+
+on:
+  schedule:
+    - cron: '17 4 * * *'
+  workflow_dispatch:
+    inputs:
+      max_total_time:
+        description: 'Seconds to fuzz each target'
+        required: false
+        default: '600'
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  MAX_TOTAL_TIME: ${{ inputs.max_total_time || '600' }}
+
+jobs:
+  fuzz:
+    name: Fuzz ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      issues: write
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [tokenize, parse]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Rust nightly
+        uses: dtolnay/rust-toolchain@nightly
+
+      - name: Install cargo-fuzz
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-fuzz
+
+      - name: Cache fuzz build
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            fuzz/target
+          key: ${{ runner.os }}-fuzz-build-${{ matrix.target }}-${{ hashFiles('Cargo.lock', 'fuzz/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-fuzz-build-${{ matrix.target }}-
+
+      - name: Restore the corpus grown by earlier runs
+        uses: actions/cache/restore@v5
+        with:
+          path: fuzz/corpus/${{ matrix.target }}
+          key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
+          restore-keys: |
+            fuzz-corpus-${{ matrix.target }}-
+
+      - name: Seed the corpus from the repository fixtures
+        run: |
+          mkdir -p "fuzz/corpus/${{ matrix.target }}"
+          seeded=0
+          while IFS= read -r fixture; do
+            name=$(printf '%s' "$fixture" | sha1sum | cut -c1-16)
+            cp "$fixture" "fuzz/corpus/${{ matrix.target }}/seed_$name.rq"
+            seeded=$((seeded + 1))
+          done < <(find src/cli/tests tests/uat -name '*.rq')
+          echo "seeded $seeded fixtures, corpus now holds $(ls -1 "fuzz/corpus/${{ matrix.target }}" | wc -l) inputs"
+
+      - name: Verify the fuzz targets are discoverable
+        run: cargo fuzz list
+
+      - name: Fuzz
+        run: cargo fuzz run ${{ matrix.target }} -- -max_total_time=$MAX_TOTAL_TIME -print_final_stats=1
+
+      - name: Save the grown corpus
+        if: always()
+        uses: actions/cache/save@v5
+        with:
+          path: fuzz/corpus/${{ matrix.target }}
+          key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
+
+      - name: Upload the crashing input
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-artifacts-${{ matrix.target }}
+          path: fuzz/artifacts/${{ matrix.target }}
+          if-no-files-found: ignore
+
+      - name: Report the crash
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET: ${{ matrix.target }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ ! -d "fuzz/artifacts/$TARGET" ] || [ -z "$(ls -A "fuzz/artifacts/$TARGET" 2>/dev/null)" ]; then
+            echo "The job failed without producing a crashing input, so there is nothing to report."
+            echo "Look at the run log: the build or the setup failed, not the target."
+            exit 0
+          fi
+
+          body=$(mktemp)
+          {
+            echo "\`cargo fuzz run $TARGET\` found an input that breaks a syntax invariant."
+            echo
+            echo "Run: $RUN_URL"
+            echo
+            echo "Crashing inputs, base64 encoded:"
+            echo
+            for artifact in "fuzz/artifacts/$TARGET"/*; do
+              echo "\`$(basename "$artifact")\`"
+              echo
+              echo '```'
+              base64 -w 0 "$artifact"
+              echo
+              echo '```'
+              echo
+            done
+            echo "To reproduce, write the bytes to a file and run:"
+            echo
+            echo '```bash'
+            echo "cargo +nightly fuzz run $TARGET <file>"
+            echo '```'
+            echo
+            echo "Then add the input to \`ADVERSARIAL_SOURCES\` in"
+            echo "\`src/rq-lib/tests/syntax_invariants.rs\` so \`cargo test\` covers it from now on."
+          } > "$body"
+
+          existing=$(gh issue list --state open --search "in:title Fuzzing: $TARGET" --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            echo "Commenting on the open issue #$existing instead of opening a duplicate."
+            gh issue comment "$existing" --body-file "$body"
+          else
+            gh issue create --title "Fuzzing: $TARGET found a crash" --body-file "$body"
+          fi

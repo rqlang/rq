@@ -558,6 +558,10 @@ describe('formatRqDocument', () => {
             expect(fmt('rq a(url: "u"); /* TODO:fix */\n')).toBe('rq a(url: "u");\n/* TODO:fix */\n');
         });
 
+        test('does not collapse spaces inside block comment opened mid-line', () => {
+            expect(fmt('let x = "a" /* note\n   keep   these   spaces\n*/;')).toContain('keep   these   spaces');
+        });
+
         test('still fixes spacing in the code before a comment', () => {
             expect(fmt('let  a  =  "x" ; // TODO:fix\n')).toBe('let a = "x";\n// TODO:fix\n');
         });

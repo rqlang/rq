@@ -49,7 +49,7 @@ function formatProtectedDocument(text: string, tabSize: number): string {
             continue;
         }
 
-        if (trimmed.startsWith('/*') && !trimmed.includes('*/')) {inBlockComment = true;}
+        if (opensUnterminatedBlockComment(trimmed)) {inBlockComment = true;}
 
         if (trimmed.startsWith('}') || trimmed.startsWith(']') || trimmed.startsWith(')')) {depth = Math.max(0, depth - 1);}
 
@@ -486,6 +486,26 @@ function collapseSpaceRuns(s: string): string {
         }
     }
     return out;
+}
+
+function opensUnterminatedBlockComment(line: string): boolean {
+    let stringChar: string | null = null;
+    for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (stringChar !== null) {
+            if (ch === '\\') { i++; continue; }
+            if (ch === stringChar) { stringChar = null; }
+            continue;
+        }
+        if (ch === '"' || ch === "'") { stringChar = ch; continue; }
+        if (ch === '/' && line[i + 1] === '/') { return false; }
+        if (ch === '/' && line[i + 1] === '*') {
+            const end = line.indexOf('*/', i + 2);
+            if (end === -1) { return true; }
+            i = end + 1;
+        }
+    }
+    return false;
 }
 
 function commentStartIndex(line: string): number {

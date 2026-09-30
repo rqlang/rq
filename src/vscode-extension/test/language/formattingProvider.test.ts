@@ -209,6 +209,10 @@ describe('formatRqDocument', () => {
         test('indents multi-line json body and keeps }; together', () => {
             expect(fmt('let s = ${\n"a":"",\n"b":""\n};')).toBe('let s = ${\n    "a": "",\n    "b": ""\n};\n');
         });
+
+        test('keeps }, together when closing a nested json object', () => {
+            expect(fmt('let s = ${\n"u": {\n"a": ""\n},\n"b": ""\n};')).toBe('let s = ${\n    "u": {\n        "a": ""\n    },\n    "b": ""\n};\n');
+        });
     });
 
     describe('semicolon splitting', () => {
@@ -434,6 +438,76 @@ describe('formatRqDocument', () => {
         test('does not reformat rq with multiline array argument', () => {
             const input = 'ep ep_name() {\n    rq my("", [\n        "hello": "",\n        "h": ""\n    ]\n    );\n}';
             const expected = 'ep ep_name() {\n    rq my("", [\n        "hello": "",\n        "h": ""\n    ]);\n}\n';
+            expect(fmt(input)).toBe(expected);
+        });
+
+        test('keeps multiline array argument multiline in multiline rq call', () => {
+            const input = [
+                'rq post_user(',
+                '    url: "",',
+                '    headers: $[ ',
+                '        "Content-Type": "json", ',
+                '        "Accept": "json" ',
+                '        ],',
+                '    body: ${"name": "Alice"}',
+                ');',
+            ].join('\n');
+            const expected = [
+                'rq post_user(',
+                '    url: "",',
+                '    headers: $[',
+                '        "Content-Type": "json",',
+                '        "Accept": "json"',
+                '    ],',
+                '    body: ${"name": "Alice"}',
+                ');',
+                '',
+            ].join('\n');
+            expect(fmt(input)).toBe(expected);
+        });
+
+        test('moves ] attached to last entry of multiline array argument onto its own line', () => {
+            const input = 'rq post_user(\nurl: base,\nheaders: $[\n"Content-Type": "json",\n"Accept": "json" ],\nbody: ${"name": "Alice"}\n);';
+            const expected = 'rq post_user(\n    url: base,\n    headers: $[\n        "Content-Type": "json",\n        "Accept": "json"\n    ],\n    body: ${"name": "Alice"}\n);\n';
+            expect(fmt(input)).toBe(expected);
+        });
+
+        test('collapses repeated spaces inside single-line array argument', () => {
+            const input = 'rq post_user(\n    url: "base",\n    headers: $[        "Content-Type": "json",        "Accept": "json"    ],\n    body: ${"name": "Alice"}\n);\n';
+            const expected = 'rq post_user(\n    url: "base",\n    headers: $[ "Content-Type": "json", "Accept": "json" ],\n    body: ${"name": "Alice"}\n);\n';
+            expect(fmt(input)).toBe(expected);
+        });
+
+        test('does not collapse repeated spaces inside string in array argument', () => {
+            const input = 'rq post_user(\n    url: "base",\n    headers: $[    "X-Pad": "a    b"  ],\n    body: ""\n);\n';
+            const expected = 'rq post_user(\n    url: "base",\n    headers: $[ "X-Pad": "a    b" ],\n    body: ""\n);\n';
+            expect(fmt(input)).toBe(expected);
+        });
+
+        test('keeps multiline json argument multiline in multiline rq call', () => {
+            const input = 'rq post_user(\n    url: "base",\n    body: ${ \n        "name": \n        "Alice" \n    }\n);';
+            const expected = 'rq post_user(\n    url: "base",\n    body: ${\n        "name": "Alice"\n    }\n);\n';
+            expect(fmt(input)).toBe(expected);
+        });
+
+        test('is idempotent on nested multiline json argument followed by another statement', () => {
+            const input = 'rq post_user(\n    url: "base",\n    body: ${\n        "user": {\n            "name": "Alice"\n        },\n        "tags": ["a", "b"]\n    }\n);\nrq other();\n';
+            expect(fmt(input)).toBe(input);
+        });
+
+        test('is idempotent on multiline rq call with multiline array argument', () => {
+            const input = 'rq post_user(\n    url: "",\n    headers: $[\n        "Accept": "json"\n    ],\n    body: ""\n);\n';
+            expect(fmt(input)).toBe(input);
+        });
+
+        test('keeps ) on its own line when multiline array is the last argument', () => {
+            const input = 'rq post_user(\n    url: "",\n    headers: $[\n        "Accept": "json"\n    ]\n);\nrq other();\n';
+            expect(fmt(input)).toBe(input);
+        });
+
+        test('splits entries of multiline array argument opened inline', () => {
+            const input = 'rq post_user(url: "",\nheaders: $["Content-Type": "json",\n"Accept": "json"]);';
+            const expected = 'rq post_user(\n    url: "",\n    headers: $[\n        "Content-Type": "json",\n        "Accept": "json"\n    ]\n);\n';
             expect(fmt(input)).toBe(expected);
         });
 

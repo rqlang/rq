@@ -112,9 +112,9 @@ export const signatureHelpProvider = vscode.languages.registerSignatureHelpProvi
                 return help;
             }
 
-            const ioMatch = textBeforeCursor.match(/\bio\.read_file\(([^)]*)$/s);
+            const ioMatch = textBeforeCursor.match(/\bio\.(read_file|read_json)\(([^)]*)$/s);
             if (ioMatch) {
-                const sig = buildFunctionSignature('io.read_file(path: string)', ['path: string']);
+                const sig = buildFunctionSignature(`io.${ioMatch[1]}(path: string)`, ['path: string']);
                 const help = new vscode.SignatureHelp();
                 help.signatures = [sig];
                 help.activeSignature = 0;

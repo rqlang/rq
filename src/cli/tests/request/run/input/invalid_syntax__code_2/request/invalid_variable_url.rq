@@ -1,2 +1,2 @@
-let h = ["h1", "v1"];
-rq my_req(url: h)
+let h = $["h1": "v1"];
+rq my_req(url: h);

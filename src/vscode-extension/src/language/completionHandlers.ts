@@ -469,7 +469,7 @@ export const headerKeyHandler: CompletionHandler = {
 
 export const functionArgHandler: CompletionHandler = {
     canHandle: ({ linePrefix }) => {
-        const match = /\b(io\.read_file|datetime\.now)\(([^)]*)$/.exec(linePrefix);
+        const match = /\b(io\.read_file|io\.read_json|datetime\.now)\(([^)]*)$/.exec(linePrefix);
         if (!match) { return false; }
         const quoteCount = (match[2].match(/"/g) ?? []).length;
         return quoteCount % 2 === 0;
@@ -503,14 +503,24 @@ export const namespaceHandler: CompletionHandler = {
             return item;
         };
         if (ns === 'io') {
-            return [applyRange((() => {
-                const i = new vscode.CompletionItem('read_file', vscode.CompletionItemKind.Function);
-                i.detail = 'io.read_file(path: string)';
-                i.documentation = new vscode.MarkdownString('Imports the contents of a file relative to the current .rq file\n\n**Parameters:**\n- path: string - Relative or absolute path to the file to import');
-                i.insertText = new vscode.SnippetString('read_file($1)');
-                i.command = { command: 'editor.action.triggerParameterHints', title: 'Trigger parameter hints' };
-                return i;
-            })())];
+            return [
+                applyRange((() => {
+                    const i = new vscode.CompletionItem('read_file', vscode.CompletionItemKind.Function);
+                    i.detail = 'io.read_file(path: string) → string';
+                    i.documentation = new vscode.MarkdownString('Reads a file relative to the current .rq file and returns its contents as a string\n\n**Parameters:**\n- path: string - Relative or absolute path to the file to read');
+                    i.insertText = new vscode.SnippetString('read_file($1)');
+                    i.command = { command: 'editor.action.triggerParameterHints', title: 'Trigger parameter hints' };
+                    return i;
+                })()),
+                applyRange((() => {
+                    const i = new vscode.CompletionItem('read_json', vscode.CompletionItemKind.Function);
+                    i.detail = 'io.read_json(path: string) → json';
+                    i.documentation = new vscode.MarkdownString('Reads a JSON file relative to the current .rq file as a JSON value, so rq sends it with Content-Type: application/json\n\n**Parameters:**\n- path: string - Relative or absolute path to the JSON file to read');
+                    i.insertText = new vscode.SnippetString('read_json($1)');
+                    i.command = { command: 'editor.action.triggerParameterHints', title: 'Trigger parameter hints' };
+                    return i;
+                })()),
+            ];
         }
         if (ns === 'random') {
             return [applyRange((() => {
@@ -619,7 +629,7 @@ export const topLevelKeywordHandler: CompletionHandler = {
                 const i = new vscode.CompletionItem('ep crud', vscode.CompletionItemKind.Module);
                 i.detail = 'CRUD endpoint snippet';
                 i.insertText = new vscode.SnippetString(
-                    'ep ${1:resources}("${2:http://localhost:8080/resources}") {\n\trq list();\n\n\t[required(${3:resource_id})]\n\trq get($3);\n\n\trq post(body: io.read_file("$1-post.json"));\n\n\t[required($3)]\n\trq put($3, body: io.read_file("$1-put.json"));\n\n\t[required($3)]\n\trq patch($3, body: io.read_file("$1-patch.json"));\n\n\t[required($3)]\n\trq delete($3);\n}$0'
+                    'ep ${1:resources}("${2:http://localhost:8080/resources}") {\n\trq list();\n\n\t[required(${3:resource_id})]\n\trq get($3);\n\n\trq post(body: io.read_json("$1-post.json"));\n\n\t[required($3)]\n\trq put($3, body: io.read_json("$1-put.json"));\n\n\t[required($3)]\n\trq patch($3, body: io.read_json("$1-patch.json"));\n\n\t[required($3)]\n\trq delete($3);\n}$0'
                 );
                 i.sortText = 'ep_2crud';
                 return i;

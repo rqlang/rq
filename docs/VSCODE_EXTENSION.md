@@ -71,7 +71,7 @@ The extension ships a built-in language server that analyzes your `.rq` files as
 Context-aware suggestions are available throughout:
 
 - **Keywords and snippets**: Templates for `rq`, `ep`, `env`, `auth`, and common constructs to get you started quickly.
-- **System functions**: Suggestions for built-in functions such as `io.read_file`, `random.guid`, and `datetime.now`.
+- **System functions**: Suggestions for built-in functions such as `io.read_file`, `io.read_json`, `random.guid`, and `datetime.now`.
 - **Defined objects**: The editor suggests variables, request names, environment names, and auth providers that are already declared in the file or imported files.
 - **Object parameters**: Named parameters for `rq` (e.g. `url`, `headers`, `body`) and `ep` (e.g. `url`, `headers`, `qs`) are suggested in context, so you never have to guess valid field names.
 - **Auth properties**: When defining an `auth` block, the available fields are filtered by the selected `auth_type` — you only see what is relevant.

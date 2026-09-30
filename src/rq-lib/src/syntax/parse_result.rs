@@ -1,5 +1,6 @@
 use crate::syntax::auth::Config as AuthConfig;
 use crate::syntax::http_method::HttpMethod;
+use crate::syntax::types::{SlotBinding, ValueType};
 use crate::syntax::variable_context::Variable;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -15,6 +16,7 @@ pub struct EndpointDefinition {
     pub url: String,
     pub headers: Vec<(String, String)>,
     pub headers_var: Option<String>,
+    pub slot_bindings: Vec<SlotBinding>,
     pub qs: Option<String>,
     pub auth: Option<String>,
     pub auth_location: Option<AuthLocation>,
@@ -38,7 +40,9 @@ pub struct Request {
     pub method: HttpMethod,
     pub headers: Vec<(String, String)>,
     pub body: Option<String>,
+    pub body_type: Option<ValueType>,
     pub headers_var: Option<String>,
+    pub slot_bindings: Vec<SlotBinding>,
     pub endpoint: Option<String>,
     pub auth: Option<String>,
     pub auth_location: Option<AuthLocation>,

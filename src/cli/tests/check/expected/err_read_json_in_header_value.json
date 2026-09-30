@@ -1,0 +1,10 @@
+{
+  "errors": [
+    {
+      "file": "{{*}}",
+      "line": 1,
+      "column": 51,
+      "message": "io.read_json() returns a JSON value; parameter 'header value' expects a string"
+    }
+  ]
+}

@@ -1,0 +1,3 @@
+let payload = ${"name": "alice"};
+
+rq get(payload);

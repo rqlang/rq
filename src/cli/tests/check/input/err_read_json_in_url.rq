@@ -1,0 +1,3 @@
+let payload = io.read_json("payload.json");
+
+rq get(payload);

@@ -25,8 +25,14 @@ export const IO_FUNCTIONS = [
     {
         name: 'read_file',
         signature: 'io.read_file(path: string)',
-        description: 'Imports the contents of a file relative to the current .rq file',
-        parameters: ['path: string - Relative or absolute path to the file to import']
+        description: 'Reads a file relative to the current .rq file and returns its contents as a string',
+        parameters: ['path: string - Relative or absolute path to the file to read']
+    },
+    {
+        name: 'read_json',
+        signature: 'io.read_json(path: string)',
+        description: 'Reads a JSON file relative to the current .rq file as a JSON value, so rq sends it with Content-Type: application/json',
+        parameters: ['path: string - Relative or absolute path to the JSON file to read']
     }
 ];
 

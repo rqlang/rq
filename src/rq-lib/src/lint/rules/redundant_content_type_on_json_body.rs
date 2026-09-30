@@ -2,15 +2,14 @@ use crate::lint::{
     request_declared_in, request_own_headers, LintContext, LintDiagnostic, LintRule,
 };
 use crate::syntax::parse_result::{Request, RequestWithVariables};
+use crate::syntax::types::{type_of_slot, ParameterSlot, SlotValue, TypeLookup, ValueType};
 use crate::syntax::variable_context::{Variable, VariableValue};
+use std::collections::HashMap;
 
 pub struct Rule;
 
 const CONTENT_TYPE: &str = "content-type";
 const APPLICATION_JSON: &str = "application/json";
-const READ_FILE_PREFIX: &str = "{{$io.read_file\u{1e}";
-const READ_FILE_FUNCTION: &str = "io.read_file";
-const JSON_EXTENSION: &str = ".json";
 
 impl LintRule for Rule {
     fn id(&self) -> &'static str {
@@ -28,10 +27,7 @@ impl LintRule for Rule {
             if !request_declared_in(request, &ctx.rq_file.path) {
                 continue;
             }
-            let Some(body) = json_body_form(request.body.as_deref())
-                .map(str::to_string)
-                .or_else(|| variable_body_form(req_with_vars, ctx))
-            else {
+            let Some(body) = json_body_description(req_with_vars, ctx) else {
                 continue;
             };
             if !declares_json_content_type(request, ctx) {
@@ -59,47 +55,52 @@ impl LintRule for Rule {
     }
 }
 
-fn json_body_form(body: Option<&str>) -> Option<&'static str> {
-    let body = body?.trim();
-    if let Some(argument) = body
-        .strip_prefix(READ_FILE_PREFIX)
-        .and_then(|rest| rest.strip_suffix("}}"))
-    {
-        let path = argument.split('\u{1f}').next().unwrap_or(argument);
-        return has_json_extension(path).then_some("a JSON fixture loaded with `io.read_file`");
-    }
-    is_json_literal(body).then_some("a `${...}` JSON body")
-}
-
-fn variable_body_form(req_with_vars: &RequestWithVariables, ctx: &LintContext) -> Option<String> {
-    let name = variable_reference(req_with_vars.request.body.as_deref()?)?;
-    if defined_in_an_environment(name, ctx) {
+fn json_body_description(
+    req_with_vars: &RequestWithVariables,
+    ctx: &LintContext,
+) -> Option<String> {
+    let binding = req_with_vars
+        .request
+        .slot_bindings
+        .iter()
+        .find(|binding| binding.slot == ParameterSlot::Body)?;
+    let scoped = scoped_variables(req_with_vars, ctx);
+    if type_of_slot(&binding.value, &scoped) != TypeLookup::Known(ValueType::Json) {
         return None;
     }
-    let value = lookup_variable(name, req_with_vars, ctx)?;
-    match value {
-        VariableValue::Json(_) => Some(format!("the JSON body held by `{name}`")),
-        VariableValue::SystemFunction {
-            name: function,
-            args,
-        } if function == READ_FILE_FUNCTION => {
-            let path = args.first()?;
-            has_json_extension(path).then(|| format!("the JSON fixture held by `{name}`"))
+    match &binding.value {
+        SlotValue::Literal(_) => Some("a `${...}` JSON body".to_string()),
+        SlotValue::Function(name) => Some(format!("a JSON fixture loaded with `{name}`")),
+        SlotValue::Variable(name) => {
+            if defined_in_an_environment(name, ctx) {
+                return None;
+            }
+            match scoped.get(name.as_str()) {
+                Some(VariableValue::SystemFunction { .. }) => {
+                    Some(format!("the JSON fixture held by `{name}`"))
+                }
+                _ => Some(format!("the JSON body held by `{name}`")),
+            }
         }
-        _ => None,
     }
 }
 
-fn variable_reference(body: &str) -> Option<&str> {
-    let inner = body.trim().strip_prefix("{{")?.strip_suffix("}}")?.trim();
-    let mut characters = inner.chars();
-    let first = characters.next()?;
-    if !first.is_ascii_alphabetic() && first != '_' {
-        return None;
+fn scoped_variables<'a>(
+    req_with_vars: &'a RequestWithVariables,
+    ctx: &'a LintContext,
+) -> HashMap<&'a str, &'a VariableValue> {
+    let scopes: [&[Variable]; 3] = [
+        &ctx.rq_file.file_variables,
+        &req_with_vars.endpoint_variables,
+        &req_with_vars.request_variables,
+    ];
+    let mut map = HashMap::new();
+    for scope in scopes {
+        for variable in scope {
+            map.insert(variable.name.as_str(), &variable.value);
+        }
     }
-    characters
-        .all(|c| c.is_ascii_alphanumeric() || c == '_')
-        .then_some(inner)
+    map
 }
 
 fn defined_in_an_environment(name: &str, ctx: &LintContext) -> bool {
@@ -107,33 +108,6 @@ fn defined_in_an_environment(name: &str, ctx: &LintContext) -> bool {
         .environments
         .values()
         .any(|variables| variables.iter().any(|v| v.name == name))
-}
-
-fn lookup_variable<'a>(
-    name: &str,
-    req_with_vars: &'a RequestWithVariables,
-    ctx: &'a LintContext,
-) -> Option<&'a VariableValue> {
-    let scopes: [&[Variable]; 3] = [
-        &req_with_vars.request_variables,
-        &req_with_vars.endpoint_variables,
-        &ctx.rq_file.file_variables,
-    ];
-    scopes
-        .into_iter()
-        .find_map(|scope| scope.iter().find(|v| v.name == name))
-        .map(|v| &v.value)
-}
-
-fn has_json_extension(path: &str) -> bool {
-    path.trim().to_lowercase().ends_with(JSON_EXTENSION)
-}
-
-fn is_json_literal(body: &str) -> bool {
-    if body.starts_with("{{") {
-        return false;
-    }
-    (body.starts_with('{') && body.ends_with('}')) || (body.starts_with('[') && body.ends_with(']'))
 }
 
 fn declares_json_content_type(request: &Request, ctx: &LintContext) -> bool {
@@ -181,10 +155,10 @@ mod tests {
 
     #[test]
     fn flags_a_content_type_next_to_a_json_fixture() {
-        let src = "rq post(\"http://x/users\", $[\"content-type\": \"application/json\"], io.read_file(\"users-post.json\"));\n";
+        let src = "rq post(\"http://x/users\", $[\"content-type\": \"application/json\"], io.read_json(\"users-post.json\"));\n";
         let target = diagnostics_for(src);
         assert_eq!(target.len(), 1, "got: {target:?}");
-        assert!(target[0].message.contains("io.read_file"));
+        assert!(target[0].message.contains("io.read_json"));
     }
 
     #[test]
@@ -199,7 +173,7 @@ mod tests {
 
     #[test]
     fn flags_a_json_fixture_held_by_a_variable() {
-        let src = "let payload = io.read_file(\"users-post.json\");\nrq post(\"http://x/users\", $[\"Content-Type\": \"application/json\"], payload);\n";
+        let src = "let payload = io.read_json(\"users-post.json\");\nrq post(\"http://x/users\", $[\"Content-Type\": \"application/json\"], payload);\n";
         let target = diagnostics_for(src);
         assert_eq!(target.len(), 1, "got: {target:?}");
         assert!(target[0]
@@ -291,7 +265,7 @@ mod tests {
 
     #[test]
     fn flags_a_json_fixture_on_a_request_inside_an_endpoint() {
-        let src = "ep users(\"http://x/users\") {\n    rq post(headers: $[\"Content-Type\": \"application/json\"], body: io.read_file(\"users-post.json\"));\n}\n";
+        let src = "ep users(\"http://x/users\") {\n    rq post(headers: $[\"Content-Type\": \"application/json\"], body: io.read_json(\"users-post.json\"));\n}\n";
         let target = diagnostics_for(src);
         assert_eq!(target.len(), 1, "got: {target:?}");
         assert_eq!(target[0].line, 2);

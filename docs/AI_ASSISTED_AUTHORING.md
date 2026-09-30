@@ -64,7 +64,7 @@ ep users("https://httpbin.org/anything/users") {
   [required(user_id)]
   rq get(user_id);
 
-  rq post(body: io.read_file("users-post.json"));
+  rq post(body: io.read_json("users-post.json"));
 
   [required(user_id)]
   rq delete(user_id);
@@ -96,7 +96,7 @@ ep users<base>("/users") {
   [required(user_id)]
   rq get(user_id);
 
-  rq post(body: io.read_file("users-post.json"));
+  rq post(body: io.read_json("users-post.json"));
 
   [required(user_id)]
   rq delete(user_id);
@@ -216,7 +216,7 @@ ep pets<base>("/pets") {
   [required(pet_id)]
   rq get(pet_id);
 
-  rq post(body: io.read_file("pets-post.json"));
+  rq post(body: io.read_json("pets-post.json"));
 
   [required(pet_id)]
   rq delete(pet_id);

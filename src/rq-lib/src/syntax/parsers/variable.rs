@@ -95,7 +95,10 @@ fn parse_variable_value(r: &mut TokenReader) -> Result<VariableValue, SyntaxErro
             r.advance();
             Ok(VariableValue::String(s))
         }
-        TokenType::Punctuation if token.value == PUNC_LBRACKET => parse_array_variable(r),
+        TokenType::Punctuation if token.value == PUNC_LBRACKET => Err(r.create_error_with_file(
+            "Array values are not supported. Use '$[\"key\": \"value\"]' for a headers map.".into(),
+            token.span.clone(),
+        )),
         TokenType::Punctuation if token.value == PUNC_DOLLAR => {
             let mut lookahead = 1;
             while let Some(next) = r.peek(lookahead) {
@@ -118,8 +121,7 @@ fn parse_variable_value(r: &mut TokenReader) -> Result<VariableValue, SyntaxErro
             token.span.clone(),
         )),
         _ => Err(r.create_error(
-            "Expected identifier, string, array, JSON object, or headers map for variable value"
-                .into(),
+            "Expected identifier, string, JSON object, or headers map for variable value".into(),
             token.span.clone(),
         )),
     }
@@ -206,38 +208,6 @@ fn parse_headers_variable(r: &mut TokenReader) -> Result<VariableValue, SyntaxEr
         }
     }
     Ok(VariableValue::Headers(headers))
-}
-
-fn parse_array_variable(r: &mut TokenReader) -> Result<VariableValue, SyntaxError> {
-    r.advance(); // consume [
-    let mut arr = Vec::new();
-    loop {
-        r.skip_ignorable();
-        if let Some(ct) = r.cur() {
-            if ct.token_type == TokenType::Punctuation && ct.value == PUNC_RBRACKET {
-                r.advance();
-                break;
-            }
-            if ct.token_type == TokenType::String {
-                let sv = unescape_string(&ct.value[1..ct.value.len() - 1]);
-                arr.push(sv);
-                r.advance();
-                r.skip_ignorable();
-                if let Some(com) = r.cur() {
-                    if com.token_type == TokenType::Punctuation && com.value == PUNC_COMMA {
-                        r.advance();
-                    }
-                }
-                continue;
-            }
-        }
-        if r.is_end() {
-            break;
-        } else {
-            r.advance();
-        }
-    }
-    Ok(VariableValue::Array(arr))
 }
 
 fn parse_json_value(r: &mut TokenReader) -> Result<VariableValue, SyntaxError> {

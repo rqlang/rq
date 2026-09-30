@@ -1,0 +1,10 @@
+{
+  "errors": [
+    {
+      "file": "{{*}}",
+      "line": 3,
+      "column": 8,
+      "message": "Variable 'payload' is a JSON value; parameter 'url' expects a string"
+    }
+  ]
+}

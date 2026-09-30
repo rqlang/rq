@@ -257,6 +257,23 @@ rq test_import_reference(
 );
 ```
 
+### `io.read_json(path)`
+Reads a JSON file **relative to the current `.rq` file** and returns it as a JSON value. The file must be valid JSON. Because the result is JSON-typed, rq sends it with `Content-Type: application/json` on its own — do not add that header by hand.
+
+```rq
+rq post(
+  "http://localhost:8080/users",
+  body: io.read_json("users-post.json"),
+);
+```
+
+Use `io.read_json` for JSON payloads and `io.read_file` for anything else: `io.read_file` always returns a string regardless of the file extension, so a body loaded with it gets no derived content type. `io.read_json` is JSON-typed, so it is rejected in a url, a query string or a header value.
+
+### Value types
+Three types exist: **string** (`"text"`, `io.read_file(...)`, `random.guid()`, `datetime.now()`), **JSON** (`${ ... }`, `io.read_json(...)`) and **headers map** (`$[ ... ]`). `url` (on `rq` and `ep`), `qs` (on `ep` only) and header values accept a string; `headers` accepts a headers map; `body` (on `rq` only) accepts a string or JSON. A variable takes the type of what it holds, and following a reference chain resolves to the final type. Mismatches are reported before any request runs, e.g. `Variable 'h' is a headers map; parameter 'url' expects a string`.
+
+Arrays are not a type — `let a = ["x"];` is rejected at the declaration. `$[...]` is a headers map, not an array.
+
 ## 6. Attributes
 
 Annotations in square brackets placed immediately above an `rq` or `ep` statement.

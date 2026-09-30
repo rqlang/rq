@@ -1,71 +1,61 @@
 use crate::syntax::{
     error::SyntaxError,
     keywords::{
-        PUNC_COLON, PUNC_COMMA, PUNC_DOLLAR, PUNC_LBRACKET, PUNC_LPAREN, PUNC_RBRACKET, PUNC_RPAREN,
+        PUNC_COLON, PUNC_COMMA, PUNC_DOLLAR, PUNC_DOT, PUNC_LBRACKET, PUNC_LPAREN, PUNC_RBRACKET,
+        PUNC_RPAREN,
     },
     reader::{expect, make_error, TokenReader},
     token::TokenType,
-    variable_context::{Variable, VariableValue},
+    types::{ParameterSlot, SlotBinding, SlotValue},
+    variable_context::VariableValue,
 };
 
-fn resolve_reference_type<'a>(
-    value: &'a VariableValue,
-    vars: &'a [Variable],
-    depth: usize,
-) -> Result<&'a VariableValue, String> {
-    if depth > 10 {
-        return Err("possible circular reference in variable chain".into());
+pub fn peek_slot_value(r: &TokenReader) -> Option<SlotValue> {
+    let token = r.cur()?;
+    if token.token_type != TokenType::Identifier {
+        return None;
     }
-    match value {
-        VariableValue::Reference(ref_name) => {
-            if let Some(v) = vars.iter().find(|v| v.name == *ref_name) {
-                resolve_reference_type(&v.value, vars, depth + 1)
-            } else {
-                Err(format!("unresolved reference to variable '{ref_name}'"))
-            }
-        }
-        other => Ok(other),
+    let name = token.value.clone();
+    if !crate::syntax::functions::is_known_namespace(&name) {
+        return Some(SlotValue::Variable(name));
+    }
+    match peek_function_name(r, &name) {
+        Some(full_name) => Some(SlotValue::Function(full_name)),
+        None => Some(SlotValue::Variable(name)),
     }
 }
 
-pub fn check_variable_type(
-    name: &str,
-    expected_types: &[fn(&VariableValue) -> bool],
-    file_vars: &[Variable],
-    token: &crate::syntax::token::Token,
-    r: &TokenReader,
-) -> Result<(), SyntaxError> {
-    if let Some(var) = file_vars.iter().find(|v| v.name == name) {
-        match resolve_reference_type(&var.value, file_vars, 0) {
-            Ok(resolved) => {
-                let is_valid = expected_types.iter().any(|check| check(resolved));
-                if !is_valid {
-                    return Err(r.create_error(
-                        format!("Variable '{name}' has invalid type for this parameter"),
-                        token.span.clone(),
-                    ));
-                }
-            }
-            Err(reason) => {
-                return Err(r.create_error(
-                    format!("Cannot resolve variable '{name}': {reason}"),
-                    token.span.clone(),
-                ));
-            }
+fn peek_function_name(r: &TokenReader, namespace: &str) -> Option<String> {
+    let mut offset = 1;
+    while let Some(next) = r.peek(offset) {
+        if is_ignorable(next) {
+            offset += 1;
+            continue;
         }
+        if !(next.token_type == TokenType::Punctuation && next.value == PUNC_DOT) {
+            return None;
+        }
+        offset += 1;
+        break;
     }
-    Ok(())
+    while let Some(after) = r.peek(offset) {
+        if is_ignorable(after) {
+            offset += 1;
+            continue;
+        }
+        if after.token_type == TokenType::Identifier {
+            return Some(format!("{namespace}.{}", after.value));
+        }
+        return None;
+    }
+    None
 }
 
-pub fn is_string_like(v: &VariableValue) -> bool {
+fn is_ignorable(token: &crate::syntax::token::Token) -> bool {
     matches!(
-        v,
-        VariableValue::String(_) | VariableValue::SystemFunction { .. }
+        token.token_type,
+        TokenType::Whitespace | TokenType::Newline | TokenType::Comment
     )
-}
-
-pub fn is_headers_like(v: &VariableValue) -> bool {
-    matches!(v, VariableValue::Headers(_))
 }
 
 pub fn parse_system_function(
@@ -196,7 +186,11 @@ pub fn normalize_multiline_string(s: &str, separator: &str) -> String {
     result
 }
 
-pub fn parse_string_value(r: &mut TokenReader, separator: &str) -> Result<String, SyntaxError> {
+pub fn parse_string_value(
+    r: &mut TokenReader,
+    separator: &str,
+    slot: ParameterSlot,
+) -> Result<String, SyntaxError> {
     if let Some(t) = r.cur() {
         match t.token_type {
             TokenType::String => {
@@ -221,17 +215,23 @@ pub fn parse_string_value(r: &mut TokenReader, separator: &str) -> Result<String
                                 .unwrap_or(r.source.len()..r.source.len());
                             let sys_func = parse_system_function(r, &ident)?;
                             if let VariableValue::SystemFunction { name, args } = sys_func {
-                                let func = crate::syntax::functions::get_function(
+                                let returns = crate::syntax::functions::get_function(
                                     &ident,
                                     &name[ident.len() + 1..],
-                                );
-                                if func.map(|f| f.return_type())
-                                    != Some(crate::syntax::functions::traits::FunctionReturnType::String)
-                                {
-                                    return Err(r.create_error_no_file(
-                                        format!("{name}() cannot be used here: expected a string-returning function"),
-                                        func_span,
-                                    ));
+                                )
+                                .map(|f| f.return_type());
+                                if let Some(returns) = returns {
+                                    if !slot.accepts().contains(&returns) {
+                                        return Err(r.create_error_no_file(
+                                            format!(
+                                                "{name}() returns {}; parameter '{}' expects {}",
+                                                returns.label(),
+                                                slot.label(),
+                                                slot.expectation()
+                                            ),
+                                            func_span,
+                                        ));
+                                    }
                                 }
                                 let args_str = args.join("\x1F");
                                 return Ok(format!("{{{{${name}\x1E{args_str}}}}}"));
@@ -287,7 +287,7 @@ pub fn parse_headers_array(r: &mut TokenReader) -> Result<Vec<(String, String)>,
                 )?;
                 r.advance();
                 r.skip_ignorable();
-                let val = parse_string_value(r, " ")?;
+                let val = parse_string_value(r, " ", ParameterSlot::HeaderValue)?;
                 headers.push((key, val));
                 r.skip_ignorable();
                 if let Some(com) = r.cur() {
@@ -369,12 +369,98 @@ pub fn can_parse_attributed(r: &TokenReader, keyword: &str) -> bool {
     false
 }
 
-pub struct ParameterSlots {
+pub fn claim_parameter_slot(
+    r: &mut TokenReader,
+    slots: &mut SlotTracker,
+) -> Result<usize, SyntaxError> {
+    if !next_parameter_is_named(r) {
+        let Some(index) = slots.next_free() else {
+            let span = match r.cur() {
+                Some(t) => t.span.clone(),
+                None => r.source.len()..r.source.len(),
+            };
+            return Err(r.create_error(
+                format!(
+                    "Too many positional parameters (max {}: {})",
+                    slots.capacity(),
+                    slots.names_label()
+                ),
+                span,
+            ));
+        };
+        slots.claim(index);
+        return Ok(index);
+    }
+    let name_tok = expect(
+        r,
+        |t| t.token_type == TokenType::Identifier,
+        "Expected identifier",
+    )?;
+    let param_name = name_tok.value.clone();
+    let name_span = name_tok.span.clone();
+    let Some(index) = slots.index_of(&param_name) else {
+        return Err(r.create_error(format!("Unknown parameter name: {param_name}"), name_span));
+    };
+    if !slots.claim(index) {
+        return Err(r.create_error(format!("Duplicate parameter: {param_name}"), name_span));
+    }
+    r.advance();
+    r.skip_ignorable();
+    expect(
+        r,
+        |t| t.token_type == TokenType::Punctuation && t.value == PUNC_COLON,
+        format!("Expected '{PUNC_COLON}'"),
+    )?;
+    r.advance();
+    r.skip_ignorable();
+    Ok(index)
+}
+
+pub fn next_parameter_is_named(r: &mut TokenReader) -> bool {
+    let Some(t) = r.cur() else {
+        return false;
+    };
+    if t.token_type != TokenType::Identifier {
+        return false;
+    }
+    let save = r.idx;
+    r.advance();
+    r.skip_ignorable();
+    let has_colon = r
+        .cur()
+        .map(|t| t.token_type == TokenType::Punctuation && t.value == PUNC_COLON)
+        .unwrap_or(false);
+    r.idx = save;
+    has_colon
+}
+
+pub fn binding_position(r: &TokenReader) -> (usize, usize) {
+    let Some(token) = r.cur() else {
+        return (0, 0);
+    };
+    let (line_1, col_1) = r.get_line_col(token.span.start);
+    (line_1.saturating_sub(1), col_1.saturating_sub(1))
+}
+
+pub fn record_binding(r: &TokenReader, slot_bindings: &mut Vec<SlotBinding>, slot: ParameterSlot) {
+    let Some(value) = peek_slot_value(r) else {
+        return;
+    };
+    let (line, character) = binding_position(r);
+    slot_bindings.push(SlotBinding {
+        slot,
+        value,
+        line,
+        character,
+    });
+}
+
+pub struct SlotTracker {
     names: [&'static str; 3],
     assigned: [bool; 3],
 }
 
-impl ParameterSlots {
+impl SlotTracker {
     pub fn new(names: [&'static str; 3]) -> Self {
         Self {
             names,
@@ -396,6 +482,14 @@ impl ParameterSlots {
         }
         self.assigned[index] = true;
         true
+    }
+
+    pub fn capacity(&self) -> usize {
+        self.names.len()
+    }
+
+    pub fn names_label(&self) -> String {
+        self.names.join(", ")
     }
 }
 

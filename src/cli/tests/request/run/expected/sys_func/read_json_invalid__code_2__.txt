@@ -1,0 +1,1 @@
+Error: Syntax error in tests/request/run/input/sys_func/read_json_invalid__code_2__.rq at line 1, column 51: Error parsing JSON file data.txt: expected value at line 1 column 1

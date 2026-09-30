@@ -1,0 +1,3 @@
+let conf = $["X-Token": "abc"];
+
+rq post("http://localhost:8080", body: conf);

@@ -27,14 +27,14 @@ impl LintRule for Rule {
                 rule: "missing_body_on_write",
                 message: format!(
                     "Request `{bare}` is a {verb} but has no `body:` argument. \
-                     Write actions should carry a body — add `body: io.read_file(\"<entity>-<verb>.json\")` \
+                     Write actions should carry a body — add `body: io.read_json(\"<entity>-<verb>.json\")` \
                      or an inline JSON literal `body: ${{ ... }}`."
                 ),
                 line: request.line + 1,
                 column: request.character + 1,
                 file: Some(ctx.display_path.to_string()),
                 suggested_fix: Some(format!(
-                    "Add `body: io.read_file(\"<entity>-{verb_lower}.json\")` to `rq {bare}(...)`.",
+                    "Add `body: io.read_json(\"<entity>-{verb_lower}.json\")` to `rq {bare}(...)`.",
                     verb_lower = verb.to_lowercase()
                 )),
             });

@@ -13,6 +13,7 @@ pub mod rq_file;
 pub mod secrets;
 pub mod token;
 pub mod tokenizer;
+pub mod types;
 pub mod variable_context;
 
 pub use fs::Fs;

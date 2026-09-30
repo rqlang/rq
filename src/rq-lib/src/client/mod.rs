@@ -131,6 +131,8 @@ impl RqClient {
                     source_path,
                 );
 
+                Self::reject_mistyped_slots(&working, &context)?;
+
                 if let Some(header_var) = working.headers_var.clone() {
                     let headers = std::mem::take(&mut working.headers);
                     working.headers = Self::apply_headers_var(&header_var, headers, &context)
@@ -434,6 +436,8 @@ impl RqClient {
             &rq_file.imported_files,
             source_path,
         );
+
+        Self::reject_mistyped_slots(&working, &context)?;
 
         if let Some(header_var) = working.headers_var.clone() {
             let headers = std::mem::take(&mut working.headers);
@@ -1051,6 +1055,23 @@ impl RqClient {
         Some(RqFile::from_content_lenient(canonical, &content, &*self.fs))
     }
 
+    fn reject_mistyped_slots(
+        request: &Request,
+        context: &crate::syntax::variable_context::VariableContext,
+    ) -> Result<(), RqError> {
+        match crate::syntax::resolve::collect_slot_type_errors(
+            &request.slot_bindings,
+            request.source_path.as_deref(),
+            context,
+        )
+        .into_iter()
+        .next()
+        {
+            Some(error) => Err(RqError::Syntax(error)),
+            None => Ok(()),
+        }
+    }
+
     fn prepare_request(mut request: Request) -> Result<Request, RqError> {
         if !request
             .headers
@@ -1063,17 +1084,17 @@ impl RqClient {
             ));
         }
 
-        if let Some(body) = &request.body {
-            if !request
+        let sends_json = request.body.is_some()
+            && request.body_type == Some(crate::syntax::types::ValueType::Json);
+        if sends_json
+            && !request
                 .headers
                 .iter()
                 .any(|(k, _)| k.to_lowercase() == "content-type")
-                && is_json_body(body)
-            {
-                request
-                    .headers
-                    .push(("content-type".to_string(), "application/json".to_string()));
-            }
+        {
+            request
+                .headers
+                .push(("content-type".to_string(), "application/json".to_string()));
         }
 
         if let Some(timeout_str) = &request.timeout {
@@ -1550,21 +1571,7 @@ impl RqClient {
         if let Some(var) = all.into_iter().rev().find(|v| v.name == name) {
             match &var.value {
                 VariableValue::Json(_) | VariableValue::String(_) => {
-                    return Err(format!(
-                        "Variable '{name}' is not a headers object or array"
-                    ));
-                }
-                VariableValue::Array(arr) => {
-                    let mut out = Vec::new();
-                    for item in arr {
-                        if let Some((k, v)) = item.split_once(':') {
-                            out.push((
-                                k.trim().trim_matches('"').to_string(),
-                                v.trim().trim_matches('"').to_string(),
-                            ));
-                        }
-                    }
-                    return Ok(out);
+                    return Err(format!("Variable '{name}' is not a headers map"));
                 }
                 VariableValue::Headers(h) => {
                     return Ok(h.clone());
@@ -1821,12 +1828,6 @@ impl Default for RqClient {
             Arc::new(native::ReqwestHttpClient),
         )
     }
-}
-
-fn is_json_body(body: &str) -> bool {
-    let trimmed = body.trim();
-    (trimmed.starts_with('{') && trimmed.ends_with('}'))
-        || (trimmed.starts_with('[') && trimmed.ends_with(']'))
 }
 
 fn extract_unresolved_var_name(message: &str) -> Option<String> {
@@ -2102,5 +2103,80 @@ mod scope_file_tests {
             "image/static.rq must not be in scope, got {target:?}"
         );
         assert!(target.iter().any(|r| ends_with(&r.file, "inma/_shared.rq")));
+    }
+}
+
+#[cfg(test)]
+mod prepare_request_tests {
+    use super::RqClient;
+    use crate::syntax::http_method::HttpMethod;
+    use crate::syntax::parse_result::Request;
+    use crate::syntax::types::ValueType;
+
+    fn request_with_body(body: &str, body_type: Option<ValueType>) -> Request {
+        Request {
+            name: "post".to_string(),
+            url: "http://localhost:8080".to_string(),
+            raw_url: "http://localhost:8080".to_string(),
+            method: HttpMethod::POST,
+            headers: Vec::new(),
+            body: Some(body.to_string()),
+            body_type,
+            headers_var: None,
+            slot_bindings: Vec::new(),
+            endpoint: None,
+            auth: None,
+            auth_location: None,
+            timeout: None,
+            required_variables: Vec::new(),
+            source_path: None,
+            related_files: Vec::new(),
+            line: 0,
+            character: 0,
+        }
+    }
+
+    fn content_type_of(request: Request) -> Option<String> {
+        RqClient::prepare_request(request)
+            .expect("prepare_request failed")
+            .headers
+            .into_iter()
+            .find(|(key, _)| key.eq_ignore_ascii_case("content-type"))
+            .map(|(_, value)| value)
+    }
+
+    #[test]
+    fn a_json_typed_body_gets_the_json_content_type() {
+        let target = content_type_of(request_with_body(
+            "{\"name\": \"alice\"}",
+            Some(ValueType::Json),
+        ));
+        assert_eq!(target, Some("application/json".to_string()));
+    }
+
+    #[test]
+    fn a_string_body_that_looks_like_json_gets_no_content_type() {
+        let target = content_type_of(request_with_body(
+            "{\"name\": \"alice\"}",
+            Some(ValueType::String),
+        ));
+        assert_eq!(target, None);
+    }
+
+    #[test]
+    fn an_untyped_body_gets_no_content_type() {
+        let target = content_type_of(request_with_body("{\"name\": \"alice\"}", None));
+        assert_eq!(target, None);
+    }
+
+    #[test]
+    fn a_declared_content_type_is_not_overridden() {
+        let mut request = request_with_body("{\"a\": 1}", Some(ValueType::Json));
+        request.headers.push((
+            "Content-Type".to_string(),
+            "application/merge-patch+json".to_string(),
+        ));
+        let target = content_type_of(request);
+        assert_eq!(target, Some("application/merge-patch+json".to_string()));
     }
 }

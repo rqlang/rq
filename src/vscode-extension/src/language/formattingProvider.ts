@@ -1,6 +1,11 @@
 import * as vscode from 'vscode';
 
 export function formatRqDocument(text: string, tabSize: number): string {
+    const { text: protectedText, literals } = protectMultilineStrings(text);
+    return restoreMultilineStrings(formatProtectedDocument(protectedText, tabSize), literals);
+}
+
+function formatProtectedDocument(text: string, tabSize: number): string {
     const indent = ' '.repeat(tabSize);
     const rawLines: string[] = [];
     for (const raw of normalizeMultilineArrayLiterals(normalizeMultilineCalls(text.split('\n'))))
@@ -247,7 +252,7 @@ function normalizeMultilineArrayLiterals(lines: string[]): string[] {
         const openerIdx = dollarBracketIndex(lines[i]);
         if (openerIdx !== -1) {
             const afterOpener = lines[i].slice(openerIdx + 2);
-            if (afterOpener.trim().length > 0 && !hasCloserOutsideString(afterOpener)) {
+            if (afterOpener.trim().length > 0 && !hasUnterminatedString(afterOpener) && !hasCloserOutsideString(afterOpener)) {
                 const prefix = lines[i].slice(0, openerIdx + 2);
                 const collected = [afterOpener.trim()];
                 i++;
@@ -397,6 +402,11 @@ function isBlockOpener(trimmed: string): boolean {
 }
 
 function fixSpacing(trimmed: string): string {
+    const commentStart = commentStartIndex(trimmed);
+    if (commentStart !== -1) {
+        return fixSpacing(trimmed.slice(0, commentStart)) + trimmed.slice(commentStart);
+    }
+
     let result = trimmed
         .replace(/\b(import|let|rq|ep|auth|env)\s{2,}/g, '$1 ')
         .replace(/^(let\s+\w+)\s*=\s*/, '$1 = ')
@@ -412,6 +422,21 @@ function fixSpacing(trimmed: string): string {
     });
 
     return normalizeCommaSpacing(result);
+}
+
+function commentStartIndex(line: string): number {
+    let stringChar: string | null = null;
+    for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (stringChar !== null) {
+            if (ch === '\\') { i++; continue; }
+            if (ch === stringChar) { stringChar = null; }
+            continue;
+        }
+        if (ch === '"' || ch === "'") { stringChar = ch; continue; }
+        if (ch === '/' && (line[i + 1] === '/' || line[i + 1] === '*')) { return i; }
+    }
+    return -1;
 }
 
 function normalizeCommaSpacing(s: string): string {
@@ -440,6 +465,66 @@ function normalizeCommaSpacing(s: string): string {
         }
     }
     return out;
+}
+
+const multilineStringMarker = '\u0000';
+
+function protectMultilineStrings(text: string): { text: string; literals: string[] } {
+    const literals: string[] = [];
+    if (text.includes(multilineStringMarker)) { return { text, literals }; }
+    let out = '';
+    let i = 0;
+    while (i < text.length) {
+        const ch = text[i];
+        if (ch === '/' && text[i + 1] === '/') {
+            const end = text.indexOf('\n', i);
+            const stop = end === -1 ? text.length : end;
+            out += text.slice(i, stop);
+            i = stop;
+            continue;
+        }
+        if (ch === '/' && text[i + 1] === '*') {
+            const end = text.indexOf('*/', i + 2);
+            const stop = end === -1 ? text.length : end + 2;
+            out += text.slice(i, stop);
+            i = stop;
+            continue;
+        }
+        if (ch !== '"' && ch !== "'") {
+            out += ch;
+            i++;
+            continue;
+        }
+        let j = i + 1;
+        let closed = false;
+        while (j < text.length) {
+            if (text[j] === '\\') { j += 2; continue; }
+            if (text[j] === ch) { j++; closed = true; break; }
+            j++;
+        }
+        if (!closed) {
+            out += ch;
+            i++;
+            continue;
+        }
+        const literal = text.slice(i, j);
+        if (literal.includes('\n')) {
+            out += `${ch}${multilineStringMarker}${literals.length}${multilineStringMarker}${ch}`;
+            literals.push(literal);
+        } else {
+            out += literal;
+        }
+        i = j;
+    }
+    return { text: out, literals };
+}
+
+function restoreMultilineStrings(text: string, literals: string[]): string {
+    if (literals.length === 0) { return text; }
+    return text.replace(
+        new RegExp(`(["'])${multilineStringMarker}(\\d+)${multilineStringMarker}\\1`, 'g'),
+        (match, _quote, index) => literals[Number(index)] ?? match
+    );
 }
 
 export const formattingProvider = vscode.languages.registerDocumentFormattingEditProvider(

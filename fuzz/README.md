@@ -51,6 +51,12 @@ cargo +nightly fuzz run tokenize -- -max_total_time=300
 cargo +nightly fuzz run parse -- -max_total_time=300
 ```
 
+`cargo install` builds cargo-fuzz for the host, so the default target is right. A
+prebuilt cargo-fuzz (`cargo binstall`, `taiki-e/install-action`) may be musl-linked and
+then defaults to a musl target, which fails with `sanitizer is incompatible with
+statically linked libc`. Pass `--target "$(rustc -vV | sed -n 's/^host: //p')"` in that
+case, the way the workflow does.
+
 ## After a crash
 
 `cargo fuzz` writes the offending input to `fuzz/artifacts/<target>/`. Reproduce it with

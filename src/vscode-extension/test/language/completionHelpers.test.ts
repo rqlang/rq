@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { insideJsonLiteral, insideUnclosedAttribute, getAuthAttributeContext, afterCommaTrigger, followsArgumentSeparator, claimedParams } from '../../src/language/completionHelpers';
+import { insideJsonLiteral, insideUnclosedAttribute, insideMethodAttributeValue, getAuthAttributeContext, afterCommaTrigger, followsArgumentSeparator, claimedParams } from '../../src/language/completionHelpers';
 
 describe('followsArgumentSeparator', () => {
     test('returns true when the previous line ends with a comma', () => {
@@ -162,6 +162,36 @@ describe('getAuthAttributeContext', () => {
 
     test('returns null when the cursor is inside a line comment', () => {
         expect(getAuthAttributeContext('[auth("my_bearer")]\n// note: don\'t')).toBeNull();
+    });
+});
+
+describe('insideMethodAttributeValue', () => {
+    test('returns true right after the opening paren', () => {
+        expect(insideMethodAttributeValue('[method(')).toBe(true);
+    });
+
+    test('returns true while typing a verb', () => {
+        expect(insideMethodAttributeValue('[method(PO')).toBe(true);
+    });
+
+    test('returns true when the attribute spans several lines', () => {
+        expect(insideMethodAttributeValue('[method(\n    ')).toBe(true);
+    });
+
+    test('returns true when an earlier closed attribute precedes it', () => {
+        expect(insideMethodAttributeValue('[method(GET)]\nrq a("x");\n\n[method(')).toBe(true);
+    });
+
+    test('returns false after the attribute is closed', () => {
+        expect(insideMethodAttributeValue('[method(GET)]\n')).toBe(false);
+    });
+
+    test('returns false inside another attribute', () => {
+        expect(insideMethodAttributeValue('[timeout(')).toBe(false);
+    });
+
+    test('returns false inside a headers literal', () => {
+        expect(insideMethodAttributeValue('let h = $[method(')).toBe(false);
     });
 });
 

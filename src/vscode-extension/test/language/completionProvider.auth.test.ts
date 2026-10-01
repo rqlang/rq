@@ -414,7 +414,7 @@ describe('auth attribute value completion', () => {
     });
 
     test('does not offer top level keywords inside an unfinished attribute', async () => {
-        const doc = makeDocument(['[method(', '    ']);
+        const doc = makeDocument(['[timeout(', '    ']);
         const position = new vscode.Position(1, 4);
 
         const result = await provideCompletionItems(doc, position);

@@ -100,6 +100,8 @@ export function insideOpenBlock(text: string, blockPattern: RegExp): boolean {
 
 export const ATTRIBUTE_NAMES = ['method', 'timeout', 'auth', 'required'];
 
+export const HTTP_METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'];
+
 export function lastSignificantChar(text: string): string {
     let result = '';
     let inString = false;
@@ -179,6 +181,12 @@ export function insideUnclosedAttribute(text: string): boolean {
     const index = openAttributeBracketIndex(text);
     if (index === -1) { return false; }
     return new RegExp(`^\\s*(${ATTRIBUTE_NAMES.join('|')})\\b`).test(text.slice(index + 1));
+}
+
+export function insideMethodAttributeValue(text: string): boolean {
+    const index = openAttributeBracketIndex(text);
+    if (index === -1) { return false; }
+    return /^\s*method\s*\(\s*[a-zA-Z]*$/.test(text.slice(index + 1));
 }
 
 export function getAuthAttributeContext(text: string): AuthAttributeContext | null {

@@ -223,7 +223,7 @@ export class Location {
 }
 
 export class MarkdownString {
-    value = '';
+    constructor(public value = '') {}
     appendMarkdown(s: string) { this.value += s; return this; }
     appendCodeblock(s: string, _lang?: string) { this.value += s; return this; }
 }

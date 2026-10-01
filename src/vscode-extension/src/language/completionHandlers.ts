@@ -18,6 +18,7 @@ import {
     AuthAttributeContext,
     claimedParams,
     filterRequiredVars,
+    sampleDataSnippet,
     COMMON_HEADERS,
     afterCommaTrigger,
     followsArgumentSeparator,
@@ -606,28 +607,28 @@ export const topLevelKeywordHandler: CompletionHandler = {
             (() => {
                 const i = new vscode.CompletionItem('auth oauth2_authorization_code', vscode.CompletionItemKind.Module);
                 i.detail = 'Auth block — OAuth2 Authorization Code with PKCE';
-                i.insertText = new vscode.SnippetString('auth ${1:my_auth}(auth_type.oauth2_authorization_code) {\n\tclient_id: ${2:client_id},\n\tauthorization_url: "${3:https://auth.example.com/oauth2/authorize}",\n\ttoken_url: "${4:https://auth.example.com/oauth2/token}",\n\tredirect_uri: "${5:http://localhost:8080/callback}",\n\tscope: "${6:openid profile}",\n}');
+                Object.assign(i, sampleDataSnippet('auth ${1:my_auth}(auth_type.oauth2_authorization_code) {\n\tclient_id: ${2:client_id},\n\tauthorization_url: "${3:https://auth.example.com/oauth2/authorize}",\n\ttoken_url: "${4:https://auth.example.com/oauth2/token}",\n\tredirect_uri: "${5:http://localhost:8080/callback}",\n\tscope: "${6:openid profile}",\n}', [3, 4, 6]));
                 i.sortText = 'auth_2oauth_ac';
                 return i;
             })(),
             (() => {
                 const i = new vscode.CompletionItem('auth oauth2_client_credentials (cert_file)', vscode.CompletionItemKind.Module);
                 i.detail = 'Auth block — OAuth2 Client Credentials (certificate)';
-                i.insertText = new vscode.SnippetString('auth ${1:my_auth}(auth_type.oauth2_client_credentials) {\n\tclient_id: ${2:client_id},\n\tcert_file: "${3:./client-cert.p12}",\n\tcert_password: ${4:cert_password},\n\ttoken_url: "${5:https://auth.example.com/oauth2/token}",\n\tscope: "${6:api.read}",\n}');
+                Object.assign(i, sampleDataSnippet('auth ${1:my_auth}(auth_type.oauth2_client_credentials) {\n\tclient_id: ${2:client_id},\n\tcert_file: "${3:./client-cert.p12}",\n\tcert_password: ${4:cert_password},\n\ttoken_url: "${5:https://auth.example.com/oauth2/token}",\n\tscope: "${6:api.read}",\n}', [3, 5, 6]));
                 i.sortText = 'auth_2oauth_cc_cert';
                 return i;
             })(),
             (() => {
                 const i = new vscode.CompletionItem('auth oauth2_client_credentials (client_secret)', vscode.CompletionItemKind.Module);
                 i.detail = 'Auth block — OAuth2 Client Credentials (client secret)';
-                i.insertText = new vscode.SnippetString('auth ${1:my_auth}(auth_type.oauth2_client_credentials) {\n\tclient_id: ${2:client_id},\n\tclient_secret: ${3:client_secret},\n\ttoken_url: "${4:https://auth.example.com/oauth2/token}",\n\tscope: "${5:api.read}",\n}');
+                Object.assign(i, sampleDataSnippet('auth ${1:my_auth}(auth_type.oauth2_client_credentials) {\n\tclient_id: ${2:client_id},\n\tclient_secret: ${3:client_secret},\n\ttoken_url: "${4:https://auth.example.com/oauth2/token}",\n\tscope: "${5:api.read}",\n}', [4, 5]));
                 i.sortText = 'auth_2oauth_cc_secret';
                 return i;
             })(),
             (() => {
                 const i = new vscode.CompletionItem('auth oauth2_implicit', vscode.CompletionItemKind.Module);
                 i.detail = 'Auth block — OAuth2 Implicit Flow';
-                i.insertText = new vscode.SnippetString('auth ${1:my_auth}(auth_type.oauth2_implicit) {\n\tclient_id: ${2:client_id},\n\tauthorization_url: "${3:https://auth.example.com/oauth2/authorize}",\n\tscope: "${4:openid profile}",\n}');
+                Object.assign(i, sampleDataSnippet('auth ${1:my_auth}(auth_type.oauth2_implicit) {\n\tclient_id: ${2:client_id},\n\tauthorization_url: "${3:https://auth.example.com/oauth2/authorize}",\n\tscope: "${4:openid profile}",\n}', [3, 4]));
                 i.sortText = 'auth_2oauth_impl';
                 return i;
             })(),
@@ -635,16 +636,17 @@ export const topLevelKeywordHandler: CompletionHandler = {
             (() => {
                 const i = new vscode.CompletionItem('ep …', vscode.CompletionItemKind.Module);
                 i.detail = 'Endpoint block snippet';
-                i.insertText = new vscode.SnippetString('ep ${1:ep_name}("${2:http://localhost:8080/path}") {\n\t$0\n}');
+                Object.assign(i, sampleDataSnippet('ep ${1:ep_name}("${2:http://localhost:8080/path}") {\n\t$0\n}', [2]));
                 i.sortText = 'ep_1sn';
                 return i;
             })(),
             (() => {
                 const i = new vscode.CompletionItem('ep crud', vscode.CompletionItemKind.Module);
                 i.detail = 'CRUD endpoint snippet';
-                i.insertText = new vscode.SnippetString(
-                    'ep ${1:resources}("${2:http://localhost:8080/resources}") {\n\trq list();\n\n\t[required(${3:resource_id})]\n\trq get($3);\n\n\trq post(body: io.read_json("$1-post.json"));\n\n\t[required($3)]\n\trq put($3, body: io.read_json("$1-put.json"));\n\n\t[required($3)]\n\trq patch($3, body: io.read_json("$1-patch.json"));\n\n\t[required($3)]\n\trq delete($3);\n}$0'
-                );
+                Object.assign(i, sampleDataSnippet(
+                    'ep ${1:resources}("${2:http://localhost:8080/resources}") {\n\trq list();\n\n\t[required(${3:resource_id})]\n\trq get($3);\n\n\trq post(body: io.read_json("$1-post.json"));\n\n\t[required($3)]\n\trq put($3, body: io.read_json("$1-put.json"));\n\n\t[required($3)]\n\trq patch($3, body: io.read_json("$1-patch.json"));\n\n\t[required($3)]\n\trq delete($3);\n}$0',
+                    [2]
+                ));
                 i.sortText = 'ep_2crud';
                 return i;
             })(),
@@ -652,7 +654,7 @@ export const topLevelKeywordHandler: CompletionHandler = {
             (() => {
                 const i = new vscode.CompletionItem('env …', vscode.CompletionItemKind.Module);
                 i.detail = 'Environment block snippet';
-                i.insertText = new vscode.SnippetString('env ${1:local} {\n\t${2:base_url}: "${3:http://localhost:8080}",\n}');
+                Object.assign(i, sampleDataSnippet('env ${1:local} {\n\t${2:base_url}: "${3:http://localhost:8080}",\n}', [3]));
                 i.sortText = 'env_1sn';
                 return i;
             })(),
@@ -662,7 +664,7 @@ export const topLevelKeywordHandler: CompletionHandler = {
             (() => {
                 const i = new vscode.CompletionItem('rq …', vscode.CompletionItemKind.Module);
                 i.detail = 'HTTP request snippet';
-                i.insertText = new vscode.SnippetString('rq ${1:rq_name}("${2:http://localhost:8080/path}");$0');
+                Object.assign(i, sampleDataSnippet('rq ${1:rq_name}("${2:http://localhost:8080/path}");$0', [2]));
                 i.sortText = 'rq_1sn';
                 return i;
             })(),

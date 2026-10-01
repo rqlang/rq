@@ -151,15 +151,49 @@ describe('top-level keyword completion', () => {
         expect(target.insertText.value).toContain('token: ${2:api_token},');
     });
 
-    test('no auth snippet inserts an empty placeholder value', async () => {
+    test('auth snippets leave urls and scope empty', async () => {
         const doc = makeDocument(['auth']);
         const position = new vscode.Position(0, 4);
 
         const items = await provideCompletionItems(doc, position);
 
-        const authSnippets = items.filter((i: any) => i.label.startsWith('auth ') && i.insertText.value);
-        expect(authSnippets.length).toBe(5);
-        authSnippets.forEach((i: any) => expect(i.insertText.value).not.toMatch(/\$\{\d+:\}/));
+        const oauthSnippets = items.filter((i: any) => i.label.startsWith('auth oauth2') && i.insertText.value);
+        expect(oauthSnippets.length).toBe(4);
+        oauthSnippets.forEach((i: any) => {
+            expect(i.insertText.value).not.toContain('example.com');
+            expect(i.insertText.value).toMatch(/scope: "\$\{\d+:\}"/);
+        });
+    });
+
+    test('auth oauth2_client_credentials (cert_file) snippet leaves cert_file empty', async () => {
+        const doc = makeDocument(['auth']);
+        const position = new vscode.Position(0, 4);
+
+        const items = await provideCompletionItems(doc, position);
+
+        const target = items.find((i: any) => i.label === 'auth oauth2_client_credentials (cert_file)');
+        expect(target.insertText.value).toContain('cert_file: "${3:}",');
+    });
+
+    test('auth oauth2_authorization_code snippet keeps the localhost redirect_uri', async () => {
+        const doc = makeDocument(['auth']);
+        const position = new vscode.Position(0, 4);
+
+        const items = await provideCompletionItems(doc, position);
+
+        const target = items.find((i: any) => i.label === 'auth oauth2_authorization_code');
+        expect(target.insertText.value).toContain('redirect_uri: "${5:http://localhost:8080/callback}",');
+    });
+
+    test('auth oauth2_authorization_code snippet documents sample urls', async () => {
+        const doc = makeDocument(['auth']);
+        const position = new vscode.Position(0, 4);
+
+        const items = await provideCompletionItems(doc, position);
+
+        const target = items.find((i: any) => i.label === 'auth oauth2_authorization_code');
+        expect(target.documentation.value).toContain('authorization_url: "https://auth.example.com/oauth2/authorize",');
+        expect(target.documentation.value).toContain('scope: "openid profile",');
     });
 
     test('suggests rq keyword item with Keyword kind when typing rq', async () => {
@@ -183,7 +217,29 @@ describe('top-level keyword completion', () => {
         const target = items.find((i: any) => i.label === 'rq …');
         expect(target).toBeDefined();
         expect(target.kind).toBe(vscode.CompletionItemKind.Module);
-        expect(target.insertText.value).toBe('rq ${1:rq_name}("${2:http://localhost:8080/path}");$0');
+        expect(target.insertText.value).toBe('rq ${1:rq_name}("${2:}");$0');
+    });
+
+    test('rq snippet documents a sample url', async () => {
+        const doc = makeDocument(['rq']);
+        const position = new vscode.Position(0, 2);
+
+        const items = await provideCompletionItems(doc, position);
+
+        const target = items.find((i: any) => i.label === 'rq …');
+        expect(target.documentation.value).toBe('**Example:**\n```rq\nrq rq_name("http://localhost:8080/path");\n```');
+    });
+
+    test('ep crud snippet documents tab stop references with their sample values', async () => {
+        const doc = makeDocument(['ep']);
+        const position = new vscode.Position(0, 2);
+
+        const items = await provideCompletionItems(doc, position);
+
+        const target = items.find((i: any) => i.label === 'ep crud');
+        expect(target.documentation.value).toContain('ep resources("http://localhost:8080/resources") {');
+        expect(target.documentation.value).toContain('rq get(resource_id);');
+        expect(target.documentation.value).toContain('rq post(body: io.read_json("resources-post.json"));');
     });
 
     test('suggests ep snippet with a url placeholder when typing ep', async () => {
@@ -193,7 +249,7 @@ describe('top-level keyword completion', () => {
         const items = await provideCompletionItems(doc, position);
 
         const target = items.find((i: any) => i.label === 'ep …');
-        expect(target.insertText.value).toBe('ep ${1:ep_name}("${2:http://localhost:8080/path}") {\n\t$0\n}');
+        expect(target.insertText.value).toBe('ep ${1:ep_name}("${2:}") {\n\t$0\n}');
     });
 
     test('suggests env snippet with a trailing comma after the entry', async () => {
@@ -203,7 +259,7 @@ describe('top-level keyword completion', () => {
         const items = await provideCompletionItems(doc, position);
 
         const target = items.find((i: any) => i.label === 'env …');
-        expect(target.insertText.value).toBe('env ${1:local} {\n\t${2:base_url}: "${3:http://localhost:8080}",\n}');
+        expect(target.insertText.value).toBe('env ${1:local} {\n\t${2:base_url}: "${3:}",\n}');
     });
 
     test('suggests ep crud snippet with separate name, url and path param placeholders', async () => {
@@ -216,7 +272,7 @@ describe('top-level keyword completion', () => {
         expect(target).toBeDefined();
         expect(target.kind).toBe(vscode.CompletionItemKind.Module);
         const val = target.insertText.value;
-        expect(val).toContain('ep ${1:resources}("${2:http://localhost:8080/resources}")');
+        expect(val).toContain('ep ${1:resources}("${2:}")');
         expect(val).toContain('[required(${3:resource_id})]');
         expect(val).not.toContain('let ');
     });

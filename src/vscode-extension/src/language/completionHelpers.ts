@@ -60,6 +60,28 @@ export function dollarPrefixItems(inline = false): vscode.CompletionItem[] {
     return [jsonItem, headersItem];
 }
 
+const SNIPPET_PLACEHOLDER = /\$\{(\d+):([^}]*)\}/g;
+
+export function sampleDataSnippet(
+    template: string,
+    sampleOnlyStops: number[]
+): { insertText: vscode.SnippetString; documentation: vscode.MarkdownString } {
+    const samples = new Map<string, string>();
+    for (const [, stop, sample] of template.matchAll(SNIPPET_PLACEHOLDER)) {
+        samples.set(stop, sample);
+    }
+    const insertText = template.replace(SNIPPET_PLACEHOLDER, (placeholder, stop: string) =>
+        sampleOnlyStops.includes(Number(stop)) ? `\${${stop}:}` : placeholder
+    );
+    const example = template
+        .replace(SNIPPET_PLACEHOLDER, (_placeholder, _stop: string, sample: string) => sample)
+        .replace(/\$(\d+)/g, (_reference, stop: string) => samples.get(stop) ?? '');
+    return {
+        insertText: new vscode.SnippetString(insertText),
+        documentation: new vscode.MarkdownString(`**Example:**\n\`\`\`rq\n${example}\n\`\`\``),
+    };
+}
+
 export function propertyItems(
     props: { name: string; signature: string; description: string; example: string }[],
     existingNamed: Set<string>,

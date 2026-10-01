@@ -1,6 +1,8 @@
 use super::{
     parse_trait::Parse,
-    utils::{normalize_multiline_string, parse_system_function, unescape_string},
+    utils::{
+        headers_map_entry_error, normalize_multiline_string, parse_system_function, unescape_string,
+    },
 };
 use crate::syntax::fs::Fs;
 use crate::syntax::{
@@ -201,11 +203,7 @@ fn parse_headers_variable(r: &mut TokenReader) -> Result<VariableValue, SyntaxEr
                 continue;
             }
         }
-        if r.is_end() {
-            break;
-        } else {
-            r.advance();
-        }
+        return Err(headers_map_entry_error(r));
     }
     Ok(VariableValue::Headers(headers))
 }

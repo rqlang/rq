@@ -311,13 +311,22 @@ pub fn parse_headers_array(
                 continue;
             }
         }
-        if r.is_end() {
-            break;
-        } else {
-            r.advance();
-        }
+        return Err(headers_map_entry_error(r));
     }
     Ok(headers)
+}
+
+pub fn headers_map_entry_error(r: &TokenReader) -> SyntaxError {
+    match r.cur() {
+        Some(t) => r.create_error(
+            format!("Expected string key or '{PUNC_RBRACKET}'"),
+            t.span.clone(),
+        ),
+        None => r.create_error(
+            format!("Expected '{PUNC_RBRACKET}'"),
+            r.source.len()..r.source.len(),
+        ),
+    }
 }
 
 pub fn can_parse_attributed(r: &TokenReader, keyword: &str) -> bool {

@@ -1,13 +1,16 @@
 use super::{
     parse_trait::Parse,
-    utils::{normalize_multiline_string, parse_system_function, unescape_string},
+    utils::{
+        consume_headers_entry_separator, headers_map_entry_error, normalize_multiline_string,
+        parse_system_function, unescape_string,
+    },
 };
 use crate::syntax::fs::Fs;
 use crate::syntax::{
     error::SyntaxError,
     keywords::{
-        KW_LET, OP_ASSIGN, PUNC_COLON, PUNC_COMMA, PUNC_DOLLAR, PUNC_DOT, PUNC_LBRACE,
-        PUNC_LBRACKET, PUNC_RBRACE, PUNC_RBRACKET, PUNC_SEMI,
+        KW_LET, OP_ASSIGN, PUNC_COLON, PUNC_DOLLAR, PUNC_DOT, PUNC_LBRACE, PUNC_LBRACKET,
+        PUNC_RBRACE, PUNC_RBRACKET, PUNC_SEMI,
     },
     parse_result::ParseResult,
     reader::{expect, TokenReader},
@@ -192,20 +195,11 @@ fn parse_headers_variable(r: &mut TokenReader) -> Result<VariableValue, SyntaxEr
                 };
                 r.advance();
                 headers.push((key, val));
-                r.skip_ignorable();
-                if let Some(com) = r.cur() {
-                    if com.token_type == TokenType::Punctuation && com.value == PUNC_COMMA {
-                        r.advance();
-                    }
-                }
+                consume_headers_entry_separator(r)?;
                 continue;
             }
         }
-        if r.is_end() {
-            break;
-        } else {
-            r.advance();
-        }
+        return Err(headers_map_entry_error(r));
     }
     Ok(VariableValue::Headers(headers))
 }

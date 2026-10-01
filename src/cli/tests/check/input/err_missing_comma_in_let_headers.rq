@@ -1,0 +1,6 @@
+let h = $[
+  "a": "b"
+  "c": "d"
+];
+
+rq get("http://localhost:8080", h);

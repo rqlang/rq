@@ -293,27 +293,39 @@ pub fn parse_headers_array(
                 record_binding(r, slot_bindings, ParameterSlot::HeaderValue);
                 let val = parse_string_value(r, " ", ParameterSlot::HeaderValue)?;
                 headers.push((key, val));
-                r.skip_ignorable();
-                if let Some(com) = r.cur() {
-                    if com.token_type == TokenType::Punctuation && com.value == PUNC_COMMA {
-                        r.advance();
-                    } else if com.token_type == TokenType::Punctuation && com.value == PUNC_RBRACKET
-                    {
-                        // Next iteration will handle RBRACKET
-                    } else {
-                        return Err(make_error(
-                            r,
-                            com,
-                            format!("Expected '{PUNC_COMMA}' or '{PUNC_RBRACKET}'"),
-                        ));
-                    }
-                }
+                consume_headers_entry_separator(r)?;
                 continue;
             }
         }
         return Err(headers_map_entry_error(r));
     }
     Ok(headers)
+}
+
+pub fn consume_headers_entry_separator(r: &mut TokenReader) -> Result<(), SyntaxError> {
+    r.skip_ignorable();
+    let Some(t) = r.cur() else {
+        return Ok(());
+    };
+    if t.token_type != TokenType::Punctuation {
+        return Err(make_error(
+            r,
+            t,
+            format!("Expected '{PUNC_COMMA}' or '{PUNC_RBRACKET}'"),
+        ));
+    }
+    if t.value == PUNC_COMMA {
+        r.advance();
+        return Ok(());
+    }
+    if t.value == PUNC_RBRACKET {
+        return Ok(());
+    }
+    Err(make_error(
+        r,
+        t,
+        format!("Expected '{PUNC_COMMA}' or '{PUNC_RBRACKET}'"),
+    ))
 }
 
 pub fn headers_map_entry_error(r: &TokenReader) -> SyntaxError {

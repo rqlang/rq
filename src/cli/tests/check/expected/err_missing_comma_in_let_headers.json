@@ -1,0 +1,10 @@
+{
+  "errors": [
+    {
+      "file": "{{*}}",
+      "line": 2,
+      "column": 11,
+      "message": "Expected ',' or ']'"
+    }
+  ]
+}

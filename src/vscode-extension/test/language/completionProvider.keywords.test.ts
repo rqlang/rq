@@ -376,6 +376,38 @@ describe('top-level keyword completion', () => {
     });
 });
 
+describe('method attribute value completion', () => {
+    test('suggests HTTP verbs when the value of an existing method attribute is deleted', async () => {
+        const lines = ['[method()]', 'rq create("http://localhost/users");'];
+        const doc = makeDocument(lines);
+        const position = new vscode.Position(0, 8);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items.map((i: any) => i.label)).toEqual(['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS']);
+    });
+
+    test('suggests HTTP verbs while a verb is partially typed', async () => {
+        const lines = ['[method(PO)]'];
+        const doc = makeDocument(lines);
+        const position = new vscode.Position(0, 10);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items.find((i: any) => i.label === 'POST')).toBeDefined();
+    });
+
+    test('does not suggest HTTP verbs after the method attribute is closed', async () => {
+        const lines = ['[method(GET)]', ''];
+        const doc = makeDocument(lines);
+        const position = new vscode.Position(1, 0);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items?.find((i: any) => i.label === 'GET')).toBeUndefined();
+    });
+});
+
 describe('attribute completion', () => {
     test('suggests method, timeout, auth when [ typed at start of line', async () => {
         const doc = makeDocument(['[']);

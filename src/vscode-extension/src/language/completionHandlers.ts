@@ -13,6 +13,7 @@ import {
     insideJsonLiteral,
     getActiveAuthBlock,
     getAuthAttributeContext,
+    insideMethodAttributeValue,
     insideUnclosedAttribute,
     AuthAttributeContext,
     claimedParams,
@@ -20,6 +21,7 @@ import {
     COMMON_HEADERS,
     afterCommaTrigger,
     followsArgumentSeparator,
+    HTTP_METHODS,
 } from './completionHelpers';
 import {
     REQUEST_PROPERTIES,
@@ -397,6 +399,18 @@ export const authNameValueHandler: CompletionHandler = {
     },
 };
 
+export const methodValueHandler: CompletionHandler = {
+    canHandle: ({ documentPrefix }) => insideMethodAttributeValue(documentPrefix),
+    async provide() {
+        return HTTP_METHODS.map((method, index) => {
+            const item = new vscode.CompletionItem(method, vscode.CompletionItemKind.EnumMember);
+            item.detail = 'HTTP method';
+            item.sortText = String(index);
+            return item;
+        });
+    },
+};
+
 export const attributeHandler: CompletionHandler = {
     canHandle: ({ linePrefix }) => /^\s*\[(\w*)$/.test(linePrefix),
     async provide(ctx) {
@@ -413,7 +427,7 @@ export const attributeHandler: CompletionHandler = {
         const methodItem = new vscode.CompletionItem('method', vscode.CompletionItemKind.Keyword);
         methodItem.detail = 'Override request method';
         methodItem.documentation = new vscode.MarkdownString('Sets the HTTP method for the next `rq` statement.\n\n**Example:** `[method(POST)]`');
-        methodItem.insertText = new vscode.SnippetString('method(${1|GET,POST,PUT,DELETE,PATCH,HEAD,OPTIONS|})');
+        methodItem.insertText = new vscode.SnippetString(`method(\${1|${HTTP_METHODS.join(',')}|})`);
 
         const timeoutItem = new vscode.CompletionItem('timeout', vscode.CompletionItemKind.Keyword);
         timeoutItem.detail = 'Request timeout in seconds';
@@ -658,6 +672,7 @@ export const topLevelKeywordHandler: CompletionHandler = {
 
 export const ALL_HANDLERS: CompletionHandler[] = [
     authNameValueHandler,
+    methodValueHandler,
     epTemplateHandler,
     importHandler,
     dollarPrefixHandler,

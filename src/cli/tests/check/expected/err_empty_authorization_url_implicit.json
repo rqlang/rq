@@ -1,0 +1,10 @@
+{
+  "errors": [
+    {
+      "file": "{{*}}",
+      "line": 3,
+      "column": 24,
+      "message": "OAuth2 Implicit auth 'login' has empty 'authorization_url' field"
+    }
+  ]
+}

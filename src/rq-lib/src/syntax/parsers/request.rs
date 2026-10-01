@@ -6,7 +6,7 @@ use super::{
     parse_trait::Parse,
     utils::{
         binding_position, can_parse_attributed, claim_parameter_slot, parse_headers_array,
-        parse_string_value, peek_slot_value, record_binding, SlotTracker,
+        parse_string_value, parse_url_value, peek_slot_value, record_binding, SlotTracker,
     },
 };
 use crate::syntax::fs::Fs;
@@ -121,7 +121,10 @@ pub struct ConstructorParams {
     pub slot_bindings: Vec<SlotBinding>,
 }
 
-pub fn parse_constructor_params(r: &mut TokenReader) -> Result<ConstructorParams, SyntaxError> {
+pub fn parse_constructor_params(
+    r: &mut TokenReader,
+    allow_empty_url: bool,
+) -> Result<ConstructorParams, SyntaxError> {
     let mut url = String::new();
     let mut headers = Vec::new();
     let mut body = None;
@@ -146,7 +149,7 @@ pub fn parse_constructor_params(r: &mut TokenReader) -> Result<ConstructorParams
         match slot {
             0 => {
                 record_binding(r, &mut slot_bindings, ParameterSlot::Url);
-                url = parse_string_value(r, "", ParameterSlot::Url)?;
+                url = parse_url_value(r, allow_empty_url)?;
             }
             1 => {
                 parse_headers_parameter(r, &mut headers, &mut headers_var, &mut slot_bindings)?;
@@ -275,7 +278,7 @@ pub(crate) fn parse_request_with_context(
     )?;
     r.advance();
     r.skip_ignorable();
-    let params = parse_constructor_params(r)?;
+    let params = parse_constructor_params(r, endpoint_name.is_some())?;
     expect(
         r,
         |t| t.token_type == TokenType::Punctuation && t.value == PUNC_RPAREN,

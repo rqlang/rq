@@ -1,0 +1,10 @@
+{
+  "errors": [
+    {
+      "file": "{{*}}",
+      "line": 1,
+      "column": 10,
+      "message": "Parameter 'url' cannot be empty"
+    }
+  ]
+}

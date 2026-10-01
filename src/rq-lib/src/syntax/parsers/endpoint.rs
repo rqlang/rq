@@ -7,7 +7,7 @@ use super::{
     request::parse_request_with_context,
     utils::{
         can_parse_attributed, claim_parameter_slot, parse_headers_array, parse_string_value,
-        peek_slot_value, record_binding, SlotTracker,
+        parse_url_value, peek_slot_value, record_binding, SlotTracker,
     },
     variable::parse_variable_declaration,
 };
@@ -59,6 +59,7 @@ pub struct EndpointConstructorParams {
 
 pub fn parse_endpoint_constructor_params(
     r: &mut TokenReader,
+    allow_empty_url: bool,
 ) -> Result<EndpointConstructorParams, SyntaxError> {
     let mut url = String::new();
     let mut headers = Vec::new();
@@ -81,7 +82,7 @@ pub fn parse_endpoint_constructor_params(
         match slot {
             0 => {
                 record_binding(r, &mut slot_bindings, ParameterSlot::Url);
-                url = parse_string_value(r, "", ParameterSlot::Url)?;
+                url = parse_url_value(r, allow_empty_url)?;
             }
             1 => {
                 parse_endpoint_headers(r, &mut headers, &mut headers_var, &mut slot_bindings)?;
@@ -232,7 +233,7 @@ pub(crate) fn parse_endpoint_with_context(
         Some(t) if t.token_type == TokenType::Punctuation && t.value == PUNC_LPAREN => {
             r.advance();
             r.skip_ignorable();
-            let parsed = parse_endpoint_constructor_params(r)?;
+            let parsed = parse_endpoint_constructor_params(r, parent_ep.is_some())?;
             expect(
                 r,
                 |t| t.token_type == TokenType::Punctuation && t.value == PUNC_RPAREN,

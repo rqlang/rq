@@ -49,6 +49,19 @@ impl AuthConfig for OAuth2ImplicitConfig {
             }
         }
 
+        for field in &REQUIRED_FIELDS {
+            if let Some(token) = fields.get(*field) {
+                if token.value.trim().is_empty() {
+                    return Err(SyntaxError::new(
+                        format!("OAuth2 Implicit auth '{name}' has empty '{field}' field"),
+                        0,
+                        0,
+                        token.span.clone(),
+                    ));
+                }
+            }
+        }
+
         for (field_name, token) in fields {
             if !REQUIRED_FIELDS.contains(&field_name.as_str())
                 && !OPTIONAL_FIELDS.contains(&field_name.as_str())
@@ -154,6 +167,21 @@ mod tests {
             .unwrap_err()
             .message
             .contains("missing required field"));
+    }
+
+    #[test]
+    fn test_implicit_empty_authorization_url() {
+        let config = OAuth2ImplicitConfig::new();
+        let mut fields = HashMap::new();
+        fields.insert(CLIENT_ID_FIELD.to_string(), t("my-client-id"));
+        fields.insert(AUTHORIZATION_URL_FIELD.to_string(), t("  "));
+
+        let result = config.validate("test_auth", &fields);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .message
+            .contains("has empty 'authorization_url' field"));
     }
 
     #[test]

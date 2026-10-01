@@ -1,0 +1,5 @@
+ep base(url: "http://localhost:8080/users");
+
+ep users<base>("") {
+    rq list();
+}

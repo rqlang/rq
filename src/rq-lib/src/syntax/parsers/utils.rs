@@ -253,6 +253,21 @@ pub fn parse_string_value(
     }
 }
 
+pub fn parse_url_value(r: &mut TokenReader, allow_empty: bool) -> Result<String, SyntaxError> {
+    let literal_span = r
+        .cur()
+        .filter(|t| t.token_type == TokenType::String)
+        .map(|t| t.span.clone());
+    let url = parse_string_value(r, "", ParameterSlot::Url)?;
+    match literal_span {
+        Some(span) if !allow_empty && url.trim().is_empty() => Err(r.create_error_no_file(
+            format!("Parameter '{}' cannot be empty", ParameterSlot::Url.label()),
+            span,
+        )),
+        _ => Ok(url),
+    }
+}
+
 pub fn parse_headers_array(
     r: &mut TokenReader,
     slot_bindings: &mut Vec<SlotBinding>,

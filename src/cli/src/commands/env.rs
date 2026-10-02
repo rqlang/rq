@@ -1,5 +1,5 @@
 use crate::commands::shared::{Location, OutputArgs, SourceArgs};
-use crate::core::formatter::{get_formatter, OutputFormat};
+use crate::core::formatter::{render, render_list, to_json, OutputFormat, TextBlock};
 use clap::{Args, Subcommand};
 use rq_lib::RqClient;
 use serde::Serialize;
@@ -56,23 +56,30 @@ struct EnvironmentView {
     location: Location,
 }
 
+impl EnvironmentView {
+    fn to_text(&self) -> String {
+        TextBlock::default()
+            .field("name", &self.name)
+            .field("location", &self.location)
+            .build()
+    }
+}
+
 pub fn execute_list(args: &ListArgs) -> Result<(), Box<dyn std::error::Error>> {
     let path = std::path::Path::new(&args.source.source);
     let env_list = RqClient::default().list_environments(path)?;
-    let formatter = get_formatter(&args.output.output);
-
     match args.output.output {
         OutputFormat::Json => {
             let views: Vec<EnvironmentListView> = env_list
                 .into_iter()
                 .map(|name| EnvironmentListView { name })
                 .collect();
-            print!("{}", formatter.format(&views));
+            print!("{}", to_json(&views));
         }
         OutputFormat::Text => {
             print!(
                 "{}",
-                formatter.format_list(
+                render_list(
                     &env_list,
                     "Environments found:",
                     "No environments found in .rq files"
@@ -91,6 +98,9 @@ pub fn execute_show(args: &ShowArgs) -> Result<(), Box<dyn std::error::Error>> {
         name: entry.name,
         location: Location::from_zero_based(entry.file, entry.line, entry.character),
     };
-    print!("{}", get_formatter(&args.output.output).format(&view));
+    print!(
+        "{}",
+        render(args.output.output, &view, EnvironmentView::to_text)
+    );
     Ok(())
 }

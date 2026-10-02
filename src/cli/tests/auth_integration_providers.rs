@@ -47,7 +47,7 @@ async fn test_auth_bearer_integration() {
 
     assert!(output.status.success(), "rq failed to execute: {stderr}");
     assert!(
-        stdout.contains("status: 200")
+        stdout.contains("200 OK")
             || stdout.contains("\"status\": \"success\"")
             || stdout.contains("success"),
         "Expected 200 OK or success body, got:\n{stdout}"
@@ -113,7 +113,7 @@ async fn test_auth_oauth2_client_credentials_integration() {
         "rq failed to execute oauth2 cc flow: {stderr}"
     );
     assert!(
-        stdout.contains("status: 200") || stdout.contains("secure_data"),
+        stdout.contains("200 OK") || stdout.contains("secure_data"),
         "Expected success body, got:\n{stdout}"
     );
 }
@@ -175,7 +175,7 @@ async fn test_auth_oauth2_auth_code_integration() {
         "Should succeed with fallback variable: {stderr_ok}"
     );
     assert!(
-        stdout_ok.contains("status: 200"),
+        stdout_ok.contains("200 OK"),
         "Expected 200 OK, got: {stdout_ok}"
     );
 }
@@ -243,10 +243,7 @@ async fn test_auth_oauth2_client_credentials_variables() {
         output.status.success(),
         "rq failed with variables: {stderr}"
     );
-    assert!(
-        stdout.contains("status: 200"),
-        "Expected success with variables"
-    );
+    assert!(stdout.contains("200 OK"), "Expected success with variables");
 }
 
 #[tokio::test]
@@ -313,7 +310,7 @@ async fn test_auth_oauth2_client_credentials_cert_integration() {
 
     assert!(output.status.success(), "rq failed to execute: {stderr}");
     assert!(
-        stdout.contains("status: 200") || stdout.contains("secure_data_via_cert"),
+        stdout.contains("200 OK") || stdout.contains("secure_data_via_cert"),
         "Expected 200 OK or success body, got:\n{stdout}"
     );
 }
@@ -381,7 +378,7 @@ async fn test_auth_oauth2_client_credentials_pfx_integration() {
 
     assert!(output.status.success(), "rq failed to execute: {stderr}");
     assert!(
-        stdout.contains("status: 200") || stdout.contains("secure_data_via_pfx"),
+        stdout.contains("200 OK") || stdout.contains("secure_data_via_pfx"),
         "Expected 200 OK or success body, got:\n{stdout}"
     );
 }
@@ -449,7 +446,7 @@ async fn test_auth_oauth2_client_credentials_pem_integration() {
 
     assert!(output.status.success(), "rq failed to execute: {stderr}");
     assert!(
-        stdout.contains("status: 200") || stdout.contains("secure_data_via_pem"),
+        stdout.contains("200 OK") || stdout.contains("secure_data_via_pem"),
         "Expected 200 OK or success body, got:\n{stdout}"
     );
 }
@@ -511,7 +508,7 @@ async fn test_auth_oauth2_implicit_integration() {
         "Should succeed with fallback variable: {stderr_ok}"
     );
     assert!(
-        stdout_ok.contains("status: 200"),
+        stdout_ok.contains("200 OK"),
         "Expected 200 OK, got: {stdout_ok}"
     );
 }

@@ -1,5 +1,5 @@
 use crate::commands::shared::{EnvArgs, Location, OutputArgs, SourceArgs};
-use crate::core::formatter::{get_formatter, OutputFormat};
+use crate::core::formatter::{render, to_json, OutputFormat, TextBlock};
 use clap::{Args, Subcommand};
 use rq_lib::RqClient;
 use serde::Serialize;
@@ -22,6 +22,18 @@ struct AuthDetailsView {
     fields: BTreeMap<String, String>,
     #[serde(flatten)]
     location: Location,
+}
+
+impl AuthDetailsView {
+    fn to_text(&self) -> String {
+        TextBlock::default()
+            .field("name", &self.name)
+            .field("type", &self.auth_type)
+            .optional("environment", self.environment.as_deref())
+            .map("fields", &self.fields)
+            .field("location", &self.location)
+            .build()
+    }
 }
 
 #[derive(Debug, Args)]
@@ -84,7 +96,7 @@ pub fn execute_list(args: &ListArgs) -> Result<(), Box<dyn std::error::Error>> {
                     auth_type: auth.auth_type,
                 })
                 .collect();
-            print!("{}", get_formatter(&args.output.output).format(&views));
+            print!("{}", to_json(&views));
         }
         OutputFormat::Text => {
             if auth_list.is_empty() {
@@ -118,7 +130,10 @@ pub fn execute_show(args: &ShowArgs) -> Result<(), Box<dyn std::error::Error>> {
         fields: fields.into_iter().collect(),
         location: Location::from_zero_based(file, line, character),
     };
-    print!("{}", get_formatter(&args.output.output).format(&view));
+    print!(
+        "{}",
+        render(args.output.output, &view, AuthDetailsView::to_text)
+    );
 
     Ok(())
 }

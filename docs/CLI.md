@@ -79,7 +79,7 @@ Options:
 
 Behavior:
 
-- In `text` mode, prints a human-readable list with entries like `name: basic`, `file: tests/request/run/input/basic.rq`.
+- In `text` mode, prints `Requests found:` followed by request names (for example `- basic`, `- users/list`), or `No requests found`.
 - In `json` mode, prints a JSON array; each item contains at least `name` and `file`, and requests defined inside endpoints include endpoint context (for example `endpoint: api`, `name: api/get`).
 
 Example:
@@ -108,7 +108,7 @@ Options:
 Behavior:
 
 - Resolves the specified request (including endpoint context if applicable).
-- In `text` mode, prints fields like URL, method, headers, optional body, and associated auth provider.
+- In `text` mode, prints `name`, `method`, `url`, `headers`, the optional `body`, `timeout` and `auth` (as `name (type)`), and `location` as `file:line:column`.
 - In `json` mode, prints a JSON object containing `Request`, `URL`, `Method`, `Headers`, optional `Body`, and optional `Auth` metadata.
 
 Example:
@@ -129,7 +129,7 @@ rq request run [OPTIONS]
 Options:
 
 - `-s, --source <SOURCE>` – Path to the `.rq` file or directory (default: `.`).
-- `-n, --name <NAME>` – Name of the request to run. If omitted and multiple requests exist, the CLI will usually fail and ask you to be explicit. If the request is defined inside an endpoint, use `<endpoint>/<request>` or `<endpoint>.<request>` (for example `users/list` or `users.list`).
+- `-n, --name <NAME>` – Name of the request to run. If omitted, every request in the source runs. If the request is defined inside an endpoint, use `<endpoint>/<request>` or `<endpoint>.<request>` (for example `users/list` or `users.list`).
 - `-e, --env <ENVIRONMENT>` – Environment name.
 - `-v, --variable <NAME=VALUE>` – Override variables at runtime (can be provided multiple times).
 - `-o, --output <OUTPUT>` – Output format: `text` or `json` (default: `text`).
@@ -137,7 +137,16 @@ Options:
 Behavior:
 
 - Uses the same variable precedence described in the language definition, with `-v NAME=VALUE` providing the highest-precedence overrides.
-- In `text` mode, prints the HTTP status and a formatted view of the response.
+- In `text` mode, prints one block per request: a line with the request name, method and URL, a status line with the reason phrase and elapsed time, and the response body. JSON bodies are indented without reordering their keys. Response headers are shown only with `-d`:
+
+  ```text
+  basic  GET http://localhost:8080/get
+  200 OK · 5 ms
+
+  {
+    "status": "ok"
+  }
+  ```
 - In `json` mode, prints a JSON structure with the full execution result(s), including response status, headers, body, and elapsed time in milliseconds.
 
 Examples:
@@ -404,7 +413,7 @@ Options:
 
 Behavior:
 
-- Prints `References found:` followed by locations, or `No references found`.
+- In `text` mode, prints one location per line as `file:line:column`, or `No references found`.
 
 Examples:
 
@@ -494,7 +503,7 @@ Options:
 
 Behavior:
 
-- Prints `References found:` followed by locations, or `No references found`.
+- In `text` mode, prints one location per line as `file:line:column`, or `No references found`.
 
 Examples:
 

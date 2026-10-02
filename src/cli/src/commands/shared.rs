@@ -1,6 +1,6 @@
 use crate::commands::validators;
 use crate::core::error::{warning_to_json, RqError};
-use crate::core::formatter::OutputFormat;
+use crate::core::formatter::{render, OutputFormat};
 use clap::Args;
 use rq_lib::client::models::ReferenceLocation;
 use serde::Serialize;
@@ -50,6 +50,12 @@ pub struct Location {
     pub column: usize,
 }
 
+impl std::fmt::Display for Location {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}:{}:{}", self.file, self.line, self.column)
+    }
+}
+
 impl Location {
     pub fn from_zero_based(file: String, line: usize, character: usize) -> Self {
         Self {
@@ -60,11 +66,17 @@ impl Location {
     }
 }
 
-pub fn reference_views(references: Vec<ReferenceLocation>) -> Vec<Location> {
-    references
+pub fn render_references(references: Vec<ReferenceLocation>, output: OutputFormat) -> String {
+    let locations: Vec<Location> = references
         .into_iter()
         .map(|r| Location::from_zero_based(r.file, r.line, r.character))
-        .collect()
+        .collect();
+    render(output, &locations, |locations| {
+        if locations.is_empty() {
+            return "No references found\n".to_string();
+        }
+        locations.iter().map(|l| format!("{l}\n")).collect()
+    })
 }
 
 pub fn print_warnings(warnings: &[RqError], output: OutputFormat) {

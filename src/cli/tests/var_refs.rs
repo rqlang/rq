@@ -323,3 +323,28 @@ fn test_var_refs_json_file_is_absolute() -> Result<(), Box<dyn std::error::Error
 
     Ok(())
 }
+
+#[test]
+fn test_var_refs_text_lists_file_line_column() -> Result<(), Box<dyn std::error::Error>> {
+    let output = rq_cmd()
+        .args([
+            "var",
+            "refs",
+            "-s",
+            "tests/request/run/input/environments__env_local__.rq",
+            "-n",
+            "base_url",
+        ])
+        .output()?;
+
+    let stdout = String::from_utf8(output.stdout)?;
+    let first = stdout
+        .lines()
+        .next()
+        .ok_or("Expected at least one reference")?;
+    if !first.ends_with("environments__env_local__.rq:3:5") {
+        return Err(format!("Unexpected reference line: {first}").into());
+    }
+
+    Ok(())
+}

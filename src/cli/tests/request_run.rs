@@ -21,6 +21,10 @@ fn main() {
             test_request_json_output_ends_with_newline,
         ),
         Trial::test(
+            "request_text_output_starts_with_status",
+            test_request_text_output_starts_with_status,
+        ),
+        Trial::test(
             "request_secrets_uppercase_prefixes",
             test_request_secrets_uppercase_prefixes,
         ),
@@ -120,6 +124,24 @@ fn test_request_json_output_ends_with_newline() -> Result<(), Failed> {
     let stdout = String::from_utf8_lossy(&output.stdout);
     if !stdout.ends_with("}\n") {
         return Err(format!("Expected trailing newline, got: {stdout:?}").into());
+    }
+    Ok(())
+}
+
+fn test_request_text_output_starts_with_status() -> Result<(), Failed> {
+    let output = rq_cmd()
+        .args(["request", "run", "-s", "tests/request/run/input/basic.rq"])
+        .output()
+        .map_err(|e| format!("Failed to execute: {e}"))?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut lines = stdout.lines();
+    let request_line = lines.next().unwrap_or_default();
+    let status_line = lines.next().unwrap_or_default();
+    if request_line != "basic  GET http://localhost:8080/get"
+        || !status_line.starts_with("200 OK · ")
+        || !status_line.ends_with(" ms")
+    {
+        return Err(format!("Unexpected output: {stdout}").into());
     }
     Ok(())
 }

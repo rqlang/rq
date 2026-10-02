@@ -264,3 +264,26 @@ fn test_env_show_not_found() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
+
+#[test]
+fn test_env_show_text_location() -> Result<(), Box<dyn std::error::Error>> {
+    let output = rq_cmd()
+        .args([
+            "env",
+            "show",
+            "-s",
+            "tests/request/run/input/environments__env_local__.rq",
+            "-n",
+            "local",
+        ])
+        .output()?;
+
+    let stdout = String::from_utf8(output.stdout)?;
+    if !stdout.lines().any(|line| {
+        line.starts_with("location: ") && line.ends_with("environments__env_local__.rq:2:5")
+    }) {
+        return Err(format!("Expected a location line, got: {stdout}").into());
+    }
+
+    Ok(())
+}

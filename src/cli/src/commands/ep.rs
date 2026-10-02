@@ -1,6 +1,8 @@
-use crate::commands::shared::{absolute_source, reference_views, Location, OutputArgs, SourceArgs};
+use crate::commands::shared::{
+    absolute_source, render_references, Location, OutputArgs, SourceArgs,
+};
 use crate::commands::validators;
-use crate::core::formatter::{get_formatter, OutputFormat};
+use crate::core::formatter::{render, render_list, to_json, OutputFormat, TextBlock};
 use clap::{Args, Subcommand};
 use rq_lib::client::models::EndpointEntry;
 use rq_lib::RqClient;
@@ -78,6 +80,16 @@ struct EndpointView {
     location: Location,
 }
 
+impl EndpointView {
+    fn to_text(&self) -> String {
+        TextBlock::default()
+            .field("name", &self.name)
+            .field("template", self.is_template)
+            .field("location", &self.location)
+            .build()
+    }
+}
+
 impl From<EndpointEntry> for EndpointView {
     fn from(entry: EndpointEntry) -> Self {
         Self {
@@ -91,18 +103,16 @@ impl From<EndpointEntry> for EndpointView {
 pub fn execute_list(args: &ListArgs) -> Result<(), Box<dyn std::error::Error>> {
     let path = std::path::Path::new(&args.source.source);
     let entries = RqClient::default().list_endpoints(path)?;
-    let formatter = get_formatter(&args.output.output);
-
     match args.output.output {
         OutputFormat::Json => {
             let views: Vec<EndpointView> = entries.into_iter().map(Into::into).collect();
-            print!("{}", formatter.format(&views));
+            print!("{}", to_json(&views));
         }
         OutputFormat::Text => {
             let names: Vec<String> = entries.into_iter().map(|e| e.name).collect();
             print!(
                 "{}",
-                formatter.format_list(
+                render_list(
                     &names,
                     "Endpoints found:",
                     "No endpoints found in .rq files"
@@ -118,20 +128,16 @@ pub fn execute_show(args: &ShowArgs) -> Result<(), Box<dyn std::error::Error>> {
     let path = std::path::Path::new(&args.source.source);
     let entry = RqClient::default().get_endpoint(path, &args.name, None)?;
     let view = EndpointView::from(entry);
-    print!("{}", get_formatter(&args.output.output).format(&view));
+    print!(
+        "{}",
+        render(args.output.output, &view, EndpointView::to_text)
+    );
     Ok(())
 }
 
 pub fn execute_refs(args: &RefsArgs) -> Result<(), Box<dyn std::error::Error>> {
     let path = absolute_source(&args.source.source);
     let refs = RqClient::default().list_endpoint_references(&path, &args.name, None)?;
-    print!(
-        "{}",
-        get_formatter(&args.output.output).format_list(
-            &reference_views(refs),
-            "References found:",
-            "No references found"
-        )
-    );
+    print!("{}", render_references(refs, args.output.output));
     Ok(())
 }

@@ -32,11 +32,7 @@ async fn test_default_run_with_source() -> Result<(), Box<dyn std::error::Error>
         return Err(format!("Command failed. stderr: {stderr}, stdout: {stdout}").into());
     }
 
-    if stdout.contains("Response status:")
-        || stdout.contains("Request:")
-        || stdout.contains("status: 200")
-        || stdout.contains("request_name: basic")
-    {
+    if stdout.contains("basic  GET ") {
         Ok(())
     } else {
         Err(format!("Unexpected output. stdout: {stdout}").into())

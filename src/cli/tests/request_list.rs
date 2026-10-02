@@ -18,11 +18,8 @@ fn test_request_list_text() -> Result<(), Box<dyn std::error::Error>> {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
 
-    if !stdout.contains("name: basic") {
+    if !stdout.contains("- basic\n") {
         return Err("Output missing expected request 'basic'".into());
-    }
-    if !stdout.contains("file:") {
-        return Err("Output missing 'file:' entries".into());
     }
     if stdout.contains("items:") {
         return Err("Output should not contain 'items:' header".into());
@@ -88,10 +85,7 @@ fn test_request_list_endpoints() -> Result<(), Box<dyn std::error::Error>> {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
 
-    if !stdout.contains("endpoint: api") {
-        return Err("Output missing endpoint context 'endpoint: api'".into());
-    }
-    if !stdout.contains("name: api/get") {
+    if !stdout.contains("- api/get\n") {
         return Err("Output missing nested request 'api/get'".into());
     }
 

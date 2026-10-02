@@ -27,11 +27,8 @@ fn test_request_show_bearer() -> Result<(), Box<dyn std::error::Error>> {
     if !stdout.contains("name: simple_auth") {
         return Err("Output missing request name".into());
     }
-    if !stdout.contains("name: test_auth") {
+    if !stdout.contains("auth: test_auth (bearer)") {
         return Err("Output missing auth name".into());
-    }
-    if !stdout.contains("type: bearer") {
-        return Err("Output missing auth type".into());
     }
 
     Ok(())
@@ -62,11 +59,8 @@ fn test_request_show_oauth2() -> Result<(), Box<dyn std::error::Error>> {
     if !stdout.contains("name: test_request_oauth2_fallback") {
         return Err("Output missing request name".into());
     }
-    if !stdout.contains("name: api_oauth") {
+    if !stdout.contains("auth: api_oauth (oauth2_authorization_code)") {
         return Err("Output missing auth name".into());
-    }
-    if !stdout.contains("type: oauth2_authorization_code") {
-        return Err("Output missing OAuth2 auth type".into());
     }
 
     Ok(())
@@ -178,11 +172,8 @@ fn test_request_show_auth_bare_identifier() -> Result<(), Box<dyn std::error::Er
     if !stdout.contains("name: auth_bare_identifier") {
         return Err("Output missing request name".into());
     }
-    if !stdout.contains("name: test_auth") {
+    if !stdout.contains("auth: test_auth (bearer)") {
         return Err("Output missing auth name".into());
-    }
-    if !stdout.contains("type: bearer") {
-        return Err("Output missing auth type".into());
     }
 
     Ok(())
@@ -287,11 +278,8 @@ fn test_request_show_resolved_variables() -> Result<(), Box<dyn std::error::Erro
             return Err("Output missing resolved URL part".into());
         }
     }
-    if !stdout.contains("name: my_oauth") {
+    if !stdout.contains("auth: my_oauth (oauth2_implicit)") {
         return Err("Output missing auth name".into());
-    }
-    if !stdout.contains("type: oauth2_implicit") {
-        return Err("Output missing auth type".into());
     }
 
     Ok(())

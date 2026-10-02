@@ -1,8 +1,8 @@
 use crate::commands::shared::{
-    absolute_source, reference_views, EnvArgs, Location, OutputArgs, SourceArgs,
+    absolute_source, render_references, EnvArgs, Location, OutputArgs, SourceArgs,
 };
 use crate::commands::validators;
-use crate::core::formatter::{get_formatter, OutputFormat};
+use crate::core::formatter::{render, render_list, to_json, OutputFormat, TextBlock};
 use clap::{Args, Subcommand};
 use rq_lib::client::models::VariableEntry;
 use rq_lib::RqClient;
@@ -87,6 +87,17 @@ struct VariableView {
     location: Location,
 }
 
+impl VariableView {
+    fn to_text(&self) -> String {
+        TextBlock::default()
+            .field("name", &self.name)
+            .field("value", &self.value)
+            .field("source", &self.source)
+            .field("location", &self.location)
+            .build()
+    }
+}
+
 impl From<VariableEntry> for VariableView {
     fn from(entry: VariableEntry) -> Self {
         Self {
@@ -101,18 +112,16 @@ impl From<VariableEntry> for VariableView {
 pub fn execute_list(args: &ListArgs) -> Result<(), Box<dyn std::error::Error>> {
     let path = std::path::Path::new(&args.source.source);
     let entries = RqClient::default().list_variables(path, args.env.environment.as_deref())?;
-    let formatter = get_formatter(&args.output.output);
-
     match args.output.output {
         OutputFormat::Json => {
             let views: Vec<VariableView> = entries.into_iter().map(Into::into).collect();
-            print!("{}", formatter.format(&views));
+            print!("{}", to_json(&views));
         }
         OutputFormat::Text => {
             let names: Vec<String> = entries.into_iter().map(|e| e.name).collect();
             print!(
                 "{}",
-                formatter.format_list(
+                render_list(
                     &names,
                     "Variables found:",
                     "No variables found in .rq files"
@@ -134,20 +143,16 @@ pub fn execute_show(args: &ShowArgs) -> Result<(), Box<dyn std::error::Error>> {
         None,
     )?;
     let view = VariableView::from(entry);
-    print!("{}", get_formatter(&args.output.output).format(&view));
+    print!(
+        "{}",
+        render(args.output.output, &view, VariableView::to_text)
+    );
     Ok(())
 }
 
 pub fn execute_refs(args: &RefsArgs) -> Result<(), Box<dyn std::error::Error>> {
     let path = absolute_source(&args.source.source);
     let refs = RqClient::default().list_variable_references(&path, &args.name, None)?;
-    print!(
-        "{}",
-        get_formatter(&args.output.output).format_list(
-            &reference_views(refs),
-            "References found:",
-            "No references found"
-        )
-    );
+    print!("{}", render_references(refs, args.output.output));
     Ok(())
 }

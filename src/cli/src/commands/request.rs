@@ -1,6 +1,6 @@
 use crate::commands::shared::{print_warnings, EnvArgs, Location, OutputArgs, SourceArgs};
 use crate::commands::validators;
-use crate::core::formatter::get_formatter;
+use crate::core::formatter::{pretty_body, render, render_list, to_json, OutputFormat, TextBlock};
 use crate::core::logger::Logger;
 use clap::{Args, Subcommand};
 use rq_lib::client::models::{RequestDetails, RequestInfo};
@@ -81,6 +81,35 @@ impl From<RequestDetails> for RequestDetailsView {
 #[derive(Serialize)]
 struct ExecutionResultsView {
     results: Vec<RequestExecutionResult>,
+}
+
+impl RequestDetailsView {
+    fn to_text(&self) -> String {
+        let auth = self
+            .auth
+            .as_ref()
+            .map(|auth| format!("{} ({})", auth.name, auth.auth_type));
+        TextBlock::default()
+            .field("name", &self.name)
+            .field("method", &self.method)
+            .field("url", &self.url)
+            .map("headers", &self.headers)
+            .optional("body", self.body.as_deref())
+            .optional("timeout", self.timeout.as_deref())
+            .optional("auth", auth)
+            .field("location", &self.location)
+            .build()
+    }
+}
+
+impl ExecutionResultsView {
+    fn to_text(&self) -> String {
+        self.results
+            .iter()
+            .map(render_execution_result)
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
 }
 
 #[derive(Debug, Args)]
@@ -167,9 +196,19 @@ pub fn execute_list(args: &ListArgs) -> Result<(), Box<dyn std::error::Error>> {
     let (requests, parse_errors) = RqClient::default().list_requests(source_path)?;
     print_warnings(&parse_errors, args.output.output);
 
-    let views: Vec<RequestListView> = requests.into_iter().map(Into::into).collect();
-    let formatter = get_formatter(&args.output.output);
-    print!("{}", formatter.format_list(&views, "", "No requests found"));
+    match args.output.output {
+        OutputFormat::Json => {
+            let views: Vec<RequestListView> = requests.into_iter().map(Into::into).collect();
+            print!("{}", to_json(&views));
+        }
+        OutputFormat::Text => {
+            let names: Vec<String> = requests.into_iter().map(|r| r.name).collect();
+            print!(
+                "{}",
+                render_list(&names, "Requests found:", "No requests found")
+            );
+        }
+    }
 
     Ok(())
 }
@@ -193,7 +232,10 @@ pub fn execute_show(args: &ShowArgs) -> Result<(), Box<dyn std::error::Error>> {
     )?;
 
     let view = RequestDetailsView::from(details);
-    print!("{}", get_formatter(&args.output.output).format(&view));
+    print!(
+        "{}",
+        render(args.output.output, &view, RequestDetailsView::to_text)
+    );
 
     Ok(())
 }
@@ -232,7 +274,28 @@ pub async fn execute_run(args: &RunArgs) -> Result<(), Box<dyn std::error::Error
     }
 
     let view = ExecutionResultsView { results };
-    print!("{}", get_formatter(&args.output.output).format(&view));
+    print!(
+        "{}",
+        render(args.output.output, &view, ExecutionResultsView::to_text)
+    );
 
     Ok(())
+}
+
+fn render_execution_result(result: &RequestExecutionResult) -> String {
+    let reason = http::StatusCode::from_u16(result.status)
+        .ok()
+        .and_then(|status| status.canonical_reason())
+        .map(|reason| format!(" {reason}"))
+        .unwrap_or_default();
+    let mut out = format!(
+        "{}  {} {}\n{}{reason} · {} ms\n",
+        result.request_name, result.method, result.url, result.status, result.elapsed_ms
+    );
+    if !result.body.is_empty() {
+        out.push('\n');
+        out.push_str(pretty_body(&result.body).trim_end());
+        out.push('\n');
+    }
+    out
 }

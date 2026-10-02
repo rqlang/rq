@@ -12,7 +12,7 @@ pub struct Logger {
 lazy_static! {
     static ref SENSITIVE_RE: Regex = Regex::new(
         r#"(?xi)
-        (?P<json_key>"(?:password|passwd|token|secret|api_?key|auth(?:orization)?)")
+        (?P<json_key>"(?:[^"]*(?:password|passwd|token|secret|credential|api[_-]?key|authorization)[^"]*|auth)")
         \s*:\s*
         "(?P<json_val>[^"]*)"
         |
@@ -117,6 +117,30 @@ mod tests {
     fn regular_header_value_is_kept() {
         let target = Logger::mask_header_value("Content-Type", "application/json");
         assert_eq!(target, "application/json");
+    }
+
+    #[test]
+    fn json_key_containing_secret_is_masked() {
+        let target = super::sanitize_message(r#"{"client_secret": "abc", "user": "ana"}"#);
+        assert_eq!(target, r#"{"client_secret": "***", "user": "ana"}"#);
+    }
+
+    #[test]
+    fn json_key_containing_token_is_masked() {
+        let target = super::sanitize_message(r#"{"access_token":"abc"}"#);
+        assert_eq!(target, r#"{"access_token": "***"}"#);
+    }
+
+    #[test]
+    fn json_key_with_hyphenated_api_key_is_masked() {
+        let target = super::sanitize_message(r#"{"x-api-key": "abc"}"#);
+        assert_eq!(target, r#"{"x-api-key": "***"}"#);
+    }
+
+    #[test]
+    fn json_key_that_only_starts_like_auth_is_kept() {
+        let target = super::sanitize_message(r#"{"author": "ana"}"#);
+        assert_eq!(target, r#"{"author": "ana"}"#);
     }
 
     #[test]

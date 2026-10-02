@@ -4,6 +4,7 @@ use crate::syntax::token::TokenType;
 use serde::Serialize;
 
 mod rules;
+mod suppression;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct LintDiagnostic {
@@ -54,7 +55,6 @@ pub struct EndpointExtension {
 }
 
 pub trait LintRule: Send + Sync {
-    #[allow(dead_code)]
     fn id(&self) -> &'static str;
     #[allow(dead_code)]
     fn description(&self) -> &'static str;
@@ -102,6 +102,7 @@ pub fn lint_rq_file(
     for rule in rules::all() {
         rule.check(&ctx, &mut diagnostics);
     }
+    let diagnostics = suppression::apply(source, display_path, &known_rule_ids(), diagnostics);
     LintResult {
         ok: diagnostics.is_empty(),
         diagnostics,
@@ -426,6 +427,10 @@ fn walk_rq_files(root: &std::path::Path, visit: &mut dyn FnMut(&std::path::Path)
             visit(&path);
         }
     }
+}
+
+fn known_rule_ids() -> Vec<&'static str> {
+    rules::all().iter().map(|rule| rule.id()).collect()
 }
 
 fn bare_request_name(qualified: &str) -> &str {

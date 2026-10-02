@@ -114,6 +114,8 @@ Each finding carries the rule that produced it (`empty_url_string`, `duplicated_
 
 Rules are workspace-aware: an endpoint that duplicates a query string or an auth provider already declared by a sibling `.rq` file is flagged even when that sibling is not open. Unsaved edits are linted as you type — the linter sees the buffer, not the file on disk.
 
+To keep a single finding, put `// rq-lint-ignore <rule>` on the line above the statement or at the end of the offending line, or `// rq-lint-ignore-file <rule>` anywhere in the file; an optional reason follows a `:`. See [Suppressing lint findings](LANGUAGE_DEFINITION.md#suppressing-lint-findings).
+
 Set `rq.lint.enabled` to `false` to turn the warnings off; parse and semantic errors are unaffected.
 
 ## AI assistance (MCP server)

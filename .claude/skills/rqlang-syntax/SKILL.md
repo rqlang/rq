@@ -46,6 +46,26 @@ rq get("http://example.com"); // also valid at end of line
 rq get("http://example.com");
 ```
 
+### Lint suppression directives
+
+A `//` comment starting with `rq-lint-ignore` silences lint rules; to the parser it is still a comment.
+
+```rq
+// rq-lint-ignore-file multiple_endpoints_per_file
+
+ep widgets("http://localhost:8080/widgets") {
+  // rq-lint-ignore missing_body_on_write, empty_url_string: reason is optional
+  rq post("");
+  rq list(""); // rq-lint-ignore empty_url_string
+}
+```
+
+- `rq-lint-ignore <rule>[, <rule>...][: <reason>]` on its own line — the next statement (attributes included), or the next entry when written inside an `env`, `auth`, `$[...]` or `${...}`.
+- `rq-lint-ignore` at the end of a line of code — that line only.
+- `rq-lint-ignore-file <rule>[, ...]` — the whole file; must be on its own line.
+- At least one rule id; no catch-all. Block comments are never directives.
+- Unknown rule, no rule or trailing `-file` directive → `invalid_lint_suppression`; a named rule that reports nothing in scope → `unused_lint_suppression`. Neither is suppressible.
+
 ## 3. The `rq` statement
 
 Declares a named HTTP request.

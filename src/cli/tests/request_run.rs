@@ -13,6 +13,10 @@ fn main() {
         // Fixture tests (Manual setup)
         Trial::test("request_secrets_env_vars", test_request_secrets),
         Trial::test(
+            "request_json_warning_uses_warning_key",
+            test_request_json_warning_uses_warning_key,
+        ),
+        Trial::test(
             "request_secrets_uppercase_prefixes",
             test_request_secrets_uppercase_prefixes,
         ),
@@ -75,6 +79,27 @@ fn main() {
 }
 
 // --- Fixture Tests ---
+
+fn test_request_json_warning_uses_warning_key() -> Result<(), Failed> {
+    let output = rq_cmd()
+        .args([
+            "request",
+            "run",
+            "-s",
+            "tests/request/run/input/foo.rq",
+            "-o",
+            "json",
+        ])
+        .output()
+        .map_err(|e| format!("Failed to execute: {e}"))?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let warning: serde_json::Value = serde_json::from_str(stderr.trim())
+        .map_err(|e| format!("stderr is not valid JSON: {e}\n{stderr}"))?;
+    if warning["warning"]["message"] != "No requests found in the file" {
+        return Err(format!("Unexpected stderr: {stderr}").into());
+    }
+    Ok(())
+}
 
 fn test_request_secrets() -> Result<(), Failed> {
     let output = rq_cmd()

@@ -17,12 +17,43 @@ struct JsonErrorDetail {
 }
 
 #[derive(Serialize)]
-struct JsonError {
-    error: JsonErrorDetail,
+#[serde(rename_all = "snake_case")]
+enum JsonDiagnostic {
+    Error(JsonErrorDetail),
+    Warning(JsonErrorDetail),
 }
 
 pub fn error_to_json(error: &(dyn std::error::Error + 'static)) -> String {
-    let detail = if let Some(rq_error) = error.downcast_ref::<RqError>() {
+    diagnostic_to_json(
+        JsonDiagnostic::Error(json_error_detail(error)),
+        error,
+        "error",
+    )
+}
+
+pub fn warning_to_json(warning: &(dyn std::error::Error + 'static)) -> String {
+    diagnostic_to_json(
+        JsonDiagnostic::Warning(json_error_detail(warning)),
+        warning,
+        "warning",
+    )
+}
+
+fn diagnostic_to_json(
+    diagnostic: JsonDiagnostic,
+    error: &(dyn std::error::Error + 'static),
+    kind: &str,
+) -> String {
+    serde_json::to_string(&diagnostic).unwrap_or_else(|_| {
+        format!(
+            r#"{{"{kind}":{{"type":"generic","message":{:?}}}}}"#,
+            error.to_string()
+        )
+    })
+}
+
+fn json_error_detail(error: &(dyn std::error::Error + 'static)) -> JsonErrorDetail {
+    if let Some(rq_error) = error.downcast_ref::<RqError>() {
         match rq_error {
             RqError::Syntax(e) => JsonErrorDetail {
                 error_type: "syntax".to_string(),
@@ -107,14 +138,7 @@ pub fn error_to_json(error: &(dyn std::error::Error + 'static)) -> String {
             line: None,
             column: None,
         }
-    };
-
-    serde_json::to_string(&JsonError { error: detail }).unwrap_or_else(|_| {
-        format!(
-            r#"{{"error":{{"type":"generic","message":{:?}}}}}"#,
-            error.to_string()
-        )
-    })
+    }
 }
 
 #[derive(Debug)]

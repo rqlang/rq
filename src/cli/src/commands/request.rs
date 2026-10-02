@@ -144,7 +144,7 @@ pub fn execute_list(args: &ListArgs) -> Result<(), Box<dyn std::error::Error>> {
     for e in &parse_errors {
         match args.output.output {
             crate::core::formatter::OutputFormat::Json => {
-                eprintln!("{}", crate::core::error::error_to_json(e));
+                eprintln!("{}", crate::core::error::warning_to_json(e));
             }
             crate::core::formatter::OutputFormat::Text => {
                 eprintln!("Warning: {e}");
@@ -250,7 +250,7 @@ pub async fn execute_run(args: &RunArgs) -> Result<(), Box<dyn std::error::Error
     for w in &warnings {
         match args.output.output {
             crate::core::formatter::OutputFormat::Json => {
-                eprintln!("{}", crate::core::error::error_to_json(w));
+                eprintln!("{}", crate::core::error::warning_to_json(w));
             }
             crate::core::formatter::OutputFormat::Text => {
                 eprintln!("Warning: {w}");

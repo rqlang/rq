@@ -39,6 +39,7 @@ type Position = (usize, usize);
 
 pub(super) struct ParsedComment {
     pub(super) keyword: &'static str,
+    pub(super) keyword_end: usize,
     pub(super) rules: Vec<(usize, String)>,
 }
 
@@ -202,6 +203,7 @@ pub(super) fn parse_comment(comment: &str) -> Option<ParsedComment> {
     let keyword_end = directive_start + keyword.len();
     Some(ParsedComment {
         keyword,
+        keyword_end,
         rules: rule_ids(rule_list, keyword_end),
     })
 }

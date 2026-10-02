@@ -81,6 +81,7 @@ export const languages = {
     registerDocumentFormattingEditProvider: jest.fn(),
     registerReferenceProvider: jest.fn(),
     registerRenameProvider: jest.fn(),
+    registerCodeActionsProvider: jest.fn(),
     createDiagnosticCollection: jest.fn().mockReturnValue({
         clear: jest.fn(),
         set: jest.fn(),
@@ -151,6 +152,19 @@ export class Diagnostic {
         public message: string,
         public severity: DiagnosticSeverity = DiagnosticSeverity.Error
     ) {}
+}
+
+export class CodeActionKind {
+    static readonly QuickFix = new CodeActionKind('quickfix');
+    constructor(public readonly value: string) {}
+}
+
+export class CodeAction {
+    diagnostics?: Diagnostic[];
+    edit?: WorkspaceEdit;
+    isPreferred?: boolean;
+
+    constructor(public title: string, public kind?: CodeActionKind) {}
 }
 
 export class WorkspaceEdit {

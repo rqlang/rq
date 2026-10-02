@@ -5,6 +5,9 @@ use serde::Serialize;
 
 mod rules;
 mod suppression;
+mod suppression_fix;
+
+pub use suppression_fix::{SourceEdit, SuppressionScope};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct LintDiagnostic {
@@ -107,6 +110,20 @@ pub fn lint_rq_file(
         ok: diagnostics.is_empty(),
         diagnostics,
     }
+}
+
+pub fn suppression_edit(
+    source: &str,
+    rule: &str,
+    line: usize,
+    column: usize,
+    scope: SuppressionScope,
+) -> Option<SourceEdit> {
+    suppression_fix::suppression_edit(source, &known_rule_ids(), rule, line, column, scope)
+}
+
+pub fn unused_suppression_removal(source: &str, line: usize, column: usize) -> Option<SourceEdit> {
+    suppression_fix::unused_suppression_removal(source, line, column)
 }
 
 pub struct WorkspaceCollector {

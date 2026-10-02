@@ -361,6 +361,26 @@ export async function lintSource(source: string, filePath: string, workspaceDire
     return results.get(draftKey(filePath)) ?? { ok: true, diagnostics: [] };
 }
 
+export type SuppressionScope = 'line' | 'statement' | 'file';
+
+export interface SourceEdit {
+    start_line: number;
+    start_column: number;
+    end_line: number;
+    end_column: number;
+    new_text: string;
+}
+
+export async function suppressionEdit(source: string, rule: string, line: number, column: number, scope: SuppressionScope): Promise<SourceEdit | null> {
+    const raw = await wasmCall('suppression_edit', [source, rule, line, column, scope]);
+    return JSON.parse(raw) as SourceEdit | null;
+}
+
+export async function unusedSuppressionRemoval(source: string, line: number, column: number): Promise<SourceEdit | null> {
+    const raw = await wasmCall('unused_suppression_removal', [source, line, column]);
+    return JSON.parse(raw) as SourceEdit | null;
+}
+
 export async function checkFolder(folderPath: string, envName?: string): Promise<CheckResult> {
     const result = await wasmCall('check', [await buildFilesMap(folderPath), await buildSecretsMap(folderPath), folderPath, envName]);
     return JSON.parse(result) as CheckResult;

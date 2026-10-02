@@ -147,7 +147,7 @@ pub fn execute_list(args: &ListArgs) -> Result<(), Box<dyn std::error::Error>> {
                 eprintln!("{}", crate::core::error::error_to_json(e));
             }
             crate::core::formatter::OutputFormat::Text => {
-                eprintln!("Warning: Failed to parse: {e}");
+                eprintln!("Warning: {e}");
             }
         }
     }
@@ -238,7 +238,7 @@ pub async fn execute_run(args: &RunArgs) -> Result<(), Box<dyn std::error::Error
         .name
         .as_deref()
         .map(|n| n.replace('.', "/"));
-    let (results, parse_warnings) = RqClient::default()
+    let (results, warnings) = RqClient::default()
         .run(
             source_path,
             request_name.as_deref(),
@@ -247,13 +247,13 @@ pub async fn execute_run(args: &RunArgs) -> Result<(), Box<dyn std::error::Error
         )
         .await?;
 
-    for w in &parse_warnings {
+    for w in &warnings {
         match args.output.output {
             crate::core::formatter::OutputFormat::Json => {
                 eprintln!("{}", crate::core::error::error_to_json(w));
             }
             crate::core::formatter::OutputFormat::Text => {
-                eprintln!("Warning: Failed to parse: {w}");
+                eprintln!("Warning: {w}");
             }
         }
     }

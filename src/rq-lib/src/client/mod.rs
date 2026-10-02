@@ -45,7 +45,7 @@ impl RqClient {
         environment: Option<&str>,
         variables: &[String],
     ) -> Result<(Vec<RequestExecutionResult>, Vec<RqError>), RqError> {
-        let (rq_files, parse_warnings) = self.get_rq_files_to_process(source_path, request_name)?;
+        let (rq_files, mut warnings) = self.get_rq_files_to_process(source_path, request_name)?;
 
         if rq_files.is_empty() {
             return Err(RqError::RequestNotFound(format!(
@@ -73,12 +73,7 @@ impl RqClient {
             let filtered_requests = Self::filter_requests(rq_file.requests, request_name);
 
             if filtered_requests.is_empty() {
-                if let Some(request_name) = request_name {
-                    eprintln!("No request found with name '{request_name}'");
-                } else {
-                    eprintln!("No requests found in the file");
-                }
-                return Ok((vec![], parse_warnings));
+                continue;
             }
 
             if let Some(request_name) = request_name {
@@ -230,7 +225,14 @@ impl RqClient {
             all_results.extend(results);
         }
 
-        Ok((all_results, parse_warnings))
+        if all_results.is_empty() {
+            if let Some(request_name) = request_name {
+                return Err(RqError::RequestNotFound(request_name.to_string()));
+            }
+            warnings.push(self.no_requests_warning(source_path));
+        }
+
+        Ok((all_results, warnings))
     }
 
     pub fn list_requests(
@@ -1639,6 +1641,15 @@ impl RqClient {
             .collect();
 
         Ok(cli_variables)
+    }
+
+    fn no_requests_warning(&self, source_path: &Path) -> RqError {
+        let location = if self.fs.is_file(source_path) {
+            "file"
+        } else {
+            "directory"
+        };
+        RqError::Generic(format!("No requests found in the {location}"))
     }
 
     fn filter_requests(

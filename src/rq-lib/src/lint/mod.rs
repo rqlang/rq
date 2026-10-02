@@ -61,6 +61,9 @@ pub trait LintRule: Send + Sync {
     fn id(&self) -> &'static str;
     #[allow(dead_code)]
     fn description(&self) -> &'static str;
+    fn reads_workspace(&self) -> bool {
+        false
+    }
     fn check(&self, ctx: &LintContext, out: &mut Vec<LintDiagnostic>);
 }
 
@@ -101,11 +104,24 @@ pub fn lint_rq_file(
         workspace_requests,
         workspace_endpoints,
     };
+    let rules = rules::all();
     let mut diagnostics = Vec::new();
-    for rule in rules::all() {
+    for rule in &rules {
         rule.check(&ctx, &mut diagnostics);
     }
-    let diagnostics = suppression::apply(source, display_path, &known_rule_ids(), diagnostics);
+    let without_workspace = workspace_requests.is_empty() && workspace_endpoints.is_empty();
+    let unverifiable: Vec<&str> = rules
+        .iter()
+        .filter(|rule| without_workspace && rule.reads_workspace())
+        .map(|rule| rule.id())
+        .collect();
+    let diagnostics = suppression::apply(
+        source,
+        display_path,
+        &known_rule_ids(),
+        &unverifiable,
+        diagnostics,
+    );
     LintResult {
         ok: diagnostics.is_empty(),
         diagnostics,

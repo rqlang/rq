@@ -73,7 +73,7 @@ env local {
 }
 ```
 
-A directive that names an unknown rule or names no rule, and an `rq-lint-ignore-file` that shares its line with code, are reported as `invalid_lint_suppression`; a rule it names that reports nothing in its scope is reported as `unused_lint_suppression`. Neither can be suppressed.
+A directive that names an unknown rule or names no rule, and an `rq-lint-ignore-file` that shares its line with code, are reported as `invalid_lint_suppression`; a rule it names that reports nothing in its scope is reported as `unused_lint_suppression`. Neither can be suppressed. Rules that compare a file with its workspace (`duplicated_ep_base`, `duplicated_ep_config`, `base_ep_extension`, `top_level_rq_should_be_ep`) are never reported as unused when the linter runs without the rest of the workspace, since it cannot tell whether they would fire.
 
 ## The `rq` Statement
 

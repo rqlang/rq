@@ -13,6 +13,10 @@ impl LintRule for Rule {
          the extension form and is left alone."
     }
 
+    fn reads_workspace(&self) -> bool {
+        true
+    }
+
     fn check(&self, ctx: &LintContext, out: &mut Vec<LintDiagnostic>) {
         let extensions = endpoint_extensions(ctx.source);
         for extension in &extensions {

@@ -47,6 +47,7 @@ pub fn apply(
     source: &str,
     display_path: &str,
     known_rules: &[&str],
+    unverifiable_rules: &[&str],
     diagnostics: Vec<LintDiagnostic>,
 ) -> Vec<LintDiagnostic> {
     let Ok(tokens) = crate::syntax::tokenize(source) else {
@@ -73,7 +74,7 @@ pub fn apply(
     kept.extend(
         suppressions
             .iter()
-            .filter(|s| !s.used)
+            .filter(|s| !s.used && !unverifiable_rules.contains(&s.rule.as_str()))
             .map(|s| unused_diagnostic(source, display_path, s)),
     );
     kept
@@ -312,7 +313,7 @@ fn unused_diagnostic(
 
 #[cfg(test)]
 mod tests {
-    use crate::lint::{lint_rq_file, LintDiagnostic};
+    use crate::lint::{lint_rq_file, EndpointSummary, LintDiagnostic};
     use crate::native::NativeFs;
     use crate::syntax::rq_file::RqFile;
     use std::path::PathBuf;
@@ -477,6 +478,36 @@ mod tests {
         let target = lint_source("// rq-lint-ignore empty_url_string\nlet a = \"1\";\n");
         assert_eq!(rules(&target), vec!["unused_lint_suppression"]);
         assert_eq!((target[0].line, target[0].column), (1, 19));
+    }
+
+    #[test]
+    fn keeps_a_workspace_rule_suppression_it_cannot_verify_without_a_workspace() {
+        let target = lint_source(
+            "// rq-lint-ignore duplicated_ep_config: legacy split\n\
+             ep users(\"http://localhost:8080/users\") {\n    rq list();\n}\n",
+        );
+        assert!(target.is_empty(), "got {:?}", rules(&target));
+    }
+
+    #[test]
+    fn reports_an_unused_workspace_rule_suppression_once_the_workspace_is_known() {
+        let source = "// rq-lint-ignore duplicated_ep_config: legacy split\n\
+                      ep users(\"http://localhost:8080/users\") {\n    rq list();\n}\n";
+        let peer = EndpointSummary {
+            name: "orders".into(),
+            url: "http://localhost:9090/orders".into(),
+            auth: None,
+            own_auth: None,
+            qs: None,
+            file: "orders.rq".into(),
+            extends: None,
+            is_template: false,
+            line: 0,
+            character: 0,
+        };
+        let rq_file = RqFile::from_content_lenient(PathBuf::from("users.rq"), source, &NativeFs);
+        let target = lint_rq_file(&rq_file, source, "users.rq", &[], &[peer]).diagnostics;
+        assert_eq!(rules(&target), vec!["unused_lint_suppression"]);
     }
 
     #[test]

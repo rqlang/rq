@@ -622,3 +622,24 @@ fn test_request_show_unresolved_variable_is_syntax_error() -> Result<(), Box<dyn
 
     Ok(())
 }
+
+#[test]
+fn test_request_show_not_found_reports_typed_name() -> Result<(), Box<dyn std::error::Error>> {
+    let output = rq_cmd()
+        .args([
+            "request",
+            "show",
+            "-s",
+            "tests/request/run/input/endpoint.rq",
+            "-n",
+            "api.missing",
+        ])
+        .output()?;
+
+    let stderr = String::from_utf8(output.stderr)?;
+    if output.status.code() != Some(5) || stderr.trim() != "Error: Request not found: api.missing" {
+        return Err(format!("Unexpected result: {stderr}").into());
+    }
+
+    Ok(())
+}

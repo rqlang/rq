@@ -1,5 +1,6 @@
 use crate::commands::shared::{print_warnings, EnvArgs, Location, OutputArgs, SourceArgs};
 use crate::commands::validators;
+use crate::core::error::RqError;
 use crate::core::formatter::{pretty_body, render, render_list, to_json, OutputFormat, TextBlock};
 use clap::{Args, Subcommand};
 use rq_lib::client::models::{RequestDetails, RequestInfo};
@@ -221,14 +222,16 @@ pub fn execute_show(args: &ShowArgs) -> Result<(), Box<dyn std::error::Error>> {
         .ok_or("Request name is required")?
         .replace('.', "/");
 
-    let details = RqClient::default().get_request_details(
-        source_path,
-        &name,
-        args.env_args.environment.as_deref(),
-        !args.no_var_interpolation,
-        false,
-        &[],
-    )?;
+    let details = RqClient::default()
+        .get_request_details(
+            source_path,
+            &name,
+            args.env_args.environment.as_deref(),
+            !args.no_var_interpolation,
+            false,
+            &[],
+        )
+        .map_err(|e| with_typed_request_name(e, args.request_name_args.name.as_deref()))?;
 
     let view = RequestDetailsView::from(details);
     print!(
@@ -253,7 +256,8 @@ pub async fn execute_run(args: &RunArgs) -> Result<(), Box<dyn std::error::Error
             args.env_args.environment.as_deref(),
             &args.variable,
         )
-        .await?;
+        .await
+        .map_err(|e| with_typed_request_name(e, args.request_name_args.name.as_deref()))?;
 
     print_warnings(&warnings, args.output.output);
 
@@ -264,6 +268,15 @@ pub async fn execute_run(args: &RunArgs) -> Result<(), Box<dyn std::error::Error
     );
 
     Ok(())
+}
+
+fn with_typed_request_name(error: RqError, typed_name: Option<&str>) -> RqError {
+    match (error, typed_name) {
+        (RqError::RequestNotFound(_), Some(typed_name)) if typed_name.contains('.') => {
+            RqError::RequestNotFound(typed_name.to_string())
+        }
+        (error, _) => error,
+    }
 }
 
 fn render_execution_result(result: &RequestExecutionResult) -> String {

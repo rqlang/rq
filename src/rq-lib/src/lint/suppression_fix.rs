@@ -276,7 +276,12 @@ fn directive_removal(
         .find(|t| t.token_type != TokenType::Whitespace)?
         .span
         .end;
-    Some(code_end..directive.span.end)
+    let line_break = if directive.value.ends_with('\r') {
+        1
+    } else {
+        0
+    };
+    Some(code_end..directive.span.end - line_break)
 }
 
 fn names(parsed: &ParsedComment, rule: &str) -> bool {
@@ -502,6 +507,14 @@ mod tests {
     fn removes_an_unused_trailing_directive_with_its_leading_space() {
         let target = remove_unused("let a = \"1\"; // rq-lint-ignore empty_url_string\n");
         assert_eq!(target, "let a = \"1\";\n");
+    }
+
+    #[test]
+    fn keeps_crlf_line_endings_when_removing_a_trailing_directive() {
+        let target = remove_unused(
+            "let a = \"1\"; // rq-lint-ignore empty_url_string\r\nlet b = \"2\";\r\n",
+        );
+        assert_eq!(target, "let a = \"1\";\r\nlet b = \"2\";\r\n");
     }
 
     #[test]

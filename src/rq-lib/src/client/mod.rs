@@ -1039,7 +1039,12 @@ impl RqClient {
 
     fn load_rq_file(&self, path: &Path) -> Result<RqFile, RqError> {
         let canonical = self.fs.canonicalize(path).map_err(RqError::Generic)?;
-        let content = self.fs.read(&canonical).map_err(RqError::Generic)?;
+        let content = self.fs.read(&canonical).map_err(|e| {
+            RqError::Generic(format!(
+                "Failed to read {}: {e}",
+                crate::paths::clean_path(&canonical)
+            ))
+        })?;
         RqFile::from_content(canonical, &content, &*self.fs).map_err(Self::map_parse_error)
     }
 
@@ -1877,6 +1882,17 @@ fn extract_unresolved_var_name(message: &str) -> Option<String> {
 #[cfg(all(test, feature = "native"))]
 mod check_source_tests {
     use super::RqClient;
+
+    #[test]
+    fn check_path_names_the_file_it_cannot_read() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let file = dir.path().join("invalid_utf8.rq");
+        std::fs::write(&file, b"rq get(\"http://localhost/\xff\");\n").expect("write");
+        let target = RqClient::default()
+            .check_path(&file, None)
+            .expect("check_path failed");
+        assert!(target[0].to_string().contains("invalid_utf8.rq"));
+    }
 
     #[test]
     fn check_source_accepts_clean_request() {

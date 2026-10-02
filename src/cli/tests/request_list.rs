@@ -206,11 +206,11 @@ fn test_request_list_json_endpoint_location() -> Result<(), Box<dyn std::error::
         return Err("Item with endpoint missing 'endpoint_line' field".into());
     }
     if ep_request
-        .get("endpoint_character")
+        .get("endpoint_column")
         .and_then(|v| v.as_u64())
         .is_none()
     {
-        return Err("Item with endpoint missing 'endpoint_character' field".into());
+        return Err("Item with endpoint missing 'endpoint_column' field".into());
     }
 
     let top_level = items.iter().find(|v| v["endpoint"].is_null());
@@ -222,6 +222,27 @@ fn test_request_list_json_endpoint_location() -> Result<(), Box<dyn std::error::
         {
             return Err("Top-level request should not have endpoint_file".into());
         }
+    }
+
+    Ok(())
+}
+
+#[test]
+fn test_request_list_json_omits_absent_endpoint() -> Result<(), Box<dyn std::error::Error>> {
+    let output = rq_cmd()
+        .args([
+            "request",
+            "list",
+            "-s",
+            "tests/request/run/input/basic.rq",
+            "-o",
+            "json",
+        ])
+        .output()?;
+
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout)?;
+    if json[0].get("endpoint").is_some() {
+        return Err(format!("Expected no 'endpoint' field, got: {json}").into());
     }
 
     Ok(())

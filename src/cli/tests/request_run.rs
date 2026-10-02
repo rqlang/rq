@@ -17,6 +17,10 @@ fn main() {
             test_request_json_warning_uses_warning_key,
         ),
         Trial::test(
+            "request_json_output_ends_with_newline",
+            test_request_json_output_ends_with_newline,
+        ),
+        Trial::test(
             "request_secrets_uppercase_prefixes",
             test_request_secrets_uppercase_prefixes,
         ),
@@ -97,6 +101,25 @@ fn test_request_json_warning_uses_warning_key() -> Result<(), Failed> {
         .map_err(|e| format!("stderr is not valid JSON: {e}\n{stderr}"))?;
     if warning["warning"]["message"] != "No requests found in the file" {
         return Err(format!("Unexpected stderr: {stderr}").into());
+    }
+    Ok(())
+}
+
+fn test_request_json_output_ends_with_newline() -> Result<(), Failed> {
+    let output = rq_cmd()
+        .args([
+            "request",
+            "run",
+            "-s",
+            "tests/request/run/input/foo.rq",
+            "-o",
+            "json",
+        ])
+        .output()
+        .map_err(|e| format!("Failed to execute: {e}"))?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    if !stdout.ends_with("}\n") {
+        return Err(format!("Expected trailing newline, got: {stdout:?}").into());
     }
     Ok(())
 }

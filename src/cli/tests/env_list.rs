@@ -238,8 +238,8 @@ fn test_env_show_json() -> Result<(), Box<dyn std::error::Error>> {
     if json.get("line").and_then(|v| v.as_u64()).is_none() {
         return Err("Missing 'line' field".into());
     }
-    if json.get("character").and_then(|v| v.as_u64()).is_none() {
-        return Err("Missing 'character' field".into());
+    if json.get("column").and_then(|v| v.as_u64()).is_none() {
+        return Err("Missing 'column' field".into());
     }
 
     Ok(())

@@ -303,14 +303,15 @@ Behavior:
 
 - Resolves the auth provider (e.g. `bearer_auth`, `github_oauth`) and shows its type and fields.
 - In `text` mode, prints a human-readable summary like:
-	- `Auth Configuration: bearer_auth`
-	- `Type: bearer`
+	- `name: bearer_auth`
+	- `type: bearer`
 	- `token: ...`
 - In `json` mode, prints an object with keys:
-	- `Auth Configuration` – Provider name.
-	- `Type` – Provider type (`bearer`, `oauth2_authorization_code`, etc.).
-	- `Environment` – Optional, when `-e/--env` is provided.
-	- `Fields` – Map of field names to values (for example `client_id`, `authorization_url`, `token_url`).
+	- `name` – Provider name.
+	- `type` – Provider type (`bearer`, `oauth2_authorization_code`, etc.).
+	- `environment` – Optional, when `-e/--env` is provided.
+	- `fields` – Map of field names to values (for example `client_id`, `authorization_url`, `token_url`).
+	- `file`, `line`, `column` – Where the provider is declared.
 
 Examples:
 
@@ -572,3 +573,14 @@ Across all commands, the `-o, --output` flag controls how results are printed:
 The value is case-insensitive, so `--output json` and `--output JSON` are equivalent. Invalid values cause a clear clap error indicating the allowed values.
 
 When integrating rq into other tools or CI, prefer `--output json` so you can parse responses reliably.
+
+### JSON conventions
+
+Every command follows the same rules in `json` mode:
+
+- Keys are `snake_case`.
+- Source locations are reported as `file`, `line` and `column`. `file` is an absolute path, and `line` and `column` start at 1, so `file:line:column` points at the same place an editor shows. Requests that belong to an endpoint also carry `endpoint_file`, `endpoint_line` and `endpoint_column`.
+- Optional fields are omitted when they have no value, instead of being printed as `null`.
+- Results go to stdout and always end with a newline.
+- Errors go to stderr as `{"error": {"type": ..., "message": ..., "file": ..., "line": ..., "column": ...}}`, where the location fields are present only when known.
+- Warnings that do not stop the command (for example, a file that fails to parse while listing a directory) go to stderr with the same shape under a `warning` key.

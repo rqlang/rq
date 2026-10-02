@@ -26,13 +26,11 @@ fn test_auth_show_bearer_text() -> Result<(), Box<dyn std::error::Error>> {
         .into());
     }
 
-    if !stdout.contains("Auth Configuration: bearer_auth") {
-        return Err(
-            format!("Expected 'Auth Configuration: bearer_auth' in output, got: {stdout}").into(),
-        );
+    if !stdout.contains("name: bearer_auth") {
+        return Err(format!("Expected 'name: bearer_auth' in output, got: {stdout}").into());
     }
 
-    if !stdout.contains("Type: bearer") {
+    if !stdout.contains("type: bearer") {
         return Err(format!("Expected 'Type: bearer' in output, got: {stdout}").into());
     }
 
@@ -70,16 +68,16 @@ fn test_auth_show_bearer_json() -> Result<(), Box<dyn std::error::Error>> {
 
     let json: Value = serde_json::from_str(&stdout)?;
 
-    if json.get("Auth Configuration").and_then(|v| v.as_str()) != Some("bearer_auth") {
+    if json.get("name").and_then(|v| v.as_str()) != Some("bearer_auth") {
         return Err(format!("Expected name 'bearer_auth', got: {json}").into());
     }
 
-    if json.get("Type").and_then(|v| v.as_str()) != Some("bearer") {
+    if json.get("type").and_then(|v| v.as_str()) != Some("bearer") {
         return Err(format!("Expected auth_type 'bearer', got: {json}").into());
     }
 
     let fields = json
-        .get("Fields")
+        .get("fields")
         .ok_or_else(|| format!("Expected 'fields' in JSON, got: {json}"))?;
 
     if fields.get("token").and_then(|v| v.as_str()) != Some("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9")
@@ -89,11 +87,11 @@ fn test_auth_show_bearer_json() -> Result<(), Box<dyn std::error::Error>> {
     if json.get("file").and_then(|v| v.as_str()).is_none() {
         return Err("JSON missing 'file' field".into());
     }
-    if json.get("line").and_then(|v| v.as_u64()) != Some(2) {
+    if json.get("line").and_then(|v| v.as_u64()) != Some(3) {
         return Err(format!("Expected line 2, got: {json}").into());
     }
-    if json.get("character").and_then(|v| v.as_u64()) != Some(5) {
-        return Err(format!("Expected character 5, got: {json}").into());
+    if json.get("column").and_then(|v| v.as_u64()) != Some(6) {
+        return Err(format!("Expected column 6, got: {json}").into());
     }
 
     Ok(())
@@ -122,14 +120,11 @@ fn test_auth_show_oauth2_text() -> Result<(), Box<dyn std::error::Error>> {
         .into());
     }
 
-    if !stdout.contains("Auth Configuration: github_oauth") {
-        return Err(format!(
-            "Expected 'Auth Configuration: github_oauth' in output, got: {stdout}"
-        )
-        .into());
+    if !stdout.contains("name: github_oauth") {
+        return Err(format!("Expected 'name: github_oauth' in output, got: {stdout}").into());
     }
 
-    if !stdout.contains("Type: oauth2_authorization_code") {
+    if !stdout.contains("type: oauth2_authorization_code") {
         return Err(
             format!("Expected 'Type: oauth2_authorization_code' in output, got: {stdout}").into(),
         );
@@ -173,16 +168,16 @@ fn test_auth_show_oauth2_json() -> Result<(), Box<dyn std::error::Error>> {
 
     let json: Value = serde_json::from_str(&stdout)?;
 
-    if json.get("Auth Configuration").and_then(|v| v.as_str()) != Some("github_oauth") {
+    if json.get("name").and_then(|v| v.as_str()) != Some("github_oauth") {
         return Err(format!("Expected name 'github_oauth', got: {json}").into());
     }
 
-    if json.get("Type").and_then(|v| v.as_str()) != Some("oauth2_authorization_code") {
+    if json.get("type").and_then(|v| v.as_str()) != Some("oauth2_authorization_code") {
         return Err(format!("Expected auth_type 'oauth2_authorization_code', got: {json}").into());
     }
 
     let fields = json
-        .get("Fields")
+        .get("fields")
         .ok_or_else(|| format!("Expected 'fields' in JSON, got: {json}"))?;
 
     if fields.get("client_id").and_then(|v| v.as_str()) != Some("my-github-client-id") {
@@ -229,13 +224,11 @@ fn test_auth_show_with_env() -> Result<(), Box<dyn std::error::Error>> {
         .into());
     }
 
-    if !stdout.contains("Auth Configuration: local_auth") {
-        return Err(
-            format!("Expected 'Auth Configuration: local_auth' in output, got: {stdout}").into(),
-        );
+    if !stdout.contains("name: local_auth") {
+        return Err(format!("Expected 'name: local_auth' in output, got: {stdout}").into());
     }
 
-    if !stdout.contains("Environment: local") {
+    if !stdout.contains("environment: local") {
         return Err(format!("Expected 'Environment: local' in output, got: {stdout}").into());
     }
 
@@ -323,7 +316,7 @@ auth test_bearer(auth_type.bearer) {
     let json: Value = serde_json::from_str(&stdout)?;
 
     let token = json
-        .get("Fields")
+        .get("fields")
         .and_then(|f| f.get("token"))
         .and_then(|t| t.as_str());
 
@@ -391,7 +384,7 @@ auth local(auth_type.oauth2_authorization_code) {
     let json: Value = serde_json::from_str(&stdout)?;
 
     let fields = json
-        .get("Fields")
+        .get("fields")
         .ok_or_else(|| format!("Expected 'fields' in JSON, got: {json}"))?;
 
     if fields.get("client_id").and_then(|v| v.as_str()) != Some("rq-test") {
@@ -475,7 +468,7 @@ auth test_bearer(auth_type.bearer) {
     let json_local: Value = serde_json::from_str(&stdout_local)?;
 
     let token_local = json_local
-        .get("Fields")
+        .get("fields")
         .and_then(|f| f.get("token"))
         .and_then(|t| t.as_str());
 
@@ -505,7 +498,7 @@ auth test_bearer(auth_type.bearer) {
     let json_dev: Value = serde_json::from_str(&stdout_dev)?;
 
     let token_dev = json_dev
-        .get("Fields")
+        .get("fields")
         .and_then(|f| f.get("token"))
         .and_then(|t| t.as_str());
 
@@ -557,7 +550,7 @@ fn test_auth_show_unresolved_no_var_interpolation() -> Result<(), Box<dyn std::e
     let json: Value = serde_json::from_str(&stdout)?;
 
     let token = json
-        .get("Fields")
+        .get("fields")
         .and_then(|f| f.get("token"))
         .and_then(|t| t.as_str())
         .ok_or("Missing token field")?;
@@ -664,7 +657,7 @@ auth minimal_oauth(auth_type.oauth2_authorization_code) {
     let json: Value = serde_json::from_str(&stdout)?;
 
     let fields = json
-        .get("Fields")
+        .get("fields")
         .ok_or_else(|| format!("Expected 'fields' in JSON, got: {json}"))?;
 
     // Check that defaults were applied
@@ -735,7 +728,7 @@ auth custom_oauth(auth_type.oauth2_authorization_code) {
     let json: Value = serde_json::from_str(&stdout)?;
 
     let fields = json
-        .get("Fields")
+        .get("fields")
         .ok_or_else(|| format!("Expected 'fields' in JSON, got: {json}"))?;
 
     // Check that custom values were preserved
@@ -786,7 +779,7 @@ fn test_auth_show_interpolation_from_let() -> Result<(), Box<dyn std::error::Err
     let json: Value = serde_json::from_str(&stdout)?;
 
     let token = json
-        .get("Fields")
+        .get("fields")
         .and_then(|f| f.get("token"))
         .and_then(|v| v.as_str())
         .ok_or_else(|| format!("Expected 'token' field in JSON, got: {json}"))?;
@@ -828,7 +821,7 @@ fn test_auth_show_interpolation_from_env_file() -> Result<(), Box<dyn std::error
     let json: Value = serde_json::from_str(&stdout)?;
 
     let token = json
-        .get("Fields")
+        .get("fields")
         .and_then(|f| f.get("token"))
         .and_then(|v| v.as_str())
         .ok_or_else(|| format!("Expected 'token' field in JSON, got: {json}"))?;
@@ -870,7 +863,7 @@ fn test_auth_show_interpolation_combined() -> Result<(), Box<dyn std::error::Err
     let json: Value = serde_json::from_str(&stdout)?;
 
     let token = json
-        .get("Fields")
+        .get("fields")
         .and_then(|f| f.get("token"))
         .and_then(|v| v.as_str())
         .ok_or_else(|| format!("Expected 'token' field in JSON, got: {json}"))?;
@@ -912,7 +905,7 @@ fn test_auth_show_bare_identifier_reference() -> Result<(), Box<dyn std::error::
     let json: Value = serde_json::from_str(&stdout)?;
 
     let token = json
-        .get("Fields")
+        .get("fields")
         .and_then(|f| f.get("token"))
         .and_then(|v| v.as_str())
         .ok_or_else(|| format!("Expected 'token' field in JSON, got: {json}"))?;

@@ -40,8 +40,8 @@ fn test_var_refs_json() -> Result<(), Box<dyn std::error::Error>> {
     if first.get("line").and_then(|v| v.as_u64()).is_none() {
         return Err("Missing 'line' field in reference".into());
     }
-    if first.get("character").and_then(|v| v.as_u64()).is_none() {
-        return Err("Missing 'character' field in reference".into());
+    if first.get("column").and_then(|v| v.as_u64()).is_none() {
+        return Err("Missing 'column' field in reference".into());
     }
 
     Ok(())
@@ -197,23 +197,23 @@ fn test_var_refs_env_declaration_included() -> Result<(), Box<dyn std::error::Er
     let json: serde_json::Value = serde_json::from_str(&stdout)?;
     let items = json.as_array().ok_or("Expected JSON array")?;
 
-    let has_env_decl = items.iter().any(|r| r["line"].as_u64() == Some(1));
+    let has_env_decl = items.iter().any(|r| r["line"].as_u64() == Some(2));
     if !has_env_decl {
         return Err(
-            format!("Expected env block declaration (line 1) in refs, got: {items:?}").into(),
+            format!("Expected env block declaration (line 2) in refs, got: {items:?}").into(),
         );
     }
 
-    let has_usage = items.iter().any(|r| r["line"].as_u64() == Some(4));
+    let has_usage = items.iter().any(|r| r["line"].as_u64() == Some(5));
     if !has_usage {
-        return Err(format!("Expected usage (line 4) in refs, got: {items:?}").into());
+        return Err(format!("Expected usage (line 5) in refs, got: {items:?}").into());
     }
 
     Ok(())
 }
 
 #[test]
-fn test_var_refs_interpolation_character_position() -> Result<(), Box<dyn std::error::Error>> {
+fn test_var_refs_interpolation_column_position() -> Result<(), Box<dyn std::error::Error>> {
     let temp_dir =
         std::env::temp_dir().join(format!("rq_test_var_refs_charpos_{}", std::process::id()));
     std::fs::create_dir_all(&temp_dir)?;
@@ -251,16 +251,11 @@ fn test_var_refs_interpolation_character_position() -> Result<(), Box<dyn std::e
         return Err("Expected at least one reference".into());
     }
 
-    // rq get("{{base_url}}/v1");
-    // 0123456789...
-    // position 8 = first '{', position 10 = 'b' of base_url
-    let character = items[0]["character"]
-        .as_u64()
-        .ok_or("Missing character field")?;
-    if character != 10 {
+    let column = items[0]["column"].as_u64().ok_or("Missing column field")?;
+    if column != 11 {
         return Err(format!(
-            "Expected character=10 (start of 'base_url'), got character={character}. \
-             Hint: character points to '{{{{' instead of the variable name."
+            "Expected column=11 (start of 'base_url'), got column={column}. \
+             Hint: column points to '{{{{' instead of the variable name."
         )
         .into());
     }
@@ -300,6 +295,30 @@ fn test_var_refs_invalid_name() -> Result<(), Box<dyn std::error::Error>> {
     let stderr = String::from_utf8_lossy(&output.stderr);
     if !stderr.contains("Name must match pattern") {
         return Err(format!("Expected error message about invalid pattern, got: {stderr}").into());
+    }
+
+    Ok(())
+}
+
+#[test]
+fn test_var_refs_json_file_is_absolute() -> Result<(), Box<dyn std::error::Error>> {
+    let output = rq_cmd()
+        .args([
+            "var",
+            "refs",
+            "-s",
+            "tests/request/run/input/environments__env_local__.rq",
+            "-n",
+            "base_url",
+            "-o",
+            "json",
+        ])
+        .output()?;
+
+    let json: Value = serde_json::from_slice(&output.stdout)?;
+    let file = json[0]["file"].as_str().ok_or("Missing 'file' field")?;
+    if !std::path::Path::new(file).is_absolute() {
+        return Err(format!("Expected an absolute path, got: {file}").into());
     }
 
     Ok(())

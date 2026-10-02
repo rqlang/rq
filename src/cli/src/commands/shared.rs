@@ -1,6 +1,10 @@
 use crate::commands::validators;
+use crate::core::error::{warning_to_json, RqError};
 use crate::core::formatter::OutputFormat;
 use clap::Args;
+use rq_lib::client::models::ReferenceLocation;
+use serde::Serialize;
+use std::path::PathBuf;
 
 #[derive(Debug, Args)]
 pub struct OutputArgs {
@@ -37,4 +41,43 @@ pub struct EnvArgs {
         value_parser = validators::validate_name
     )]
     pub environment: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct Location {
+    pub file: String,
+    pub line: usize,
+    pub column: usize,
+}
+
+impl Location {
+    pub fn from_zero_based(file: String, line: usize, character: usize) -> Self {
+        Self {
+            file,
+            line: line + 1,
+            column: character + 1,
+        }
+    }
+}
+
+pub fn reference_views(references: Vec<ReferenceLocation>) -> Vec<Location> {
+    references
+        .into_iter()
+        .map(|r| Location::from_zero_based(r.file, r.line, r.character))
+        .collect()
+}
+
+pub fn print_warnings(warnings: &[RqError], output: OutputFormat) {
+    for warning in warnings {
+        match output {
+            OutputFormat::Json => eprintln!("{}", warning_to_json(warning)),
+            OutputFormat::Text => eprintln!("Warning: {warning}"),
+        }
+    }
+}
+
+pub fn absolute_source(source: &str) -> PathBuf {
+    std::fs::canonicalize(source)
+        .map(|path| PathBuf::from(rq_lib::paths::clean_path(&path)))
+        .unwrap_or_else(|_| PathBuf::from(source))
 }

@@ -1,7 +1,8 @@
-use crate::commands::shared::{OutputArgs, SourceArgs};
-use crate::core::formatter::OutputFormat;
+use crate::commands::shared::{Location, OutputArgs, SourceArgs};
+use crate::core::formatter::{get_formatter, OutputFormat};
 use clap::{Args, Subcommand};
 use rq_lib::RqClient;
+use serde::Serialize;
 
 #[derive(Args)]
 #[command(name = "env")]
@@ -43,23 +44,32 @@ pub struct ShowArgs {
     pub output: OutputArgs,
 }
 
+#[derive(Serialize)]
+struct EnvironmentListView {
+    name: String,
+}
+
+#[derive(Serialize)]
+struct EnvironmentView {
+    name: String,
+    #[serde(flatten)]
+    location: Location,
+}
+
 pub fn execute_list(args: &ListArgs) -> Result<(), Box<dyn std::error::Error>> {
     let path = std::path::Path::new(&args.source.source);
     let env_list = RqClient::default().list_environments(path)?;
+    let formatter = get_formatter(&args.output.output);
 
     match args.output.output {
         OutputFormat::Json => {
-            let entries: Vec<serde_json::Value> = env_list
-                .iter()
-                .map(|name| serde_json::json!({ "name": name }))
+            let views: Vec<EnvironmentListView> = env_list
+                .into_iter()
+                .map(|name| EnvironmentListView { name })
                 .collect();
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&entries).unwrap_or_else(|_| "[]".to_string())
-            );
+            print!("{}", formatter.format(&views));
         }
         OutputFormat::Text => {
-            let formatter = crate::core::formatter::get_formatter(&args.output.output);
             print!(
                 "{}",
                 formatter.format_list(
@@ -77,17 +87,10 @@ pub fn execute_list(args: &ListArgs) -> Result<(), Box<dyn std::error::Error>> {
 pub fn execute_show(args: &ShowArgs) -> Result<(), Box<dyn std::error::Error>> {
     let path = std::path::Path::new(&args.source.source);
     let entry = RqClient::default().get_environment(path, &args.name)?;
-    match args.output.output {
-        OutputFormat::Json => {
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&entry).unwrap_or_default()
-            );
-        }
-        OutputFormat::Text => {
-            let formatter = crate::core::formatter::get_formatter(&args.output.output);
-            print!("{}", formatter.format(&entry));
-        }
-    }
+    let view = EnvironmentView {
+        name: entry.name,
+        location: Location::from_zero_based(entry.file, entry.line, entry.character),
+    };
+    print!("{}", get_formatter(&args.output.output).format(&view));
     Ok(())
 }

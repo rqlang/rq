@@ -96,7 +96,7 @@ impl Formatter {
     pub fn format<T: Serialize>(&self, model: &T) -> String {
         match self.engine {
             OutputFormat::Text => render_text_from_model(model),
-            OutputFormat::Json => serde_json::to_string_pretty(model).unwrap_or_default(),
+            OutputFormat::Json => to_json_line(model, "{}"),
         }
     }
 
@@ -104,7 +104,7 @@ impl Formatter {
         match self.engine {
             OutputFormat::Text => {
                 if list.is_empty() {
-                    empty_msg.to_string()
+                    format!("{empty_msg}\n")
                 } else {
                     let content = render_text_from_model(list);
                     if title.is_empty() {
@@ -114,11 +114,14 @@ impl Formatter {
                     }
                 }
             }
-            OutputFormat::Json => {
-                serde_json::to_string_pretty(list).unwrap_or_else(|_| "[]".to_string())
-            }
+            OutputFormat::Json => to_json_line(list, "[]"),
         }
     }
+}
+
+fn to_json_line<T: Serialize + ?Sized>(model: &T, fallback: &str) -> String {
+    let json = serde_json::to_string_pretty(model).unwrap_or_else(|_| fallback.to_string());
+    format!("{json}\n")
 }
 
 pub fn get_formatter(output_format: &OutputFormat) -> Formatter {

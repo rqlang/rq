@@ -40,8 +40,8 @@ fn test_ep_refs_json() -> Result<(), Box<dyn std::error::Error>> {
     if first.get("line").and_then(|v| v.as_u64()).is_none() {
         return Err("Missing 'line' field in reference".into());
     }
-    if first.get("character").and_then(|v| v.as_u64()).is_none() {
-        return Err("Missing 'character' field in reference".into());
+    if first.get("column").and_then(|v| v.as_u64()).is_none() {
+        return Err("Missing 'column' field in reference".into());
     }
 
     Ok(())
@@ -244,6 +244,30 @@ fn test_ep_refs_invalid_name() -> Result<(), Box<dyn std::error::Error>> {
     let stderr = String::from_utf8_lossy(&output.stderr);
     if !stderr.contains("Name must match pattern") {
         return Err(format!("Expected error message about invalid pattern, got: {stderr}").into());
+    }
+
+    Ok(())
+}
+
+#[test]
+fn test_ep_refs_json_file_is_absolute() -> Result<(), Box<dyn std::error::Error>> {
+    let output = rq_cmd()
+        .args([
+            "ep",
+            "refs",
+            "-s",
+            "tests/request/run/input/endpoint.rq",
+            "-n",
+            "api",
+            "-o",
+            "json",
+        ])
+        .output()?;
+
+    let json: Value = serde_json::from_slice(&output.stdout)?;
+    let file = json[0]["file"].as_str().ok_or("Missing 'file' field")?;
+    if !std::path::Path::new(file).is_absolute() {
+        return Err(format!("Expected an absolute path, got: {file}").into());
     }
 
     Ok(())

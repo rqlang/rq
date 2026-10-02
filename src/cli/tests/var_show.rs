@@ -34,8 +34,8 @@ fn test_var_show_let_json() -> Result<(), Box<dyn std::error::Error>> {
     if json.get("file").and_then(|v| v.as_str()).is_none() {
         return Err("Missing 'file' field".into());
     }
-    if json.get("line").and_then(|v| v.as_u64()) != Some(0) {
-        return Err(format!("Expected line 0 (first line), got: {json}").into());
+    if json.get("line").and_then(|v| v.as_u64()) != Some(1) {
+        return Err(format!("Expected line 1 (first line), got: {json}").into());
     }
     if json.get("source").and_then(|v| v.as_str()) != Some("let") {
         return Err(format!("Expected source 'let', got: {json}").into());

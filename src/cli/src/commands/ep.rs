@@ -1,8 +1,10 @@
-use crate::commands::shared::{OutputArgs, SourceArgs};
+use crate::commands::shared::{absolute_source, reference_views, Location, OutputArgs, SourceArgs};
 use crate::commands::validators;
-use crate::core::formatter::OutputFormat;
+use crate::core::formatter::{get_formatter, OutputFormat};
 use clap::{Args, Subcommand};
+use rq_lib::client::models::EndpointEntry;
 use rq_lib::RqClient;
+use serde::Serialize;
 
 #[derive(Args)]
 #[command(name = "ep")]
@@ -68,19 +70,35 @@ pub struct RefsArgs {
     pub output: OutputArgs,
 }
 
+#[derive(Serialize)]
+struct EndpointView {
+    name: String,
+    is_template: bool,
+    #[serde(flatten)]
+    location: Location,
+}
+
+impl From<EndpointEntry> for EndpointView {
+    fn from(entry: EndpointEntry) -> Self {
+        Self {
+            name: entry.name,
+            is_template: entry.is_template,
+            location: Location::from_zero_based(entry.file, entry.line, entry.character),
+        }
+    }
+}
+
 pub fn execute_list(args: &ListArgs) -> Result<(), Box<dyn std::error::Error>> {
     let path = std::path::Path::new(&args.source.source);
     let entries = RqClient::default().list_endpoints(path)?;
+    let formatter = get_formatter(&args.output.output);
 
     match args.output.output {
         OutputFormat::Json => {
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&entries).unwrap_or_else(|_| "[]".to_string())
-            );
+            let views: Vec<EndpointView> = entries.into_iter().map(Into::into).collect();
+            print!("{}", formatter.format(&views));
         }
         OutputFormat::Text => {
-            let formatter = crate::core::formatter::get_formatter(&args.output.output);
             let names: Vec<String> = entries.into_iter().map(|e| e.name).collect();
             print!(
                 "{}",
@@ -99,28 +117,21 @@ pub fn execute_list(args: &ListArgs) -> Result<(), Box<dyn std::error::Error>> {
 pub fn execute_show(args: &ShowArgs) -> Result<(), Box<dyn std::error::Error>> {
     let path = std::path::Path::new(&args.source.source);
     let entry = RqClient::default().get_endpoint(path, &args.name, None)?;
-    match args.output.output {
-        OutputFormat::Json => {
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&entry).unwrap_or_default()
-            );
-        }
-        OutputFormat::Text => {
-            let formatter = crate::core::formatter::get_formatter(&args.output.output);
-            print!("{}", formatter.format(&entry));
-        }
-    }
+    let view = EndpointView::from(entry);
+    print!("{}", get_formatter(&args.output.output).format(&view));
     Ok(())
 }
 
 pub fn execute_refs(args: &RefsArgs) -> Result<(), Box<dyn std::error::Error>> {
-    let path = std::path::Path::new(&args.source.source);
-    let refs = RqClient::default().list_endpoint_references(path, &args.name, None)?;
-    let formatter = crate::core::formatter::get_formatter(&args.output.output);
+    let path = absolute_source(&args.source.source);
+    let refs = RqClient::default().list_endpoint_references(&path, &args.name, None)?;
     print!(
         "{}",
-        formatter.format_list(&refs, "References found:", "No references found")
+        get_formatter(&args.output.output).format_list(
+            &reference_views(refs),
+            "References found:",
+            "No references found"
+        )
     );
     Ok(())
 }

@@ -129,6 +129,8 @@ fn test_request_secrets() -> Result<(), Failed> {
         .args([
             "request",
             "run",
+            "-o",
+            "json",
             "-s",
             "tests/request/run/fixtures/secrets/secrets.rq",
             "--environment",
@@ -160,6 +162,8 @@ fn test_request_secrets_uppercase_prefixes() -> Result<(), Failed> {
         .args([
             "request",
             "run",
+            "-o",
+            "json",
             "-s",
             "tests/request/run/fixtures/secrets_uppercase_prefixes/test.rq",
             "--environment",
@@ -190,6 +194,8 @@ fn test_request_auth_token_backdoor() -> Result<(), Failed> {
         .args([
             "request",
             "run",
+            "-o",
+            "json",
             "-s",
             "tests/request/run/fixtures/auth_token_backdoor/test.rq",
         ])
@@ -217,6 +223,8 @@ fn test_request_auth_token_backdoor_upper() -> Result<(), Failed> {
         .args([
             "request",
             "run",
+            "-o",
+            "json",
             "-s",
             "tests/request/run/fixtures/auth_token_backdoor_upper/test.rq",
         ])
@@ -244,6 +252,8 @@ fn test_request_cli_variable_override() -> Result<(), Failed> {
         .args([
             "request",
             "run",
+            "-o",
+            "json",
             "-s",
             "tests/request/run/fixtures/cli_override/override.rq",
             "-v",
@@ -273,6 +283,8 @@ fn test_request_dotenv() -> Result<(), Failed> {
         .args([
             "request",
             "run",
+            "-o",
+            "json",
             "-s",
             "tests/request/run/fixtures/dotenv/dotenv.rq",
             "--environment",
@@ -638,6 +650,10 @@ fn run_directory_test(dir_name: &str, file_name: &str) -> Result<(), Failed> {
 
     if let Some(ref req) = request_name {
         cmd.args(["--name", req]);
+    }
+
+    if Path::new(&expected_json).exists() {
+        cmd.args(["-o", "json"]);
     }
 
     let output = cmd

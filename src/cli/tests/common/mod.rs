@@ -51,61 +51,16 @@ pub fn validate_json_response(stdout: &str, expected_path: &Path) -> Result<(), 
         .map_err(|e| format!("Failed to read expected file: {e}"))?;
     let expected_json: Value = serde_json::from_str(&expected_content)
         .map_err(|e| format!("Failed to parse expected JSON: {e}"))?;
+    let envelope: Value = serde_json::from_str(stdout)
+        .map_err(|e| format!("Failed to parse run output as JSON: {e}\n{stdout}"))?;
 
-    let mut actual_jsons = Vec::new();
-    let mut current_slice = stdout;
-
-    while let Some(status_pos) = current_slice.find("body:") {
-        let after_status = &current_slice[status_pos..];
-        if let Some(brace_rel) = after_status.find('{') {
-            let slice = &after_status[brace_rel..];
-
-            let mut depth = 0usize;
-            let mut in_string = false;
-            let mut escape = false;
-            let mut end_index: Option<usize> = None;
-
-            for (i, ch) in slice.char_indices() {
-                if in_string {
-                    if escape {
-                        escape = false;
-                        continue;
-                    }
-                    match ch {
-                        '\\' => escape = true,
-                        '"' => in_string = false,
-                        _ => {}
-                    }
-                    continue;
-                }
-                match ch {
-                    '"' => in_string = true,
-                    '{' => depth += 1,
-                    '}' if depth > 0 => {
-                        depth -= 1;
-                        if depth == 0 {
-                            end_index = Some(i + 1);
-                            break;
-                        }
-                    }
-                    _ => {}
-                }
-            }
-
-            if let Some(end) = end_index {
-                let json_body = slice[..end].trim();
-                if let Ok(val) = serde_json::from_str::<Value>(json_body) {
-                    actual_jsons.push(val);
-                }
-                // Advance slice past this JSON object
-                current_slice = &slice[end..];
-            } else {
-                break; // Malformed JSON or end of string
-            }
-        } else {
-            break; // No JSON body found
-        }
-    }
+    let actual_jsons: Vec<Value> = envelope["results"]
+        .as_array()
+        .ok_or_else(|| format!("Missing 'results' array in run output: {stdout}"))?
+        .iter()
+        .filter_map(|result| result["body"].as_str())
+        .filter_map(|body| serde_json::from_str::<Value>(body).ok())
+        .collect();
 
     if actual_jsons.is_empty() {
         return Err("No JSON response found in output".to_string());

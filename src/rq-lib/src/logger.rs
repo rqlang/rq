@@ -56,15 +56,12 @@ impl Logger {
         let _ = LOGGER.get_or_init(|| Logger { debug });
     }
 
-    fn get() -> &'static Logger {
-        LOGGER
-            .get()
-            .expect("Logger not initialized. Call Logger::init() in main first.")
+    pub fn is_debug_enabled() -> bool {
+        LOGGER.get().is_some_and(|logger| logger.debug)
     }
 
     pub fn debug(message: &str) {
-        let logger = Self::get();
-        if logger.debug {
+        if Self::is_debug_enabled() {
             let sanitized = sanitize_message(message);
             eprintln!("{sanitized}");
         }
@@ -72,8 +69,7 @@ impl Logger {
 
     #[allow(dead_code)]
     pub fn debug_fmt(args: std::fmt::Arguments) {
-        let logger = Self::get();
-        if logger.debug {
+        if Self::is_debug_enabled() {
             let formatted = format!("{args}");
             let sanitized = sanitize_message(&formatted);
             eprintln!("{sanitized}");
@@ -86,4 +82,14 @@ macro_rules! debug_log {
     ($($arg:tt)*) => {
         $crate::logger::Logger::debug_fmt(format_args!($($arg)*))
     };
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Logger;
+
+    #[test]
+    fn debug_without_init_does_not_panic() {
+        Logger::debug("message");
+    }
 }

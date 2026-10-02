@@ -45,6 +45,36 @@ rq supports two types of comments:
   rq get("http://example.com");
   ```
 
+### Suppressing lint findings
+
+A single-line comment that starts with `rq-lint-ignore` silences lint rules.
+
+```
+// rq-lint-ignore <rule>[, <rule>...][: <reason>]
+// rq-lint-ignore-file <rule>[, <rule>...][: <reason>]
+```
+
+- `rq-lint-ignore` on its own line applies to the statement directly below it: a whole `rq`, `ep`, `let`, `env`, `auth` or `import`, attributes included. Inside a block or a list — an `env`, an `auth` provider, a `$[...]` or a `${...}` — it applies to the next entry only.
+- `rq-lint-ignore` at the end of a line of code applies to that line only. A finding reported on another line of a multi-line statement is not covered — put the directive above the statement instead.
+- `rq-lint-ignore-file` applies to the whole file, wherever it is written, and must be on its own line.
+- Rule ids are the ones lint findings report, separated by commas — every finding names its rule, and [Lint Rules](LINT_RULES.md) lists them all. At least one is required; there is no catch-all.
+- The reason after `:` is optional and free text.
+- Block comments (`/* ... */`) are never directives.
+
+```
+ep widgets("http://localhost:8080/widgets") {
+  // rq-lint-ignore missing_body_on_write: the API rejects any body here
+  [method(POST)]
+  rq refresh("/refresh");
+}
+
+env local {
+  api_key: "local-dev-key", // rq-lint-ignore hardcoded_secret: throwaway key for the local mock
+}
+```
+
+A directive that names an unknown rule or names no rule, and an `rq-lint-ignore-file` that shares its line with code, are reported as `invalid_lint_suppression`; a rule it names that reports nothing in its scope is reported as `unused_lint_suppression`. Neither can be suppressed. Rules that compare a file with its workspace (`duplicated_ep_base`, `duplicated_ep_config`, `base_ep_extension`, `top_level_rq_should_be_ep`) are never reported as unused when the linter runs without the rest of the workspace, since it cannot tell whether they would fire.
+
 ## The `rq` Statement
 
 A `rq` statement declares a named HTTP request and specifies how it should be executed (URL, headers, body, etc.).

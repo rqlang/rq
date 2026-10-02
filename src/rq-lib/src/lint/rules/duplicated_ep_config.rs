@@ -26,6 +26,10 @@ impl LintRule for Rule {
          sends the parameter twice."
     }
 
+    fn reads_workspace(&self) -> bool {
+        true
+    }
+
     fn check(&self, ctx: &LintContext, out: &mut Vec<LintDiagnostic>) {
         let templates = available_templates(ctx);
         let peers = extending_endpoints(ctx, &templates);

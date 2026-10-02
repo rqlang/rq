@@ -21,6 +21,10 @@ impl LintRule for Rule {
          when a workspace path is provided."
     }
 
+    fn reads_workspace(&self) -> bool {
+        true
+    }
+
     fn check(&self, ctx: &LintContext, out: &mut Vec<LintDiagnostic>) {
         let mut groups: HashMap<String, Vec<(&Request, Origin)>> = HashMap::new();
 

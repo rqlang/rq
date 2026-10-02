@@ -4,6 +4,10 @@ use crate::syntax::token::TokenType;
 use serde::Serialize;
 
 mod rules;
+mod suppression;
+mod suppression_fix;
+
+pub use suppression_fix::{SourceEdit, SuppressionScope};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct LintDiagnostic {
@@ -54,10 +58,12 @@ pub struct EndpointExtension {
 }
 
 pub trait LintRule: Send + Sync {
-    #[allow(dead_code)]
     fn id(&self) -> &'static str;
     #[allow(dead_code)]
     fn description(&self) -> &'static str;
+    fn reads_workspace(&self) -> bool {
+        false
+    }
     fn check(&self, ctx: &LintContext, out: &mut Vec<LintDiagnostic>);
 }
 
@@ -98,14 +104,42 @@ pub fn lint_rq_file(
         workspace_requests,
         workspace_endpoints,
     };
+    let rules = rules::all();
     let mut diagnostics = Vec::new();
-    for rule in rules::all() {
+    for rule in &rules {
         rule.check(&ctx, &mut diagnostics);
     }
+    let without_workspace = workspace_requests.is_empty() && workspace_endpoints.is_empty();
+    let unverifiable: Vec<&str> = rules
+        .iter()
+        .filter(|rule| without_workspace && rule.reads_workspace())
+        .map(|rule| rule.id())
+        .collect();
+    let diagnostics = suppression::apply(
+        source,
+        display_path,
+        &known_rule_ids(),
+        &unverifiable,
+        diagnostics,
+    );
     LintResult {
         ok: diagnostics.is_empty(),
         diagnostics,
     }
+}
+
+pub fn suppression_edit(
+    source: &str,
+    rule: &str,
+    line: usize,
+    column: usize,
+    scope: SuppressionScope,
+) -> Option<SourceEdit> {
+    suppression_fix::suppression_edit(source, &known_rule_ids(), rule, line, column, scope)
+}
+
+pub fn unused_suppression_removal(source: &str, line: usize, column: usize) -> Option<SourceEdit> {
+    suppression_fix::unused_suppression_removal(source, line, column)
 }
 
 pub struct WorkspaceCollector {
@@ -428,6 +462,10 @@ fn walk_rq_files(root: &std::path::Path, visit: &mut dyn FnMut(&std::path::Path)
     }
 }
 
+fn known_rule_ids() -> Vec<&'static str> {
+    rules::all().iter().map(|rule| rule.id()).collect()
+}
+
 fn bare_request_name(qualified: &str) -> &str {
     qualified.rsplit('/').next().unwrap_or(qualified)
 }
@@ -476,6 +514,33 @@ mod tests {
             .into_iter()
             .map(|d| d.rule.to_string())
             .collect()
+    }
+
+    #[test]
+    fn every_rule_is_documented_in_both_rule_tables() {
+        let docs = [
+            (
+                "LINT_RULES.md",
+                include_str!("../../../../docs/LINT_RULES.md"),
+            ),
+            (
+                "MCP_SERVER.md",
+                include_str!("../../../../docs/MCP_SERVER.md"),
+            ),
+        ];
+        let rules = super::rules::all();
+        let ids = rules.iter().map(|rule| rule.id()).chain([
+            super::suppression::INVALID_RULE,
+            super::suppression::UNUSED_RULE,
+        ]);
+        for id in ids {
+            for (name, target) in docs {
+                assert!(
+                    target.contains(&format!("`{id}`")),
+                    "`{id}` is missing from the rule table in docs/{name}"
+                );
+            }
+        }
     }
 
     #[test]

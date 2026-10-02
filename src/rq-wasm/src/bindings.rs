@@ -246,6 +246,31 @@ pub fn lint(files_json: &str, source: &str, path: &str) -> Result<String, JsErro
 }
 
 #[wasm_bindgen]
+pub fn suppression_edit(
+    source: &str,
+    rule: &str,
+    line: usize,
+    column: usize,
+    scope: &str,
+) -> Result<String, JsError> {
+    let scope: rq_lib::lint::SuppressionScope =
+        serde_json::from_value(serde_json::Value::String(scope.to_string()))
+            .map_err(|e| JsError::new(&format!("Invalid suppression scope: {e}")))?;
+    let edit = rq_lib::lint::suppression_edit(source, rule, line, column, scope);
+    serde_json::to_string(&edit).map_err(|e| JsError::new(&e.to_string()))
+}
+
+#[wasm_bindgen]
+pub fn unused_suppression_removal(
+    source: &str,
+    line: usize,
+    column: usize,
+) -> Result<String, JsError> {
+    let edit = rq_lib::lint::unused_suppression_removal(source, line, column);
+    serde_json::to_string(&edit).map_err(|e| JsError::new(&e.to_string()))
+}
+
+#[wasm_bindgen]
 pub fn check(
     files_json: &str,
     secrets_json: &str,

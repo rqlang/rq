@@ -110,9 +110,13 @@ Errors are surfaced in two places depending on their nature:
 
 Beyond parse and semantic errors, the extension runs rq's idiom and style rules over the `.rq` files you have open and reports them in the Problems panel as **warnings**, so they never get confused with real syntax errors.
 
-Each finding carries the rule that produced it (`empty_url_string`, `duplicated_ep_config`, `manual_auth_header`, …) and, where the fix is mechanical, a suggested rewrite appended to the message. Filter them in the Problems panel by the `rq lint` source.
+Each finding carries the rule that produced it (`empty_url_string`, `duplicated_ep_config`, `manual_auth_header`, … — see [Lint Rules](LINT_RULES.md) for the full list) and, where the fix is mechanical, a suggested rewrite appended to the message. Filter them in the Problems panel by the `rq lint` source.
 
 Rules are workspace-aware: an endpoint that duplicates a query string or an auth provider already declared by a sibling `.rq` file is flagged even when that sibling is not open. Unsaved edits are linted as you type — the linter sees the buffer, not the file on disk.
+
+To keep a single finding, put `// rq-lint-ignore <rule>` on the line above the statement or at the end of the offending line, or `// rq-lint-ignore-file <rule>` anywhere in the file; an optional reason follows a `:`. See [Suppressing lint findings](LANGUAGE_DEFINITION.md#suppressing-lint-findings).
+
+The finding's **Quick Fix…** (also the light bulb, or `Cmd+.` / `Ctrl+.`) writes the comment for you: **Suppress `<rule>` on this line**, **for this statement** or **for this file**, adding the rule to an existing `rq-lint-ignore` comment when there is one. `hardcoded_secret` is never offered for a whole file. An `unused_lint_suppression` finding offers **Remove unused suppression** instead.
 
 Set `rq.lint.enabled` to `false` to turn the warnings off; parse and semantic errors are unaffected.
 

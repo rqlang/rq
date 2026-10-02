@@ -15,6 +15,10 @@ impl LintRule for Rule {
          template endpoint instead of duplicating it."
     }
 
+    fn reads_workspace(&self) -> bool {
+        true
+    }
+
     fn check(&self, ctx: &LintContext, out: &mut Vec<LintDiagnostic>) {
         let extensions = endpoint_extensions(ctx.source);
         let locals = local_endpoints(ctx);

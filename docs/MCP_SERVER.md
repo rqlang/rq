@@ -125,8 +125,12 @@ A request that goes out with a stray header instead of a query parameter returns
 | `duplicated_request_qs` | The same query parameter written into sibling requests — put it on the `ep` as `qs` |
 | `let_default_instead_of_required` | A `let` standing in for a runtime input — use `[required(...)]` |
 | `absolute_import_path` | `import "/Users/..."` — use a relative path |
+| `invalid_lint_suppression` | An `rq-lint-ignore` comment naming an unknown rule or no rule |
+| `unused_lint_suppression` | An `rq-lint-ignore` comment that silences nothing |
 
 The rules are picky in both directions. `duplicated_ep_base` asks you to extract a template once two endpoints share a base URL — and `base_ep_extension` rejects that same template while only one endpoint extends it. A template earns its keep from the second consumer onward, not before.
+
+A finding you have decided to keep is silenced with an `rq-lint-ignore` comment — see [Suppressing lint findings](LANGUAGE_DEFINITION.md#suppressing-lint-findings). The assistant is told never to add one on its own: it fixes what the linter reports, and suppresses a rule only when you ask it to.
 
 These are the same findings the editor shows in the Problems panel as warnings under the `rq lint` source, whether or not an assistant is involved — see [Idiom linting](VSCODE_EXTENSION.md#idiom-linting). Setting `rq.lint.enabled` to `false` silences them in the editor; the MCP server checks regardless.
 

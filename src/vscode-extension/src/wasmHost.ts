@@ -9,6 +9,8 @@ type WasmMethod =
     | 'list_variables'
     | 'check'
     | 'lint'
+    | 'suppression_edit'
+    | 'unused_suppression_removal'
     | 'get_request_details'
     | 'get_auth_details'
     | 'get_environment'

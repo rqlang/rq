@@ -76,23 +76,15 @@ impl RqClient {
                 continue;
             }
 
-            if let Some(request_name) = request_name {
-                Logger::debug(&format!(
-                    "Found {} request(s) with name '{request_name}':",
-                    filtered_requests.len()
-                ));
-            } else {
-                Logger::debug(&format!(
-                    "Found {} request(s) in total:",
-                    filtered_requests.len()
-                ));
-            }
+            Logger::debug(&format!(
+                "* Running {} request(s) from {}",
+                filtered_requests.len(),
+                crate::paths::clean_path(&rq_file.path)
+            ));
 
             let mut results = Vec::new();
 
-            for (i, req_with_vars) in filtered_requests.into_iter().enumerate() {
-                Logger::debug(&format!("Request {}: {:?}", i + 1, req_with_vars.request));
-
+            for req_with_vars in filtered_requests {
                 let context = crate::syntax::variable_context::VariableContext::builder()
                     .file_variables(rq_file.file_variables.clone())
                     .environment_variables(env_vars.clone())
@@ -165,6 +157,10 @@ impl RqClient {
                                 &*self.fs,
                             )?;
 
+                            Logger::debug(&format!(
+                                "* Applying auth '{auth_name}' ({})",
+                                resolved_provider.auth_type.as_str()
+                            ));
                             let provider = crate::auth::get_provider(&resolved_provider.auth_type);
                             match provider
                                 .configure(
@@ -194,11 +190,13 @@ impl RqClient {
                 }
 
                 let prepared_request = Self::prepare_request(resolved_request)?;
+                Self::log_request(&prepared_request);
 
                 let start_time = Instant::now();
                 match self.http.execute(&prepared_request).await {
                     Ok(response) => {
                         let elapsed = start_time.elapsed();
+                        Self::log_response(&response, elapsed.as_millis());
 
                         let mut request_headers = HashMap::new();
                         for (key, value) in &prepared_request.headers {
@@ -1642,6 +1640,43 @@ impl RqClient {
             name: name.to_string(),
             value: VariableValue::String(value.to_string()),
         })
+    }
+
+    fn log_request(request: &Request) {
+        if !Logger::is_debug_enabled() {
+            return;
+        }
+        Logger::debug(&format!("> {} {}", request.method.as_str(), request.url));
+        for (name, value) in &request.headers {
+            Logger::debug(&format!(
+                "> {name}: {}",
+                Logger::mask_header_value(name, value)
+            ));
+        }
+        if let Some(body) = &request.body {
+            Logger::debug(">");
+            Logger::debug(&format!("> {body}"));
+        }
+    }
+
+    fn log_response(response: &crate::http::HttpResponse, elapsed_ms: u128) {
+        if !Logger::is_debug_enabled() {
+            return;
+        }
+        let reason = reqwest::StatusCode::from_u16(response.status)
+            .ok()
+            .and_then(|status| status.canonical_reason())
+            .map(|reason| format!(" {reason}"))
+            .unwrap_or_default();
+        Logger::debug(&format!("< {}{reason} ({elapsed_ms} ms)", response.status));
+        let mut headers: Vec<_> = response.headers.iter().collect();
+        headers.sort();
+        for (name, value) in headers {
+            Logger::debug(&format!(
+                "< {name}: {}",
+                Logger::mask_header_value(name, value)
+            ));
+        }
     }
 
     fn no_requests_warning(&self, source_path: &Path) -> RqError {

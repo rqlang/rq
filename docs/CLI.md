@@ -22,6 +22,24 @@ At a high level:
 
 All subcommands accept a global `-d, --debug` flag to enable debug logging.
 
+### Debug logging
+
+With `-d`, `rq request run` writes a trace to stderr in the style of `curl -v`, while stdout keeps the normal output:
+
+```text
+* Running 1 request(s) from /path/to/api.rq
+* Applying auth 'tok' (bearer)
+> POST http://localhost:8080/post
+> Content-Type: application/json
+> authorization: ***
+>
+> {"user": "ana"}
+< 200 OK (6 ms)
+< content-type: application/json; charset=utf-8
+```
+
+Lines starting with `*` describe what rq is doing, `>` shows the request exactly as it is sent (after variables and auth are resolved) and `<` shows the response status and headers. Values of headers whose name contains `authorization`, `cookie`, `token`, `secret`, `key` or `password` are masked as `***`, as are common secret fields in bodies.
+
 ## Global usage
 
 ```bash

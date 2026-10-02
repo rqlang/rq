@@ -25,6 +25,10 @@ fn main() {
             test_request_text_output_starts_with_status,
         ),
         Trial::test(
+            "request_debug_logs_masked_request_and_response",
+            test_request_debug_logs_masked_request_and_response,
+        ),
+        Trial::test(
             "request_secrets_uppercase_prefixes",
             test_request_secrets_uppercase_prefixes,
         ),
@@ -142,6 +146,32 @@ fn test_request_text_output_starts_with_status() -> Result<(), Failed> {
         || !status_line.ends_with(" ms")
     {
         return Err(format!("Unexpected output: {stdout}").into());
+    }
+    Ok(())
+}
+
+fn test_request_debug_logs_masked_request_and_response() -> Result<(), Failed> {
+    let dir = std::env::temp_dir().join(format!("rq_test_debug_log_{}", std::process::id()));
+    fs::create_dir_all(&dir).map_err(|e| format!("Failed to create temp dir: {e}"))?;
+    let file = dir.join("debug.rq");
+    fs::write(
+        &file,
+        "rq get(\"http://localhost:8080/get\", $[\n    \"Authorization\": \"Bearer s3cr3t\"\n]);\n",
+    )
+    .map_err(|e| format!("Failed to write temp file: {e}"))?;
+    let output = rq_cmd()
+        .args(["request", "run", "-d", "-s"])
+        .arg(&file)
+        .output()
+        .map_err(|e| format!("Failed to execute: {e}"))?;
+    fs::remove_dir_all(&dir).ok();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if !stderr.contains("> GET http://localhost:8080/get\n")
+        || !stderr.contains("> Authorization: ***\n")
+        || !stderr.contains("< 200 OK (")
+        || stderr.contains("s3cr3t")
+    {
+        return Err(format!("Unexpected debug output: {stderr}").into());
     }
     Ok(())
 }

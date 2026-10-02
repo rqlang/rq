@@ -75,6 +75,25 @@ impl Logger {
             eprintln!("{sanitized}");
         }
     }
+
+    pub fn mask_header_value(name: &str, value: &str) -> String {
+        let name = name.to_ascii_lowercase();
+        let sensitive = [
+            "authorization",
+            "cookie",
+            "token",
+            "secret",
+            "key",
+            "password",
+        ]
+        .iter()
+        .any(|marker| name.contains(marker));
+        if sensitive {
+            "***".to_string()
+        } else {
+            value.to_string()
+        }
+    }
 }
 
 #[macro_export]
@@ -87,6 +106,18 @@ macro_rules! debug_log {
 #[cfg(test)]
 mod tests {
     use super::Logger;
+
+    #[test]
+    fn sensitive_header_value_is_masked() {
+        let target = Logger::mask_header_value("X-Api-Key", "abc123");
+        assert_eq!(target, "***");
+    }
+
+    #[test]
+    fn regular_header_value_is_kept() {
+        let target = Logger::mask_header_value("Content-Type", "application/json");
+        assert_eq!(target, "application/json");
+    }
 
     #[test]
     fn debug_without_init_does_not_panic() {

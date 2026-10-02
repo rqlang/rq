@@ -1,7 +1,6 @@
 use crate::commands::shared::{print_warnings, EnvArgs, Location, OutputArgs, SourceArgs};
 use crate::commands::validators;
 use crate::core::formatter::{pretty_body, render, render_list, to_json, OutputFormat, TextBlock};
-use crate::core::logger::Logger;
 use clap::{Args, Subcommand};
 use rq_lib::client::models::{RequestDetails, RequestInfo};
 use rq_lib::{RequestExecutionResult, RqClient};
@@ -257,21 +256,6 @@ pub async fn execute_run(args: &RunArgs) -> Result<(), Box<dyn std::error::Error
         .await?;
 
     print_warnings(&warnings, args.output.output);
-
-    for result in &results {
-        let elapsed_str = format!("{} ms", result.elapsed_ms);
-        Logger::debug("\n--- HTTP Response ---");
-        Logger::debug(&format!(
-            "Response status: {} ({})",
-            result.status, elapsed_str
-        ));
-        Logger::debug("Response Headers:");
-        for (key, value) in &result.response_headers {
-            Logger::debug(&format!("  {key}: {value}"));
-        }
-        Logger::debug("");
-        Logger::debug("--- End Response ---\n");
-    }
 
     let view = ExecutionResultsView { results };
     print!(

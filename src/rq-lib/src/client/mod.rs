@@ -57,6 +57,12 @@ impl RqClient {
         let mut all_results = Vec::new();
 
         for rq_file in rq_files {
+            let filtered_requests = Self::filter_requests(rq_file.requests, request_name);
+
+            if filtered_requests.is_empty() {
+                continue;
+            }
+
             let env_vars = if let Some(env_name) = environment {
                 if let Some(vars) = rq_file.environments.get(env_name) {
                     vars.clone()
@@ -69,12 +75,6 @@ impl RqClient {
 
             let secret_vars = self.collect_secrets_for_env(source_path, environment);
             let cli_vars = Self::parse_cli_variables(variables)?;
-
-            let filtered_requests = Self::filter_requests(rq_file.requests, request_name);
-
-            if filtered_requests.is_empty() {
-                continue;
-            }
 
             Logger::debug(&format!(
                 "* Running {} request(s) from {}",

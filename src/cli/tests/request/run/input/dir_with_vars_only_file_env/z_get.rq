@@ -1,0 +1,5 @@
+env local {
+    host: "http://localhost:8080",
+}
+
+rq get("{{host}}/get");

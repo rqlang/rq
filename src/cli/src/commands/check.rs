@@ -1,4 +1,6 @@
-use crate::core::error::RqError;
+use crate::commands::shared::{EnvArgs, OutputArgs, SourceArgs};
+use crate::core::error::{CheckFailed, RqError};
+use crate::core::formatter::OutputFormat;
 use clap::Args;
 use rq_lib::RqClient;
 use serde::Serialize;
@@ -6,27 +8,24 @@ use serde::Serialize;
 #[derive(Args)]
 #[command(about = "Validate .rq files without executing requests")]
 pub struct CheckArgs {
-    #[arg(
-        short = 's',
-        long = "source",
-        default_value = ".",
-        help = "Path to the .rq file or directory"
-    )]
-    pub source: String,
+    #[command(flatten)]
+    pub source: SourceArgs,
 
-    #[arg(
-        short = 'e',
-        long = "env",
-        help = "Environment name to use for variable resolution"
-    )]
-    pub env: Option<String>,
+    #[command(flatten)]
+    pub env_args: EnvArgs,
+
+    #[command(flatten)]
+    pub output: OutputArgs,
 }
 
 #[derive(Serialize)]
 struct CheckError {
-    file: String,
-    line: usize,
-    column: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    file: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    line: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    column: Option<usize>,
     message: String,
 }
 
@@ -36,34 +35,61 @@ struct CheckResult {
 }
 
 pub fn execute(args: &CheckArgs) -> Result<(), Box<dyn std::error::Error>> {
-    let path = std::path::Path::new(&args.source);
-    let errors = RqClient::default().check_path(path, args.env.as_deref())?;
+    let path = std::path::Path::new(&args.source.source);
+    let errors = RqClient::default().check_path(path, args.env_args.environment.as_deref())?;
 
-    let check_errors: Vec<CheckError> = errors
-        .into_iter()
-        .filter_map(|e| {
-            if let RqError::Syntax(se) = e {
-                se.file_path.map(|f| CheckError {
-                    file: f,
-                    line: se.line,
-                    column: se.column,
-                    message: se.message,
-                })
-            } else {
-                None
-            }
-        })
-        .collect();
-
-    let has_errors = !check_errors.is_empty();
     let result = CheckResult {
-        errors: check_errors,
+        errors: errors.into_iter().map(to_check_error).collect(),
     };
-    println!("{}", serde_json::to_string_pretty(&result)?);
 
-    if has_errors {
-        std::process::exit(1);
+    match args.output.output {
+        OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&result)?),
+        OutputFormat::Text => print!("{}", render_text(&result)),
     }
 
-    Ok(())
+    if result.errors.is_empty() {
+        Ok(())
+    } else {
+        Err(Box::new(CheckFailed {
+            error_count: result.errors.len(),
+        }))
+    }
+}
+
+fn to_check_error(error: RqError) -> CheckError {
+    match error {
+        RqError::Syntax(se) => CheckError {
+            file: se.file_path,
+            line: (se.line > 0).then_some(se.line),
+            column: (se.column > 0).then_some(se.column),
+            message: se.message,
+        },
+        other => CheckError {
+            file: None,
+            line: None,
+            column: None,
+            message: other.to_string(),
+        },
+    }
+}
+
+fn render_text(result: &CheckResult) -> String {
+    if result.errors.is_empty() {
+        return "No errors found\n".to_string();
+    }
+    let mut out: String = result.errors.iter().map(render_error_line).collect();
+    let count = result.errors.len();
+    let noun = if count == 1 { "error" } else { "errors" };
+    out.push_str(&format!("\n{count} {noun} found\n"));
+    out
+}
+
+fn render_error_line(error: &CheckError) -> String {
+    let location = match (&error.file, error.line, error.column) {
+        (Some(file), Some(line), Some(column)) => format!("{file}:{line}:{column}: "),
+        (Some(file), Some(line), None) => format!("{file}:{line}: "),
+        (Some(file), None, _) => format!("{file}: "),
+        (None, _, _) => String::new(),
+    };
+    format!("{location}{}\n", error.message)
 }

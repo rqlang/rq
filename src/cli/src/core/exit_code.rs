@@ -1,4 +1,4 @@
-use crate::core::error::RqError;
+use crate::core::error::{CheckFailed, RqError};
 
 /// Exit codes for the RQ CLI
 /// Following standard Unix/POSIX conventions
@@ -33,7 +33,9 @@ impl ExitCode {
 
 impl From<&Box<dyn std::error::Error>> for ExitCode {
     fn from(error: &Box<dyn std::error::Error>) -> Self {
-        if let Some(rq_error) = error.downcast_ref::<RqError>() {
+        if error.downcast_ref::<CheckFailed>().is_some() {
+            ExitCode::GeneralError
+        } else if let Some(rq_error) = error.downcast_ref::<RqError>() {
             match rq_error {
                 RqError::Io(_) => ExitCode::FileError,
                 RqError::Syntax(_) => ExitCode::SyntaxError,

@@ -5,7 +5,7 @@ mod commands;
 mod core;
 
 use commands::Commands;
-use core::error::error_to_json;
+use core::error::{error_to_json, CheckFailed};
 use core::exit_code::ExitCode;
 use core::formatter::OutputFormat;
 
@@ -36,9 +36,11 @@ struct DefaultArgs {
 async fn main() {
     let output_format = extract_output_format(&std::env::args().collect::<Vec<_>>());
     if let Err(e) = run().await {
-        match output_format {
-            OutputFormat::Json => eprintln!("{}", error_to_json(e.as_ref())),
-            OutputFormat::Text => eprintln!("Error: {e}"),
+        if e.downcast_ref::<CheckFailed>().is_none() {
+            match output_format {
+                OutputFormat::Json => eprintln!("{}", error_to_json(e.as_ref())),
+                OutputFormat::Text => eprintln!("Error: {e}"),
+            }
         }
         let exit_code = ExitCode::from(&e);
         std::process::exit(exit_code.code());

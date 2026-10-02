@@ -514,12 +514,13 @@ Options:
 
 - `-s, --source <SOURCE>` – Path to the `.rq` file or directory (default: `.`).
 - `-e, --env <ENVIRONMENT>` – Environment name to use for variable resolution.
+- `-o, --output <OUTPUT>` – Output format: `text` (default) or `json`.
 
 Behavior:
 
-- Always outputs JSON with a single `errors` array.
-- Each error entry contains `file`, `line`, `column`, and `message`.
-- If no errors are found, `errors` is an empty array.
+- In `text` mode, prints one line per error as `file:line:column: message`, followed by the error count, or `No errors found`.
+- In `json` mode, outputs a single `errors` array. Each entry contains `message` and, when known, `file`, `line` and `column`.
+- Errors that are not tied to a position (for example, a file that cannot be read) are reported with their message only.
 - Exits with code `1` if any errors are found; exits with code `0` on success.
 
 Example:
@@ -527,9 +528,18 @@ Example:
 ```bash
 rq check -s src/
 rq check -s src/api.rq -e local
+rq check -s src/ -o json
 ```
 
-Example output (no errors):
+Example output (text):
+
+```text
+src/api.rq:5:3: unexpected token
+
+1 error found
+```
+
+Example output (json, no errors):
 
 ```json
 {
@@ -537,7 +547,7 @@ Example output (no errors):
 }
 ```
 
-Example output (with errors):
+Example output (json, with errors):
 
 ```json
 {
@@ -554,7 +564,7 @@ Example output (with errors):
 
 ## Output formats
 
-Across all commands, the `-o, --output` flag controls how results are printed (except `rq check`, which always outputs JSON):
+Across all commands, the `-o, --output` flag controls how results are printed:
 
 - `text` – Human-readable, stable but meant for terminals.
 - `json` – Machine-readable, designed for scripting and automated checks.

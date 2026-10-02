@@ -1618,29 +1618,26 @@ impl RqClient {
     }
 
     fn parse_cli_variables(variables: &[String]) -> Result<Vec<Variable>, RqError> {
-        let cli_variables: Vec<Variable> = variables
+        variables
             .iter()
-            .filter_map(|kv| {
-                if let Some(eq) = kv.find('=') {
-                    let name = kv[..eq].trim();
-                    let value = kv[eq + 1..].to_string();
-                    if name.is_empty() {
-                        eprintln!("Ignoring CLI variable with empty name: {kv}");
-                        None
-                    } else {
-                        Some(Variable {
-                            name: name.to_string(),
-                            value: VariableValue::String(value),
-                        })
-                    }
-                } else {
-                    eprintln!("Ignoring CLI variable without '=': {kv}");
-                    None
-                }
-            })
-            .collect();
+            .map(|kv| Self::parse_cli_variable(kv))
+            .collect()
+    }
 
-        Ok(cli_variables)
+    fn parse_cli_variable(kv: &str) -> Result<Variable, RqError> {
+        let (name, value) = kv.split_once('=').ok_or_else(|| {
+            RqError::Validation(format!("Invalid variable '{kv}': expected NAME=VALUE"))
+        })?;
+        let name = name.trim();
+        if name.is_empty() {
+            return Err(RqError::Validation(format!(
+                "Invalid variable '{kv}': name is empty"
+            )));
+        }
+        Ok(Variable {
+            name: name.to_string(),
+            value: VariableValue::String(value.to_string()),
+        })
     }
 
     fn no_requests_warning(&self, source_path: &Path) -> RqError {
@@ -2214,5 +2211,33 @@ mod prepare_request_tests {
         ));
         let target = content_type_of(request);
         assert_eq!(target, Some("application/merge-patch+json".to_string()));
+    }
+}
+
+#[cfg(test)]
+mod parse_cli_variables_tests {
+    use super::RqClient;
+    use crate::error::RqError;
+
+    fn parse(kv: &str) -> Result<Vec<crate::syntax::Variable>, RqError> {
+        RqClient::parse_cli_variables(&[kv.to_string()])
+    }
+
+    #[test]
+    fn a_name_value_pair_becomes_a_variable() {
+        let target = parse("token=abc=123").expect("parse failed");
+        assert_eq!(target[0].name, "token");
+    }
+
+    #[test]
+    fn a_variable_without_equals_is_rejected() {
+        let target = parse("token");
+        assert!(matches!(target, Err(RqError::Validation(_))));
+    }
+
+    #[test]
+    fn a_variable_with_an_empty_name_is_rejected() {
+        let target = parse(" =abc");
+        assert!(matches!(target, Err(RqError::Validation(_))));
     }
 }

@@ -299,8 +299,9 @@ fn lint_step(workspace_path: Option<&str>) -> String {
          satisfy the `rule`), then re-validate and re-lint. Some rules are satisfied by MOVING \
          code into another file rather than editing the current one — `multiple_endpoints_per_file` \
          is cleared by splitting the file into one file per `ep`, not by deleting an endpoint. \
-         Never drop content the user asked for in order to silence a diagnostic. Iterate until \
-         every file returns `ok: true`."
+         Never drop content the user asked for in order to silence a diagnostic, and never add \
+         an `rq-lint-ignore` comment unless the user explicitly asks for that suppression. \
+         Iterate until every file returns `ok: true`."
     )
 }
 
@@ -460,7 +461,8 @@ impl ServerHandler for RqMcp {
              per file named after the endpoint, and call validate_rq and lint_rq once per \
              file with that file's name as `path`. Some lint rules are cleared by moving \
              code into another file rather than editing the current one — never delete \
-             content the user asked for just to silence a diagnostic. \
+             content the user asked for just to silence a diagnostic, and never add an \
+             `rq-lint-ignore` comment unless the user explicitly asks for that suppression. \
              Before generating or refactoring any .rq file, read both rqlang documents with \
              get_rq_reference (`doc=\"language-definition\"` for the grammar, `doc=\"idioms\"` \
              for style); they are also published as the {LANGUAGE_DEFINITION_URI} and \
@@ -1101,6 +1103,29 @@ mod tests {
         assert!(
             instructions.contains("once per file"),
             "instructions must tell the host to lint each file separately"
+        );
+    }
+
+    #[test]
+    fn server_instructions_forbid_unrequested_lint_suppressions() {
+        let target = RqMcp::new().get_info().instructions.expect("instructions");
+        assert!(
+            target
+                .contains("never add an `rq-lint-ignore` comment unless the user explicitly asks"),
+            "hosts that skip the prompt must not clear lint findings by suppressing them"
+        );
+    }
+
+    #[test]
+    fn generate_rq_prompt_forbids_unrequested_lint_suppressions() {
+        let target = build_generate_rq_prompt(&GenerateRqArgs {
+            intent: "x".into(),
+            workspace_path: None,
+        });
+        assert!(
+            target
+                .contains("never add an `rq-lint-ignore` comment unless the user explicitly asks"),
+            "the lint loop must not end by suppressing what it was asked to fix"
         );
     }
 

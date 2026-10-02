@@ -452,8 +452,7 @@ impl RqClient {
         }
 
         let resolved =
-            crate::syntax::resolve::resolve_variables(working, &context, &search_paths, &*self.fs)
-                .map_err(|e| RqError::Generic(e.to_string()))?;
+            crate::syntax::resolve::resolve_variables(working, &context, &search_paths, &*self.fs)?;
 
         let (auth_name, auth_type) = if let Some(auth_name) = resolved.auth.as_deref() {
             if auth_name.trim().is_empty() {

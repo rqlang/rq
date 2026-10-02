@@ -608,3 +608,29 @@ rq my_request("http://localhost:8080/resource");
 
     Ok(())
 }
+
+#[test]
+fn test_request_show_unresolved_variable_is_syntax_error() -> Result<(), Box<dyn std::error::Error>>
+{
+    let temp_dir = std::env::temp_dir().join(format!(
+        "rq_test_request_show_unresolved_{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&temp_dir)?;
+    let file = temp_dir.join("test.rq");
+    std::fs::write(&file, "rq get(\"http://localhost/{{missing}}\");\n")?;
+
+    let output = rq_cmd()
+        .args(["request", "show", "-s"])
+        .arg(&file)
+        .args(["-n", "get", "-o", "json"])
+        .output()?;
+    std::fs::remove_dir_all(&temp_dir).ok();
+
+    let error: serde_json::Value = serde_json::from_slice(&output.stderr)?;
+    if output.status.code() != Some(2) || error["error"]["type"] != "syntax" {
+        return Err(format!("Unexpected result: {error}").into());
+    }
+
+    Ok(())
+}

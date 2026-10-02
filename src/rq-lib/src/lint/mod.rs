@@ -484,6 +484,33 @@ mod tests {
     }
 
     #[test]
+    fn every_rule_is_documented_in_both_rule_tables() {
+        let docs = [
+            (
+                "LINT_RULES.md",
+                include_str!("../../../../docs/LINT_RULES.md"),
+            ),
+            (
+                "MCP_SERVER.md",
+                include_str!("../../../../docs/MCP_SERVER.md"),
+            ),
+        ];
+        let rules = super::rules::all();
+        let ids = rules.iter().map(|rule| rule.id()).chain([
+            super::suppression::INVALID_RULE,
+            super::suppression::UNUSED_RULE,
+        ]);
+        for id in ids {
+            for (name, target) in docs {
+                assert!(
+                    target.contains(&format!("`{id}`")),
+                    "`{id}` is missing from the rule table in docs/{name}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn flags_both_defects_in_generated_endpoint() {
         let source = "ep widgets(\"http://localhost:8080/widgets\") {\n    \
                       rq list(\"\");\n    \

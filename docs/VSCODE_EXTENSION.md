@@ -110,7 +110,7 @@ Errors are surfaced in two places depending on their nature:
 
 Beyond parse and semantic errors, the extension runs rq's idiom and style rules over the `.rq` files you have open and reports them in the Problems panel as **warnings**, so they never get confused with real syntax errors.
 
-Each finding carries the rule that produced it (`empty_url_string`, `duplicated_ep_config`, `manual_auth_header`, …) and, where the fix is mechanical, a suggested rewrite appended to the message. Filter them in the Problems panel by the `rq lint` source.
+Each finding carries the rule that produced it (`empty_url_string`, `duplicated_ep_config`, `manual_auth_header`, … — see [Lint Rules](LINT_RULES.md) for the full list) and, where the fix is mechanical, a suggested rewrite appended to the message. Filter them in the Problems panel by the `rq lint` source.
 
 Rules are workspace-aware: an endpoint that duplicates a query string or an auth provider already declared by a sibling `.rq` file is flagged even when that sibling is not open. Unsaved edits are linted as you type — the linter sees the buffer, not the file on disk.
 

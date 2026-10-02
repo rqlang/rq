@@ -57,7 +57,7 @@ A single-line comment that starts with `rq-lint-ignore` silences lint rules.
 - `rq-lint-ignore` on its own line applies to the statement directly below it: a whole `rq`, `ep`, `let`, `env`, `auth` or `import`, attributes included. Inside a block or a list — an `env`, an `auth` provider, a `$[...]` or a `${...}` — it applies to the next entry only.
 - `rq-lint-ignore` at the end of a line of code applies to that line only. A finding reported on another line of a multi-line statement is not covered — put the directive above the statement instead.
 - `rq-lint-ignore-file` applies to the whole file, wherever it is written, and must be on its own line.
-- Rule ids are the ones lint findings report, separated by commas. At least one is required; there is no catch-all.
+- Rule ids are the ones lint findings report, separated by commas — every finding names its rule, and [Lint Rules](LINT_RULES.md) lists them all. At least one is required; there is no catch-all.
 - The reason after `:` is optional and free text.
 - Block comments (`/* ... */`) are never directives.
 

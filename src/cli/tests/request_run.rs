@@ -37,6 +37,10 @@ fn main() {
             test_request_debug_footer_reports_exit_code,
         ),
         Trial::test(
+            "request_debug_traces_secret_and_variable_sources",
+            test_request_debug_traces_secret_and_variable_sources,
+        ),
+        Trial::test(
             "request_secrets_uppercase_prefixes",
             test_request_secrets_uppercase_prefixes,
         ),
@@ -224,6 +228,25 @@ fn test_request_debug_footer_reports_exit_code() -> Result<(), Failed> {
     ])?;
     if !stderr.contains("* Finished with exit code 3: Environment not found: missing") {
         return Err(format!("Unexpected debug footer: {stderr}").into());
+    }
+    Ok(())
+}
+
+fn test_request_debug_traces_secret_and_variable_sources() -> Result<(), Failed> {
+    let stderr = debug_stderr(&[
+        "request",
+        "run",
+        "-d",
+        "-s",
+        "tests/request/run/input/environments__env_local__.rq",
+        "-e",
+        "local",
+    ])?;
+    if !stderr.contains("* Secrets from tests/request/run/input/.env: env_secret")
+        || !stderr.contains("* Variable base_url from env:local")
+        || stderr.contains("secret_from_env_file")
+    {
+        return Err(format!("Unexpected debug trace: {stderr}").into());
     }
     Ok(())
 }

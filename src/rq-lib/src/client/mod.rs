@@ -141,6 +141,8 @@ impl RqClient {
                         })?;
                 }
 
+                Self::log_variable_sources(&working, &context, environment);
+
                 #[allow(unused_mut)]
                 let mut resolved_request = crate::syntax::resolve::resolve_variables(
                     working,
@@ -453,6 +455,8 @@ impl RqClient {
                     ))
                 })?;
         }
+
+        Self::log_variable_sources(&working, &context, environment);
 
         let resolved =
             crate::syntax::resolve::resolve_variables(working, &context, &search_paths, &*self.fs)?;
@@ -1084,6 +1088,63 @@ impl RqClient {
             crate::paths::clean_path(dir)
         ));
         Ok(paths)
+    }
+
+    fn log_variable_sources(
+        request: &Request,
+        context: &crate::syntax::variable_context::VariableContext,
+        environment: Option<&str>,
+    ) {
+        if !Logger::is_debug_enabled() {
+            return;
+        }
+        let mut pending: Vec<String> = Self::request_texts(request)
+            .iter()
+            .flat_map(|text| crate::syntax::resolve::referenced_variable_names(text))
+            .chain(request.headers_var.clone())
+            .collect();
+        let values = context.as_map();
+        let mut seen = HashSet::new();
+        while let Some(name) = pending.pop() {
+            if !seen.insert(name.clone()) {
+                continue;
+            }
+            let source = match (context.source_of(&name), environment) {
+                (Some("env"), Some(env_name)) => format!("env:{env_name}"),
+                (Some(level), _) => level.to_string(),
+                (None, _) => "unresolved".to_string(),
+            };
+            Logger::debug(&format!("* Variable {name} from {source}"));
+            if let Some(value) = values.get(name.as_str()) {
+                pending.extend(Self::referenced_names_in_value(value));
+            }
+        }
+    }
+
+    fn request_texts(request: &Request) -> Vec<&str> {
+        let mut texts = vec![request.url.as_str()];
+        for (name, value) in &request.headers {
+            texts.push(name);
+            texts.push(value);
+        }
+        texts.extend(request.body.as_deref());
+        texts.extend(request.timeout.as_deref());
+        texts.extend(request.auth.as_deref());
+        texts
+    }
+
+    fn referenced_names_in_value(value: &VariableValue) -> Vec<String> {
+        match value {
+            VariableValue::String(text) | VariableValue::Json(text) => {
+                crate::syntax::resolve::referenced_variable_names(text)
+            }
+            VariableValue::Reference(name) => vec![name.clone()],
+            VariableValue::Headers(pairs) => pairs
+                .iter()
+                .flat_map(|(_, v)| crate::syntax::resolve::referenced_variable_names(v))
+                .collect(),
+            VariableValue::SystemFunction { .. } => Vec::new(),
+        }
     }
 
     fn log_environment(env_name: &str, file: &Path, vars: &[Variable]) {

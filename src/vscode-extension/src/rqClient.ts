@@ -386,6 +386,10 @@ export async function checkFolder(folderPath: string, envName?: string): Promise
     return JSON.parse(result) as CheckResult;
 }
 
+export async function setDebugLogging(enabled: boolean): Promise<void> {
+    await wasmCall('set_debug_logging', [enabled]);
+}
+
 export async function executeRequest(options: ExecuteRequestOptions): Promise<ExecuteRequestResult> {
     throwIfCancelled(options.cancellation);
     const source = resolveSource(options.sourceDirectory);

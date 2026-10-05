@@ -133,6 +133,8 @@ Enable `rq.debugLogging` in VS Code settings (**Code → Settings → Settings**
 
 With debug logging on, the output channel shows the full token exchange (request and response bodies for token endpoints), the headers sent with each request, and step-by-step auth flow events. This is the fastest way to diagnose auth misconfigurations, unexpected token errors, and scope issues.
 
+The same setting also turns on the rq library trace, shown with an `[rq]` prefix: the files parsed for each operation, the environments and secret sources used (secrets by name only), where each variable comes from, and OAuth2 token requests. It is the same trace the CLI prints with `-d`, and it changes as soon as the setting is toggled, without reloading the window.
+
 To view the output: **View → Output**, then select **RQ** from the dropdown.
 
 Disable `rq.debugLogging` when not actively debugging — it logs full token and header values.

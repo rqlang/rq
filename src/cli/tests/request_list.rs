@@ -176,3 +176,26 @@ fn test_request_list_json_endpoint_request_is_listed_by_full_name(
 
     Ok(())
 }
+
+#[test]
+fn test_request_list_debug_traces_file_discovery() -> Result<(), Box<dyn std::error::Error>> {
+    let output = rq_cmd()
+        .args([
+            "request",
+            "list",
+            "-d",
+            "-s",
+            "tests/request/run/input/endpoint_inheritance/chain",
+        ])
+        .output()?;
+
+    let stderr = String::from_utf8(output.stderr)?;
+    if !stderr.contains("* Source: tests/request/run/input/endpoint_inheritance/chain (directory)")
+        || !stderr.contains("* Found 3 .rq file(s) in ")
+        || !stderr.contains("leaf.rq (imports: ")
+    {
+        return Err(format!("Unexpected debug trace: {stderr}").into());
+    }
+
+    Ok(())
+}

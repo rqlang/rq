@@ -45,6 +45,7 @@ impl RqClient {
         environment: Option<&str>,
         variables: &[String],
     ) -> Result<(Vec<RequestExecutionResult>, Vec<RqError>), RqError> {
+        self.log_source(source_path);
         let (rq_files, mut warnings) = self.get_rq_files_to_process(source_path, request_name)?;
 
         if rq_files.is_empty() {
@@ -65,6 +66,7 @@ impl RqClient {
 
             let env_vars = if let Some(env_name) = environment {
                 if let Some(vars) = rq_file.environments.get(env_name) {
+                    Self::log_environment(env_name, &rq_file.path, vars);
                     vars.clone()
                 } else {
                     return Err(RqError::EnvironmentNotFound(env_name.to_string()));
@@ -237,6 +239,7 @@ impl RqClient {
         &self,
         source_path: &Path,
     ) -> Result<(Vec<RequestInfo>, Vec<RqError>), RqError> {
+        self.log_source(source_path);
         if !self.fs.exists(source_path) {
             return Err(RqError::DirectoryNotFound(
                 source_path.display().to_string(),
@@ -296,6 +299,7 @@ impl RqClient {
         skip_required_variables: bool,
         variables: &[String],
     ) -> Result<RequestDetails, RqError> {
+        self.log_source(source_path);
         let (rq_files, _) = self.get_rq_files_to_process(source_path, Some(request_name))?;
 
         let rq_file = rq_files
@@ -353,6 +357,7 @@ impl RqClient {
 
         let env_vars = if let Some(env_name) = environment {
             if let Some(vars) = rq_file.environments.get(env_name) {
+                Self::log_environment(env_name, &rq_file.path, vars);
                 vars.clone()
             } else {
                 return Err(RqError::EnvironmentNotFound(env_name.to_string()));
@@ -488,6 +493,7 @@ impl RqClient {
         &self,
         source_path: &Path,
     ) -> Result<Vec<crate::client::models::AuthListEntry>, RqError> {
+        self.log_source(source_path);
         if !self.fs.exists(source_path) {
             return Err(RqError::DirectoryNotFound(
                 source_path.display().to_string(),
@@ -522,6 +528,7 @@ impl RqClient {
         environment: Option<&str>,
         interpolate_variables: bool,
     ) -> Result<AuthDetails, RqError> {
+        self.log_source(source_path);
         if !self.fs.exists(source_path) {
             return Err(RqError::DirectoryNotFound(
                 source_path.display().to_string(),
@@ -616,6 +623,7 @@ impl RqClient {
     }
 
     pub fn list_environments(&self, source_path: &Path) -> Result<Vec<String>, RqError> {
+        self.log_source(source_path);
         if !self.fs.exists(source_path) {
             return Err(RqError::DirectoryNotFound(
                 source_path.display().to_string(),
@@ -659,7 +667,7 @@ impl RqClient {
         if self.fs.is_file(source_path) {
             paths.push(source_path.to_path_buf());
         } else if self.fs.is_dir(source_path) {
-            self.collect_rq_paths(source_path, &mut paths)?;
+            paths = self.discover_rq_files(source_path)?;
         } else {
             return Err(RqError::NotADirectory(source_path.display().to_string()));
         }
@@ -985,6 +993,7 @@ impl RqClient {
     }
 
     pub fn check_path(&self, path: &Path, env_name: Option<&str>) -> Result<Vec<RqError>, RqError> {
+        self.log_source(path);
         let source_path = if self.fs.is_file(path) {
             path.parent().unwrap_or(path)
         } else {
@@ -1035,6 +1044,72 @@ impl RqClient {
     }
 
     fn load_rq_file(&self, path: &Path) -> Result<RqFile, RqError> {
+        let result = self.parse_rq_file(path);
+        match &result {
+            Ok(rq_file) => Self::log_parsed(rq_file),
+            Err(e) => Logger::debug(&format!(
+                "* Failed to load {}: {e}",
+                crate::paths::clean_path(path)
+            )),
+        }
+        result
+    }
+
+    fn log_parsed(rq_file: &RqFile) {
+        if !Logger::is_debug_enabled() {
+            return;
+        }
+        let imports: Vec<String> = rq_file
+            .imported_files
+            .iter()
+            .map(|path| crate::paths::clean_path(path))
+            .collect();
+        let imports = if imports.is_empty() {
+            "no imports".to_string()
+        } else {
+            format!("imports: {}", imports.join(", "))
+        };
+        Logger::debug(&format!(
+            "* Parsed {} ({imports})",
+            crate::paths::clean_path(&rq_file.path)
+        ));
+    }
+
+    fn discover_rq_files(&self, dir: &Path) -> Result<Vec<PathBuf>, RqError> {
+        let mut paths = Vec::new();
+        self.collect_rq_paths(dir, &mut paths)?;
+        Logger::debug(&format!(
+            "* Found {} .rq file(s) in {}",
+            paths.len(),
+            crate::paths::clean_path(dir)
+        ));
+        Ok(paths)
+    }
+
+    fn log_environment(env_name: &str, file: &Path, vars: &[Variable]) {
+        let names: Vec<&str> = vars.iter().map(|v| v.name.as_str()).collect();
+        Logger::debug(&format!(
+            "* Environment '{env_name}' for {}: {}",
+            crate::paths::clean_path(file),
+            names.join(", ")
+        ));
+    }
+
+    fn log_source(&self, source_path: &Path) {
+        let kind = if self.fs.is_file(source_path) {
+            "file"
+        } else if self.fs.is_dir(source_path) {
+            "directory"
+        } else {
+            "not found"
+        };
+        Logger::debug(&format!(
+            "* Source: {} ({kind})",
+            crate::paths::clean_path(source_path)
+        ));
+    }
+
+    fn parse_rq_file(&self, path: &Path) -> Result<RqFile, RqError> {
         let canonical = self.fs.canonicalize(path).map_err(RqError::Generic)?;
         let content = self.fs.read(&canonical).map_err(|e| {
             RqError::Generic(format!(
@@ -1142,7 +1217,7 @@ impl RqClient {
         if self.fs.is_file(source_path) {
             paths.push(source_path.to_path_buf());
         } else if self.fs.is_dir(source_path) {
-            self.collect_rq_paths(source_path, &mut paths)?;
+            paths = self.discover_rq_files(source_path)?;
         } else {
             return Err(RqError::NotADirectory(source_path.display().to_string()));
         }
@@ -1189,6 +1264,10 @@ impl RqClient {
         for path in self.fs.read_dir(dir).map_err(RqError::Generic)? {
             if self.fs.is_dir(&path) {
                 if crate::paths::is_skipped_directory(&path) {
+                    Logger::debug(&format!(
+                        "* Skipping directory {}",
+                        crate::paths::clean_path(&path)
+                    ));
                     continue;
                 }
                 self.collect_rq_paths(&path, paths)?;
@@ -1204,9 +1283,7 @@ impl RqClient {
         dir: &Path,
         request_name: &str,
     ) -> Result<Option<RqFile>, RqError> {
-        let mut paths = Vec::new();
-        self.collect_rq_paths(dir, &mut paths)?;
-        for path in paths {
+        for path in self.discover_rq_files(dir)? {
             match self.load_rq_file(&path) {
                 Ok(rq_file) => {
                     if rq_file
@@ -1509,8 +1586,7 @@ impl RqClient {
         dir: &Path,
         rq_files: &mut Vec<RqFile>,
     ) -> Result<Vec<RqError>, RqError> {
-        let mut paths = Vec::new();
-        self.collect_rq_paths(dir, &mut paths)?;
+        let paths = self.discover_rq_files(dir)?;
         let mut parse_errors = Vec::new();
         for path in paths {
             match self.load_rq_file(&path) {

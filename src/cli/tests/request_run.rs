@@ -29,6 +29,14 @@ fn main() {
             test_request_debug_logs_masked_request_and_response,
         ),
         Trial::test(
+            "request_debug_header_masks_cli_variables",
+            test_request_debug_header_masks_cli_variables,
+        ),
+        Trial::test(
+            "request_debug_footer_reports_exit_code",
+            test_request_debug_footer_reports_exit_code,
+        ),
+        Trial::test(
             "request_secrets_uppercase_prefixes",
             test_request_secrets_uppercase_prefixes,
         ),
@@ -172,6 +180,50 @@ fn test_request_debug_logs_masked_request_and_response() -> Result<(), Failed> {
         || stderr.contains("s3cr3t")
     {
         return Err(format!("Unexpected debug output: {stderr}").into());
+    }
+    Ok(())
+}
+
+fn debug_stderr(args: &[&str]) -> Result<String, Failed> {
+    let output = rq_cmd()
+        .args(args)
+        .output()
+        .map_err(|e| format!("Failed to execute: {e}"))?;
+    Ok(String::from_utf8_lossy(&output.stderr).to_string())
+}
+
+fn test_request_debug_header_masks_cli_variables() -> Result<(), Failed> {
+    let stderr = debug_stderr(&[
+        "request",
+        "run",
+        "-d",
+        "-s",
+        "tests/request/run/input/basic.rq",
+        "-v",
+        "token=s3cr3t",
+    ])?;
+    if !stderr.contains("* rq ")
+        || !stderr.contains("-v token=***")
+        || !stderr.contains("* Working directory: ")
+        || stderr.contains("s3cr3t")
+    {
+        return Err(format!("Unexpected debug header: {stderr}").into());
+    }
+    Ok(())
+}
+
+fn test_request_debug_footer_reports_exit_code() -> Result<(), Failed> {
+    let stderr = debug_stderr(&[
+        "request",
+        "run",
+        "-d",
+        "-s",
+        "tests/request/run/input/basic.rq",
+        "-e",
+        "missing",
+    ])?;
+    if !stderr.contains("* Finished with exit code 3: Environment not found: missing") {
+        return Err(format!("Unexpected debug footer: {stderr}").into());
     }
     Ok(())
 }

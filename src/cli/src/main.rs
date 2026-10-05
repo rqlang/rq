@@ -8,6 +8,7 @@ use commands::Commands;
 use core::error::{error_to_json, CheckFailed};
 use core::exit_code::ExitCode;
 use core::formatter::OutputFormat;
+use core::logger::log_finished;
 
 #[derive(Parser)]
 #[command(name = "rq")]
@@ -43,8 +44,10 @@ async fn main() {
             }
         }
         let exit_code = ExitCode::from(&e);
+        log_finished(exit_code.code(), Some(&e.to_string()));
         std::process::exit(exit_code.code());
     }
+    log_finished(0, None);
 }
 
 fn extract_output_format(args: &[String]) -> OutputFormat {
@@ -73,7 +76,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     if is_subcommand {
         let args = Args::parse();
-        crate::core::logger::Logger::init(args.debug);
+        crate::core::logger::init_logging(args.debug);
         match args.command {
             Some(Commands::Check(check_args)) => commands::check::execute(&check_args),
             Some(Commands::Env(env_command)) => match env_command.command {
@@ -113,19 +116,19 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                     return Ok(());
                 }
                 let default_args = DefaultArgs::parse();
-                crate::core::logger::Logger::init(default_args.debug);
+                crate::core::logger::init_logging(default_args.debug);
                 commands::request::execute_run(&default_args.run_args).await
             }
             Err(e)
                 if e.kind() == clap::error::ErrorKind::DisplayHelp
                     || e.kind() == clap::error::ErrorKind::DisplayVersion =>
             {
-                e.print().unwrap();
+                e.print()?;
                 Ok(())
             }
             Err(_) => {
                 let default_args = DefaultArgs::parse();
-                crate::core::logger::Logger::init(default_args.debug);
+                crate::core::logger::init_logging(default_args.debug);
                 commands::request::execute_run(&default_args.run_args).await
             }
         }

@@ -2397,3 +2397,108 @@ mod navigation_tests {
         assert!(files.iter().any(|f| f.ends_with("child.rq")));
     }
 }
+
+#[cfg(all(test, feature = "native"))]
+mod variable_tests {
+    use super::RqClient;
+    use std::path::Path;
+
+    fn write(dir: &Path, file: &str, content: &str) {
+        std::fs::write(dir.join(file), content).expect("write fixture");
+    }
+
+    fn variable_names(source: &Path) -> Vec<String> {
+        RqClient::default()
+            .list_variables(source, None)
+            .expect("list_variables failed")
+            .into_iter()
+            .map(|entry| entry.name)
+            .collect()
+    }
+
+    #[test]
+    fn environment_value_takes_precedence_over_let() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write(
+            dir.path(),
+            "test.rq",
+            "let host = \"file-level\";\n\nenv dev {\n    host: \"env-level\"\n}\n",
+        );
+        let target = RqClient::default()
+            .get_variable(dir.path(), "host", Some("dev"), true, None)
+            .expect("get_variable failed");
+        assert_eq!(
+            (target.value.as_str(), target.source.as_str()),
+            ("env-level", "env:dev")
+        );
+    }
+
+    #[test]
+    fn unresolved_reference_fails_when_interpolating() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write(
+            dir.path(),
+            "test.rq",
+            "let api_url = \"{{base_url}}/v1\";\n",
+        );
+        let target = RqClient::default().get_variable(dir.path(), "api_url", None, true, None);
+        assert!(target.is_err_and(|e| e.to_string().contains("Unresolved variable")));
+    }
+
+    #[test]
+    fn unresolved_reference_is_kept_without_interpolation() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write(
+            dir.path(),
+            "test.rq",
+            "let api_url = \"{{base_url}}/v1\";\n",
+        );
+        let target = RqClient::default()
+            .get_variable(dir.path(), "api_url", None, false, None)
+            .expect("get_variable failed");
+        assert!(target.value.contains("{{base_url}}"));
+    }
+
+    #[test]
+    fn variables_of_a_file_include_its_imports() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write(
+            dir.path(),
+            "shared.rq",
+            "let shared_url = \"http://shared.localhost\";\n",
+        );
+        write(dir.path(), "main.rq", "import \"shared\";\n");
+        let target = variable_names(&dir.path().join("main.rq"));
+        assert_eq!(target, vec!["shared_url".to_string()]);
+    }
+
+    #[test]
+    fn variables_of_a_file_exclude_files_it_does_not_import() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write(
+            dir.path(),
+            "imported.rq",
+            "let imported_url = \"http://imported\";\n",
+        );
+        write(
+            dir.path(),
+            "unrelated.rq",
+            "let unrelated_url = \"http://unrelated\";\n",
+        );
+        write(dir.path(), "main.rq", "import \"imported\";\n");
+        let target = variable_names(&dir.path().join("main.rq"));
+        assert_eq!(target, vec!["imported_url".to_string()]);
+    }
+
+    #[test]
+    fn variables_before_a_syntax_error_are_still_listed() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write(
+            dir.path(),
+            "partial.rq",
+            "let base_url = \"http://localhost\";\nlet b =\n",
+        );
+        let target = variable_names(dir.path());
+        assert!(target.contains(&"base_url".to_string()));
+    }
+}

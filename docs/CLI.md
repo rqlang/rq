@@ -16,7 +16,6 @@ At a high level:
 - `rq request` manages requests (list, show, run).
 - `rq env` lists and inspects environments found in `.rq` files.
 - `rq auth` lists and inspects auth providers.
-- `rq var` lists and inspects variables.
 - `rq check` validates `.rq` files without executing requests.
 
 All subcommands accept a global `-d, --debug` flag to enable debug logging.
@@ -50,7 +49,6 @@ Commands:
 - `env` – Manage environments.
 - `auth` – Manage authentication.
 - `request` – Manage requests.
-- `var` – Manage variables.
 - `check` – Validate `.rq` files.
 
 If you call `rq` without a subcommand, it behaves like `rq request run` with the same arguments.
@@ -326,70 +324,6 @@ rq auth show -s tests/request/run/input -n local_auth -e local
 Error handling:
 
 - If the named auth provider does not exist, the command fails with an error mentioning that the auth configuration was not found.
-
-## Managing variables: `rq var`
-
-The `var` subcommand lets you discover and inspect variables defined in `.rq` files.
-
-```bash
-rq var [OPTIONS] <COMMAND>
-```
-
-Commands:
-
-- `list` – List variables.
-- `show` – Show the resolved value of a variable.
-
-All `rq var` commands accept `-d, --debug`.
-
-### `rq var list`
-
-List all variables discovered under a file or directory.
-
-```bash
-rq var list [OPTIONS]
-```
-
-Options:
-
-- `-s, --source <SOURCE>` – Path to the `.rq` file or directory (default: `.`).
-- `-e, --env <ENVIRONMENT>` – Environment name to filter environment-specific variables.
-- `-o, --output <OUTPUT>` – Output format: `text` or `json` (default: `text`).
-
-Behavior:
-
-- In `text` mode, prints `Variables found:` followed by variable names, or `No variables found in .rq files`.
-- In `json` mode, prints a JSON array of objects with a single `name` field. Use `rq var show` for the value, source and location of a variable.
-
-Examples:
-
-```bash
-rq var list -s src/
-rq var list -s src/ -e local -o json
-```
-
-### `rq var show`
-
-Show the value a variable resolves to, following the variable precedence rules. Use `-e` to see the value it takes in a given environment.
-
-```bash
-rq var show [OPTIONS] --name <NAME>
-```
-
-Options:
-
-- `-s, --source <SOURCE>` – Path to the `.rq` file or directory (default: `.`).
-- `-n, --name <NAME>` – Name of the variable to show (required).
-- `-e, --env <ENVIRONMENT>` – Environment name to resolve environment-specific values.
-- `--no-var-interpolation` – Skip variable interpolation and show raw values.
-- `-o, --output <OUTPUT>` – Output format: `text` or `json` (default: `text`).
-
-Examples:
-
-```bash
-rq var show -n base_url
-rq var show -n base_url -e local -o json
-```
 
 ## Validating files: `rq check`
 

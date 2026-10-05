@@ -47,7 +47,7 @@ async fn test_auth_bearer_integration() {
 
     assert!(output.status.success(), "rq failed to execute: {stderr}");
     assert!(
-        stdout.contains("status: 200")
+        stdout.contains("200 OK")
             || stdout.contains("\"status\": \"success\"")
             || stdout.contains("success"),
         "Expected 200 OK or success body, got:\n{stdout}"
@@ -113,7 +113,7 @@ async fn test_auth_oauth2_client_credentials_integration() {
         "rq failed to execute oauth2 cc flow: {stderr}"
     );
     assert!(
-        stdout.contains("status: 200") || stdout.contains("secure_data"),
+        stdout.contains("200 OK") || stdout.contains("secure_data"),
         "Expected success body, got:\n{stdout}"
     );
 }
@@ -175,7 +175,7 @@ async fn test_auth_oauth2_auth_code_integration() {
         "Should succeed with fallback variable: {stderr_ok}"
     );
     assert!(
-        stdout_ok.contains("status: 200"),
+        stdout_ok.contains("200 OK"),
         "Expected 200 OK, got: {stdout_ok}"
     );
 }
@@ -243,10 +243,7 @@ async fn test_auth_oauth2_client_credentials_variables() {
         output.status.success(),
         "rq failed with variables: {stderr}"
     );
-    assert!(
-        stdout.contains("status: 200"),
-        "Expected success with variables"
-    );
+    assert!(stdout.contains("200 OK"), "Expected success with variables");
 }
 
 #[tokio::test]
@@ -313,7 +310,7 @@ async fn test_auth_oauth2_client_credentials_cert_integration() {
 
     assert!(output.status.success(), "rq failed to execute: {stderr}");
     assert!(
-        stdout.contains("status: 200") || stdout.contains("secure_data_via_cert"),
+        stdout.contains("200 OK") || stdout.contains("secure_data_via_cert"),
         "Expected 200 OK or success body, got:\n{stdout}"
     );
 }
@@ -381,7 +378,7 @@ async fn test_auth_oauth2_client_credentials_pfx_integration() {
 
     assert!(output.status.success(), "rq failed to execute: {stderr}");
     assert!(
-        stdout.contains("status: 200") || stdout.contains("secure_data_via_pfx"),
+        stdout.contains("200 OK") || stdout.contains("secure_data_via_pfx"),
         "Expected 200 OK or success body, got:\n{stdout}"
     );
 }
@@ -449,7 +446,7 @@ async fn test_auth_oauth2_client_credentials_pem_integration() {
 
     assert!(output.status.success(), "rq failed to execute: {stderr}");
     assert!(
-        stdout.contains("status: 200") || stdout.contains("secure_data_via_pem"),
+        stdout.contains("200 OK") || stdout.contains("secure_data_via_pem"),
         "Expected 200 OK or success body, got:\n{stdout}"
     );
 }
@@ -511,7 +508,56 @@ async fn test_auth_oauth2_implicit_integration() {
         "Should succeed with fallback variable: {stderr_ok}"
     );
     assert!(
-        stdout_ok.contains("status: 200"),
+        stdout_ok.contains("200 OK"),
         "Expected 200 OK, got: {stdout_ok}"
     );
+}
+
+#[tokio::test]
+async fn test_auth_oauth2_client_credentials_debug_trace() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/token"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "access_token": "mocked_access_token_xyz",
+            "token_type": "Bearer",
+            "expires_in": 3600
+        })))
+        .mount(&mock_server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/resource"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&mock_server)
+        .await;
+
+    let template_path = format!(
+        "{}/tests/fixtures/templates/auth_oauth2_cc.rq.template",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    let template_content =
+        std::fs::read_to_string(template_path).expect("Failed to read template file");
+    let rq_path = format!("{}/test_auth_cc_debug.rq", env!("CARGO_TARGET_TMPDIR"));
+    std::fs::write(
+        &rq_path,
+        template_content.replace("{{MOCK_URL}}", &mock_server.uri()),
+    )
+    .expect("Failed to write rq file");
+
+    let output = common::rq_cmd()
+        .args(["-d", "-s"])
+        .arg(&rq_path)
+        .output()
+        .expect("Failed to execute rq binary");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(stderr.contains("* Requesting token for '"), "{stderr}");
+    assert!(
+        stderr.contains("* Token endpoint responded 200 OK"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("* Received access token for '"), "{stderr}");
+    assert!(!stderr.contains("mocked_access_token_xyz"), "{stderr}");
+    assert!(!stderr.contains("test-secret"), "{stderr}");
 }

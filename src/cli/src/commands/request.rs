@@ -1,61 +1,90 @@
-use crate::commands::shared::{EnvArgs, OutputArgs, SourceArgs};
+use crate::commands::shared::{
+    print_warnings, render_names, EnvArgs, Location, OutputArgs, SourceArgs,
+};
 use crate::commands::validators;
-use crate::core::logger::Logger;
+use crate::core::error::RqError;
+use crate::core::formatter::{pretty_body, render, TextBlock};
 use clap::{Args, Subcommand};
+use rq_lib::client::models::RequestDetails;
 use rq_lib::{RequestExecutionResult, RqClient};
 use serde::Serialize;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::path::Path;
 
 #[derive(Serialize)]
-pub struct AuthConfigView {
-    pub name: String,
-    #[serde(rename = "type")]
-    pub auth_type: String,
-}
-
-#[derive(Serialize)]
-pub struct RequestDetailsView {
-    #[serde(rename = "Request")]
-    pub name: String,
-    #[serde(rename = "URL")]
-    pub url: String,
-    #[serde(rename = "Method")]
-    pub method: String,
-    #[serde(rename = "Headers")]
-    pub headers: HashMap<String, String>,
-    #[serde(rename = "Body", skip_serializing_if = "Option::is_none")]
-    pub body: Option<String>,
-    #[serde(rename = "Timeout", skip_serializing_if = "Option::is_none")]
-    pub timeout: Option<String>,
-    #[serde(rename = "Auth", skip_serializing_if = "Option::is_none")]
-    pub auth: Option<AuthConfigView>,
-}
-
-#[derive(Serialize)]
-struct RequestDetailsJsonView {
-    #[serde(rename = "Request")]
+struct AuthConfigView {
     name: String,
-    #[serde(rename = "URL")]
-    url: String,
-    #[serde(rename = "Method")]
-    method: String,
-    #[serde(rename = "Headers")]
-    headers: HashMap<String, String>,
-    #[serde(rename = "Body", skip_serializing_if = "Option::is_none")]
-    body: Option<String>,
-    #[serde(rename = "Timeout", skip_serializing_if = "Option::is_none")]
-    timeout: Option<String>,
-    #[serde(rename = "Auth", skip_serializing_if = "Option::is_none")]
-    auth: Option<AuthConfigView>,
-    file: String,
-    line: usize,
-    character: usize,
+    #[serde(rename = "type")]
+    auth_type: String,
 }
 
 #[derive(Serialize)]
-pub struct ExecutionResultsView {
-    pub results: Vec<RequestExecutionResult>,
+struct RequestDetailsView {
+    name: String,
+    url: String,
+    method: String,
+    headers: BTreeMap<String, String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    body: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    timeout: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    auth: Option<AuthConfigView>,
+    #[serde(flatten)]
+    location: Location,
+}
+
+impl From<RequestDetails> for RequestDetailsView {
+    fn from(details: RequestDetails) -> Self {
+        let auth = match (details.auth_name, details.auth_type) {
+            (Some(name), Some(auth_type)) => Some(AuthConfigView { name, auth_type }),
+            _ => None,
+        };
+        Self {
+            name: details.name,
+            url: details.url,
+            method: details.method,
+            headers: details.headers.into_iter().collect(),
+            body: details.body,
+            timeout: details.timeout,
+            auth,
+            location: Location::from_zero_based(details.file, details.line, details.character),
+        }
+    }
+}
+
+#[derive(Serialize)]
+struct ExecutionResultsView {
+    results: Vec<RequestExecutionResult>,
+}
+
+impl RequestDetailsView {
+    fn to_text(&self) -> String {
+        let auth = self
+            .auth
+            .as_ref()
+            .map(|auth| format!("{} ({})", auth.name, auth.auth_type));
+        TextBlock::default()
+            .field("name", &self.name)
+            .field("method", &self.method)
+            .field("url", &self.url)
+            .map("headers", &self.headers)
+            .optional("body", self.body.as_deref())
+            .optional("timeout", self.timeout.as_deref())
+            .optional("auth", auth)
+            .field("location", &self.location)
+            .build()
+    }
+}
+
+impl ExecutionResultsView {
+    fn to_text(&self) -> String {
+        self.results
+            .iter()
+            .map(render_execution_result)
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
 }
 
 #[derive(Debug, Args)]
@@ -140,22 +169,17 @@ pub struct RunArgs {
 pub fn execute_list(args: &ListArgs) -> Result<(), Box<dyn std::error::Error>> {
     let source_path = Path::new(&args.source.source);
     let (requests, parse_errors) = RqClient::default().list_requests(source_path)?;
+    print_warnings(&parse_errors, args.output.output);
 
-    for e in &parse_errors {
-        match args.output.output {
-            crate::core::formatter::OutputFormat::Json => {
-                eprintln!("{}", crate::core::error::error_to_json(e));
-            }
-            crate::core::formatter::OutputFormat::Text => {
-                eprintln!("Warning: Failed to parse: {e}");
-            }
-        }
-    }
-
-    let formatter = crate::core::formatter::get_formatter(&args.output.output);
+    let names = requests.into_iter().map(|r| r.name).collect();
     print!(
         "{}",
-        formatter.format_list(&requests, "", "No requests found")
+        render_names(
+            args.output.output,
+            names,
+            "Requests found:",
+            "No requests found"
+        )
     );
 
     Ok(())
@@ -170,63 +194,22 @@ pub fn execute_show(args: &ShowArgs) -> Result<(), Box<dyn std::error::Error>> {
         .ok_or("Request name is required")?
         .replace('.', "/");
 
-    let details = RqClient::default().get_request_details(
-        source_path,
-        &name,
-        args.env_args.environment.as_deref(),
-        !args.no_var_interpolation,
-        false,
-        &[],
-    )?;
+    let details = RqClient::default()
+        .get_request_details(
+            source_path,
+            &name,
+            args.env_args.environment.as_deref(),
+            !args.no_var_interpolation,
+            false,
+            &[],
+        )
+        .map_err(|e| with_typed_request_name(e, args.request_name_args.name.as_deref()))?;
 
-    let auth = if let (Some(auth_name), Some(auth_type)) = (&details.auth_name, &details.auth_type)
-    {
-        Some(AuthConfigView {
-            name: auth_name.to_string(),
-            auth_type: auth_type.to_string(),
-        })
-    } else {
-        None
-    };
-
-    let mut headers_map = HashMap::new();
-    for (key, value) in &details.headers {
-        headers_map.insert(key.clone(), value.clone());
-    }
-
-    match args.output.output {
-        crate::core::formatter::OutputFormat::Json => {
-            let view = RequestDetailsJsonView {
-                name: details.name,
-                url: details.url,
-                method: details.method,
-                headers: headers_map,
-                body: details.body,
-                timeout: details.timeout,
-                auth,
-                file: details.file,
-                line: details.line,
-                character: details.character,
-            };
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&view).unwrap_or_default()
-            );
-        }
-        crate::core::formatter::OutputFormat::Text => {
-            let formatter = crate::core::formatter::get_formatter(&args.output.output);
-            let view = RequestDetailsView {
-                name: details.name,
-                url: details.url,
-                method: details.method,
-                headers: headers_map,
-                body: details.body,
-                timeout: details.timeout,
-                auth,
-            };
-            print!("{}", formatter.format(&view));
-        }
-    }
+    let view = RequestDetailsView::from(details);
+    print!(
+        "{}",
+        render(args.output.output, &view, RequestDetailsView::to_text)
+    );
 
     Ok(())
 }
@@ -238,44 +221,50 @@ pub async fn execute_run(args: &RunArgs) -> Result<(), Box<dyn std::error::Error
         .name
         .as_deref()
         .map(|n| n.replace('.', "/"));
-    let (results, parse_warnings) = RqClient::default()
+    let (results, warnings) = RqClient::default()
         .run(
             source_path,
             request_name.as_deref(),
             args.env_args.environment.as_deref(),
             &args.variable,
         )
-        .await?;
+        .await
+        .map_err(|e| with_typed_request_name(e, args.request_name_args.name.as_deref()))?;
 
-    for w in &parse_warnings {
-        match args.output.output {
-            crate::core::formatter::OutputFormat::Json => {
-                eprintln!("{}", crate::core::error::error_to_json(w));
-            }
-            crate::core::formatter::OutputFormat::Text => {
-                eprintln!("Warning: Failed to parse: {w}");
-            }
-        }
-    }
+    print_warnings(&warnings, args.output.output);
 
-    for result in &results {
-        let elapsed_str = format!("{} ms", result.elapsed_ms);
-        Logger::debug("\n--- HTTP Response ---");
-        Logger::debug(&format!(
-            "Response status: {} ({})",
-            result.status, elapsed_str
-        ));
-        Logger::debug("Response Headers:");
-        for (key, value) in &result.response_headers {
-            Logger::debug(&format!("  {key}: {value}"));
-        }
-        Logger::debug("");
-        Logger::debug("--- End Response ---\n");
-    }
-
-    let formatter = crate::core::formatter::get_formatter(&args.output.output);
     let view = ExecutionResultsView { results };
-    print!("{}", formatter.format(&view));
+    print!(
+        "{}",
+        render(args.output.output, &view, ExecutionResultsView::to_text)
+    );
 
     Ok(())
+}
+
+fn with_typed_request_name(error: RqError, typed_name: Option<&str>) -> RqError {
+    match (error, typed_name) {
+        (RqError::RequestNotFound(_), Some(typed_name)) if typed_name.contains('.') => {
+            RqError::RequestNotFound(typed_name.to_string())
+        }
+        (error, _) => error,
+    }
+}
+
+fn render_execution_result(result: &RequestExecutionResult) -> String {
+    let reason = http::StatusCode::from_u16(result.status)
+        .ok()
+        .and_then(|status| status.canonical_reason())
+        .map(|reason| format!(" {reason}"))
+        .unwrap_or_default();
+    let mut out = format!(
+        "{}  {} {}\n{}{reason} · {} ms\n",
+        result.request_name, result.method, result.url, result.status, result.elapsed_ms
+    );
+    if !result.body.is_empty() {
+        out.push('\n');
+        out.push_str(pretty_body(&result.body).trim_end());
+        out.push('\n');
+    }
+    out
 }

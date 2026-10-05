@@ -134,6 +134,21 @@ impl VariableContext {
         map
     }
 
+    pub fn source_of(&self, name: &str) -> Option<&'static str> {
+        let levels: [(&'static str, &Vec<Variable>); 6] = [
+            ("cli", &self.cli_variables),
+            ("request", &self.request_variables),
+            ("endpoint", &self.endpoint_variables),
+            ("secret", &self.secret_variables),
+            ("env", &self.environment_variables),
+            ("let", &self.file_variables),
+        ];
+        levels
+            .into_iter()
+            .find(|(_, variables)| variables.iter().any(|v| v.name == name))
+            .map(|(level, _)| level)
+    }
+
     pub fn all_variables(&self) -> Vec<Variable> {
         let mut all = Vec::new();
         all.extend(self.file_variables.clone());
@@ -143,5 +158,54 @@ impl VariableContext {
         all.extend(self.request_variables.clone());
         all.extend(self.cli_variables.clone());
         all
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Variable, VariableContext, VariableValue};
+
+    fn host(level: &str) -> Vec<Variable> {
+        vec![Variable {
+            name: "host".to_string(),
+            value: VariableValue::String(level.to_string()),
+        }]
+    }
+
+    fn context_from(lowest_level: usize) -> VariableContext {
+        let defined = |level: usize, label: &str| {
+            if level >= lowest_level {
+                host(label)
+            } else {
+                Vec::new()
+            }
+        };
+        VariableContext::builder()
+            .file_variables(defined(5, "let"))
+            .environment_variables(defined(4, "env"))
+            .secret_variables(defined(3, "secret"))
+            .endpoint_variables(defined(2, "endpoint"))
+            .request_variables(defined(1, "request"))
+            .cli_variables(defined(0, "cli"))
+            .build()
+    }
+
+    #[test]
+    fn source_of_names_the_level_whose_value_wins() {
+        for (lowest_level, label) in ["cli", "request", "endpoint", "secret", "env", "let"]
+            .into_iter()
+            .enumerate()
+        {
+            let target = context_from(lowest_level);
+            let winning = target.as_map().get("host").map(|value| (*value).clone());
+            assert_eq!(target.source_of("host"), Some(label));
+            assert_eq!(winning, Some(VariableValue::String(label.to_string())));
+        }
+    }
+
+    #[test]
+    fn source_of_an_undefined_variable_is_none() {
+        let target = VariableContext::builder().build();
+        assert_eq!(target.source_of("host"), None);
     }
 }

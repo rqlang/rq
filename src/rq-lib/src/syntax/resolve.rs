@@ -885,6 +885,13 @@ pub fn resolved_body_type(request: &Request, context: &VariableContext) -> Optio
     }
 }
 
+pub fn referenced_variable_names(text: &str) -> Vec<String> {
+    UNRESOLVED_PATTERN
+        .captures_iter(text)
+        .filter_map(|caps| caps.get(1).map(|m| m.as_str().to_string()))
+        .collect()
+}
+
 pub fn resolve_variables(
     mut request: Request,
     context: &VariableContext,

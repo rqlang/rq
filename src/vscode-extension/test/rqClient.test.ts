@@ -4,17 +4,19 @@ import * as fs from 'fs';
 const mockGetRequestDetails = jest.fn();
 const mockGetAuthDetails = jest.fn();
 const mockVersion = jest.fn().mockReturnValue('0.0.0-test');
+const mockSetDebugLogging = jest.fn();
 
 jest.mock('../src/wasm/rq_wasm', () => ({
     get_request_details: mockGetRequestDetails,
     get_auth_details: mockGetAuthDetails,
     version: mockVersion,
+    set_debug_logging: mockSetDebugLogging,
 }), { virtual: true });
 
 jest.mock('fs');
 jest.mock('https');
 
-import { executeRequest } from '../src/rqClient';
+import { executeRequest, setDebugLogging } from '../src/rqClient';
 
 const BASE_DETAILS = {
     Request: 'test-req',
@@ -389,5 +391,13 @@ describe('executeRequest', () => {
 
             expect(mockRequest.destroy).not.toHaveBeenCalled();
         });
+    });
+});
+
+describe('setDebugLogging', () => {
+    it('toggles the library debug trace', async () => {
+        await setDebugLogging(true);
+
+        expect(mockSetDebugLogging).toHaveBeenCalledWith(true);
     });
 });

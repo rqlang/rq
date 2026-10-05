@@ -13,6 +13,34 @@ fn main() {
         // Fixture tests (Manual setup)
         Trial::test("request_secrets_env_vars", test_request_secrets),
         Trial::test(
+            "request_json_warning_uses_warning_key",
+            test_request_json_warning_uses_warning_key,
+        ),
+        Trial::test(
+            "request_json_output_ends_with_newline",
+            test_request_json_output_ends_with_newline,
+        ),
+        Trial::test(
+            "request_text_output_starts_with_status",
+            test_request_text_output_starts_with_status,
+        ),
+        Trial::test(
+            "request_debug_logs_masked_request_and_response",
+            test_request_debug_logs_masked_request_and_response,
+        ),
+        Trial::test(
+            "request_debug_header_masks_cli_variables",
+            test_request_debug_header_masks_cli_variables,
+        ),
+        Trial::test(
+            "request_debug_footer_reports_exit_code",
+            test_request_debug_footer_reports_exit_code,
+        ),
+        Trial::test(
+            "request_debug_traces_secret_and_variable_sources",
+            test_request_debug_traces_secret_and_variable_sources,
+        ),
+        Trial::test(
             "request_secrets_uppercase_prefixes",
             test_request_secrets_uppercase_prefixes,
         ),
@@ -76,11 +104,160 @@ fn main() {
 
 // --- Fixture Tests ---
 
+fn test_request_json_warning_uses_warning_key() -> Result<(), Failed> {
+    let output = rq_cmd()
+        .args([
+            "request",
+            "run",
+            "-s",
+            "tests/request/run/input/foo.rq",
+            "-o",
+            "json",
+        ])
+        .output()
+        .map_err(|e| format!("Failed to execute: {e}"))?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let warning: serde_json::Value = serde_json::from_str(stderr.trim())
+        .map_err(|e| format!("stderr is not valid JSON: {e}\n{stderr}"))?;
+    if warning["warning"]["message"] != "No requests found in the file" {
+        return Err(format!("Unexpected stderr: {stderr}").into());
+    }
+    Ok(())
+}
+
+fn test_request_json_output_ends_with_newline() -> Result<(), Failed> {
+    let output = rq_cmd()
+        .args([
+            "request",
+            "run",
+            "-s",
+            "tests/request/run/input/foo.rq",
+            "-o",
+            "json",
+        ])
+        .output()
+        .map_err(|e| format!("Failed to execute: {e}"))?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    if !stdout.ends_with("}\n") {
+        return Err(format!("Expected trailing newline, got: {stdout:?}").into());
+    }
+    Ok(())
+}
+
+fn test_request_text_output_starts_with_status() -> Result<(), Failed> {
+    let output = rq_cmd()
+        .args(["request", "run", "-s", "tests/request/run/input/basic.rq"])
+        .output()
+        .map_err(|e| format!("Failed to execute: {e}"))?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut lines = stdout.lines();
+    let request_line = lines.next().unwrap_or_default();
+    let status_line = lines.next().unwrap_or_default();
+    if request_line != "basic  GET http://localhost:8080/get"
+        || !status_line.starts_with("200 OK · ")
+        || !status_line.ends_with(" ms")
+    {
+        return Err(format!("Unexpected output: {stdout}").into());
+    }
+    Ok(())
+}
+
+fn test_request_debug_logs_masked_request_and_response() -> Result<(), Failed> {
+    let dir = std::env::temp_dir().join(format!("rq_test_debug_log_{}", std::process::id()));
+    fs::create_dir_all(&dir).map_err(|e| format!("Failed to create temp dir: {e}"))?;
+    let file = dir.join("debug.rq");
+    fs::write(
+        &file,
+        "rq get(\"http://localhost:8080/get\", $[\n    \"Authorization\": \"Bearer s3cr3t\"\n]);\n",
+    )
+    .map_err(|e| format!("Failed to write temp file: {e}"))?;
+    let output = rq_cmd()
+        .args(["request", "run", "-d", "-s"])
+        .arg(&file)
+        .output()
+        .map_err(|e| format!("Failed to execute: {e}"))?;
+    fs::remove_dir_all(&dir).ok();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if !stderr.contains("> GET http://localhost:8080/get\n")
+        || !stderr.contains("> Authorization: ***\n")
+        || !stderr.contains("< 200 OK (")
+        || stderr.contains("s3cr3t")
+    {
+        return Err(format!("Unexpected debug output: {stderr}").into());
+    }
+    Ok(())
+}
+
+fn debug_stderr(args: &[&str]) -> Result<String, Failed> {
+    let output = rq_cmd()
+        .args(args)
+        .output()
+        .map_err(|e| format!("Failed to execute: {e}"))?;
+    Ok(String::from_utf8_lossy(&output.stderr).to_string())
+}
+
+fn test_request_debug_header_masks_cli_variables() -> Result<(), Failed> {
+    let stderr = debug_stderr(&[
+        "request",
+        "run",
+        "-d",
+        "-s",
+        "tests/request/run/input/basic.rq",
+        "-v",
+        "token=s3cr3t",
+    ])?;
+    if !stderr.contains("* rq ")
+        || !stderr.contains("-v token=***")
+        || !stderr.contains("* Working directory: ")
+        || stderr.contains("s3cr3t")
+    {
+        return Err(format!("Unexpected debug header: {stderr}").into());
+    }
+    Ok(())
+}
+
+fn test_request_debug_footer_reports_exit_code() -> Result<(), Failed> {
+    let stderr = debug_stderr(&[
+        "request",
+        "run",
+        "-d",
+        "-s",
+        "tests/request/run/input/basic.rq",
+        "-e",
+        "missing",
+    ])?;
+    if !stderr.contains("* Finished with exit code 3: Environment not found: missing") {
+        return Err(format!("Unexpected debug footer: {stderr}").into());
+    }
+    Ok(())
+}
+
+fn test_request_debug_traces_secret_and_variable_sources() -> Result<(), Failed> {
+    let stderr = debug_stderr(&[
+        "request",
+        "run",
+        "-d",
+        "-s",
+        "tests/request/run/input/environments__env_local__.rq",
+        "-e",
+        "local",
+    ])?;
+    if !stderr.contains("* Secrets from tests/request/run/input/.env: env_secret")
+        || !stderr.contains("* Variable base_url from env:local")
+        || stderr.contains("secret_from_env_file")
+    {
+        return Err(format!("Unexpected debug trace: {stderr}").into());
+    }
+    Ok(())
+}
+
 fn test_request_secrets() -> Result<(), Failed> {
     let output = rq_cmd()
         .args([
             "request",
             "run",
+            "-o",
+            "json",
             "-s",
             "tests/request/run/fixtures/secrets/secrets.rq",
             "--environment",
@@ -112,6 +289,8 @@ fn test_request_secrets_uppercase_prefixes() -> Result<(), Failed> {
         .args([
             "request",
             "run",
+            "-o",
+            "json",
             "-s",
             "tests/request/run/fixtures/secrets_uppercase_prefixes/test.rq",
             "--environment",
@@ -142,6 +321,8 @@ fn test_request_auth_token_backdoor() -> Result<(), Failed> {
         .args([
             "request",
             "run",
+            "-o",
+            "json",
             "-s",
             "tests/request/run/fixtures/auth_token_backdoor/test.rq",
         ])
@@ -169,6 +350,8 @@ fn test_request_auth_token_backdoor_upper() -> Result<(), Failed> {
         .args([
             "request",
             "run",
+            "-o",
+            "json",
             "-s",
             "tests/request/run/fixtures/auth_token_backdoor_upper/test.rq",
         ])
@@ -196,6 +379,8 @@ fn test_request_cli_variable_override() -> Result<(), Failed> {
         .args([
             "request",
             "run",
+            "-o",
+            "json",
             "-s",
             "tests/request/run/fixtures/cli_override/override.rq",
             "-v",
@@ -225,6 +410,8 @@ fn test_request_dotenv() -> Result<(), Failed> {
         .args([
             "request",
             "run",
+            "-o",
+            "json",
             "-s",
             "tests/request/run/fixtures/dotenv/dotenv.rq",
             "--environment",
@@ -590,6 +777,10 @@ fn run_directory_test(dir_name: &str, file_name: &str) -> Result<(), Failed> {
 
     if let Some(ref req) = request_name {
         cmd.args(["--name", req]);
+    }
+
+    if Path::new(&expected_json).exists() {
+        cmd.args(["-o", "json"]);
     }
 
     let output = cmd

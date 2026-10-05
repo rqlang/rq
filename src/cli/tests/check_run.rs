@@ -15,6 +15,26 @@ fn main() {
             "check_endpoint_shared_url_var_deduped",
             test_check_endpoint_shared_url_var_deduped,
         ),
+        Trial::test(
+            "check_text_reports_no_errors",
+            test_check_text_reports_no_errors,
+        ),
+        Trial::test(
+            "check_text_reports_error_location",
+            test_check_text_reports_error_location,
+        ),
+        Trial::test(
+            "check_failure_writes_nothing_to_stderr",
+            test_check_failure_writes_nothing_to_stderr,
+        ),
+        Trial::test(
+            "check_reports_unreadable_file",
+            test_check_reports_unreadable_file,
+        ),
+        Trial::test(
+            "check_debug_reports_summary",
+            test_check_debug_reports_summary,
+        ),
     ];
 
     trials.extend(discover_check_tests());
@@ -44,7 +64,7 @@ fn test_check_endpoint_shared_url_var_deduped() -> Result<(), Failed> {
     .map_err(|e| format!("Failed to write temp file: {e}"))?;
     let input_str = input.to_string_lossy().to_string();
     let output = rq_cmd()
-        .args(["check", "-s", &input_str])
+        .args(["check", "-s", &input_str, "-o", "json"])
         .output()
         .map_err(|e| format!("Failed to execute: {e}"))?;
     std::fs::remove_file(&input).ok();
@@ -68,6 +88,89 @@ fn test_check_endpoint_shared_url_var_deduped() -> Result<(), Failed> {
     let msg = errors[0]["message"].as_str().unwrap_or("");
     if !msg.contains("auth_name") {
         return Err(format!("Expected error about 'auth_name', got: {msg}").into());
+    }
+    Ok(())
+}
+
+fn test_check_text_reports_no_errors() -> Result<(), Failed> {
+    let output = rq_cmd()
+        .args(["check", "-s", "tests/check/input/valid_basic.rq"])
+        .output()
+        .map_err(|e| format!("Failed to execute: {e}"))?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    if !output.status.success() || stdout != "No errors found\n" {
+        return Err(format!("Unexpected output: {stdout}").into());
+    }
+    Ok(())
+}
+
+fn test_check_text_reports_error_location() -> Result<(), Failed> {
+    let output = rq_cmd()
+        .args(["check", "-s", "tests/check/input/err_undefined_var_url.rq"])
+        .output()
+        .map_err(|e| format!("Failed to execute: {e}"))?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let first_line = stdout.lines().next().unwrap_or("");
+    if output.status.code() != Some(1)
+        || !first_line.contains("err_undefined_var_url.rq:")
+        || !stdout.ends_with("\n1 error found\n")
+    {
+        return Err(format!("Unexpected output: {stdout}").into());
+    }
+    Ok(())
+}
+
+fn test_check_failure_writes_nothing_to_stderr() -> Result<(), Failed> {
+    let output = rq_cmd()
+        .args(["check", "-s", "tests/check/input/err_undefined_var_url.rq"])
+        .output()
+        .map_err(|e| format!("Failed to execute: {e}"))?;
+    if !output.stderr.is_empty() {
+        return Err(format!(
+            "Unexpected stderr: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
+    }
+    Ok(())
+}
+
+fn test_check_reports_unreadable_file() -> Result<(), Failed> {
+    let dir = std::env::temp_dir().join(format!("rq_check_unreadable_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).map_err(|e| format!("Failed to create temp dir: {e}"))?;
+    std::fs::write(
+        dir.join("invalid_utf8.rq"),
+        b"rq get(\"http://localhost/\xff\");\n",
+    )
+    .map_err(|e| format!("Failed to write temp file: {e}"))?;
+    let dir_str = dir.to_string_lossy().to_string();
+    let output = rq_cmd()
+        .args(["check", "-s", &dir_str, "-o", "json"])
+        .output()
+        .map_err(|e| format!("Failed to execute: {e}"))?;
+    std::fs::remove_dir_all(&dir).ok();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let actual: Value = serde_json::from_str(stdout.trim())
+        .map_err(|e| format!("stdout is not valid JSON: {e}\n{stdout}"))?;
+    let expected = serde_json::json!({
+        "errors": [{ "message": "{{regex:^Failed to read .*invalid_utf8\\.rq: .+}}" }]
+    });
+    if output.status.code() != Some(1) || !json_subset(&expected, &actual) {
+        return Err(format!("Unexpected output: {stdout}").into());
+    }
+    Ok(())
+}
+
+fn test_check_debug_reports_summary() -> Result<(), Failed> {
+    let output = rq_cmd()
+        .args(["check", "-d", "-s", "tests/check/input/dir_with_error"])
+        .output()
+        .map_err(|e| format!("Failed to execute: {e}"))?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if !stderr.contains("* Checked 3 file(s): 1 error(s)")
+        || !stderr.contains("* Finished with exit code 1")
+    {
+        return Err(format!("Unexpected debug trace: {stderr}").into());
     }
     Ok(())
 }
@@ -140,7 +243,7 @@ fn run_check_test(dir: &str, file: &str, expected_path: &str) -> Result<(), Fail
     };
 
     let mut cmd = rq_cmd();
-    cmd.args(["check", "--source", &source]);
+    cmd.args(["check", "--source", &source, "-o", "json"]);
     if let Some(ref env) = env_name {
         cmd.args(["--env", env]);
     }

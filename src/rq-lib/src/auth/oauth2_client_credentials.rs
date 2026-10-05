@@ -94,6 +94,10 @@ impl AuthProvider for OAuth2ClientCredentialsProvider {
                     path.to_path_buf()
                 };
 
+                crate::logger::Logger::debug(&format!(
+                    "* Loading client certificate {}",
+                    resolved_path.display()
+                ));
                 let cert_content = std::fs::read(&resolved_path).map_err(|e| {
                     AuthError::new(format!(
                         "Failed to read certificate file '{}': {e}",
@@ -223,7 +227,23 @@ impl AuthProvider for OAuth2ClientCredentialsProvider {
                 params.insert("scope", s.clone());
             }
 
+            let credential = if params.contains_key("client_assertion") {
+                "client_assertion"
+            } else if params.contains_key("client_secret") {
+                "client_secret"
+            } else {
+                "none"
+            };
+            crate::logger::Logger::debug(&format!(
+                "* Requesting token for '{}': POST {token_url} (client_id={client_id}, credential={credential}, scope={})",
+                auth_config.name,
+                scope.map(String::as_str).unwrap_or("none")
+            ));
             let response = client.post(token_url).form(&params).send().await?;
+            crate::logger::Logger::debug(&format!(
+                "* Token endpoint responded {}",
+                response.status()
+            ));
 
             if !response.status().is_success() {
                 let status = response.status();
@@ -246,6 +266,12 @@ impl AuthProvider for OAuth2ClientCredentialsProvider {
             let access_token = token_response["access_token"]
                 .as_str()
                 .ok_or_else(|| AuthError::new("No access_token in response".to_string()))?;
+            crate::logger::Logger::debug(&format!(
+                "* Received access token for '{}' (token_type={}, expires_in={})",
+                auth_config.name,
+                token_response["token_type"].as_str().unwrap_or("unknown"),
+                token_response["expires_in"]
+            ));
 
             headers.push((
                 reqwest::header::AUTHORIZATION.as_str().to_string(),

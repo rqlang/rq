@@ -3,12 +3,15 @@ use rq_lib::client::models::{
     AuthListEntry, EndpointEntry, EnvironmentEntry, ReferenceLocation, RequestInfo, VariableEntry,
 };
 use rq_lib::error::RqError;
+use rq_lib::logger::Logger;
 use rq_lib::RqClient;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use wasm_bindgen::prelude::*;
+
+static DEBUG_LOG: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
 fn make_client(
     files: HashMap<String, String>,
@@ -495,6 +498,26 @@ pub fn list_endpoint_refs(
     )
     .map_err(rq_err)?;
     serde_json::to_string(&refs).map_err(|e| JsError::new(&e.to_string()))
+}
+
+#[wasm_bindgen]
+pub fn set_debug_logging(enabled: bool) {
+    Logger::init_with_sink(
+        enabled,
+        Box::new(|line| {
+            if let Ok(mut lines) = DEBUG_LOG.lock() {
+                lines.push(line.to_string());
+            }
+        }),
+    );
+}
+
+#[wasm_bindgen]
+pub fn take_debug_logs() -> String {
+    DEBUG_LOG
+        .lock()
+        .map(|mut lines| std::mem::take(&mut *lines).join("\n"))
+        .unwrap_or_default()
 }
 
 #[wasm_bindgen]

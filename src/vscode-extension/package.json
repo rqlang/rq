@@ -137,7 +137,7 @@
         "rq.debugLogging": {
           "type": "boolean",
           "default": false,
-          "description": "Show debug logs in the RQ output window when executing requests."
+          "description": "Show debug logs in the RQ output window: request execution details and the rq library trace (files parsed, environments, secret and variable sources, auth and HTTP exchanges). Secret values are masked."
         },
         "rq.lint.enabled": {
           "type": "boolean",

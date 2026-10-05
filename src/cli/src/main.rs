@@ -5,9 +5,10 @@ mod commands;
 mod core;
 
 use commands::Commands;
-use core::error::error_to_json;
+use core::error::{error_to_json, CheckFailed};
 use core::exit_code::ExitCode;
 use core::formatter::OutputFormat;
+use core::logger::log_finished;
 
 #[derive(Parser)]
 #[command(name = "rq")]
@@ -36,13 +37,17 @@ struct DefaultArgs {
 async fn main() {
     let output_format = extract_output_format(&std::env::args().collect::<Vec<_>>());
     if let Err(e) = run().await {
-        match output_format {
-            OutputFormat::Json => eprintln!("{}", error_to_json(e.as_ref())),
-            OutputFormat::Text => eprintln!("Error: {e}"),
+        if e.downcast_ref::<CheckFailed>().is_none() {
+            match output_format {
+                OutputFormat::Json => eprintln!("{}", error_to_json(e.as_ref())),
+                OutputFormat::Text => eprintln!("Error: {e}"),
+            }
         }
         let exit_code = ExitCode::from(&e);
+        log_finished(exit_code.code(), Some(&e.to_string()));
         std::process::exit(exit_code.code());
     }
+    log_finished(0, None);
 }
 
 fn extract_output_format(args: &[String]) -> OutputFormat {
@@ -66,22 +71,17 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         && (args[1] == "env"
             || args[1] == "auth"
             || args[1] == "check"
-            || args[1] == "ep"
             || args[1] == "request"
-            || args[1] == "var"
             || args[1] == "help");
 
     if is_subcommand {
         let args = Args::parse();
-        crate::core::logger::Logger::init(args.debug);
+        crate::core::logger::init_logging(args.debug);
         match args.command {
             Some(Commands::Check(check_args)) => commands::check::execute(&check_args),
             Some(Commands::Env(env_command)) => match env_command.command {
                 commands::env::EnvSubcommand::List(list_args) => {
                     commands::env::execute_list(&list_args)
-                }
-                commands::env::EnvSubcommand::Show(show_args) => {
-                    commands::env::execute_show(&show_args)
                 }
             },
             Some(Commands::Auth(auth_command)) => match auth_command.command {
@@ -90,28 +90,6 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 commands::auth::AuthSubcommand::Show(show_args) => {
                     commands::auth::execute_show(&show_args)
-                }
-            },
-            Some(Commands::Ep(ep_command)) => match ep_command.command {
-                commands::ep::EpSubcommand::List(list_args) => {
-                    commands::ep::execute_list(&list_args)
-                }
-                commands::ep::EpSubcommand::Show(show_args) => {
-                    commands::ep::execute_show(&show_args)
-                }
-                commands::ep::EpSubcommand::Refs(refs_args) => {
-                    commands::ep::execute_refs(&refs_args)
-                }
-            },
-            Some(Commands::Var(var_command)) => match var_command.command {
-                commands::var::VarSubcommand::List(list_args) => {
-                    commands::var::execute_list(&list_args)
-                }
-                commands::var::VarSubcommand::Show(show_args) => {
-                    commands::var::execute_show(&show_args)
-                }
-                commands::var::VarSubcommand::Refs(refs_args) => {
-                    commands::var::execute_refs(&refs_args)
                 }
             },
             Some(Commands::Request(request_command)) => match request_command.command {
@@ -138,19 +116,19 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                     return Ok(());
                 }
                 let default_args = DefaultArgs::parse();
-                crate::core::logger::Logger::init(default_args.debug);
+                crate::core::logger::init_logging(default_args.debug);
                 commands::request::execute_run(&default_args.run_args).await
             }
             Err(e)
                 if e.kind() == clap::error::ErrorKind::DisplayHelp
                     || e.kind() == clap::error::ErrorKind::DisplayVersion =>
             {
-                e.print().unwrap();
+                e.print()?;
                 Ok(())
             }
             Err(_) => {
                 let default_args = DefaultArgs::parse();
-                crate::core::logger::Logger::init(default_args.debug);
+                crate::core::logger::init_logging(default_args.debug);
                 commands::request::execute_run(&default_args.run_args).await
             }
         }

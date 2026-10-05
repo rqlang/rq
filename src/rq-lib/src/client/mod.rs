@@ -45,7 +45,8 @@ impl RqClient {
         environment: Option<&str>,
         variables: &[String],
     ) -> Result<(Vec<RequestExecutionResult>, Vec<RqError>), RqError> {
-        let (rq_files, parse_warnings) = self.get_rq_files_to_process(source_path, request_name)?;
+        self.log_source(source_path);
+        let (rq_files, mut warnings) = self.get_rq_files_to_process(source_path, request_name)?;
 
         if rq_files.is_empty() {
             return Err(RqError::RequestNotFound(format!(
@@ -57,8 +58,15 @@ impl RqClient {
         let mut all_results = Vec::new();
 
         for rq_file in rq_files {
+            let filtered_requests = Self::filter_requests(rq_file.requests, request_name);
+
+            if filtered_requests.is_empty() {
+                continue;
+            }
+
             let env_vars = if let Some(env_name) = environment {
                 if let Some(vars) = rq_file.environments.get(env_name) {
+                    Self::log_environment(env_name, &rq_file.path, vars);
                     vars.clone()
                 } else {
                     return Err(RqError::EnvironmentNotFound(env_name.to_string()));
@@ -70,34 +78,15 @@ impl RqClient {
             let secret_vars = self.collect_secrets_for_env(source_path, environment);
             let cli_vars = Self::parse_cli_variables(variables)?;
 
-            let filtered_requests = Self::filter_requests(rq_file.requests, request_name);
-
-            if filtered_requests.is_empty() {
-                if let Some(request_name) = request_name {
-                    eprintln!("No request found with name '{request_name}'");
-                } else {
-                    eprintln!("No requests found in the file");
-                }
-                return Ok((vec![], parse_warnings));
-            }
-
-            if let Some(request_name) = request_name {
-                Logger::debug(&format!(
-                    "Found {} request(s) with name '{request_name}':",
-                    filtered_requests.len()
-                ));
-            } else {
-                Logger::debug(&format!(
-                    "Found {} request(s) in total:",
-                    filtered_requests.len()
-                ));
-            }
+            Logger::debug(&format!(
+                "* Running {} request(s) from {}",
+                filtered_requests.len(),
+                crate::paths::clean_path(&rq_file.path)
+            ));
 
             let mut results = Vec::new();
 
-            for (i, req_with_vars) in filtered_requests.into_iter().enumerate() {
-                Logger::debug(&format!("Request {}: {:?}", i + 1, req_with_vars.request));
-
+            for req_with_vars in filtered_requests {
                 let context = crate::syntax::variable_context::VariableContext::builder()
                     .file_variables(rq_file.file_variables.clone())
                     .environment_variables(env_vars.clone())
@@ -152,6 +141,8 @@ impl RqClient {
                         })?;
                 }
 
+                Self::log_variable_sources(&working, &context, environment);
+
                 #[allow(unused_mut)]
                 let mut resolved_request = crate::syntax::resolve::resolve_variables(
                     working,
@@ -170,6 +161,10 @@ impl RqClient {
                                 &*self.fs,
                             )?;
 
+                            Logger::debug(&format!(
+                                "* Applying auth '{auth_name}' ({})",
+                                resolved_provider.auth_type.as_str()
+                            ));
                             let provider = crate::auth::get_provider(&resolved_provider.auth_type);
                             match provider
                                 .configure(
@@ -199,11 +194,13 @@ impl RqClient {
                 }
 
                 let prepared_request = Self::prepare_request(resolved_request)?;
+                Self::log_request(&prepared_request);
 
                 let start_time = Instant::now();
                 match self.http.execute(&prepared_request).await {
                     Ok(response) => {
                         let elapsed = start_time.elapsed();
+                        Self::log_response(&response, elapsed.as_millis());
 
                         let mut request_headers = HashMap::new();
                         for (key, value) in &prepared_request.headers {
@@ -230,13 +227,21 @@ impl RqClient {
             all_results.extend(results);
         }
 
-        Ok((all_results, parse_warnings))
+        if all_results.is_empty() {
+            if let Some(request_name) = request_name {
+                return Err(RqError::RequestNotFound(request_name.to_string()));
+            }
+            warnings.push(self.no_requests_warning(source_path));
+        }
+
+        Ok((all_results, warnings))
     }
 
     pub fn list_requests(
         &self,
         source_path: &Path,
     ) -> Result<(Vec<RequestInfo>, Vec<RqError>), RqError> {
+        self.log_source(source_path);
         if !self.fs.exists(source_path) {
             return Err(RqError::DirectoryNotFound(
                 source_path.display().to_string(),
@@ -296,6 +301,7 @@ impl RqClient {
         skip_required_variables: bool,
         variables: &[String],
     ) -> Result<RequestDetails, RqError> {
+        self.log_source(source_path);
         let (rq_files, _) = self.get_rq_files_to_process(source_path, Some(request_name))?;
 
         let rq_file = rq_files
@@ -353,6 +359,7 @@ impl RqClient {
 
         let env_vars = if let Some(env_name) = environment {
             if let Some(vars) = rq_file.environments.get(env_name) {
+                Self::log_environment(env_name, &rq_file.path, vars);
                 vars.clone()
             } else {
                 return Err(RqError::EnvironmentNotFound(env_name.to_string()));
@@ -449,9 +456,10 @@ impl RqClient {
                 })?;
         }
 
+        Self::log_variable_sources(&working, &context, environment);
+
         let resolved =
-            crate::syntax::resolve::resolve_variables(working, &context, &search_paths, &*self.fs)
-                .map_err(|e| RqError::Generic(e.to_string()))?;
+            crate::syntax::resolve::resolve_variables(working, &context, &search_paths, &*self.fs)?;
 
         let (auth_name, auth_type) = if let Some(auth_name) = resolved.auth.as_deref() {
             if auth_name.trim().is_empty() {
@@ -489,6 +497,7 @@ impl RqClient {
         &self,
         source_path: &Path,
     ) -> Result<Vec<crate::client::models::AuthListEntry>, RqError> {
+        self.log_source(source_path);
         if !self.fs.exists(source_path) {
             return Err(RqError::DirectoryNotFound(
                 source_path.display().to_string(),
@@ -523,6 +532,7 @@ impl RqClient {
         environment: Option<&str>,
         interpolate_variables: bool,
     ) -> Result<AuthDetails, RqError> {
+        self.log_source(source_path);
         if !self.fs.exists(source_path) {
             return Err(RqError::DirectoryNotFound(
                 source_path.display().to_string(),
@@ -617,6 +627,7 @@ impl RqClient {
     }
 
     pub fn list_environments(&self, source_path: &Path) -> Result<Vec<String>, RqError> {
+        self.log_source(source_path);
         if !self.fs.exists(source_path) {
             return Err(RqError::DirectoryNotFound(
                 source_path.display().to_string(),
@@ -660,7 +671,7 @@ impl RqClient {
         if self.fs.is_file(source_path) {
             paths.push(source_path.to_path_buf());
         } else if self.fs.is_dir(source_path) {
-            self.collect_rq_paths(source_path, &mut paths)?;
+            paths = self.discover_rq_files(source_path)?;
         } else {
             return Err(RqError::NotADirectory(source_path.display().to_string()));
         }
@@ -986,6 +997,7 @@ impl RqClient {
     }
 
     pub fn check_path(&self, path: &Path, env_name: Option<&str>) -> Result<Vec<RqError>, RqError> {
+        self.log_source(path);
         let source_path = if self.fs.is_file(path) {
             path.parent().unwrap_or(path)
         } else {
@@ -1003,18 +1015,23 @@ impl RqClient {
                     errors.push(e);
                 }
             }
-            return Ok(Self::dedup_syntax_errors(errors));
+            let errors = Self::dedup_syntax_errors(errors);
+            Self::log_check_summary(1, &errors);
+            return Ok(errors);
         }
         if !self.fs.is_dir(path) {
             return Err(RqError::DirectoryNotFound(path.display().to_string()));
         }
         let mut rq_files = Vec::new();
         let mut errors = self.collect_rq_files_parsed(path, &mut rq_files)?;
+        let file_count = rq_files.len() + errors.len();
         for rq_file in &rq_files {
             errors.extend(self.check_variables(rq_file, source_path, env_name));
             errors.extend(self.check_auth_references(rq_file));
         }
-        Ok(Self::dedup_syntax_errors(errors))
+        let errors = Self::dedup_syntax_errors(errors);
+        Self::log_check_summary(file_count, &errors);
+        Ok(errors)
     }
 
     pub fn check_source(
@@ -1036,8 +1053,143 @@ impl RqClient {
     }
 
     fn load_rq_file(&self, path: &Path) -> Result<RqFile, RqError> {
+        let result = self.parse_rq_file(path);
+        match &result {
+            Ok(rq_file) => Self::log_parsed(rq_file),
+            Err(e) => Logger::debug(&format!(
+                "* Failed to load {}: {e}",
+                crate::paths::clean_path(path)
+            )),
+        }
+        result
+    }
+
+    fn log_parsed(rq_file: &RqFile) {
+        if !Logger::is_debug_enabled() {
+            return;
+        }
+        let imports: Vec<String> = rq_file
+            .imported_files
+            .iter()
+            .map(|path| crate::paths::clean_path(path))
+            .collect();
+        let imports = if imports.is_empty() {
+            "no imports".to_string()
+        } else {
+            format!("imports: {}", imports.join(", "))
+        };
+        Logger::debug(&format!(
+            "* Parsed {} ({imports})",
+            crate::paths::clean_path(&rq_file.path)
+        ));
+    }
+
+    fn discover_rq_files(&self, dir: &Path) -> Result<Vec<PathBuf>, RqError> {
+        let mut paths = Vec::new();
+        self.collect_rq_paths(dir, &mut paths)?;
+        Logger::debug(&format!(
+            "* Found {} .rq file(s) in {}",
+            paths.len(),
+            crate::paths::clean_path(dir)
+        ));
+        Ok(paths)
+    }
+
+    fn log_variable_sources(
+        request: &Request,
+        context: &crate::syntax::variable_context::VariableContext,
+        environment: Option<&str>,
+    ) {
+        if !Logger::is_debug_enabled() {
+            return;
+        }
+        let mut pending: Vec<String> = Self::request_texts(request)
+            .iter()
+            .flat_map(|text| crate::syntax::resolve::referenced_variable_names(text))
+            .chain(request.headers_var.clone())
+            .collect();
+        let values = context.as_map();
+        let mut seen = HashSet::new();
+        while let Some(name) = pending.pop() {
+            if !seen.insert(name.clone()) {
+                continue;
+            }
+            let source = match (context.source_of(&name), environment) {
+                (Some("env"), Some(env_name)) => format!("env:{env_name}"),
+                (Some(level), _) => level.to_string(),
+                (None, _) => "unresolved".to_string(),
+            };
+            Logger::debug(&format!("* Variable {name} from {source}"));
+            if let Some(value) = values.get(name.as_str()) {
+                pending.extend(Self::referenced_names_in_value(value));
+            }
+        }
+    }
+
+    fn request_texts(request: &Request) -> Vec<&str> {
+        let mut texts = vec![request.url.as_str()];
+        for (name, value) in &request.headers {
+            texts.push(name);
+            texts.push(value);
+        }
+        texts.extend(request.body.as_deref());
+        texts.extend(request.timeout.as_deref());
+        texts.extend(request.auth.as_deref());
+        texts
+    }
+
+    fn referenced_names_in_value(value: &VariableValue) -> Vec<String> {
+        match value {
+            VariableValue::String(text) | VariableValue::Json(text) => {
+                crate::syntax::resolve::referenced_variable_names(text)
+            }
+            VariableValue::Reference(name) => vec![name.clone()],
+            VariableValue::Headers(pairs) => pairs
+                .iter()
+                .flat_map(|(_, v)| crate::syntax::resolve::referenced_variable_names(v))
+                .collect(),
+            VariableValue::SystemFunction { .. } => Vec::new(),
+        }
+    }
+
+    fn log_check_summary(file_count: usize, errors: &[RqError]) {
+        Logger::debug(&format!(
+            "* Checked {file_count} file(s): {} error(s)",
+            errors.len()
+        ));
+    }
+
+    fn log_environment(env_name: &str, file: &Path, vars: &[Variable]) {
+        let names: Vec<&str> = vars.iter().map(|v| v.name.as_str()).collect();
+        Logger::debug(&format!(
+            "* Environment '{env_name}' for {}: {}",
+            crate::paths::clean_path(file),
+            names.join(", ")
+        ));
+    }
+
+    fn log_source(&self, source_path: &Path) {
+        let kind = if self.fs.is_file(source_path) {
+            "file"
+        } else if self.fs.is_dir(source_path) {
+            "directory"
+        } else {
+            "not found"
+        };
+        Logger::debug(&format!(
+            "* Source: {} ({kind})",
+            crate::paths::clean_path(source_path)
+        ));
+    }
+
+    fn parse_rq_file(&self, path: &Path) -> Result<RqFile, RqError> {
         let canonical = self.fs.canonicalize(path).map_err(RqError::Generic)?;
-        let content = self.fs.read(&canonical).map_err(RqError::Generic)?;
+        let content = self.fs.read(&canonical).map_err(|e| {
+            RqError::Generic(format!(
+                "Failed to read {}: {e}",
+                crate::paths::clean_path(&canonical)
+            ))
+        })?;
         RqFile::from_content(canonical, &content, &*self.fs).map_err(Self::map_parse_error)
     }
 
@@ -1138,7 +1290,7 @@ impl RqClient {
         if self.fs.is_file(source_path) {
             paths.push(source_path.to_path_buf());
         } else if self.fs.is_dir(source_path) {
-            self.collect_rq_paths(source_path, &mut paths)?;
+            paths = self.discover_rq_files(source_path)?;
         } else {
             return Err(RqError::NotADirectory(source_path.display().to_string()));
         }
@@ -1185,6 +1337,10 @@ impl RqClient {
         for path in self.fs.read_dir(dir).map_err(RqError::Generic)? {
             if self.fs.is_dir(&path) {
                 if crate::paths::is_skipped_directory(&path) {
+                    Logger::debug(&format!(
+                        "* Skipping directory {}",
+                        crate::paths::clean_path(&path)
+                    ));
                     continue;
                 }
                 self.collect_rq_paths(&path, paths)?;
@@ -1200,9 +1356,7 @@ impl RqClient {
         dir: &Path,
         request_name: &str,
     ) -> Result<Option<RqFile>, RqError> {
-        let mut paths = Vec::new();
-        self.collect_rq_paths(dir, &mut paths)?;
-        for path in paths {
+        for path in self.discover_rq_files(dir)? {
             match self.load_rq_file(&path) {
                 Ok(rq_file) => {
                     if rq_file
@@ -1505,8 +1659,7 @@ impl RqClient {
         dir: &Path,
         rq_files: &mut Vec<RqFile>,
     ) -> Result<Vec<RqError>, RqError> {
-        let mut paths = Vec::new();
-        self.collect_rq_paths(dir, &mut paths)?;
+        let paths = self.discover_rq_files(dir)?;
         let mut parse_errors = Vec::new();
         for path in paths {
             match self.load_rq_file(&path) {
@@ -1616,29 +1769,72 @@ impl RqClient {
     }
 
     fn parse_cli_variables(variables: &[String]) -> Result<Vec<Variable>, RqError> {
-        let cli_variables: Vec<Variable> = variables
+        variables
             .iter()
-            .filter_map(|kv| {
-                if let Some(eq) = kv.find('=') {
-                    let name = kv[..eq].trim();
-                    let value = kv[eq + 1..].to_string();
-                    if name.is_empty() {
-                        eprintln!("Ignoring CLI variable with empty name: {kv}");
-                        None
-                    } else {
-                        Some(Variable {
-                            name: name.to_string(),
-                            value: VariableValue::String(value),
-                        })
-                    }
-                } else {
-                    eprintln!("Ignoring CLI variable without '=': {kv}");
-                    None
-                }
-            })
-            .collect();
+            .map(|kv| Self::parse_cli_variable(kv))
+            .collect()
+    }
 
-        Ok(cli_variables)
+    fn parse_cli_variable(kv: &str) -> Result<Variable, RqError> {
+        let (name, value) = kv.split_once('=').ok_or_else(|| {
+            RqError::Validation(format!("Invalid variable '{kv}': expected NAME=VALUE"))
+        })?;
+        let name = name.trim();
+        if name.is_empty() {
+            return Err(RqError::Validation(format!(
+                "Invalid variable '{kv}': name is empty"
+            )));
+        }
+        Ok(Variable {
+            name: name.to_string(),
+            value: VariableValue::String(value.to_string()),
+        })
+    }
+
+    fn log_request(request: &Request) {
+        if !Logger::is_debug_enabled() {
+            return;
+        }
+        Logger::debug(&format!("> {} {}", request.method.as_str(), request.url));
+        for (name, value) in &request.headers {
+            Logger::debug(&format!(
+                "> {name}: {}",
+                Logger::mask_header_value(name, value)
+            ));
+        }
+        if let Some(body) = &request.body {
+            Logger::debug(">");
+            Logger::debug(&format!("> {body}"));
+        }
+    }
+
+    fn log_response(response: &crate::http::HttpResponse, elapsed_ms: u128) {
+        if !Logger::is_debug_enabled() {
+            return;
+        }
+        let reason = reqwest::StatusCode::from_u16(response.status)
+            .ok()
+            .and_then(|status| status.canonical_reason())
+            .map(|reason| format!(" {reason}"))
+            .unwrap_or_default();
+        Logger::debug(&format!("< {}{reason} ({elapsed_ms} ms)", response.status));
+        let mut headers: Vec<_> = response.headers.iter().collect();
+        headers.sort();
+        for (name, value) in headers {
+            Logger::debug(&format!(
+                "< {name}: {}",
+                Logger::mask_header_value(name, value)
+            ));
+        }
+    }
+
+    fn no_requests_warning(&self, source_path: &Path) -> RqError {
+        let location = if self.fs.is_file(source_path) {
+            "file"
+        } else {
+            "directory"
+        };
+        RqError::Generic(format!("No requests found in the {location}"))
     }
 
     fn filter_requests(
@@ -1869,6 +2065,17 @@ fn extract_unresolved_var_name(message: &str) -> Option<String> {
 #[cfg(all(test, feature = "native"))]
 mod check_source_tests {
     use super::RqClient;
+
+    #[test]
+    fn check_path_names_the_file_it_cannot_read() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let file = dir.path().join("invalid_utf8.rq");
+        std::fs::write(&file, b"rq get(\"http://localhost/\xff\");\n").expect("write");
+        let target = RqClient::default()
+            .check_path(&file, None)
+            .expect("check_path failed");
+        assert!(target[0].to_string().contains("invalid_utf8.rq"));
+    }
 
     #[test]
     fn check_source_accepts_clean_request() {
@@ -2203,5 +2410,244 @@ mod prepare_request_tests {
         ));
         let target = content_type_of(request);
         assert_eq!(target, Some("application/merge-patch+json".to_string()));
+    }
+}
+
+#[cfg(test)]
+mod parse_cli_variables_tests {
+    use super::RqClient;
+    use crate::error::RqError;
+
+    fn parse(kv: &str) -> Result<Vec<crate::syntax::Variable>, RqError> {
+        RqClient::parse_cli_variables(&[kv.to_string()])
+    }
+
+    #[test]
+    fn a_name_value_pair_becomes_a_variable() {
+        let target = parse("token=abc=123").expect("parse failed");
+        assert_eq!(target[0].name, "token");
+    }
+
+    #[test]
+    fn a_variable_without_equals_is_rejected() {
+        let target = parse("token");
+        assert!(matches!(target, Err(RqError::Validation(_))));
+    }
+
+    #[test]
+    fn a_variable_with_an_empty_name_is_rejected() {
+        let target = parse(" =abc");
+        assert!(matches!(target, Err(RqError::Validation(_))));
+    }
+}
+
+#[cfg(all(test, feature = "native"))]
+mod navigation_tests {
+    use super::RqClient;
+
+    fn endpoint_names(source: &std::path::Path) -> Vec<String> {
+        RqClient::default()
+            .list_endpoints(source)
+            .expect("list_endpoints failed")
+            .into_iter()
+            .map(|entry| entry.name)
+            .collect()
+    }
+
+    #[test]
+    fn endpoint_with_a_body_is_not_a_template() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            dir.path().join("api.rq"),
+            "ep api(url: \"http://localhost\") {\n    rq get(\"/\");\n}\n",
+        )
+        .expect("api.rq");
+        let target = RqClient::default()
+            .list_endpoints(dir.path())
+            .expect("list_endpoints failed");
+        assert!(!target[0].is_template);
+    }
+
+    #[test]
+    fn endpoints_of_a_file_include_its_imports() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            dir.path().join("base.rq"),
+            "ep base(url: \"http://localhost\");\n",
+        )
+        .expect("base.rq");
+        std::fs::write(dir.path().join("main.rq"), "import \"base\";\n").expect("main.rq");
+        let target = endpoint_names(&dir.path().join("main.rq"));
+        assert_eq!(target, vec!["base".to_string()]);
+    }
+
+    #[test]
+    fn endpoints_of_a_file_exclude_files_it_does_not_import() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            dir.path().join("imported.rq"),
+            "ep imported_ep(url: \"http://localhost\");\n",
+        )
+        .expect("imported.rq");
+        std::fs::write(
+            dir.path().join("unrelated.rq"),
+            "ep unrelated_ep(url: \"http://other.localhost\");\n",
+        )
+        .expect("unrelated.rq");
+        std::fs::write(dir.path().join("main.rq"), "import \"imported\";\n").expect("main.rq");
+        let target = endpoint_names(&dir.path().join("main.rq"));
+        assert_eq!(target, vec!["imported_ep".to_string()]);
+    }
+
+    #[test]
+    fn variable_reference_points_at_the_variable_name() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("test.rq"), "rq get(\"{{base_url}}/v1\");\n")
+            .expect("test.rq");
+        let target = RqClient::default()
+            .list_variable_references(dir.path(), "base_url", None)
+            .expect("list_variable_references failed");
+        assert_eq!((target[0].line, target[0].character), (0, 10));
+    }
+
+    #[test]
+    fn variable_references_include_the_environment_declaration() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            dir.path().join("test.rq"),
+            "env local {\n    host: \"localhost\"\n}\n\nrq get(\"{{host}}/path\");\n",
+        )
+        .expect("test.rq");
+        let target = RqClient::default()
+            .list_variable_references(dir.path(), "host", None)
+            .expect("list_variable_references failed");
+        let lines: Vec<usize> = target.iter().map(|r| r.line).collect();
+        assert!(lines.contains(&1) && lines.contains(&4));
+    }
+
+    #[test]
+    fn endpoint_references_include_the_definition_and_its_children() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            dir.path().join("base.rq"),
+            "ep base(url: \"http://localhost\");\n",
+        )
+        .expect("base.rq");
+        std::fs::write(
+            dir.path().join("child.rq"),
+            "ep child<base>(url: \"http://localhost/child\") {\n    rq get(\"/\");\n}\n",
+        )
+        .expect("child.rq");
+        let target = RqClient::default()
+            .list_endpoint_references(dir.path(), "base", None)
+            .expect("list_endpoint_references failed");
+        let files: Vec<&str> = target.iter().map(|r| r.file.as_str()).collect();
+        assert!(files.iter().any(|f| f.ends_with("base.rq")));
+        assert!(files.iter().any(|f| f.ends_with("child.rq")));
+    }
+}
+
+#[cfg(all(test, feature = "native"))]
+mod variable_tests {
+    use super::RqClient;
+    use std::path::Path;
+
+    fn write(dir: &Path, file: &str, content: &str) {
+        std::fs::write(dir.join(file), content).expect("write fixture");
+    }
+
+    fn variable_names(source: &Path) -> Vec<String> {
+        RqClient::default()
+            .list_variables(source, None)
+            .expect("list_variables failed")
+            .into_iter()
+            .map(|entry| entry.name)
+            .collect()
+    }
+
+    #[test]
+    fn environment_value_takes_precedence_over_let() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write(
+            dir.path(),
+            "test.rq",
+            "let host = \"file-level\";\n\nenv dev {\n    host: \"env-level\"\n}\n",
+        );
+        let target = RqClient::default()
+            .get_variable(dir.path(), "host", Some("dev"), true, None)
+            .expect("get_variable failed");
+        assert_eq!(
+            (target.value.as_str(), target.source.as_str()),
+            ("env-level", "env:dev")
+        );
+    }
+
+    #[test]
+    fn unresolved_reference_fails_when_interpolating() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write(
+            dir.path(),
+            "test.rq",
+            "let api_url = \"{{base_url}}/v1\";\n",
+        );
+        let target = RqClient::default().get_variable(dir.path(), "api_url", None, true, None);
+        assert!(target.is_err_and(|e| e.to_string().contains("Unresolved variable")));
+    }
+
+    #[test]
+    fn unresolved_reference_is_kept_without_interpolation() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write(
+            dir.path(),
+            "test.rq",
+            "let api_url = \"{{base_url}}/v1\";\n",
+        );
+        let target = RqClient::default()
+            .get_variable(dir.path(), "api_url", None, false, None)
+            .expect("get_variable failed");
+        assert!(target.value.contains("{{base_url}}"));
+    }
+
+    #[test]
+    fn variables_of_a_file_include_its_imports() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write(
+            dir.path(),
+            "shared.rq",
+            "let shared_url = \"http://shared.localhost\";\n",
+        );
+        write(dir.path(), "main.rq", "import \"shared\";\n");
+        let target = variable_names(&dir.path().join("main.rq"));
+        assert_eq!(target, vec!["shared_url".to_string()]);
+    }
+
+    #[test]
+    fn variables_of_a_file_exclude_files_it_does_not_import() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write(
+            dir.path(),
+            "imported.rq",
+            "let imported_url = \"http://imported\";\n",
+        );
+        write(
+            dir.path(),
+            "unrelated.rq",
+            "let unrelated_url = \"http://unrelated\";\n",
+        );
+        write(dir.path(), "main.rq", "import \"imported\";\n");
+        let target = variable_names(&dir.path().join("main.rq"));
+        assert_eq!(target, vec!["imported_url".to_string()]);
+    }
+
+    #[test]
+    fn variables_before_a_syntax_error_are_still_listed() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write(
+            dir.path(),
+            "partial.rq",
+            "let base_url = \"http://localhost\";\nlet b =\n",
+        );
+        let target = variable_names(dir.path());
+        assert!(target.contains(&"base_url".to_string()));
     }
 }

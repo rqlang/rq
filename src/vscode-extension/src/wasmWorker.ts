@@ -20,6 +20,11 @@ function getWasm(): WasmModule {
     return wasm;
 }
 
+function takeLogs(): string {
+    const take = getWasm()['take_debug_logs'];
+    return typeof take === 'function' ? String(take()) : '';
+}
+
 if (!parentPort) {
     throw new Error('wasmWorker must be run as a worker_threads worker');
 }
@@ -35,9 +40,9 @@ port.on('message', async (message: RequestMessage) => {
         }
         const raw = fn(...args);
         const result = raw instanceof Promise ? await raw : raw;
-        port.postMessage({ id, result });
+        port.postMessage({ id, result, logs: takeLogs() });
     } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        port.postMessage({ id, error: message });
+        port.postMessage({ id, error: message, logs: takeLogs() });
     }
 });

@@ -24,14 +24,11 @@ fn test_request_show_bearer() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    if !stdout.contains("Request: simple_auth") {
+    if !stdout.contains("name: simple_auth") {
         return Err("Output missing request name".into());
     }
-    if !stdout.contains("name: test_auth") {
+    if !stdout.contains("auth: test_auth (bearer)") {
         return Err("Output missing auth name".into());
-    }
-    if !stdout.contains("type: bearer") {
-        return Err("Output missing auth type".into());
     }
 
     Ok(())
@@ -59,14 +56,11 @@ fn test_request_show_oauth2() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    if !stdout.contains("Request: test_request_oauth2_fallback") {
+    if !stdout.contains("name: test_request_oauth2_fallback") {
         return Err("Output missing request name".into());
     }
-    if !stdout.contains("name: api_oauth") {
+    if !stdout.contains("auth: api_oauth (oauth2_authorization_code)") {
         return Err("Output missing auth name".into());
-    }
-    if !stdout.contains("type: oauth2_authorization_code") {
-        return Err("Output missing OAuth2 auth type".into());
     }
 
     Ok(())
@@ -94,10 +88,10 @@ fn test_request_show_no_auth() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    if !stdout.contains("Request: basic") {
+    if !stdout.contains("name: basic") {
         return Err("Output missing request name".into());
     }
-    if stdout.contains("Auth") {
+    if stdout.lines().any(|line| line.starts_with("auth:")) {
         return Err("Output should show no auth".into());
     }
 
@@ -130,10 +124,10 @@ fn test_request_show_json() -> Result<(), Box<dyn std::error::Error>> {
     let stdout = String::from_utf8_lossy(&output.stdout);
     let json: Value = serde_json::from_str(&stdout)?;
 
-    if json.get("Request").and_then(|v| v.as_str()) != Some("simple_auth") {
+    if json.get("name").and_then(|v| v.as_str()) != Some("simple_auth") {
         return Err("JSON missing or incorrect 'name' field".into());
     }
-    let auth = json.get("Auth").ok_or("JSON missing 'auth' field")?;
+    let auth = json.get("auth").ok_or("JSON missing 'auth' field")?;
     if auth.get("name").and_then(|v| v.as_str()) != Some("test_auth") {
         return Err("JSON auth missing or incorrect 'name' field".into());
     }
@@ -143,11 +137,11 @@ fn test_request_show_json() -> Result<(), Box<dyn std::error::Error>> {
     if json.get("file").and_then(|v| v.as_str()).is_none() {
         return Err("JSON missing 'file' field".into());
     }
-    if json.get("line").and_then(|v| v.as_u64()) != Some(6) {
-        return Err(format!("Expected line 6, got: {json}").into());
+    if json.get("line").and_then(|v| v.as_u64()) != Some(7) {
+        return Err(format!("Expected line 7, got: {json}").into());
     }
-    if json.get("character").and_then(|v| v.as_u64()) != Some(3) {
-        return Err(format!("Expected character 3, got: {json}").into());
+    if json.get("column").and_then(|v| v.as_u64()) != Some(4) {
+        return Err(format!("Expected column 4, got: {json}").into());
     }
 
     Ok(())
@@ -175,14 +169,11 @@ fn test_request_show_auth_bare_identifier() -> Result<(), Box<dyn std::error::Er
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    if !stdout.contains("Request: auth_bare_identifier") {
+    if !stdout.contains("name: auth_bare_identifier") {
         return Err("Output missing request name".into());
     }
-    if !stdout.contains("name: test_auth") {
+    if !stdout.contains("auth: test_auth (bearer)") {
         return Err("Output missing auth name".into());
-    }
-    if !stdout.contains("type: bearer") {
-        return Err("Output missing auth type".into());
     }
 
     Ok(())
@@ -278,20 +269,17 @@ fn test_request_show_resolved_variables() -> Result<(), Box<dyn std::error::Erro
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    if !stdout.contains("Request: my_request") {
+    if !stdout.contains("name: my_request") {
         return Err("Output missing request name".into());
     }
-    if !stdout.contains("URL: https://api.example.com/resource") {
+    if !stdout.contains("url: https://api.example.com/resource") {
         // Handle output format differences if any
         if !stdout.contains("api.example.com") {
             return Err("Output missing resolved URL part".into());
         }
     }
-    if !stdout.contains("name: my_oauth") {
+    if !stdout.contains("auth: my_oauth (oauth2_implicit)") {
         return Err("Output missing auth name".into());
-    }
-    if !stdout.contains("type: oauth2_implicit") {
-        return Err("Output missing auth type".into());
     }
 
     Ok(())
@@ -319,8 +307,8 @@ fn test_request_show_ep_dot_notation() -> Result<(), Box<dyn std::error::Error>>
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    if !stdout.contains("Request: api/get") {
-        return Err(format!("Output missing 'Request: api/get', got: {stdout}").into());
+    if !stdout.contains("name: api/get") {
+        return Err(format!("Output missing 'name: api/get', got: {stdout}").into());
     }
 
     Ok(())
@@ -407,7 +395,7 @@ fn test_request_show_unresolved_no_var_interpolation() -> Result<(), Box<dyn std
     let json: Value = serde_json::from_str(&stdout)?;
 
     let url = json
-        .get("URL")
+        .get("url")
         .and_then(|v| v.as_str())
         .ok_or("Missing 'URL' field")?;
 
@@ -442,7 +430,7 @@ fn test_request_show_timeout_text() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    if !stdout.contains("Timeout: 10") {
+    if !stdout.contains("timeout: 10") {
         return Err(format!("Output missing timeout, got: {stdout}").into());
     }
 
@@ -475,7 +463,7 @@ fn test_request_show_timeout_json() -> Result<(), Box<dyn std::error::Error>> {
     let stdout = String::from_utf8_lossy(&output.stdout);
     let json: serde_json::Value = serde_json::from_str(&stdout)?;
 
-    if json.get("Timeout").and_then(|v| v.as_str()) != Some("10") {
+    if json.get("timeout").and_then(|v| v.as_str()) != Some("10") {
         return Err(format!("Expected Timeout '10', got: {json}").into());
     }
 
@@ -508,26 +496,26 @@ fn test_request_show_resolved_variables_json() -> Result<(), Box<dyn std::error:
     let stdout = String::from_utf8_lossy(&output.stdout);
     let json: Value = serde_json::from_str(&stdout)?;
 
-    if json["URL"] != "https://api.example.com/resource" {
+    if json["url"] != "https://api.example.com/resource" {
         return Err(format!(
             "Expected URL 'https://api.example.com/resource', got '{}'",
-            json["URL"]
+            json["url"]
         )
         .into());
     }
 
-    if json["Auth"]["name"] != "my_oauth" {
+    if json["auth"]["name"] != "my_oauth" {
         return Err(format!(
             "Expected Auth name 'my_oauth', got '{}'",
-            json["Auth"]["name"]
+            json["auth"]["name"]
         )
         .into());
     }
 
-    if json["Auth"]["type"] != "oauth2_implicit" {
+    if json["auth"]["type"] != "oauth2_implicit" {
         return Err(format!(
             "Expected Auth type 'oauth2_implicit', got '{}'",
-            json["Auth"]["type"]
+            json["auth"]["type"]
         )
         .into());
     }
@@ -604,6 +592,53 @@ rq my_request("http://localhost:8080/resource");
             String::from_utf8_lossy(&output.stderr)
         )
         .into());
+    }
+
+    Ok(())
+}
+
+#[test]
+fn test_request_show_unresolved_variable_is_syntax_error() -> Result<(), Box<dyn std::error::Error>>
+{
+    let temp_dir = std::env::temp_dir().join(format!(
+        "rq_test_request_show_unresolved_{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&temp_dir)?;
+    let file = temp_dir.join("test.rq");
+    std::fs::write(&file, "rq get(\"http://localhost/{{missing}}\");\n")?;
+
+    let output = rq_cmd()
+        .args(["request", "show", "-s"])
+        .arg(&file)
+        .args(["-n", "get", "-o", "json"])
+        .output()?;
+    std::fs::remove_dir_all(&temp_dir).ok();
+
+    let error: serde_json::Value = serde_json::from_slice(&output.stderr)?;
+    if output.status.code() != Some(2) || error["error"]["type"] != "syntax" {
+        return Err(format!("Unexpected result: {error}").into());
+    }
+
+    Ok(())
+}
+
+#[test]
+fn test_request_show_not_found_reports_typed_name() -> Result<(), Box<dyn std::error::Error>> {
+    let output = rq_cmd()
+        .args([
+            "request",
+            "show",
+            "-s",
+            "tests/request/run/input/endpoint.rq",
+            "-n",
+            "api.missing",
+        ])
+        .output()?;
+
+    let stderr = String::from_utf8(output.stderr)?;
+    if output.status.code() != Some(5) || stderr.trim() != "Error: Request not found: api.missing" {
+        return Err(format!("Unexpected result: {stderr}").into());
     }
 
     Ok(())

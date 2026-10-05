@@ -1,35 +1,32 @@
-use crate::commands::shared::{EnvArgs, OutputArgs, SourceArgs};
-use crate::core::formatter::OutputFormat;
+use crate::commands::shared::{render_names, EnvArgs, Location, OutputArgs, SourceArgs};
+use crate::core::formatter::{render, TextBlock};
 use clap::{Args, Subcommand};
 use rq_lib::RqClient;
 use serde::Serialize;
-use std::{collections::HashMap, path::Path};
+use std::{collections::BTreeMap, path::Path};
 
 #[derive(Serialize)]
-pub struct AuthDetailsView {
-    #[serde(rename = "Auth Configuration")]
-    pub name: String,
-    #[serde(rename = "Type")]
-    pub auth_type: String,
-    #[serde(rename = "Environment", skip_serializing_if = "Option::is_none")]
-    pub environment: Option<String>,
-    #[serde(rename = "Fields")]
-    pub fields: HashMap<String, String>,
+struct AuthDetailsView {
+    name: String,
+    #[serde(rename = "type")]
+    auth_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    environment: Option<String>,
+    fields: BTreeMap<String, String>,
+    #[serde(flatten)]
+    location: Location,
 }
 
-#[derive(Serialize)]
-struct AuthDetailsJsonView {
-    #[serde(rename = "Auth Configuration")]
-    name: String,
-    #[serde(rename = "Type")]
-    auth_type: String,
-    #[serde(rename = "Environment", skip_serializing_if = "Option::is_none")]
-    environment: Option<String>,
-    #[serde(rename = "Fields")]
-    fields: HashMap<String, String>,
-    file: String,
-    line: usize,
-    character: usize,
+impl AuthDetailsView {
+    fn to_text(&self) -> String {
+        TextBlock::default()
+            .field("name", &self.name)
+            .field("type", &self.auth_type)
+            .optional("environment", self.environment.as_deref())
+            .map("fields", &self.fields)
+            .field("location", &self.location)
+            .build()
+    }
 }
 
 #[derive(Debug, Args)]
@@ -82,25 +79,16 @@ pub struct ShowArgs {
 pub fn execute_list(args: &ListArgs) -> Result<(), Box<dyn std::error::Error>> {
     let source_path = Path::new(&args.source.source);
     let auth_list = RqClient::default().list_auth(source_path)?;
-
-    match args.output.output {
-        OutputFormat::Json => {
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&auth_list).unwrap_or("[]".to_string())
-            );
-        }
-        OutputFormat::Text => {
-            if auth_list.is_empty() {
-                println!("No auth configurations found");
-            } else {
-                println!("Auth configurations found:");
-                for auth in auth_list {
-                    println!("- {} ({})", auth.name, auth.auth_type);
-                }
-            }
-        }
-    }
+    let names = auth_list.into_iter().map(|auth| auth.name).collect();
+    print!(
+        "{}",
+        render_names(
+            args.output.output,
+            names,
+            "Auth configurations found:",
+            "No auth configurations found"
+        )
+    );
 
     Ok(())
 }
@@ -108,41 +96,24 @@ pub fn execute_list(args: &ListArgs) -> Result<(), Box<dyn std::error::Error>> {
 pub fn execute_show(args: &ShowArgs) -> Result<(), Box<dyn std::error::Error>> {
     let source_path = Path::new(&args.source.source);
 
-    let (auth_name, auth_type_str, fields, file, line, character) = RqClient::default()
-        .get_auth_details(
-            source_path,
-            &args.name,
-            args.env_args.environment.as_deref(),
-            !args.no_var_interpolation,
-        )?;
+    let (name, auth_type, fields, file, line, character) = RqClient::default().get_auth_details(
+        source_path,
+        &args.name,
+        args.env_args.environment.as_deref(),
+        !args.no_var_interpolation,
+    )?;
 
-    match args.output.output {
-        OutputFormat::Json => {
-            let view = AuthDetailsJsonView {
-                name: auth_name,
-                auth_type: auth_type_str,
-                environment: args.env_args.environment.clone(),
-                fields,
-                file,
-                line,
-                character,
-            };
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&view).unwrap_or_default()
-            );
-        }
-        OutputFormat::Text => {
-            let formatter = crate::core::formatter::get_formatter(&args.output.output);
-            let view = AuthDetailsView {
-                name: auth_name,
-                auth_type: auth_type_str,
-                environment: args.env_args.environment.clone(),
-                fields,
-            };
-            print!("{}", formatter.format(&view));
-        }
-    }
+    let view = AuthDetailsView {
+        name,
+        auth_type,
+        environment: args.env_args.environment.clone(),
+        fields: fields.into_iter().collect(),
+        location: Location::from_zero_based(file, line, character),
+    };
+    print!(
+        "{}",
+        render(args.output.output, &view, AuthDetailsView::to_text)
+    );
 
     Ok(())
 }

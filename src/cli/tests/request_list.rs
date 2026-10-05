@@ -18,11 +18,8 @@ fn test_request_list_text() -> Result<(), Box<dyn std::error::Error>> {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
 
-    if !stdout.contains("name: basic") {
+    if !stdout.contains("- basic\n") {
         return Err("Output missing expected request 'basic'".into());
-    }
-    if !stdout.contains("file:") {
-        return Err("Output missing 'file:' entries".into());
     }
     if stdout.contains("items:") {
         return Err("Output should not contain 'items:' header".into());
@@ -65,8 +62,8 @@ fn test_request_list_json() -> Result<(), Box<dyn std::error::Error>> {
     if first.get("name").and_then(|v| v.as_str()).is_none() {
         return Err("Item missing 'name' field".into());
     }
-    if first.get("file").and_then(|v| v.as_str()).is_none() {
-        return Err("Item missing 'file' field".into());
+    if first.as_object().map(|item| item.len()) != Some(1) {
+        return Err(format!("Expected only a 'name' field, got: {first}").into());
     }
 
     Ok(())
@@ -88,10 +85,7 @@ fn test_request_list_endpoints() -> Result<(), Box<dyn std::error::Error>> {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
 
-    if !stdout.contains("endpoint: api") {
-        return Err("Output missing endpoint context 'endpoint: api'".into());
-    }
-    if !stdout.contains("name: api/get") {
+    if !stdout.contains("- api/get\n") {
         return Err("Output missing nested request 'api/get'".into());
     }
 
@@ -162,66 +156,45 @@ fn test_request_list_invalid_output() {
 }
 
 #[test]
-fn test_request_list_json_endpoint_location() -> Result<(), Box<dyn std::error::Error>> {
+fn test_request_list_json_endpoint_request_is_listed_by_full_name(
+) -> Result<(), Box<dyn std::error::Error>> {
     let output = rq_cmd()
         .args([
             "request",
             "list",
             "-s",
             "tests/request/run/input/endpoint.rq",
-            "--output",
+            "-o",
             "json",
         ])
         .output()?;
 
-    if !output.status.success() {
-        return Err(format!(
-            "Command failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        )
-        .into());
+    let json: Value = serde_json::from_slice(&output.stdout)?;
+    if json != serde_json::json!([{ "name": "api/get" }]) {
+        return Err(format!("Unexpected request list: {json}").into());
     }
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let json: Value = serde_json::from_str(&stdout)?;
-    let items = json.as_array().ok_or("Expected JSON array")?;
+    Ok(())
+}
 
-    let ep_request = items
-        .iter()
-        .find(|v| v["endpoint"].as_str().is_some())
-        .ok_or("No request with endpoint found")?;
+#[test]
+fn test_request_list_debug_traces_file_discovery() -> Result<(), Box<dyn std::error::Error>> {
+    let output = rq_cmd()
+        .args([
+            "request",
+            "list",
+            "-d",
+            "-s",
+            "tests/request/run/input/endpoint_inheritance/chain",
+        ])
+        .output()?;
 
-    if ep_request
-        .get("endpoint_file")
-        .and_then(|v| v.as_str())
-        .is_none()
+    let stderr = String::from_utf8(output.stderr)?;
+    if !stderr.contains("* Source: tests/request/run/input/endpoint_inheritance/chain (directory)")
+        || !stderr.contains("* Found 3 .rq file(s) in ")
+        || !stderr.contains("leaf.rq (imports: ")
     {
-        return Err("Item with endpoint missing 'endpoint_file' field".into());
-    }
-    if ep_request
-        .get("endpoint_line")
-        .and_then(|v| v.as_u64())
-        .is_none()
-    {
-        return Err("Item with endpoint missing 'endpoint_line' field".into());
-    }
-    if ep_request
-        .get("endpoint_character")
-        .and_then(|v| v.as_u64())
-        .is_none()
-    {
-        return Err("Item with endpoint missing 'endpoint_character' field".into());
-    }
-
-    let top_level = items.iter().find(|v| v["endpoint"].is_null());
-    if let Some(item) = top_level {
-        if item
-            .get("endpoint_file")
-            .map(|v| !v.is_null())
-            .unwrap_or(false)
-        {
-            return Err("Top-level request should not have endpoint_file".into());
-        }
+        return Err(format!("Unexpected debug trace: {stderr}").into());
     }
 
     Ok(())

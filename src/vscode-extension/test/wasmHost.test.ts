@@ -1,8 +1,9 @@
 const mockLint = jest.fn();
+const mockTakeDebugLogs = jest.fn().mockReturnValue('');
 
-jest.mock('../src/wasm/rq_wasm', () => ({ lint: mockLint }), { virtual: true });
+jest.mock('../src/wasm/rq_wasm', () => ({ lint: mockLint, take_debug_logs: mockTakeDebugLogs }), { virtual: true });
 
-import { setWasmTransport, wasmCall } from '../src/wasmHost';
+import { onWasmLogs, setWasmTransport, wasmCall } from '../src/wasmHost';
 
 describe('wasm transport selection', () => {
     beforeEach(() => jest.clearAllMocks());
@@ -23,6 +24,18 @@ describe('wasm transport selection', () => {
         await wasmCall('lint', ['{}', 'x', 'users.rq']);
 
         expect(mockLint).toHaveBeenCalled();
+    });
+
+    it('forwards the debug trace of a call to the log listener', async () => {
+        setWasmTransport('direct');
+        mockLint.mockReturnValue('{"ok":true,"diagnostics":[]}');
+        mockTakeDebugLogs.mockReturnValueOnce('* Parsed users.rq (no imports)');
+        const received: string[] = [];
+        onWasmLogs(logs => received.push(logs));
+
+        await wasmCall('lint', ['{}', 'x', 'users.rq']);
+
+        expect(received).toEqual(['* Parsed users.rq (no imports)']);
     });
 
     it('surfaces wasm failures as rejections', async () => {

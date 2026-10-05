@@ -16,11 +16,50 @@ At a high level:
 - `rq request` manages requests (list, show, run).
 - `rq env` lists and inspects environments found in `.rq` files.
 - `rq auth` lists and inspects auth providers.
-- `rq ep` lists and inspects endpoints.
-- `rq var` lists and inspects variables.
 - `rq check` validates `.rq` files without executing requests.
 
-All subcommands accept a global `-d, --debug` flag to enable debug logging.
+All subcommands accept a global `-d, --debug` flag that writes a diagnostic trace to stderr (see [Debug logging](#debug-logging)).
+
+### Debug logging
+
+Every command accepts `-d, --debug`. It writes a trace to stderr, in the style of `curl -v`, while stdout keeps the normal output. Each line starts with the time elapsed since rq started:
+
+```text
+[     5ms] * rq 0.7.0 (macos aarch64)
+[     6ms] * Command: rq request run -s api -e local -v token=***
+[     6ms] * Working directory: /Users/ana/project
+[     6ms] * Source: api (directory)
+[     7ms] * Found 3 .rq file(s) in api
+[    20ms] * Parsed /Users/ana/project/api/users.rq (imports: /Users/ana/project/api/_shared.rq)
+[    21ms] * Environment 'local' for /Users/ana/project/api/users.rq: base_url, api_key
+[    21ms] * Secrets from api/.env: api_key
+[    21ms] * Secrets from RQ__ environment variables: none
+[    22ms] * Running 1 request(s) from /Users/ana/project/api/users.rq
+[    22ms] * Variable base_url from env:local
+[    22ms] * Variable token from cli
+[    23ms] * Applying auth 'tok' (bearer)
+[    23ms] > POST http://localhost:8080/users
+[    23ms] > authorization: ***
+[    29ms] < 201 Created (6 ms)
+[    29ms] < content-type: application/json
+[    30ms] * Finished with exit code 0
+```
+
+- Lines starting with `*` describe what rq is doing: which files it found and parsed, which environment and secret sources it used, where each variable used by a request comes from (`cli`, `request`, `endpoint`, `secret`, `env:<name>` or `let`), OAuth2 token requests, and the `check` summary.
+- Lines starting with `>` show the request exactly as it is sent, after variables and auth are resolved, and lines starting with `<` show the response status and headers.
+- The last line reports the exit code and, when the command fails, the error.
+
+Secret values never appear in the trace. Secrets and variables are listed by name, `-v` values in the command line are shown as `NAME=***`, header values whose name contains `authorization`, `cookie`, `token`, `secret`, `key` or `password` are masked, and so are body fields whose key contains a secret marker.
+
+### Reporting a bug
+
+Run the failing command again with `-d` and save the trace to a file:
+
+```bash
+rq request run -s api -e local -d 2> rq-debug.log
+```
+
+Attach `rq-debug.log` to the issue. It already includes the rq version, the platform and the exact command. Secret values are masked, but review the file before sharing it, since URLs, file paths and non-secret values are kept as they are.
 
 ## Global usage
 
@@ -33,8 +72,6 @@ Commands:
 - `env` – Manage environments.
 - `auth` – Manage authentication.
 - `request` – Manage requests.
-- `ep` – Manage endpoints.
-- `var` – Manage variables.
 - `check` – Validate `.rq` files.
 
 If you call `rq` without a subcommand, it behaves like `rq request run` with the same arguments.
@@ -79,8 +116,8 @@ Options:
 
 Behavior:
 
-- In `text` mode, prints a human-readable list with entries like `name: basic`, `file: tests/request/run/input/basic.rq`.
-- In `json` mode, prints a JSON array; each item contains at least `name` and `file`, and requests defined inside endpoints include endpoint context (for example `endpoint: api`, `name: api/get`).
+- In `text` mode, prints `Requests found:` followed by request names (for example `- basic`, `- users/list`), or `No requests found`.
+- In `json` mode, prints a JSON array of objects with a single `name` field (for example `{"name": "users/list"}`). Use `rq request show` for the details of a request.
 
 Example:
 
@@ -108,8 +145,8 @@ Options:
 Behavior:
 
 - Resolves the specified request (including endpoint context if applicable).
-- In `text` mode, prints fields like URL, method, headers, optional body, and associated auth provider.
-- In `json` mode, prints a JSON object containing `Request`, `URL`, `Method`, `Headers`, optional `Body`, and optional `Auth` metadata.
+- In `text` mode, prints `name`, `method`, `url`, `headers`, the optional `body`, `timeout` and `auth` (as `name (type)`), and `location` as `file:line:column`.
+- In `json` mode, prints the same fields as an object: `name`, `method`, `url`, `headers`, optional `body`, `timeout` and `auth` (`{"name", "type"}`), plus `file`, `line` and `column`.
 
 Example:
 
@@ -129,7 +166,7 @@ rq request run [OPTIONS]
 Options:
 
 - `-s, --source <SOURCE>` – Path to the `.rq` file or directory (default: `.`).
-- `-n, --name <NAME>` – Name of the request to run. If omitted and multiple requests exist, the CLI will usually fail and ask you to be explicit. If the request is defined inside an endpoint, use `<endpoint>/<request>` or `<endpoint>.<request>` (for example `users/list` or `users.list`).
+- `-n, --name <NAME>` – Name of the request to run. If omitted, every request in the source runs. If the request is defined inside an endpoint, use `<endpoint>/<request>` or `<endpoint>.<request>` (for example `users/list` or `users.list`).
 - `-e, --env <ENVIRONMENT>` – Environment name.
 - `-v, --variable <NAME=VALUE>` – Override variables at runtime (can be provided multiple times).
 - `-o, --output <OUTPUT>` – Output format: `text` or `json` (default: `text`).
@@ -137,7 +174,16 @@ Options:
 Behavior:
 
 - Uses the same variable precedence described in the language definition, with `-v NAME=VALUE` providing the highest-precedence overrides.
-- In `text` mode, prints the HTTP status and a formatted view of the response.
+- In `text` mode, prints one block per request: a line with the request name, method and URL, a status line with the reason phrase and elapsed time, and the response body. JSON bodies are indented without reordering their keys. Response headers are shown only with `-d`:
+
+  ```text
+  basic  GET http://localhost:8080/get
+  200 OK · 5 ms
+
+  {
+    "status": "ok"
+  }
+  ```
 - In `json` mode, prints a JSON structure with the full execution result(s), including response status, headers, body, and elapsed time in milliseconds.
 
 Examples:
@@ -185,7 +231,6 @@ rq env [OPTIONS] <COMMAND>
 Commands:
 
 - `list` – List environments.
-- `show` – Show environment details.
 
 ### `rq env list`
 
@@ -204,7 +249,7 @@ Behavior:
 
 - Recursively scans the given path for `.rq` files and collects all environment names (from `env <name> { ... }` blocks).
 - In `text` mode, prints a short list prefixed with `Environments found:` or a message like `No environments found` for empty results.
-- In `json` mode, prints a JSON array of environment names.
+- In `json` mode, prints a JSON array of objects with a single `name` field.
 
 Examples:
 
@@ -220,28 +265,6 @@ rq env list
 Error handling:
 
 - A non-existent `--source` path causes the command to exit with code `2` and an error mentioning `Path does not exist`.
-
-### `rq env show`
-
-Show details for a single environment.
-
-```bash
-rq env show [OPTIONS] --name <NAME>
-```
-
-Options:
-
-- `-s, --source <SOURCE>` – Path to the `.rq` file or directory (default: `.`).
-- `-n, --name <NAME>` – Name of the environment to show (required).
-- `--no-var-interpolation` – Skip variable interpolation and show raw values.
-- `-o, --output <OUTPUT>` – Output format: `text` or `json` (default: `text`).
-
-Examples:
-
-```bash
-rq env show -s tests/env/list/input/simple.rq -n local
-rq env show -s tests/env/list/input/simple.rq -n local -o json
-```
 
 ## Managing auth providers: `rq auth`
 
@@ -273,8 +296,8 @@ Options:
 
 Behavior:
 
-- In `text` mode, prints a list of auth provider names (for example `bearer_auth`, `github_oauth`).
-- In `json` mode, prints a JSON array of provider names.
+- In `text` mode, prints `Auth configurations found:` followed by provider names (for example `- bearer_auth`), or `No auth configurations found`.
+- In `json` mode, prints a JSON array of objects with a single `name` field. Use `rq auth show` for the type and fields of a provider.
 - For empty directories, prints `No auth configurations found`.
 
 Examples:
@@ -303,14 +326,15 @@ Behavior:
 
 - Resolves the auth provider (e.g. `bearer_auth`, `github_oauth`) and shows its type and fields.
 - In `text` mode, prints a human-readable summary like:
-	- `Auth Configuration: bearer_auth`
-	- `Type: bearer`
+	- `name: bearer_auth`
+	- `type: bearer`
 	- `token: ...`
 - In `json` mode, prints an object with keys:
-	- `Auth Configuration` – Provider name.
-	- `Type` – Provider type (`bearer`, `oauth2_authorization_code`, etc.).
-	- `Environment` – Optional, when `-e/--env` is provided.
-	- `Fields` – Map of field names to values (for example `client_id`, `authorization_url`, `token_url`).
+	- `name` – Provider name.
+	- `type` – Provider type (`bearer`, `oauth2_authorization_code`, etc.).
+	- `environment` – Optional, when `-e/--env` is provided.
+	- `fields` – Map of field names to values (for example `client_id`, `authorization_url`, `token_url`).
+	- `file`, `line`, `column` – Where the provider is declared.
 
 Examples:
 
@@ -324,184 +348,6 @@ Error handling:
 
 - If the named auth provider does not exist, the command fails with an error mentioning that the auth configuration was not found.
 
-## Managing endpoints: `rq ep`
-
-The `ep` subcommand lets you discover and inspect endpoints defined in `.rq` files.
-
-```bash
-rq ep [OPTIONS] <COMMAND>
-```
-
-Commands:
-
-- `list` – List endpoints.
-- `show` – Show endpoint details.
-- `refs` – Find all references to an endpoint.
-
-All `rq ep` commands accept `-d, --debug`.
-
-### `rq ep list`
-
-List all endpoints discovered under a file or directory.
-
-```bash
-rq ep list [OPTIONS]
-```
-
-Options:
-
-- `-s, --source <SOURCE>` – Path to the `.rq` file or directory (default: `.`).
-- `-o, --output <OUTPUT>` – Output format: `text` or `json` (default: `text`).
-
-Behavior:
-
-- In `text` mode, prints `Endpoints found:` followed by endpoint names, or `No endpoints found in .rq files`.
-- In `json` mode, prints a JSON array of endpoint entries.
-
-Examples:
-
-```bash
-rq ep list -s src/
-rq ep list -s src/ -o json
-```
-
-### `rq ep show`
-
-Show details for a single endpoint.
-
-```bash
-rq ep show [OPTIONS] --name <NAME>
-```
-
-Options:
-
-- `-s, --source <SOURCE>` – Path to the `.rq` file or directory (default: `.`).
-- `-n, --name <NAME>` – Name of the endpoint to show (required).
-- `--no-var-interpolation` – Skip variable interpolation and show raw values.
-- `-o, --output <OUTPUT>` – Output format: `text` or `json` (default: `text`).
-
-Examples:
-
-```bash
-rq ep show -n users
-rq ep show -n users -o json
-```
-
-### `rq ep refs`
-
-Find all references to an endpoint across `.rq` files.
-
-```bash
-rq ep refs [OPTIONS] --name <NAME>
-```
-
-Options:
-
-- `-s, --source <SOURCE>` – Path to the `.rq` file or directory (default: `.`).
-- `-n, --name <NAME>` – Name of the endpoint to find references for (required).
-- `-o, --output <OUTPUT>` – Output format: `text` or `json` (default: `text`).
-
-Behavior:
-
-- Prints `References found:` followed by locations, or `No references found`.
-
-Examples:
-
-```bash
-rq ep refs -n users
-rq ep refs -n users -o json
-```
-
-## Managing variables: `rq var`
-
-The `var` subcommand lets you discover and inspect variables defined in `.rq` files.
-
-```bash
-rq var [OPTIONS] <COMMAND>
-```
-
-Commands:
-
-- `list` – List variables.
-- `show` – Show variable details.
-- `refs` – Find all references to a variable.
-
-All `rq var` commands accept `-d, --debug`.
-
-### `rq var list`
-
-List all variables discovered under a file or directory.
-
-```bash
-rq var list [OPTIONS]
-```
-
-Options:
-
-- `-s, --source <SOURCE>` – Path to the `.rq` file or directory (default: `.`).
-- `-e, --env <ENVIRONMENT>` – Environment name to filter environment-specific variables.
-- `-o, --output <OUTPUT>` – Output format: `text` or `json` (default: `text`).
-
-Behavior:
-
-- In `text` mode, prints `Variables found:` followed by variable names, or `No variables found in .rq files`.
-- In `json` mode, prints a JSON array of variable entries.
-
-Examples:
-
-```bash
-rq var list -s src/
-rq var list -s src/ -e local -o json
-```
-
-### `rq var show`
-
-Show details for a single variable.
-
-```bash
-rq var show [OPTIONS] --name <NAME>
-```
-
-Options:
-
-- `-s, --source <SOURCE>` – Path to the `.rq` file or directory (default: `.`).
-- `-n, --name <NAME>` – Name of the variable to show (required).
-- `-e, --env <ENVIRONMENT>` – Environment name to resolve environment-specific values.
-- `--no-var-interpolation` – Skip variable interpolation and show raw values.
-- `-o, --output <OUTPUT>` – Output format: `text` or `json` (default: `text`).
-
-Examples:
-
-```bash
-rq var show -n base_url
-rq var show -n base_url -e local -o json
-```
-
-### `rq var refs`
-
-Find all references to a variable across `.rq` files.
-
-```bash
-rq var refs [OPTIONS] --name <NAME>
-```
-
-Options:
-
-- `-s, --source <SOURCE>` – Path to the `.rq` file or directory (default: `.`).
-- `-n, --name <NAME>` – Name of the variable to find references for (required).
-- `-o, --output <OUTPUT>` – Output format: `text` or `json` (default: `text`).
-
-Behavior:
-
-- Prints `References found:` followed by locations, or `No references found`.
-
-Examples:
-
-```bash
-rq var refs -n base_url
-rq var refs -n base_url -o json
-```
-
 ## Validating files: `rq check`
 
 Parse and validate `.rq` files without executing any requests.
@@ -514,12 +360,13 @@ Options:
 
 - `-s, --source <SOURCE>` – Path to the `.rq` file or directory (default: `.`).
 - `-e, --env <ENVIRONMENT>` – Environment name to use for variable resolution.
+- `-o, --output <OUTPUT>` – Output format: `text` (default) or `json`.
 
 Behavior:
 
-- Always outputs JSON with a single `errors` array.
-- Each error entry contains `file`, `line`, `column`, and `message`.
-- If no errors are found, `errors` is an empty array.
+- In `text` mode, prints one line per error as `file:line:column: message`, followed by the error count, or `No errors found`.
+- In `json` mode, outputs a single `errors` array. Each entry contains `message` and, when known, `file`, `line` and `column`.
+- Errors that are not tied to a position (for example, a file that cannot be read) are reported with their message only.
 - Exits with code `1` if any errors are found; exits with code `0` on success.
 
 Example:
@@ -527,9 +374,18 @@ Example:
 ```bash
 rq check -s src/
 rq check -s src/api.rq -e local
+rq check -s src/ -o json
 ```
 
-Example output (no errors):
+Example output (text):
+
+```text
+src/api.rq:5:3: unexpected token
+
+1 error found
+```
+
+Example output (json, no errors):
 
 ```json
 {
@@ -537,7 +393,7 @@ Example output (no errors):
 }
 ```
 
-Example output (with errors):
+Example output (json, with errors):
 
 ```json
 {
@@ -554,7 +410,7 @@ Example output (with errors):
 
 ## Output formats
 
-Across all commands, the `-o, --output` flag controls how results are printed (except `rq check`, which always outputs JSON):
+Across all commands, the `-o, --output` flag controls how results are printed:
 
 - `text` – Human-readable, stable but meant for terminals.
 - `json` – Machine-readable, designed for scripting and automated checks.
@@ -562,3 +418,15 @@ Across all commands, the `-o, --output` flag controls how results are printed (e
 The value is case-insensitive, so `--output json` and `--output JSON` are equivalent. Invalid values cause a clear clap error indicating the allowed values.
 
 When integrating rq into other tools or CI, prefer `--output json` so you can parse responses reliably.
+
+### JSON conventions
+
+Every command follows the same rules in `json` mode:
+
+- Keys are `snake_case`.
+- `list` commands return only names, as an array of `{"name": ...}` objects; `show` commands return the full detail of one item. Both output modes carry the same content.
+- Source locations are reported as `file`, `line` and `column`. `file` is an absolute path, and `line` and `column` start at 1, so `file:line:column` points at the same place an editor shows.
+- Optional fields are omitted when they have no value, instead of being printed as `null`.
+- Results go to stdout and always end with a newline.
+- Errors go to stderr as `{"error": {"type": ..., "message": ..., "file": ..., "line": ..., "column": ...}}`, where the location fields are present only when known.
+- Warnings that do not stop the command (for example, a file that fails to parse while listing a directory) go to stderr with the same shape under a `warning` key.

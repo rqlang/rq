@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
 import { RequestExplorerProvider } from './requestExplorer';
 import { ConfigurationExplorerProvider } from './configurationExplorer';
-import { initWasmHost, disposeWasmHost } from './wasmHost';
+import { initWasmHost, disposeWasmHost, onWasmLogs } from './wasmHost';
+import * as rqClient from './rqClient';
 import { completionProvider, setEnvironmentProvider as setCompletionEnvironmentProvider } from './language/completionProvider';
 import { insideArrayLiteral } from './language/completionHelpers';
 import { hoverProvider, setEnvironmentProvider as setHoverEnvironmentProvider } from './language/hoverProvider';
@@ -31,6 +32,7 @@ export function activate(context: vscode.ExtensionContext) {
 
     const rqOutputChannel = vscode.window.createOutputChannel('RQ');
     context.subscriptions.push(rqOutputChannel);
+    registerLibraryDebugLogging(context, rqOutputChannel);
 
     registerAuthUriHandler(context);
     registerMcpServer(context);
@@ -140,6 +142,22 @@ export function activate(context: vscode.ExtensionContext) {
     });
 
     context.subscriptions.push(completionProvider, hoverProvider, definitionProvider, referenceProvider, renameProvider, signatureHelpProvider, formattingProvider, codeActionProvider, headerArrayNewlineTrigger, validationOnChange, validationOnSave, validationOnOpen);
+}
+
+function registerLibraryDebugLogging(context: vscode.ExtensionContext, outputChannel: vscode.OutputChannel): void {
+    onWasmLogs(logs => {
+        for (const line of logs.split('\n')) {
+            outputChannel.appendLine(`[rq] ${line}`);
+        }
+    });
+    const applySetting = () => {
+        const enabled = vscode.workspace.getConfiguration('rq').get<boolean>('debugLogging', false);
+        rqClient.setDebugLogging(enabled).catch(err => console.error('setDebugLogging failed', err));
+    };
+    applySetting();
+    context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(event => {
+        if (event.affectsConfiguration('rq.debugLogging')) { applySetting(); }
+    }));
 }
 
 

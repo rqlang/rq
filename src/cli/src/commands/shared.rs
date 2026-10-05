@@ -1,10 +1,8 @@
 use crate::commands::validators;
 use crate::core::error::{warning_to_json, RqError};
-use crate::core::formatter::{render, OutputFormat};
+use crate::core::formatter::OutputFormat;
 use clap::Args;
-use rq_lib::client::models::ReferenceLocation;
 use serde::Serialize;
-use std::path::PathBuf;
 
 #[derive(Debug, Args)]
 pub struct OutputArgs {
@@ -66,19 +64,6 @@ impl Location {
     }
 }
 
-pub fn render_references(references: Vec<ReferenceLocation>, output: OutputFormat) -> String {
-    let locations: Vec<Location> = references
-        .into_iter()
-        .map(|r| Location::from_zero_based(r.file, r.line, r.character))
-        .collect();
-    render(output, &locations, |locations| {
-        if locations.is_empty() {
-            return "No references found\n".to_string();
-        }
-        locations.iter().map(|l| format!("{l}\n")).collect()
-    })
-}
-
 pub fn print_warnings(warnings: &[RqError], output: OutputFormat) {
     for warning in warnings {
         match output {
@@ -86,10 +71,4 @@ pub fn print_warnings(warnings: &[RqError], output: OutputFormat) {
             OutputFormat::Text => eprintln!("Warning: {warning}"),
         }
     }
-}
-
-pub fn absolute_source(source: &str) -> PathBuf {
-    std::fs::canonicalize(source)
-        .map(|path| PathBuf::from(rq_lib::paths::clean_path(&path)))
-        .unwrap_or_else(|_| PathBuf::from(source))
 }

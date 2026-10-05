@@ -1,6 +1,4 @@
-use crate::commands::shared::{
-    absolute_source, render_references, EnvArgs, Location, OutputArgs, SourceArgs,
-};
+use crate::commands::shared::{EnvArgs, Location, OutputArgs, SourceArgs};
 use crate::commands::validators;
 use crate::core::formatter::{render, render_list, to_json, OutputFormat, TextBlock};
 use clap::{Args, Subcommand};
@@ -22,8 +20,6 @@ pub enum VarSubcommand {
     List(ListArgs),
     #[command(about = "Show variable location")]
     Show(ShowArgs),
-    #[command(about = "Find all references to a variable")]
-    Refs(RefsArgs),
 }
 
 #[derive(Args)]
@@ -56,23 +52,6 @@ pub struct ShowArgs {
 
     #[arg(long = "no-var-interpolation", help = "Skip variable interpolation")]
     pub no_var_interpolation: bool,
-
-    #[command(flatten)]
-    pub output: OutputArgs,
-}
-
-#[derive(Args)]
-pub struct RefsArgs {
-    #[command(flatten)]
-    pub source: SourceArgs,
-
-    #[arg(
-        short = 'n',
-        long = "name",
-        help = "Name of the variable to find references for",
-        value_parser = validators::validate_name
-    )]
-    pub name: String,
 
     #[command(flatten)]
     pub output: OutputArgs,
@@ -147,12 +126,5 @@ pub fn execute_show(args: &ShowArgs) -> Result<(), Box<dyn std::error::Error>> {
         "{}",
         render(args.output.output, &view, VariableView::to_text)
     );
-    Ok(())
-}
-
-pub fn execute_refs(args: &RefsArgs) -> Result<(), Box<dyn std::error::Error>> {
-    let path = absolute_source(&args.source.source);
-    let refs = RqClient::default().list_variable_references(&path, &args.name, None)?;
-    print!("{}", render_references(refs, args.output.output));
     Ok(())
 }

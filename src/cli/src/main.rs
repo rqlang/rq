@@ -68,7 +68,6 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         && (args[1] == "env"
             || args[1] == "auth"
             || args[1] == "check"
-            || args[1] == "ep"
             || args[1] == "request"
             || args[1] == "var"
             || args[1] == "help");
@@ -82,9 +81,6 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 commands::env::EnvSubcommand::List(list_args) => {
                     commands::env::execute_list(&list_args)
                 }
-                commands::env::EnvSubcommand::Show(show_args) => {
-                    commands::env::execute_show(&show_args)
-                }
             },
             Some(Commands::Auth(auth_command)) => match auth_command.command {
                 commands::auth::AuthSubcommand::List(list_args) => {
@@ -94,26 +90,12 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                     commands::auth::execute_show(&show_args)
                 }
             },
-            Some(Commands::Ep(ep_command)) => match ep_command.command {
-                commands::ep::EpSubcommand::List(list_args) => {
-                    commands::ep::execute_list(&list_args)
-                }
-                commands::ep::EpSubcommand::Show(show_args) => {
-                    commands::ep::execute_show(&show_args)
-                }
-                commands::ep::EpSubcommand::Refs(refs_args) => {
-                    commands::ep::execute_refs(&refs_args)
-                }
-            },
             Some(Commands::Var(var_command)) => match var_command.command {
                 commands::var::VarSubcommand::List(list_args) => {
                     commands::var::execute_list(&list_args)
                 }
                 commands::var::VarSubcommand::Show(show_args) => {
                     commands::var::execute_show(&show_args)
-                }
-                commands::var::VarSubcommand::Refs(refs_args) => {
-                    commands::var::execute_refs(&refs_args)
                 }
             },
             Some(Commands::Request(request_command)) => match request_command.command {

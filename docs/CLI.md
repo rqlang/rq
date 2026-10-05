@@ -16,7 +16,6 @@ At a high level:
 - `rq request` manages requests (list, show, run).
 - `rq env` lists and inspects environments found in `.rq` files.
 - `rq auth` lists and inspects auth providers.
-- `rq ep` lists and inspects endpoints.
 - `rq var` lists and inspects variables.
 - `rq check` validates `.rq` files without executing requests.
 
@@ -51,7 +50,6 @@ Commands:
 - `env` – Manage environments.
 - `auth` – Manage authentication.
 - `request` – Manage requests.
-- `ep` – Manage endpoints.
 - `var` – Manage variables.
 - `check` – Validate `.rq` files.
 
@@ -212,7 +210,6 @@ rq env [OPTIONS] <COMMAND>
 Commands:
 
 - `list` – List environments.
-- `show` – Show environment details.
 
 ### `rq env list`
 
@@ -247,28 +244,6 @@ rq env list
 Error handling:
 
 - A non-existent `--source` path causes the command to exit with code `2` and an error mentioning `Path does not exist`.
-
-### `rq env show`
-
-Show details for a single environment.
-
-```bash
-rq env show [OPTIONS] --name <NAME>
-```
-
-Options:
-
-- `-s, --source <SOURCE>` – Path to the `.rq` file or directory (default: `.`).
-- `-n, --name <NAME>` – Name of the environment to show (required).
-- `--no-var-interpolation` – Skip variable interpolation and show raw values.
-- `-o, --output <OUTPUT>` – Output format: `text` or `json` (default: `text`).
-
-Examples:
-
-```bash
-rq env show -s tests/env/list/input/simple.rq -n local
-rq env show -s tests/env/list/input/simple.rq -n local -o json
-```
 
 ## Managing auth providers: `rq auth`
 
@@ -352,94 +327,6 @@ Error handling:
 
 - If the named auth provider does not exist, the command fails with an error mentioning that the auth configuration was not found.
 
-## Managing endpoints: `rq ep`
-
-The `ep` subcommand lets you discover and inspect endpoints defined in `.rq` files.
-
-```bash
-rq ep [OPTIONS] <COMMAND>
-```
-
-Commands:
-
-- `list` – List endpoints.
-- `show` – Show endpoint details.
-- `refs` – Find all references to an endpoint.
-
-All `rq ep` commands accept `-d, --debug`.
-
-### `rq ep list`
-
-List all endpoints discovered under a file or directory.
-
-```bash
-rq ep list [OPTIONS]
-```
-
-Options:
-
-- `-s, --source <SOURCE>` – Path to the `.rq` file or directory (default: `.`).
-- `-o, --output <OUTPUT>` – Output format: `text` or `json` (default: `text`).
-
-Behavior:
-
-- In `text` mode, prints `Endpoints found:` followed by endpoint names, or `No endpoints found in .rq files`.
-- In `json` mode, prints a JSON array of endpoint entries.
-
-Examples:
-
-```bash
-rq ep list -s src/
-rq ep list -s src/ -o json
-```
-
-### `rq ep show`
-
-Show details for a single endpoint.
-
-```bash
-rq ep show [OPTIONS] --name <NAME>
-```
-
-Options:
-
-- `-s, --source <SOURCE>` – Path to the `.rq` file or directory (default: `.`).
-- `-n, --name <NAME>` – Name of the endpoint to show (required).
-- `--no-var-interpolation` – Skip variable interpolation and show raw values.
-- `-o, --output <OUTPUT>` – Output format: `text` or `json` (default: `text`).
-
-Examples:
-
-```bash
-rq ep show -n users
-rq ep show -n users -o json
-```
-
-### `rq ep refs`
-
-Find all references to an endpoint across `.rq` files.
-
-```bash
-rq ep refs [OPTIONS] --name <NAME>
-```
-
-Options:
-
-- `-s, --source <SOURCE>` – Path to the `.rq` file or directory (default: `.`).
-- `-n, --name <NAME>` – Name of the endpoint to find references for (required).
-- `-o, --output <OUTPUT>` – Output format: `text` or `json` (default: `text`).
-
-Behavior:
-
-- In `text` mode, prints one location per line as `file:line:column`, or `No references found`.
-
-Examples:
-
-```bash
-rq ep refs -n users
-rq ep refs -n users -o json
-```
-
 ## Managing variables: `rq var`
 
 The `var` subcommand lets you discover and inspect variables defined in `.rq` files.
@@ -452,7 +339,6 @@ Commands:
 
 - `list` – List variables.
 - `show` – Show variable details.
-- `refs` – Find all references to a variable.
 
 All `rq var` commands accept `-d, --debug`.
 
@@ -503,31 +389,6 @@ Examples:
 ```bash
 rq var show -n base_url
 rq var show -n base_url -e local -o json
-```
-
-### `rq var refs`
-
-Find all references to a variable across `.rq` files.
-
-```bash
-rq var refs [OPTIONS] --name <NAME>
-```
-
-Options:
-
-- `-s, --source <SOURCE>` – Path to the `.rq` file or directory (default: `.`).
-- `-n, --name <NAME>` – Name of the variable to find references for (required).
-- `-o, --output <OUTPUT>` – Output format: `text` or `json` (default: `text`).
-
-Behavior:
-
-- In `text` mode, prints one location per line as `file:line:column`, or `No references found`.
-
-Examples:
-
-```bash
-rq var refs -n base_url
-rq var refs -n base_url -o json
 ```
 
 ## Validating files: `rq check`

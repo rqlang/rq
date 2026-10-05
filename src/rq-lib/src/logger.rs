@@ -1,12 +1,17 @@
-use std::sync::OnceLock;
+use std::sync::RwLock;
+use std::time::Instant;
 
 use lazy_static::lazy_static;
 use regex::Regex;
 
-static LOGGER: OnceLock<Logger> = OnceLock::new();
+pub type LogSink = Box<dyn Fn(&str) + Send + Sync>;
+
+static LOGGER: RwLock<Option<Logger>> = RwLock::new(None);
 
 pub struct Logger {
     debug: bool,
+    start: Option<Instant>,
+    sink: LogSink,
 }
 
 lazy_static! {
@@ -53,27 +58,38 @@ fn sanitize_message(message: &str) -> String {
 
 impl Logger {
     pub fn init(debug: bool) {
-        let _ = LOGGER.get_or_init(|| Logger { debug });
+        Self::install(Logger {
+            debug,
+            start: Some(Instant::now()),
+            sink: Box::new(|line| eprintln!("{line}")),
+        });
+    }
+
+    pub fn init_with_sink(debug: bool, sink: LogSink) {
+        Self::install(Logger {
+            debug,
+            start: None,
+            sink,
+        });
     }
 
     pub fn is_debug_enabled() -> bool {
-        LOGGER.get().is_some_and(|logger| logger.debug)
+        LOGGER
+            .read()
+            .is_ok_and(|guard| guard.as_ref().is_some_and(|logger| logger.debug))
     }
 
     pub fn debug(message: &str) {
-        if Self::is_debug_enabled() {
-            let sanitized = sanitize_message(message);
-            eprintln!("{sanitized}");
+        if let Ok(guard) = LOGGER.read() {
+            if let Some(logger) = guard.as_ref().filter(|logger| logger.debug) {
+                logger.write(&sanitize_message(message));
+            }
         }
     }
 
     #[allow(dead_code)]
     pub fn debug_fmt(args: std::fmt::Arguments) {
-        if Self::is_debug_enabled() {
-            let formatted = format!("{args}");
-            let sanitized = sanitize_message(&formatted);
-            eprintln!("{sanitized}");
-        }
+        Self::debug(&format!("{args}"));
     }
 
     pub fn mask_header_value(name: &str, value: &str) -> String {
@@ -93,6 +109,20 @@ impl Logger {
         } else {
             value.to_string()
         }
+    }
+
+    fn install(logger: Logger) {
+        if let Ok(mut guard) = LOGGER.write() {
+            *guard = Some(logger);
+        }
+    }
+
+    fn write(&self, message: &str) {
+        let line = match self.start {
+            Some(start) => format!("[{:>6}ms] {message}", start.elapsed().as_millis()),
+            None => message.to_string(),
+        };
+        (self.sink)(&line);
     }
 }
 
@@ -141,6 +171,23 @@ mod tests {
     fn json_key_that_only_starts_like_auth_is_kept() {
         let target = super::sanitize_message(r#"{"author": "ana"}"#);
         assert_eq!(target, r#"{"author": "ana"}"#);
+    }
+
+    #[test]
+    fn enabled_sink_receives_sanitized_lines() {
+        let lines = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let captured = std::sync::Arc::clone(&lines);
+        Logger::init_with_sink(
+            true,
+            Box::new(move |line| {
+                if let Ok(mut lines) = captured.lock() {
+                    lines.push(line.to_string());
+                }
+            }),
+        );
+        Logger::debug("token=abc");
+        let target = lines.lock().map(|lines| lines.clone()).unwrap_or_default();
+        assert!(target.contains(&"token=***".to_string()), "{target:?}");
     }
 
     #[test]

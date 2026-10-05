@@ -2291,3 +2291,109 @@ mod parse_cli_variables_tests {
         assert!(matches!(target, Err(RqError::Validation(_))));
     }
 }
+
+#[cfg(all(test, feature = "native"))]
+mod navigation_tests {
+    use super::RqClient;
+
+    fn endpoint_names(source: &std::path::Path) -> Vec<String> {
+        RqClient::default()
+            .list_endpoints(source)
+            .expect("list_endpoints failed")
+            .into_iter()
+            .map(|entry| entry.name)
+            .collect()
+    }
+
+    #[test]
+    fn endpoint_with_a_body_is_not_a_template() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            dir.path().join("api.rq"),
+            "ep api(url: \"http://localhost\") {\n    rq get(\"/\");\n}\n",
+        )
+        .expect("api.rq");
+        let target = RqClient::default()
+            .list_endpoints(dir.path())
+            .expect("list_endpoints failed");
+        assert!(!target[0].is_template);
+    }
+
+    #[test]
+    fn endpoints_of_a_file_include_its_imports() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            dir.path().join("base.rq"),
+            "ep base(url: \"http://localhost\");\n",
+        )
+        .expect("base.rq");
+        std::fs::write(dir.path().join("main.rq"), "import \"base\";\n").expect("main.rq");
+        let target = endpoint_names(&dir.path().join("main.rq"));
+        assert_eq!(target, vec!["base".to_string()]);
+    }
+
+    #[test]
+    fn endpoints_of_a_file_exclude_files_it_does_not_import() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            dir.path().join("imported.rq"),
+            "ep imported_ep(url: \"http://localhost\");\n",
+        )
+        .expect("imported.rq");
+        std::fs::write(
+            dir.path().join("unrelated.rq"),
+            "ep unrelated_ep(url: \"http://other.localhost\");\n",
+        )
+        .expect("unrelated.rq");
+        std::fs::write(dir.path().join("main.rq"), "import \"imported\";\n").expect("main.rq");
+        let target = endpoint_names(&dir.path().join("main.rq"));
+        assert_eq!(target, vec!["imported_ep".to_string()]);
+    }
+
+    #[test]
+    fn variable_reference_points_at_the_variable_name() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("test.rq"), "rq get(\"{{base_url}}/v1\");\n")
+            .expect("test.rq");
+        let target = RqClient::default()
+            .list_variable_references(dir.path(), "base_url", None)
+            .expect("list_variable_references failed");
+        assert_eq!((target[0].line, target[0].character), (0, 10));
+    }
+
+    #[test]
+    fn variable_references_include_the_environment_declaration() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            dir.path().join("test.rq"),
+            "env local {\n    host: \"localhost\"\n}\n\nrq get(\"{{host}}/path\");\n",
+        )
+        .expect("test.rq");
+        let target = RqClient::default()
+            .list_variable_references(dir.path(), "host", None)
+            .expect("list_variable_references failed");
+        let lines: Vec<usize> = target.iter().map(|r| r.line).collect();
+        assert!(lines.contains(&1) && lines.contains(&4));
+    }
+
+    #[test]
+    fn endpoint_references_include_the_definition_and_its_children() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            dir.path().join("base.rq"),
+            "ep base(url: \"http://localhost\");\n",
+        )
+        .expect("base.rq");
+        std::fs::write(
+            dir.path().join("child.rq"),
+            "ep child<base>(url: \"http://localhost/child\") {\n    rq get(\"/\");\n}\n",
+        )
+        .expect("child.rq");
+        let target = RqClient::default()
+            .list_endpoint_references(dir.path(), "base", None)
+            .expect("list_endpoint_references failed");
+        let files: Vec<&str> = target.iter().map(|r| r.file.as_str()).collect();
+        assert!(files.iter().any(|f| f.ends_with("base.rq")));
+        assert!(files.iter().any(|f| f.ends_with("child.rq")));
+    }
+}

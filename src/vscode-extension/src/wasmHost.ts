@@ -48,6 +48,7 @@ export type WasmTransport = 'worker' | 'direct';
 let transport: WasmTransport | undefined;
 
 let logListener: ((logs: string) => void) | undefined;
+let debugLogging = false;
 
 export function onWasmLogs(listener: (logs: string) => void): void {
     logListener = listener;
@@ -89,6 +90,9 @@ function getWorker(): Worker {
     if (worker) { return worker; }
     const workerPath = path.join(__dirname, 'wasmWorker.js');
     worker = new Worker(workerPath);
+    if (debugLogging) {
+        worker.postMessage({ id: nextId++, method: 'set_debug_logging', args: [true] });
+    }
     worker.on('message', (reply: WorkerReply) => {
         forwardLogs(reply.logs);
         const call = pending.get(reply.id);
@@ -118,6 +122,14 @@ function getWorker(): Worker {
 }
 
 export function wasmCall(method: WasmMethod, args: unknown[]): Promise<string> {
+    const call = dispatch(method, args);
+    if (method === 'set_debug_logging') {
+        debugLogging = args[0] === true;
+    }
+    return call;
+}
+
+function dispatch(method: WasmMethod, args: unknown[]): Promise<string> {
     if (activeTransport() === 'direct') {
         try {
             return Promise.resolve(getSyncWasm()[method](...args));

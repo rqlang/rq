@@ -31,6 +31,10 @@ fn main() {
             "check_reports_unreadable_file",
             test_check_reports_unreadable_file,
         ),
+        Trial::test(
+            "check_debug_reports_summary",
+            test_check_debug_reports_summary,
+        ),
     ];
 
     trials.extend(discover_check_tests());
@@ -153,6 +157,20 @@ fn test_check_reports_unreadable_file() -> Result<(), Failed> {
     });
     if output.status.code() != Some(1) || !json_subset(&expected, &actual) {
         return Err(format!("Unexpected output: {stdout}").into());
+    }
+    Ok(())
+}
+
+fn test_check_debug_reports_summary() -> Result<(), Failed> {
+    let output = rq_cmd()
+        .args(["check", "-d", "-s", "tests/check/input/dir_with_error"])
+        .output()
+        .map_err(|e| format!("Failed to execute: {e}"))?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if !stderr.contains("* Checked 3 file(s): 1 error(s)")
+        || !stderr.contains("* Finished with exit code 1")
+    {
+        return Err(format!("Unexpected debug trace: {stderr}").into());
     }
     Ok(())
 }

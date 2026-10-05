@@ -34,6 +34,10 @@ impl AuthProvider for OAuth2AuthorizationCodeProvider {
                 BearerProvider::apply_from_variables(&variables, headers);
 
             if applied {
+                crate::logger::Logger::debug(&format!(
+                    "* Using an existing token for OAuth2 Authorization Code auth '{}'",
+                    auth_config.name
+                ));
                 return Ok((url, modified_headers));
             }
 

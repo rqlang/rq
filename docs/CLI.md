@@ -18,25 +18,48 @@ At a high level:
 - `rq auth` lists and inspects auth providers.
 - `rq check` validates `.rq` files without executing requests.
 
-All subcommands accept a global `-d, --debug` flag to enable debug logging.
+All subcommands accept a global `-d, --debug` flag that writes a diagnostic trace to stderr (see [Debug logging](#debug-logging)).
 
 ### Debug logging
 
-With `-d`, `rq request run` writes a trace to stderr in the style of `curl -v`, while stdout keeps the normal output:
+Every command accepts `-d, --debug`. It writes a trace to stderr, in the style of `curl -v`, while stdout keeps the normal output. Each line starts with the time elapsed since rq started:
 
 ```text
-* Running 1 request(s) from /path/to/api.rq
-* Applying auth 'tok' (bearer)
-> POST http://localhost:8080/post
-> Content-Type: application/json
-> authorization: ***
->
-> {"user": "ana"}
-< 200 OK (6 ms)
-< content-type: application/json; charset=utf-8
+[     5ms] * rq 0.7.0 (macos aarch64)
+[     6ms] * Command: rq request run -s api -e local -v token=***
+[     6ms] * Working directory: /Users/ana/project
+[     6ms] * Source: api (directory)
+[     7ms] * Found 3 .rq file(s) in api
+[    20ms] * Parsed /Users/ana/project/api/users.rq (imports: /Users/ana/project/api/_shared.rq)
+[    21ms] * Environment 'local' for /Users/ana/project/api/users.rq: base_url, api_key
+[    21ms] * Secrets from api/.env: api_key
+[    21ms] * Secrets from RQ__ environment variables: none
+[    22ms] * Running 1 request(s) from /Users/ana/project/api/users.rq
+[    22ms] * Variable base_url from env:local
+[    22ms] * Variable token from cli
+[    23ms] * Applying auth 'tok' (bearer)
+[    23ms] > POST http://localhost:8080/users
+[    23ms] > authorization: ***
+[    29ms] < 201 Created (6 ms)
+[    29ms] < content-type: application/json
+[    30ms] * Finished with exit code 0
 ```
 
-Lines starting with `*` describe what rq is doing, `>` shows the request exactly as it is sent (after variables and auth are resolved) and `<` shows the response status and headers. Values of headers whose name contains `authorization`, `cookie`, `token`, `secret`, `key` or `password` are masked as `***`, as are common secret fields in bodies.
+- Lines starting with `*` describe what rq is doing: which files it found and parsed, which environment and secret sources it used, where each variable used by a request comes from (`cli`, `request`, `endpoint`, `secret`, `env:<name>` or `let`), OAuth2 token requests, and the `check` summary.
+- Lines starting with `>` show the request exactly as it is sent, after variables and auth are resolved, and lines starting with `<` show the response status and headers.
+- The last line reports the exit code and, when the command fails, the error.
+
+Secret values never appear in the trace. Secrets and variables are listed by name, `-v` values in the command line are shown as `NAME=***`, header values whose name contains `authorization`, `cookie`, `token`, `secret`, `key` or `password` are masked, and so are body fields whose key contains a secret marker.
+
+### Reporting a bug
+
+Run the failing command again with `-d` and save the trace to a file:
+
+```bash
+rq request run -s api -e local -d 2> rq-debug.log
+```
+
+Attach `rq-debug.log` to the issue. It already includes the rq version, the platform and the exact command. Secret values are masked, but review the file before sharing it, since URLs, file paths and non-secret values are kept as they are.
 
 ## Global usage
 

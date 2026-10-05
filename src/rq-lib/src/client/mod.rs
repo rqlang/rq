@@ -1015,18 +1015,23 @@ impl RqClient {
                     errors.push(e);
                 }
             }
-            return Ok(Self::dedup_syntax_errors(errors));
+            let errors = Self::dedup_syntax_errors(errors);
+            Self::log_check_summary(1, &errors);
+            return Ok(errors);
         }
         if !self.fs.is_dir(path) {
             return Err(RqError::DirectoryNotFound(path.display().to_string()));
         }
         let mut rq_files = Vec::new();
         let mut errors = self.collect_rq_files_parsed(path, &mut rq_files)?;
+        let file_count = rq_files.len() + errors.len();
         for rq_file in &rq_files {
             errors.extend(self.check_variables(rq_file, source_path, env_name));
             errors.extend(self.check_auth_references(rq_file));
         }
-        Ok(Self::dedup_syntax_errors(errors))
+        let errors = Self::dedup_syntax_errors(errors);
+        Self::log_check_summary(file_count, &errors);
+        Ok(errors)
     }
 
     pub fn check_source(
@@ -1145,6 +1150,13 @@ impl RqClient {
                 .collect(),
             VariableValue::SystemFunction { .. } => Vec::new(),
         }
+    }
+
+    fn log_check_summary(file_count: usize, errors: &[RqError]) {
+        Logger::debug(&format!(
+            "* Checked {file_count} file(s): {} error(s)",
+            errors.len()
+        ));
     }
 
     fn log_environment(env_name: &str, file: &Path, vars: &[Variable]) {

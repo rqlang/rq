@@ -1,4 +1,4 @@
-Show variable location
+Show the resolved value of a variable
 
 Usage: rq var show [OPTIONS] --name <NAME>
 

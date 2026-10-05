@@ -18,7 +18,7 @@ pub struct VarCommand {
 pub enum VarSubcommand {
     #[command(about = "List variables")]
     List(ListArgs),
-    #[command(about = "Show variable location")]
+    #[command(about = "Show the resolved value of a variable")]
     Show(ShowArgs),
 }
 

@@ -338,7 +338,7 @@ rq var [OPTIONS] <COMMAND>
 Commands:
 
 - `list` – List variables.
-- `show` – Show variable details.
+- `show` – Show the resolved value of a variable.
 
 All `rq var` commands accept `-d, --debug`.
 
@@ -370,7 +370,7 @@ rq var list -s src/ -e local -o json
 
 ### `rq var show`
 
-Show details for a single variable.
+Show the value a variable resolves to, following the variable precedence rules. Use `-e` to see the value it takes in a given environment.
 
 ```bash
 rq var show [OPTIONS] --name <NAME>

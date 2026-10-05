@@ -1,6 +1,6 @@
 use crate::commands::validators;
 use crate::core::error::{warning_to_json, RqError};
-use crate::core::formatter::OutputFormat;
+use crate::core::formatter::{render_list, to_json, OutputFormat};
 use clap::Args;
 use serde::Serialize;
 
@@ -61,6 +61,26 @@ impl Location {
             line: line + 1,
             column: character + 1,
         }
+    }
+}
+
+#[derive(Serialize)]
+struct NameView {
+    name: String,
+}
+
+pub fn render_names(
+    output: OutputFormat,
+    names: Vec<String>,
+    title: &str,
+    empty_msg: &str,
+) -> String {
+    match output {
+        OutputFormat::Json => {
+            let views: Vec<NameView> = names.into_iter().map(|name| NameView { name }).collect();
+            to_json(&views)
+        }
+        OutputFormat::Text => render_list(&names, title, empty_msg),
     }
 }
 

@@ -1,6 +1,6 @@
-use crate::commands::shared::{EnvArgs, Location, OutputArgs, SourceArgs};
+use crate::commands::shared::{render_names, EnvArgs, Location, OutputArgs, SourceArgs};
 use crate::commands::validators;
-use crate::core::formatter::{render, render_list, to_json, OutputFormat, TextBlock};
+use crate::core::formatter::{render, TextBlock};
 use clap::{Args, Subcommand};
 use rq_lib::client::models::VariableEntry;
 use rq_lib::RqClient;
@@ -91,23 +91,16 @@ impl From<VariableEntry> for VariableView {
 pub fn execute_list(args: &ListArgs) -> Result<(), Box<dyn std::error::Error>> {
     let path = std::path::Path::new(&args.source.source);
     let entries = RqClient::default().list_variables(path, args.env.environment.as_deref())?;
-    match args.output.output {
-        OutputFormat::Json => {
-            let views: Vec<VariableView> = entries.into_iter().map(Into::into).collect();
-            print!("{}", to_json(&views));
-        }
-        OutputFormat::Text => {
-            let names: Vec<String> = entries.into_iter().map(|e| e.name).collect();
-            print!(
-                "{}",
-                render_list(
-                    &names,
-                    "Variables found:",
-                    "No variables found in .rq files"
-                )
-            );
-        }
-    }
+    let names = entries.into_iter().map(|e| e.name).collect();
+    print!(
+        "{}",
+        render_names(
+            args.output.output,
+            names,
+            "Variables found:",
+            "No variables found in .rq files"
+        )
+    );
 
     Ok(())
 }

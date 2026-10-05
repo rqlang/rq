@@ -482,3 +482,24 @@ rq test("http://localhost:8080/test");
 
     Ok(())
 }
+
+#[test]
+fn test_auth_list_json_contains_only_names() -> Result<(), Box<dyn std::error::Error>> {
+    let output = rq_cmd()
+        .args([
+            "auth",
+            "list",
+            "-s",
+            "tests/request/run/input/auth/attribute_bare_identifier.rq",
+            "-o",
+            "json",
+        ])
+        .output()?;
+
+    let json: Value = serde_json::from_slice(&output.stdout)?;
+    if json != serde_json::json!([{ "name": "test_auth" }]) {
+        return Err(format!("Unexpected auth list: {json}").into());
+    }
+
+    Ok(())
+}

@@ -1,8 +1,6 @@
-use crate::commands::shared::{OutputArgs, SourceArgs};
-use crate::core::formatter::{render_list, to_json, OutputFormat};
+use crate::commands::shared::{render_names, OutputArgs, SourceArgs};
 use clap::{Args, Subcommand};
 use rq_lib::RqClient;
-use serde::Serialize;
 
 #[derive(Args)]
 #[command(name = "env")]
@@ -27,33 +25,18 @@ pub struct ListArgs {
     pub output: OutputArgs,
 }
 
-#[derive(Serialize)]
-struct EnvironmentListView {
-    name: String,
-}
-
 pub fn execute_list(args: &ListArgs) -> Result<(), Box<dyn std::error::Error>> {
     let path = std::path::Path::new(&args.source.source);
-    let env_list = RqClient::default().list_environments(path)?;
-    match args.output.output {
-        OutputFormat::Json => {
-            let views: Vec<EnvironmentListView> = env_list
-                .into_iter()
-                .map(|name| EnvironmentListView { name })
-                .collect();
-            print!("{}", to_json(&views));
-        }
-        OutputFormat::Text => {
-            print!(
-                "{}",
-                render_list(
-                    &env_list,
-                    "Environments found:",
-                    "No environments found in .rq files"
-                )
-            );
-        }
-    }
+    let names = RqClient::default().list_environments(path)?;
+    print!(
+        "{}",
+        render_names(
+            args.output.output,
+            names,
+            "Environments found:",
+            "No environments found in .rq files"
+        )
+    );
 
     Ok(())
 }

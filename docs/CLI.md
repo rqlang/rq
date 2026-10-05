@@ -96,7 +96,7 @@ Options:
 Behavior:
 
 - In `text` mode, prints `Requests found:` followed by request names (for example `- basic`, `- users/list`), or `No requests found`.
-- In `json` mode, prints a JSON array; each item contains at least `name` and `file`, and requests defined inside endpoints include endpoint context (for example `endpoint: api`, `name: api/get`).
+- In `json` mode, prints a JSON array of objects with a single `name` field (for example `{"name": "users/list"}`). Use `rq request show` for the details of a request.
 
 Example:
 
@@ -125,7 +125,7 @@ Behavior:
 
 - Resolves the specified request (including endpoint context if applicable).
 - In `text` mode, prints `name`, `method`, `url`, `headers`, the optional `body`, `timeout` and `auth` (as `name (type)`), and `location` as `file:line:column`.
-- In `json` mode, prints a JSON object containing `Request`, `URL`, `Method`, `Headers`, optional `Body`, and optional `Auth` metadata.
+- In `json` mode, prints the same fields as an object: `name`, `method`, `url`, `headers`, optional `body`, `timeout` and `auth` (`{"name", "type"}`), plus `file`, `line` and `column`.
 
 Example:
 
@@ -228,7 +228,7 @@ Behavior:
 
 - Recursively scans the given path for `.rq` files and collects all environment names (from `env <name> { ... }` blocks).
 - In `text` mode, prints a short list prefixed with `Environments found:` or a message like `No environments found` for empty results.
-- In `json` mode, prints a JSON array of environment names.
+- In `json` mode, prints a JSON array of objects with a single `name` field.
 
 Examples:
 
@@ -275,8 +275,8 @@ Options:
 
 Behavior:
 
-- In `text` mode, prints a list of auth provider names (for example `bearer_auth`, `github_oauth`).
-- In `json` mode, prints a JSON array of provider names.
+- In `text` mode, prints `Auth configurations found:` followed by provider names (for example `- bearer_auth`), or `No auth configurations found`.
+- In `json` mode, prints a JSON array of objects with a single `name` field. Use `rq auth show` for the type and fields of a provider.
 - For empty directories, prints `No auth configurations found`.
 
 Examples:
@@ -359,7 +359,7 @@ Options:
 Behavior:
 
 - In `text` mode, prints `Variables found:` followed by variable names, or `No variables found in .rq files`.
-- In `json` mode, prints a JSON array of variable entries.
+- In `json` mode, prints a JSON array of objects with a single `name` field. Use `rq var show` for the value, source and location of a variable.
 
 Examples:
 
@@ -467,7 +467,8 @@ When integrating rq into other tools or CI, prefer `--output json` so you can pa
 Every command follows the same rules in `json` mode:
 
 - Keys are `snake_case`.
-- Source locations are reported as `file`, `line` and `column`. `file` is an absolute path, and `line` and `column` start at 1, so `file:line:column` points at the same place an editor shows. Requests that belong to an endpoint also carry `endpoint_file`, `endpoint_line` and `endpoint_column`.
+- `list` commands return only names, as an array of `{"name": ...}` objects; `show` commands return the full detail of one item. Both output modes carry the same content.
+- Source locations are reported as `file`, `line` and `column`. `file` is an absolute path, and `line` and `column` start at 1, so `file:line:column` points at the same place an editor shows.
 - Optional fields are omitted when they have no value, instead of being printed as `null`.
 - Results go to stdout and always end with a newline.
 - Errors go to stderr as `{"error": {"type": ..., "message": ..., "file": ..., "line": ..., "column": ...}}`, where the location fields are present only when known.

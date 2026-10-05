@@ -1,9 +1,11 @@
-use crate::commands::shared::{print_warnings, EnvArgs, Location, OutputArgs, SourceArgs};
+use crate::commands::shared::{
+    print_warnings, render_names, EnvArgs, Location, OutputArgs, SourceArgs,
+};
 use crate::commands::validators;
 use crate::core::error::RqError;
-use crate::core::formatter::{pretty_body, render, render_list, to_json, OutputFormat, TextBlock};
+use crate::core::formatter::{pretty_body, render, TextBlock};
 use clap::{Args, Subcommand};
-use rq_lib::client::models::{RequestDetails, RequestInfo};
+use rq_lib::client::models::RequestDetails;
 use rq_lib::{RequestExecutionResult, RqClient};
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -14,33 +16,6 @@ struct AuthConfigView {
     name: String,
     #[serde(rename = "type")]
     auth_type: String,
-}
-
-#[derive(Serialize)]
-struct RequestListView {
-    name: String,
-    file: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    endpoint: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    endpoint_file: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    endpoint_line: Option<usize>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    endpoint_column: Option<usize>,
-}
-
-impl From<RequestInfo> for RequestListView {
-    fn from(info: RequestInfo) -> Self {
-        Self {
-            name: info.name,
-            file: info.file,
-            endpoint: info.endpoint,
-            endpoint_file: info.endpoint_file,
-            endpoint_line: info.endpoint_line.map(|line| line + 1),
-            endpoint_column: info.endpoint_character.map(|character| character + 1),
-        }
-    }
 }
 
 #[derive(Serialize)]
@@ -196,19 +171,16 @@ pub fn execute_list(args: &ListArgs) -> Result<(), Box<dyn std::error::Error>> {
     let (requests, parse_errors) = RqClient::default().list_requests(source_path)?;
     print_warnings(&parse_errors, args.output.output);
 
-    match args.output.output {
-        OutputFormat::Json => {
-            let views: Vec<RequestListView> = requests.into_iter().map(Into::into).collect();
-            print!("{}", to_json(&views));
-        }
-        OutputFormat::Text => {
-            let names: Vec<String> = requests.into_iter().map(|r| r.name).collect();
-            print!(
-                "{}",
-                render_list(&names, "Requests found:", "No requests found")
-            );
-        }
-    }
+    let names = requests.into_iter().map(|r| r.name).collect();
+    print!(
+        "{}",
+        render_names(
+            args.output.output,
+            names,
+            "Requests found:",
+            "No requests found"
+        )
+    );
 
     Ok(())
 }

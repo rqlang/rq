@@ -62,8 +62,8 @@ fn test_request_list_json() -> Result<(), Box<dyn std::error::Error>> {
     if first.get("name").and_then(|v| v.as_str()).is_none() {
         return Err("Item missing 'name' field".into());
     }
-    if first.get("file").and_then(|v| v.as_str()).is_none() {
-        return Err("Item missing 'file' field".into());
+    if first.as_object().map(|item| item.len()) != Some(1) {
+        return Err(format!("Expected only a 'name' field, got: {first}").into());
     }
 
     Ok(())
@@ -156,87 +156,22 @@ fn test_request_list_invalid_output() {
 }
 
 #[test]
-fn test_request_list_json_endpoint_location() -> Result<(), Box<dyn std::error::Error>> {
+fn test_request_list_json_endpoint_request_is_listed_by_full_name(
+) -> Result<(), Box<dyn std::error::Error>> {
     let output = rq_cmd()
         .args([
             "request",
             "list",
             "-s",
             "tests/request/run/input/endpoint.rq",
-            "--output",
-            "json",
-        ])
-        .output()?;
-
-    if !output.status.success() {
-        return Err(format!(
-            "Command failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        )
-        .into());
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let json: Value = serde_json::from_str(&stdout)?;
-    let items = json.as_array().ok_or("Expected JSON array")?;
-
-    let ep_request = items
-        .iter()
-        .find(|v| v["endpoint"].as_str().is_some())
-        .ok_or("No request with endpoint found")?;
-
-    if ep_request
-        .get("endpoint_file")
-        .and_then(|v| v.as_str())
-        .is_none()
-    {
-        return Err("Item with endpoint missing 'endpoint_file' field".into());
-    }
-    if ep_request
-        .get("endpoint_line")
-        .and_then(|v| v.as_u64())
-        .is_none()
-    {
-        return Err("Item with endpoint missing 'endpoint_line' field".into());
-    }
-    if ep_request
-        .get("endpoint_column")
-        .and_then(|v| v.as_u64())
-        .is_none()
-    {
-        return Err("Item with endpoint missing 'endpoint_column' field".into());
-    }
-
-    let top_level = items.iter().find(|v| v["endpoint"].is_null());
-    if let Some(item) = top_level {
-        if item
-            .get("endpoint_file")
-            .map(|v| !v.is_null())
-            .unwrap_or(false)
-        {
-            return Err("Top-level request should not have endpoint_file".into());
-        }
-    }
-
-    Ok(())
-}
-
-#[test]
-fn test_request_list_json_omits_absent_endpoint() -> Result<(), Box<dyn std::error::Error>> {
-    let output = rq_cmd()
-        .args([
-            "request",
-            "list",
-            "-s",
-            "tests/request/run/input/basic.rq",
             "-o",
             "json",
         ])
         .output()?;
 
-    let json: serde_json::Value = serde_json::from_slice(&output.stdout)?;
-    if json[0].get("endpoint").is_some() {
-        return Err(format!("Expected no 'endpoint' field, got: {json}").into());
+    let json: Value = serde_json::from_slice(&output.stdout)?;
+    if json != serde_json::json!([{ "name": "api/get" }]) {
+        return Err(format!("Unexpected request list: {json}").into());
     }
 
     Ok(())

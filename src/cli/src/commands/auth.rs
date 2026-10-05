@@ -1,16 +1,9 @@
-use crate::commands::shared::{EnvArgs, Location, OutputArgs, SourceArgs};
-use crate::core::formatter::{render, to_json, OutputFormat, TextBlock};
+use crate::commands::shared::{render_names, EnvArgs, Location, OutputArgs, SourceArgs};
+use crate::core::formatter::{render, TextBlock};
 use clap::{Args, Subcommand};
 use rq_lib::RqClient;
 use serde::Serialize;
 use std::{collections::BTreeMap, path::Path};
-
-#[derive(Serialize)]
-struct AuthListView {
-    name: String,
-    #[serde(rename = "type")]
-    auth_type: String,
-}
 
 #[derive(Serialize)]
 struct AuthDetailsView {
@@ -86,29 +79,16 @@ pub struct ShowArgs {
 pub fn execute_list(args: &ListArgs) -> Result<(), Box<dyn std::error::Error>> {
     let source_path = Path::new(&args.source.source);
     let auth_list = RqClient::default().list_auth(source_path)?;
-
-    match args.output.output {
-        OutputFormat::Json => {
-            let views: Vec<AuthListView> = auth_list
-                .into_iter()
-                .map(|auth| AuthListView {
-                    name: auth.name,
-                    auth_type: auth.auth_type,
-                })
-                .collect();
-            print!("{}", to_json(&views));
-        }
-        OutputFormat::Text => {
-            if auth_list.is_empty() {
-                println!("No auth configurations found");
-            } else {
-                println!("Auth configurations found:");
-                for auth in auth_list {
-                    println!("- {} ({})", auth.name, auth.auth_type);
-                }
-            }
-        }
-    }
+    let names = auth_list.into_iter().map(|auth| auth.name).collect();
+    print!(
+        "{}",
+        render_names(
+            args.output.output,
+            names,
+            "Auth configurations found:",
+            "No auth configurations found"
+        )
+    );
 
     Ok(())
 }

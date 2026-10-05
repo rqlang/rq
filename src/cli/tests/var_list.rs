@@ -44,8 +44,8 @@ fn test_var_list_json() -> Result<(), Box<dyn std::error::Error>> {
     if items[0].get("name").and_then(|v| v.as_str()) != Some("base_url") {
         return Err(format!("Expected name 'base_url', got: {}", items[0]).into());
     }
-    if items[0].get("source").and_then(|v| v.as_str()) != Some("let") {
-        return Err(format!("Expected source 'let', got: {}", items[0]).into());
+    if items[0].as_object().map(|item| item.len()) != Some(1) {
+        return Err(format!("Expected only a 'name' field, got: {}", items[0]).into());
     }
 
     Ok(())

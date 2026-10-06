@@ -3,7 +3,7 @@ use crate::commands::shared::{
 };
 use crate::commands::validators;
 use crate::core::error::RqError;
-use crate::core::formatter::{pretty_body, render, TextBlock};
+use crate::core::formatter::{pretty_body, render, OutputFormat, TextBlock};
 use clap::{Args, Subcommand};
 use rq_lib::client::models::RequestDetails;
 use rq_lib::{RequestExecutionResult, RqClient};
@@ -164,6 +164,12 @@ pub struct RunArgs {
 
     #[command(flatten)]
     pub output: OutputArgs,
+
+    #[arg(
+        long = "no-lint",
+        help = "Skip the lint summary printed before running"
+    )]
+    pub no_lint: bool,
 }
 
 pub fn execute_list(args: &ListArgs) -> Result<(), Box<dyn std::error::Error>> {
@@ -221,7 +227,11 @@ pub async fn execute_run(args: &RunArgs) -> Result<(), Box<dyn std::error::Error
         .name
         .as_deref()
         .map(|n| n.replace('.', "/"));
-    let (results, warnings) = RqClient::default()
+    let client = RqClient::default();
+    if !args.no_lint {
+        print_lint_summary(&client, &args.source.source, args.output.output);
+    }
+    let (results, warnings) = client
         .run(
             source_path,
             request_name.as_deref(),
@@ -240,6 +250,19 @@ pub async fn execute_run(args: &RunArgs) -> Result<(), Box<dyn std::error::Error
     );
 
     Ok(())
+}
+
+fn print_lint_summary(client: &RqClient, source: &str, output: OutputFormat) {
+    let Ok(diagnostics) = client.lint_path(Path::new(source)) else {
+        return;
+    };
+    if diagnostics.is_empty() {
+        return;
+    }
+    let count = diagnostics.len();
+    let noun = if count == 1 { "warning" } else { "warnings" };
+    let message = format!("{count} lint {noun} found, run `rq check -s {source}` for details");
+    print_warnings(&[RqError::Generic(message)], output);
 }
 
 fn with_typed_request_name(error: RqError, typed_name: Option<&str>) -> RqError {

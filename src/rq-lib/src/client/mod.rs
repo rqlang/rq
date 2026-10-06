@@ -5,7 +5,7 @@ use crate::native;
 use crate::client::models::{RequestDetails, RequestExecutionResult, RequestInfo};
 use crate::error::RqError;
 use crate::http::HttpClient;
-use crate::lint::{lint_rq_file, LintDiagnostic, WorkspaceCollector};
+use crate::lint::{lint_rq_file, LintDiagnostic, WorkspaceCollector, WorkspaceFile};
 use crate::logger::Logger;
 use crate::syntax::parse_result::AuthLocation;
 use crate::syntax::{Fs, Request, RqFile, SecretProvider, Variable, VariableValue};
@@ -1062,7 +1062,7 @@ impl RqClient {
         } else {
             return Err(RqError::DirectoryNotFound(path.display().to_string()));
         };
-        let workspace = self.read_workspace_sources(workspace_root);
+        let workspace = self.read_workspace_files(workspace_root);
         let diagnostics: Vec<LintDiagnostic> = targets
             .iter()
             .flat_map(|target| self.lint_file(target, &workspace))
@@ -1216,7 +1216,7 @@ impl RqClient {
         RqFile::from_content(canonical, &content, &*self.fs).map_err(Self::map_parse_error)
     }
 
-    fn read_workspace_sources(&self, root: &Path) -> Vec<(PathBuf, String)> {
+    fn read_workspace_files(&self, root: &Path) -> Vec<WorkspaceFile> {
         let mut paths = Vec::new();
         self.collect_readable_rq_paths(root, &mut paths);
         paths
@@ -1224,7 +1224,7 @@ impl RqClient {
             .filter_map(|path| {
                 let canonical = self.fs.canonicalize(&path).ok()?;
                 let content = self.fs.read(&canonical).ok()?;
-                Some((canonical, content))
+                Some(WorkspaceFile::parse(&canonical, &content, &*self.fs))
             })
             .collect()
     }
@@ -1244,7 +1244,7 @@ impl RqClient {
         }
     }
 
-    fn lint_file(&self, target: &Path, workspace: &[(PathBuf, String)]) -> Vec<LintDiagnostic> {
+    fn lint_file(&self, target: &Path, workspace: &[WorkspaceFile]) -> Vec<LintDiagnostic> {
         let Ok(canonical) = self.fs.canonicalize(target) else {
             return Vec::new();
         };
@@ -1255,8 +1255,8 @@ impl RqClient {
             return Vec::new();
         };
         let mut collector = WorkspaceCollector::new(&rq_file);
-        for (path, content) in workspace.iter().filter(|(path, _)| path != &canonical) {
-            collector.absorb(path, content, &*self.fs);
+        for file in workspace.iter().filter(|file| file.path != canonical) {
+            collector.absorb_file(file);
         }
         let (workspace_requests, workspace_endpoints) = collector.finish();
         let display_path = crate::paths::clean_path(&canonical);

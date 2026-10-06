@@ -169,10 +169,12 @@ impl WorkspaceCollector {
         content: &str,
         fs: &dyn crate::syntax::fs::Fs,
     ) {
+        self.absorb_file(&WorkspaceFile::parse(path, content, fs));
+    }
+
+    pub fn absorb_file(&mut self, file: &WorkspaceFile) {
         use std::path::PathBuf;
-        let parsed = RqFile::from_content_lenient(path.to_path_buf(), content, fs);
-        for req_with_vars in parsed.requests {
-            let req = req_with_vars.request;
+        for req in &file.requests {
             let bare = bare_request_name(&req.name).to_string();
             if self.draft_bare_names.contains(&bare) {
                 continue;
@@ -188,15 +190,32 @@ impl WorkspaceCollector {
             {
                 continue;
             }
-            self.requests.push(req);
+            self.requests.push(req.clone());
         }
+        self.endpoints.extend(file.endpoints.iter().cloned());
+    }
+
+    pub fn finish(self) -> (Vec<Request>, Vec<EndpointSummary>) {
+        (self.requests, self.endpoints)
+    }
+}
+
+pub struct WorkspaceFile {
+    pub path: std::path::PathBuf,
+    requests: Vec<Request>,
+    endpoints: Vec<EndpointSummary>,
+}
+
+impl WorkspaceFile {
+    pub fn parse(path: &std::path::Path, content: &str, fs: &dyn crate::syntax::fs::Fs) -> Self {
+        let parsed = RqFile::from_content_lenient(path.to_path_buf(), content, fs);
         let extensions = endpoint_extensions(content);
         let auth_attributes = endpoint_auth_attributes(content);
-        for endpoint in parsed.endpoints.values() {
-            if !declared_in(endpoint, path) {
-                continue;
-            }
-            self.endpoints.push(EndpointSummary {
+        let endpoints = parsed
+            .endpoints
+            .values()
+            .filter(|endpoint| declared_in(endpoint, path))
+            .map(|endpoint| EndpointSummary {
                 name: endpoint.name.clone(),
                 url: endpoint.url.clone(),
                 auth: endpoint.auth.clone(),
@@ -213,12 +232,13 @@ impl WorkspaceCollector {
                 is_template: endpoint.is_template,
                 line: endpoint.line,
                 character: endpoint.character,
-            });
+            })
+            .collect();
+        WorkspaceFile {
+            path: path.to_path_buf(),
+            requests: parsed.requests.into_iter().map(|r| r.request).collect(),
+            endpoints,
         }
-    }
-
-    pub fn finish(self) -> (Vec<Request>, Vec<EndpointSummary>) {
-        (self.requests, self.endpoints)
     }
 }
 

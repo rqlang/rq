@@ -1218,7 +1218,7 @@ impl RqClient {
 
     fn read_workspace_files(&self, root: &Path) -> Vec<WorkspaceFile> {
         let mut paths = Vec::new();
-        self.collect_readable_rq_paths(root, &mut paths);
+        self.collect_readable_rq_paths(root, &mut paths, &mut HashSet::new());
         paths
             .into_iter()
             .filter_map(|path| {
@@ -1229,14 +1229,22 @@ impl RqClient {
             .collect()
     }
 
-    fn collect_readable_rq_paths(&self, dir: &Path, paths: &mut Vec<PathBuf>) {
+    fn collect_readable_rq_paths(
+        &self,
+        dir: &Path,
+        paths: &mut Vec<PathBuf>,
+        visited: &mut HashSet<PathBuf>,
+    ) {
+        if !self.mark_visited(dir, visited) {
+            return;
+        }
         let Ok(entries) = self.fs.read_dir(dir) else {
             return;
         };
         for path in entries {
             if self.fs.is_dir(&path) {
                 if !crate::paths::is_skipped_directory(&path) {
-                    self.collect_readable_rq_paths(&path, paths);
+                    self.collect_readable_rq_paths(&path, paths, visited);
                 }
             } else if path.extension().and_then(|s| s.to_str()) == Some("rq") {
                 paths.push(path);
@@ -1417,7 +1425,16 @@ impl RqClient {
     }
 
     fn collect_rq_paths(&self, dir: &Path, paths: &mut Vec<PathBuf>) -> Result<(), RqError> {
-        if !self.fs.is_dir(dir) {
+        self.walk_rq_paths(dir, paths, &mut HashSet::new())
+    }
+
+    fn walk_rq_paths(
+        &self,
+        dir: &Path,
+        paths: &mut Vec<PathBuf>,
+        visited: &mut HashSet<PathBuf>,
+    ) -> Result<(), RqError> {
+        if !self.fs.is_dir(dir) || !self.mark_visited(dir, visited) {
             return Ok(());
         }
         for path in self.fs.read_dir(dir).map_err(RqError::Generic)? {
@@ -1429,12 +1446,27 @@ impl RqClient {
                     ));
                     continue;
                 }
-                self.collect_rq_paths(&path, paths)?;
+                self.walk_rq_paths(&path, paths, visited)?;
             } else if path.extension().and_then(|s| s.to_str()) == Some("rq") {
                 paths.push(path);
             }
         }
         Ok(())
+    }
+
+    fn mark_visited(&self, dir: &Path, visited: &mut HashSet<PathBuf>) -> bool {
+        let key = self
+            .fs
+            .canonicalize(dir)
+            .unwrap_or_else(|_| dir.to_path_buf());
+        if visited.insert(key) {
+            return true;
+        }
+        Logger::debug(&format!(
+            "* Skipping already visited directory {}",
+            crate::paths::clean_path(dir)
+        ));
+        false
     }
 
     fn find_rq_file_with_request(

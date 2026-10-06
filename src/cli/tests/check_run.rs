@@ -5,6 +5,10 @@ use std::path::Path;
 
 mod common;
 use common::{json_subset, rq_cmd};
+#[cfg(unix)]
+use common::{output_within, symlink_loop_dir};
+#[cfg(unix)]
+use std::time::Duration;
 
 fn main() {
     let args = Arguments::from_args();
@@ -42,6 +46,11 @@ fn main() {
         Trial::test(
             "check_deny_warnings_fails_on_lint_warning",
             test_check_deny_warnings_fails_on_lint_warning,
+        ),
+        #[cfg(unix)]
+        Trial::test(
+            "check_terminates_on_symlink_loop",
+            test_check_terminates_on_symlink_loop,
         ),
     ];
 
@@ -217,6 +226,29 @@ fn test_check_deny_warnings_fails_on_lint_warning() -> Result<(), Failed> {
             String::from_utf8_lossy(&output.stderr)
         )
         .into());
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+fn test_check_terminates_on_symlink_loop() -> Result<(), Failed> {
+    let root = symlink_loop_dir("rq_check_symlink_loop")?;
+    let mut cmd = rq_cmd();
+    cmd.args(["check", "-s"])
+        .arg(root.join("sub"))
+        .args(["-o", "json"]);
+    let output = output_within(cmd, Duration::from_secs(20));
+    std::fs::remove_dir_all(&root).ok();
+    let output = output?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let actual: Value = serde_json::from_str(stdout.trim())
+        .map_err(|e| format!("stdout is not valid JSON: {e}\n{stdout}"))?;
+    let expected = serde_json::json!({
+        "errors": [],
+        "warnings": [{ "rule": "empty_url_string" }]
+    });
+    if !output.status.success() || !json_subset(&expected, &actual) {
+        return Err(format!("Unexpected output: {stdout}").into());
     }
     Ok(())
 }

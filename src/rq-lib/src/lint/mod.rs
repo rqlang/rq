@@ -460,10 +460,22 @@ pub fn endpoint_extensions(source: &str) -> Vec<EndpointExtension> {
 
 #[cfg(feature = "native")]
 fn walk_rq_files(root: &std::path::Path, visit: &mut dyn FnMut(&std::path::Path)) {
+    walk_rq_files_once(root, visit, &mut std::collections::HashSet::new());
+}
+
+fn walk_rq_files_once(
+    root: &std::path::Path,
+    visit: &mut dyn FnMut(&std::path::Path),
+    visited: &mut std::collections::HashSet<std::path::PathBuf>,
+) {
     if root.is_file() {
         if root.extension().and_then(|s| s.to_str()) == Some("rq") {
             visit(root);
         }
+        return;
+    }
+    let key = std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
+    if !visited.insert(key) {
         return;
     }
     let Ok(entries) = std::fs::read_dir(root) else {
@@ -475,7 +487,7 @@ fn walk_rq_files(root: &std::path::Path, visit: &mut dyn FnMut(&std::path::Path)
             if crate::paths::is_skipped_directory(&path) {
                 continue;
             }
-            walk_rq_files(&path, visit);
+            walk_rq_files_once(&path, visit, visited);
         } else if path.extension().and_then(|s| s.to_str()) == Some("rq") {
             visit(&path);
         }

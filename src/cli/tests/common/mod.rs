@@ -1,11 +1,44 @@
 #![allow(dead_code)]
 use serde_json::Value;
 use std::fs;
-use std::path::Path;
-use std::process::Command;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Output, Stdio};
+use std::time::{Duration, Instant};
 
 pub fn rq_cmd() -> Command {
     Command::new(env!("CARGO_BIN_EXE_rq"))
+}
+
+pub fn output_within(mut cmd: Command, timeout: Duration) -> Result<Output, String> {
+    let mut child = cmd
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("Failed to execute: {e}"))?;
+    let started = Instant::now();
+    while child.try_wait().map_err(|e| e.to_string())?.is_none() {
+        if started.elapsed() > timeout {
+            child.kill().ok();
+            return Err(format!("Command did not finish within {timeout:?}"));
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    child.wait_with_output().map_err(|e| e.to_string())
+}
+
+#[cfg(unix)]
+pub fn symlink_loop_dir(name: &str) -> Result<PathBuf, String> {
+    let root = std::env::temp_dir().join(format!("{name}_{}", std::process::id()));
+    let dir = root.join("sub");
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    fs::write(
+        dir.join("users.rq"),
+        "ep users(\"http://localhost:8080/users\") {\n    rq list(\"\");\n}\n",
+    )
+    .map_err(|e| e.to_string())?;
+    std::os::unix::fs::symlink(".", dir.join("self")).map_err(|e| e.to_string())?;
+    std::os::unix::fs::symlink("..", dir.join("up")).map_err(|e| e.to_string())?;
+    Ok(root)
 }
 
 pub fn json_subset(expected: &Value, actual: &Value) -> bool {

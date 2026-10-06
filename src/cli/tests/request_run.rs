@@ -29,6 +29,26 @@ fn main() {
             test_request_legacy_output_flag_points_to_format,
         ),
         Trial::test(
+            "request_print_headers_omits_meta_and_body",
+            test_request_print_headers_omits_meta_and_body,
+        ),
+        Trial::test(
+            "request_print_body_omits_meta",
+            test_request_print_body_omits_meta,
+        ),
+        Trial::test(
+            "request_print_filters_json_fields",
+            test_request_print_filters_json_fields,
+        ),
+        Trial::test(
+            "request_json_without_print_keeps_all_fields",
+            test_request_json_without_print_keeps_all_fields,
+        ),
+        Trial::test(
+            "request_print_rejects_unknown_part",
+            test_request_print_rejects_unknown_part,
+        ),
+        Trial::test(
             "request_debug_logs_masked_request_and_response",
             test_request_debug_logs_masked_request_and_response,
         ),
@@ -318,6 +338,84 @@ fn test_request_legacy_output_flag_points_to_format() -> Result<(), Failed> {
         .map_err(|e| format!("Failed to execute: {e}"))?;
     let stderr = String::from_utf8_lossy(&output.stderr);
     if output.status.success() || !stderr.contains("-o/--output was renamed to -f/--format") {
+        return Err(format!("Unexpected stderr: {stderr}").into());
+    }
+    Ok(())
+}
+
+fn run_basic_with(extra: &[&str]) -> Result<std::process::Output, Failed> {
+    rq_cmd()
+        .args([
+            "request",
+            "run",
+            "--no-lint",
+            "-s",
+            "tests/request/run/input/basic.rq",
+        ])
+        .args(extra)
+        .output()
+        .map_err(|e| format!("Failed to execute: {e}").into())
+}
+
+fn test_request_print_headers_omits_meta_and_body() -> Result<(), Failed> {
+    let output = run_basic_with(&["-p", "h"])?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    if !output.status.success()
+        || !stdout.contains("content-type: application/json")
+        || stdout.contains("200 OK")
+        || stdout.contains('{')
+    {
+        return Err(format!("Unexpected output: {stdout}").into());
+    }
+    Ok(())
+}
+
+fn test_request_print_body_omits_meta() -> Result<(), Failed> {
+    let output = run_basic_with(&["-p", "b"])?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    if !output.status.success() || !stdout.starts_with('{') || stdout.contains("200 OK") {
+        return Err(format!("Unexpected output: {stdout}").into());
+    }
+    Ok(())
+}
+
+fn parse_first_result(output: &std::process::Output) -> Result<serde_json::Value, Failed> {
+    let envelope: serde_json::Value =
+        serde_json::from_slice(&output.stdout).map_err(|e| format!("Invalid JSON output: {e}"))?;
+    Ok(envelope["results"][0].clone())
+}
+
+fn test_request_print_filters_json_fields() -> Result<(), Failed> {
+    let output = run_basic_with(&["-p", "h", "-f", "json"])?;
+    let result = parse_first_result(&output)?;
+    if result["request_name"] != "basic"
+        || !result["response_headers"].is_object()
+        || !result["status"].is_null()
+        || !result["body"].is_null()
+        || !result["request_headers"].is_null()
+    {
+        return Err(format!("Unexpected result: {result}").into());
+    }
+    Ok(())
+}
+
+fn test_request_json_without_print_keeps_all_fields() -> Result<(), Failed> {
+    let output = run_basic_with(&["-f", "json"])?;
+    let result = parse_first_result(&output)?;
+    if result["status"] != 200
+        || !result["request_headers"].is_object()
+        || !result["response_headers"].is_object()
+        || !result["body"].is_string()
+    {
+        return Err(format!("Unexpected result: {result}").into());
+    }
+    Ok(())
+}
+
+fn test_request_print_rejects_unknown_part() -> Result<(), Failed> {
+    let output = run_basic_with(&["-p", "mx"])?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if output.status.success() || !stderr.contains("Invalid part 'x', expected any of m, h, b") {
         return Err(format!("Unexpected stderr: {stderr}").into());
     }
     Ok(())

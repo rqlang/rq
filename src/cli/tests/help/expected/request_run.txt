@@ -9,5 +9,6 @@ Options:
   -e, --env <ENVIRONMENT>      Environment name
   -v, --variable <NAME=VALUE>  Override requests variables
   -f, --format <FORMAT>        Output format: text or json [default: text] [possible values: text, json]
+  -p, --print <PARTS>          Response parts to print: m (meta), h (headers), b (body) [default: mb, or all with json]
       --no-lint                Skip the lint summary printed before running
   -h, --help                   Print help

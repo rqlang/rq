@@ -170,13 +170,14 @@ Options:
 - `-e, --env <ENVIRONMENT>` – Environment name.
 - `-v, --variable <NAME=VALUE>` – Override variables at runtime (can be provided multiple times).
 - `-f, --format <FORMAT>` – Output format: `text` or `json` (default: `text`).
+- `-p, --print <PARTS>` – Response parts to print, as any combination of `m` (meta: request name, method, URL, status and elapsed time), `h` (response headers) and `b` (response body). Defaults to `mb` in `text` mode and to the full result in `json` mode.
 - `--no-lint` – Skip the lint summary printed before running.
 
 Behavior:
 
 - Before running, lints the source with the same [lint rules](LINT_RULES.md) as `rq check`. When any rule fires it prints a single line to stderr, such as `Warning: 2 lint warnings found, run \`rq check -s api.rq\` for details` (in `json` mode, a `{"warning": {...}}` object). When `--source` is a file, only that file is linted, so cross-file rules are left to `rq check`; when it is a directory, every file in it is linted against the others. Lint findings never change the exit code or stdout, and a lint failure never stops the run.
 - Uses the same variable precedence described in the language definition, with `-v NAME=VALUE` providing the highest-precedence overrides.
-- In `text` mode, prints one block per request: a line with the request name, method and URL, a status line with the reason phrase and elapsed time, and the response body. JSON bodies are indented without reordering their keys. Response headers are shown only with `-d`:
+- In `text` mode, prints one block per request: a line with the request name, method and URL, a status line with the reason phrase and elapsed time, and the response body. JSON bodies are indented without reordering their keys. `-p` picks which of these sections to print; `h` adds the response headers, one `name: value` per line sorted by name, between the status line and the body. Request headers are shown only with `-d`:
 
   ```text
   basic  GET http://localhost:8080/get
@@ -186,13 +187,17 @@ Behavior:
     "status": "ok"
   }
   ```
-- In `json` mode, prints a JSON structure with the full execution result(s), including response status, headers, body, and elapsed time in milliseconds.
+- In `json` mode, prints a JSON structure with the full execution result(s), including response status, headers, body, and elapsed time in milliseconds. With `-p`, each result keeps `request_name` plus only the fields of the selected parts (`method`, `url`, `status`, `elapsed_ms` for `m`; `response_headers` for `h`; `body` for `b`).
+- `-p b` prints only the response body, so the output can be piped straight into tools such as `jq`.
 
 Examples:
 
 ```bash
 # Run a single request in a file
 rq request run -s tests/request/run/input/basic.rq -n basic
+
+# Print only the response headers
+rq request run -s tests/request/run/input/basic.rq -p h
 
 # Run using an environment and a CLI variable override
 rq request run -s tests/request/run/fixtures/cli_override/override.rq -e local -v color=red

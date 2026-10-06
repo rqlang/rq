@@ -41,8 +41,8 @@ fn main() {
             test_request_print_filters_json_fields,
         ),
         Trial::test(
-            "request_json_without_print_keeps_all_fields",
-            test_request_json_without_print_keeps_all_fields,
+            "request_json_default_prints_meta_and_body",
+            test_request_json_default_prints_meta_and_body,
         ),
         Trial::test(
             "request_print_rejects_unknown_part",
@@ -388,7 +388,7 @@ fn parse_first_result(output: &std::process::Output) -> Result<serde_json::Value
 fn test_request_print_filters_json_fields() -> Result<(), Failed> {
     let output = run_basic_with(&["-p", "h", "-f", "json"])?;
     let result = parse_first_result(&output)?;
-    if result["request_name"] != "basic"
+    if !result["request_name"].is_null()
         || !result["response_headers"].is_object()
         || !result["status"].is_null()
         || !result["body"].is_null()
@@ -399,13 +399,14 @@ fn test_request_print_filters_json_fields() -> Result<(), Failed> {
     Ok(())
 }
 
-fn test_request_json_without_print_keeps_all_fields() -> Result<(), Failed> {
+fn test_request_json_default_prints_meta_and_body() -> Result<(), Failed> {
     let output = run_basic_with(&["-f", "json"])?;
     let result = parse_first_result(&output)?;
-    if result["status"] != 200
-        || !result["request_headers"].is_object()
-        || !result["response_headers"].is_object()
+    if result["request_name"] != "basic"
+        || result["status"] != 200
         || !result["body"].is_string()
+        || !result["response_headers"].is_null()
+        || !result["request_headers"].is_null()
     {
         return Err(format!("Unexpected result: {result}").into());
     }
@@ -792,34 +793,28 @@ fn test_request_run_invalid_variable_name() -> Result<(), Failed> {
     Ok(())
 }
 
-fn sent_request_headers(
-    source: &str,
-) -> Result<serde_json::Map<String, serde_json::Value>, Failed> {
+fn sent_content_type(source: &str) -> Result<Option<String>, Failed> {
     let output = rq_cmd()
-        .args(["request", "run", "-s", source, "-f", "json"])
+        .args(["request", "run", "-d", "--no-lint", "-s", source])
         .output()
         .map_err(|e| format!("Failed to execute command: {e}"))?;
 
+    let stderr = String::from_utf8_lossy(&output.stderr);
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(format!("Request failed: {stderr}").into());
     }
 
-    let parsed: serde_json::Value = serde_json::from_slice(&output.stdout)
-        .map_err(|e| format!("Failed to parse JSON output: {e}"))?;
-    parsed
-        .get("results")
-        .and_then(|r| r.get(0))
-        .and_then(|r| r.get("request_headers"))
-        .and_then(|h| h.as_object())
-        .cloned()
-        .ok_or_else(|| Failed::from("Output carries no request_headers"))
+    Ok(stderr
+        .lines()
+        .filter_map(|line| line.split_once("] > content-type: "))
+        .map(|(_, value)| value.to_string())
+        .next())
 }
 
 fn test_read_file_body_sends_no_content_type() -> Result<(), Failed> {
-    let target = sent_request_headers("tests/request/run/input/sys_func/read_file_json_body.rq")?;
+    let target = sent_content_type("tests/request/run/input/sys_func/read_file_json_body.rq")?;
 
-    if let Some(content_type) = target.get("content-type") {
+    if let Some(content_type) = target {
         return Err(format!(
             "io.read_file() returns a string, so its body must not derive a content type, got {content_type}"
         )
@@ -830,10 +825,9 @@ fn test_read_file_body_sends_no_content_type() -> Result<(), Failed> {
 }
 
 fn test_read_json_body_sends_json_content_type() -> Result<(), Failed> {
-    let target =
-        sent_request_headers("tests/request/run/input/sys_func/read_json_body__code_0__.rq")?;
+    let target = sent_content_type("tests/request/run/input/sys_func/read_json_body__code_0__.rq")?;
 
-    match target.get("content-type").and_then(|v| v.as_str()) {
+    match target.as_deref() {
         Some("application/json") => Ok(()),
         other => {
             Err(format!("io.read_json() body must derive application/json, got {other:?}").into())

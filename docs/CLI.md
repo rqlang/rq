@@ -170,7 +170,7 @@ Options:
 - `-e, --env <ENVIRONMENT>` – Environment name.
 - `-v, --variable <NAME=VALUE>` – Override variables at runtime (can be provided multiple times).
 - `-f, --format <FORMAT>` – Output format: `text` or `json` (default: `text`).
-- `-p, --print <PARTS>` – Response parts to print, as any combination of `m` (meta: request name, method, URL, status and elapsed time), `h` (response headers) and `b` (response body). Defaults to `mb` in `text` mode and to the full result in `json` mode.
+- `-p, --print <PARTS>` – Response parts to print, as any combination of `m` (meta: request name, method, URL, status and elapsed time), `h` (response headers) and `b` (response body). Defaults to `mb`. The same parts are printed in `text` and `json` mode.
 - `--no-lint` – Skip the lint summary printed before running.
 
 Behavior:
@@ -187,7 +187,7 @@ Behavior:
     "status": "ok"
   }
   ```
-- In `json` mode, prints a JSON structure with the full execution result(s), including response status, headers, body, and elapsed time in milliseconds. With `-p`, each result keeps `request_name` plus only the fields of the selected parts (`method`, `url`, `status`, `elapsed_ms` for `m`; `response_headers` for `h`; `body` for `b`).
+- In `json` mode, prints a `results` array with one object per request, holding only the fields of the selected parts: `request_name`, `method`, `url`, `status` and `elapsed_ms` for `m`; `response_headers` for `h`; `body` for `b`. Request headers are not part of the output in either mode; use `-d` to see them.
 - `-p b` prints only the response body, so the output can be piped straight into tools such as `jq`.
 
 Examples:

@@ -62,16 +62,6 @@ pub struct PrintParts {
     body: bool,
 }
 
-impl Default for PrintParts {
-    fn default() -> Self {
-        Self {
-            meta: true,
-            headers: false,
-            body: true,
-        }
-    }
-}
-
 impl FromStr for PrintParts {
     type Err = String;
 
@@ -97,13 +87,14 @@ impl FromStr for PrintParts {
 }
 
 #[derive(Serialize)]
-struct ResultsEnvelope<T: Serialize> {
-    results: Vec<T>,
+struct ResultsEnvelope<'a> {
+    results: Vec<PrintedResultView<'a>>,
 }
 
 #[derive(Serialize)]
 struct PrintedResultView<'a> {
-    request_name: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    request_name: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     method: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -121,7 +112,7 @@ struct PrintedResultView<'a> {
 impl<'a> PrintedResultView<'a> {
     fn new(result: &'a RequestExecutionResult, parts: PrintParts) -> Self {
         Self {
-            request_name: &result.request_name,
+            request_name: parts.meta.then_some(result.request_name.as_str()),
             method: parts.meta.then_some(result.method.as_str()),
             url: parts.meta.then_some(result.url.as_str()),
             status: parts.meta.then_some(result.status),
@@ -134,7 +125,7 @@ impl<'a> PrintedResultView<'a> {
 
 struct ExecutionResultsView {
     results: Vec<RequestExecutionResult>,
-    parts: Option<PrintParts>,
+    parts: PrintParts,
 }
 
 impl RequestDetailsView {
@@ -165,25 +156,19 @@ impl ExecutionResultsView {
     }
 
     fn to_json(&self) -> String {
-        match self.parts {
-            None => to_json(&ResultsEnvelope {
-                results: self.results.iter().collect(),
-            }),
-            Some(parts) => to_json(&ResultsEnvelope {
-                results: self
-                    .results
-                    .iter()
-                    .map(|result| PrintedResultView::new(result, parts))
-                    .collect(),
-            }),
-        }
+        to_json(&ResultsEnvelope {
+            results: self
+                .results
+                .iter()
+                .map(|result| PrintedResultView::new(result, self.parts))
+                .collect(),
+        })
     }
 
     fn to_text(&self) -> String {
-        let parts = self.parts.unwrap_or_default();
         self.results
             .iter()
-            .map(|result| render_execution_result(result, parts))
+            .map(|result| render_execution_result(result, self.parts))
             .filter(|rendered| !rendered.is_empty())
             .collect::<Vec<_>>()
             .join("\n")
@@ -272,9 +257,10 @@ pub struct RunArgs {
         short = 'p',
         long = "print",
         value_name = "PARTS",
-        help = "Response parts to print: m (meta), h (headers), b (body) [default: mb, or all with json]"
+        default_value = "mb",
+        help = "Response parts to print: m (meta), h (headers), b (body)"
     )]
-    pub print: Option<PrintParts>,
+    pub print: PrintParts,
 
     #[arg(
         long = "no-lint",

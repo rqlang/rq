@@ -22,6 +22,12 @@ pub struct LintDiagnostic {
     pub suggested_fix: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LintScope {
+    SourceOnly,
+    SourceDirectory,
+}
+
 #[derive(Debug, Serialize)]
 pub struct LintResult {
     pub ok: bool,

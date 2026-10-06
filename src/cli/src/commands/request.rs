@@ -6,6 +6,7 @@ use crate::core::error::RqError;
 use crate::core::formatter::{pretty_body, render, OutputFormat, TextBlock};
 use clap::{Args, Subcommand};
 use rq_lib::client::models::RequestDetails;
+use rq_lib::lint::LintScope;
 use rq_lib::{RequestExecutionResult, RqClient};
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -253,7 +254,7 @@ pub async fn execute_run(args: &RunArgs) -> Result<(), Box<dyn std::error::Error
 }
 
 fn print_lint_summary(client: &RqClient, source: &str, output: OutputFormat) {
-    let Ok(diagnostics) = client.lint_path(Path::new(source)) else {
+    let Ok(diagnostics) = client.lint_path(Path::new(source), LintScope::SourceOnly) else {
         return;
     };
     if diagnostics.is_empty() {

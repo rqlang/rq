@@ -105,6 +105,10 @@ fn main() {
             "request_run_no_lint_skips_lint_summary",
             test_request_run_no_lint_skips_lint_summary,
         ),
+        Trial::test(
+            "request_run_file_lint_ignores_sibling_files",
+            test_request_run_file_lint_ignores_sibling_files,
+        ),
         #[cfg(unix)]
         Trial::test(
             "request_run_terminates_on_symlink_loop",
@@ -142,8 +146,7 @@ fn test_request_json_warning_uses_warning_key() -> Result<(), Failed> {
     Ok(())
 }
 
-const LINT_WARNING_FIXTURE: &str =
-    "tests/request/run/input/request_not_found__req_missing____code_5__.rq";
+const LINT_WARNING_FIXTURE: &str = "tests/request/run/fixtures/lint_warning/users.rq";
 
 fn run_lint_warning_fixture(extra: &[&str]) -> Result<std::process::Output, Failed> {
     rq_cmd()
@@ -188,6 +191,25 @@ fn test_request_run_json_lint_summary_uses_warning_key() -> Result<(), Failed> {
 
 fn test_request_run_no_lint_skips_lint_summary() -> Result<(), Failed> {
     let output = run_lint_warning_fixture(&["--no-lint"])?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if stderr != "Error: Request not found: missing\n" {
+        return Err(format!("Unexpected stderr: {stderr}").into());
+    }
+    Ok(())
+}
+
+fn test_request_run_file_lint_ignores_sibling_files() -> Result<(), Failed> {
+    let output = rq_cmd()
+        .args([
+            "request",
+            "run",
+            "-s",
+            "tests/request/run/fixtures/lint_scope/get.rq",
+            "-n",
+            "missing",
+        ])
+        .output()
+        .map_err(|e| format!("Failed to execute: {e}"))?;
     let stderr = String::from_utf8_lossy(&output.stderr);
     if stderr != "Error: Request not found: missing\n" {
         return Err(format!("Unexpected stderr: {stderr}").into());

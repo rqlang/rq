@@ -174,7 +174,7 @@ Options:
 
 Behavior:
 
-- Before running, lints the source with the same [lint rules](LINT_RULES.md) as `rq check`. When any rule fires it prints a single line to stderr, such as `Warning: 2 lint warnings found, run \`rq check -s api.rq\` for details` (in `json` mode, a `{"warning": {...}}` object). Lint findings never change the exit code or stdout, and a lint failure never stops the run.
+- Before running, lints the source with the same [lint rules](LINT_RULES.md) as `rq check`. When any rule fires it prints a single line to stderr, such as `Warning: 2 lint warnings found, run \`rq check -s api.rq\` for details` (in `json` mode, a `{"warning": {...}}` object). When `--source` is a file, only that file is linted, so cross-file rules are left to `rq check`; when it is a directory, every file in it is linted against the others. Lint findings never change the exit code or stdout, and a lint failure never stops the run.
 - Uses the same variable precedence described in the language definition, with `-v NAME=VALUE` providing the highest-precedence overrides.
 - In `text` mode, prints one block per request: a line with the request name, method and URL, a status line with the reason phrase and elapsed time, and the response body. JSON bodies are indented without reordering their keys. Response headers are shown only with `-d`:
 

@@ -5,7 +5,7 @@ use crate::native;
 use crate::client::models::{RequestDetails, RequestExecutionResult, RequestInfo};
 use crate::error::RqError;
 use crate::http::HttpClient;
-use crate::lint::{lint_rq_file, LintDiagnostic, WorkspaceCollector, WorkspaceFile};
+use crate::lint::{lint_rq_file, LintDiagnostic, LintScope, WorkspaceCollector, WorkspaceFile};
 use crate::logger::Logger;
 use crate::syntax::parse_result::AuthLocation;
 use crate::syntax::{Fs, Request, RqFile, SecretProvider, Variable, VariableValue};
@@ -1053,16 +1053,24 @@ impl RqClient {
         Ok(Self::dedup_syntax_errors(errors))
     }
 
-    pub fn lint_path(&self, path: &Path) -> Result<Vec<LintDiagnostic>, RqError> {
-        let (targets, workspace_root) = if self.fs.is_file(path) {
-            let parent = path.parent().filter(|p| !p.as_os_str().is_empty());
-            (vec![path.to_path_buf()], parent.unwrap_or(Path::new(".")))
+    pub fn lint_path(&self, path: &Path, scope: LintScope) -> Result<Vec<LintDiagnostic>, RqError> {
+        let (targets, workspace) = if self.fs.is_file(path) {
+            let workspace = match scope {
+                LintScope::SourceOnly => Vec::new(),
+                LintScope::SourceDirectory => {
+                    let parent = path.parent().filter(|p| !p.as_os_str().is_empty());
+                    self.read_workspace_files(parent.unwrap_or(Path::new(".")))
+                }
+            };
+            (vec![path.to_path_buf()], workspace)
         } else if self.fs.is_dir(path) {
-            (self.discover_rq_files(path)?, path)
+            (
+                self.discover_rq_files(path)?,
+                self.read_workspace_files(path),
+            )
         } else {
             return Err(RqError::DirectoryNotFound(path.display().to_string()));
         };
-        let workspace = self.read_workspace_files(workspace_root);
         let diagnostics: Vec<LintDiagnostic> = targets
             .iter()
             .flat_map(|target| self.lint_file(target, &workspace))

@@ -2,7 +2,7 @@ use crate::commands::shared::{EnvArgs, OutputArgs, SourceArgs};
 use crate::core::error::{CheckFailed, RqError};
 use crate::core::formatter::OutputFormat;
 use clap::Args;
-use rq_lib::lint::LintDiagnostic;
+use rq_lib::lint::{LintDiagnostic, LintScope};
 use rq_lib::RqClient;
 use serde::Serialize;
 
@@ -58,7 +58,7 @@ pub fn execute(args: &CheckArgs) -> Result<(), Box<dyn std::error::Error>> {
     let path = std::path::Path::new(&args.source.source);
     let client = RqClient::default();
     let errors = client.check_path(path, args.env_args.environment.as_deref())?;
-    let warnings = client.lint_path(path)?;
+    let warnings = client.lint_path(path, LintScope::SourceDirectory)?;
 
     let result = CheckResult {
         errors: errors.into_iter().map(to_check_error).collect(),

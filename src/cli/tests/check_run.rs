@@ -47,6 +47,10 @@ fn main() {
             "check_deny_warnings_fails_on_lint_warning",
             test_check_deny_warnings_fails_on_lint_warning,
         ),
+        Trial::test(
+            "check_file_lints_against_sibling_files",
+            test_check_file_lints_against_sibling_files,
+        ),
         #[cfg(unix)]
         Trial::test(
             "check_terminates_on_symlink_loop",
@@ -226,6 +230,33 @@ fn test_check_deny_warnings_fails_on_lint_warning() -> Result<(), Failed> {
             String::from_utf8_lossy(&output.stderr)
         )
         .into());
+    }
+    Ok(())
+}
+
+fn test_check_file_lints_against_sibling_files() -> Result<(), Failed> {
+    let output = rq_cmd()
+        .args([
+            "check",
+            "-s",
+            "tests/request/run/fixtures/lint_scope/get.rq",
+            "-o",
+            "json",
+        ])
+        .output()
+        .map_err(|e| format!("Failed to execute: {e}"))?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let actual: Value = serde_json::from_str(stdout.trim())
+        .map_err(|e| format!("stdout is not valid JSON: {e}\n{stdout}"))?;
+    let expected = serde_json::json!({
+        "errors": [],
+        "warnings": [{
+            "rule": "top_level_rq_should_be_ep",
+            "message": "{{regex:.*post\\.rq.*}}"
+        }]
+    });
+    if !json_subset(&expected, &actual) {
+        return Err(format!("Unexpected output: {stdout}").into());
     }
     Ok(())
 }

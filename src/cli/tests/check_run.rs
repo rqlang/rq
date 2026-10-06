@@ -5,6 +5,10 @@ use std::path::Path;
 
 mod common;
 use common::{json_subset, rq_cmd};
+#[cfg(unix)]
+use common::{output_within, symlink_loop_dir};
+#[cfg(unix)]
+use std::time::Duration;
 
 fn main() {
     let args = Arguments::from_args();
@@ -34,6 +38,23 @@ fn main() {
         Trial::test(
             "check_debug_reports_summary",
             test_check_debug_reports_summary,
+        ),
+        Trial::test(
+            "check_text_reports_lint_warning",
+            test_check_text_reports_lint_warning,
+        ),
+        Trial::test(
+            "check_deny_warnings_fails_on_lint_warning",
+            test_check_deny_warnings_fails_on_lint_warning,
+        ),
+        Trial::test(
+            "check_file_lints_against_sibling_files",
+            test_check_file_lints_against_sibling_files,
+        ),
+        #[cfg(unix)]
+        Trial::test(
+            "check_terminates_on_symlink_loop",
+            test_check_terminates_on_symlink_loop,
         ),
     ];
 
@@ -171,6 +192,94 @@ fn test_check_debug_reports_summary() -> Result<(), Failed> {
         || !stderr.contains("* Finished with exit code 1")
     {
         return Err(format!("Unexpected debug trace: {stderr}").into());
+    }
+    Ok(())
+}
+
+fn test_check_text_reports_lint_warning() -> Result<(), Failed> {
+    let output = rq_cmd()
+        .args(["check", "-s", "tests/check/input/lint_warning"])
+        .output()
+        .map_err(|e| format!("Failed to execute: {e}"))?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let first_line = stdout.lines().next().unwrap_or("");
+    if !output.status.success()
+        || !first_line.contains("users.rq:2:13: warning[empty_url_string]: ")
+        || !stdout.contains("\n  help: Replace `rq list(\"\")` with `rq list()`.\n")
+        || !stdout.ends_with("\n0 errors, 1 warning found\n")
+    {
+        return Err(format!("Unexpected output: {stdout}").into());
+    }
+    Ok(())
+}
+
+fn test_check_deny_warnings_fails_on_lint_warning() -> Result<(), Failed> {
+    let output = rq_cmd()
+        .args([
+            "check",
+            "-s",
+            "tests/check/input/lint_warning",
+            "--deny-warnings",
+        ])
+        .output()
+        .map_err(|e| format!("Failed to execute: {e}"))?;
+    if output.status.code() != Some(1) || !output.stderr.is_empty() {
+        return Err(format!(
+            "Unexpected exit {:?}, stderr: {}",
+            output.status.code(),
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
+    }
+    Ok(())
+}
+
+fn test_check_file_lints_against_sibling_files() -> Result<(), Failed> {
+    let output = rq_cmd()
+        .args([
+            "check",
+            "-s",
+            "tests/request/run/fixtures/lint_scope/get.rq",
+            "-o",
+            "json",
+        ])
+        .output()
+        .map_err(|e| format!("Failed to execute: {e}"))?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let actual: Value = serde_json::from_str(stdout.trim())
+        .map_err(|e| format!("stdout is not valid JSON: {e}\n{stdout}"))?;
+    let expected = serde_json::json!({
+        "errors": [],
+        "warnings": [{
+            "rule": "top_level_rq_should_be_ep",
+            "message": "{{regex:.*post\\.rq.*}}"
+        }]
+    });
+    if !json_subset(&expected, &actual) {
+        return Err(format!("Unexpected output: {stdout}").into());
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+fn test_check_terminates_on_symlink_loop() -> Result<(), Failed> {
+    let root = symlink_loop_dir("rq_check_symlink_loop")?;
+    let mut cmd = rq_cmd();
+    cmd.args(["check", "-s"])
+        .arg(root.join("sub"))
+        .args(["-o", "json"]);
+    let output = output_within(cmd, Duration::from_secs(20));
+    std::fs::remove_dir_all(&root).ok();
+    let output = output?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let actual: Value = serde_json::from_str(stdout.trim())
+        .map_err(|e| format!("stdout is not valid JSON: {e}\n{stdout}"))?;
+    let expected = serde_json::json!({
+        "errors": [],
+        "warnings": [{ "rule": "empty_url_string" }]
+    });
+    if !output.status.success() || !json_subset(&expected, &actual) {
+        return Err(format!("Unexpected output: {stdout}").into());
     }
     Ok(())
 }

@@ -22,6 +22,12 @@ pub struct LintDiagnostic {
     pub suggested_fix: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LintScope {
+    SourceOnly,
+    SourceDirectory,
+}
+
 #[derive(Debug, Serialize)]
 pub struct LintResult {
     pub ok: bool,
@@ -169,10 +175,12 @@ impl WorkspaceCollector {
         content: &str,
         fs: &dyn crate::syntax::fs::Fs,
     ) {
+        self.absorb_file(&WorkspaceFile::parse(path, content, fs));
+    }
+
+    pub fn absorb_file(&mut self, file: &WorkspaceFile) {
         use std::path::PathBuf;
-        let parsed = RqFile::from_content_lenient(path.to_path_buf(), content, fs);
-        for req_with_vars in parsed.requests {
-            let req = req_with_vars.request;
+        for req in &file.requests {
             let bare = bare_request_name(&req.name).to_string();
             if self.draft_bare_names.contains(&bare) {
                 continue;
@@ -188,15 +196,32 @@ impl WorkspaceCollector {
             {
                 continue;
             }
-            self.requests.push(req);
+            self.requests.push(req.clone());
         }
+        self.endpoints.extend(file.endpoints.iter().cloned());
+    }
+
+    pub fn finish(self) -> (Vec<Request>, Vec<EndpointSummary>) {
+        (self.requests, self.endpoints)
+    }
+}
+
+pub struct WorkspaceFile {
+    pub path: std::path::PathBuf,
+    requests: Vec<Request>,
+    endpoints: Vec<EndpointSummary>,
+}
+
+impl WorkspaceFile {
+    pub fn parse(path: &std::path::Path, content: &str, fs: &dyn crate::syntax::fs::Fs) -> Self {
+        let parsed = RqFile::from_content_lenient(path.to_path_buf(), content, fs);
         let extensions = endpoint_extensions(content);
         let auth_attributes = endpoint_auth_attributes(content);
-        for endpoint in parsed.endpoints.values() {
-            if !declared_in(endpoint, path) {
-                continue;
-            }
-            self.endpoints.push(EndpointSummary {
+        let endpoints = parsed
+            .endpoints
+            .values()
+            .filter(|endpoint| declared_in(endpoint, path))
+            .map(|endpoint| EndpointSummary {
                 name: endpoint.name.clone(),
                 url: endpoint.url.clone(),
                 auth: endpoint.auth.clone(),
@@ -213,12 +238,13 @@ impl WorkspaceCollector {
                 is_template: endpoint.is_template,
                 line: endpoint.line,
                 character: endpoint.character,
-            });
+            })
+            .collect();
+        WorkspaceFile {
+            path: path.to_path_buf(),
+            requests: parsed.requests.into_iter().map(|r| r.request).collect(),
+            endpoints,
         }
-    }
-
-    pub fn finish(self) -> (Vec<Request>, Vec<EndpointSummary>) {
-        (self.requests, self.endpoints)
     }
 }
 
@@ -440,10 +466,22 @@ pub fn endpoint_extensions(source: &str) -> Vec<EndpointExtension> {
 
 #[cfg(feature = "native")]
 fn walk_rq_files(root: &std::path::Path, visit: &mut dyn FnMut(&std::path::Path)) {
+    walk_rq_files_once(root, visit, &mut std::collections::HashSet::new());
+}
+
+fn walk_rq_files_once(
+    root: &std::path::Path,
+    visit: &mut dyn FnMut(&std::path::Path),
+    visited: &mut std::collections::HashSet<std::path::PathBuf>,
+) {
     if root.is_file() {
         if root.extension().and_then(|s| s.to_str()) == Some("rq") {
             visit(root);
         }
+        return;
+    }
+    let key = std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
+    if !visited.insert(key) {
         return;
     }
     let Ok(entries) = std::fs::read_dir(root) else {
@@ -455,7 +493,7 @@ fn walk_rq_files(root: &std::path::Path, visit: &mut dyn FnMut(&std::path::Path)
             if crate::paths::is_skipped_directory(&path) {
                 continue;
             }
-            walk_rq_files(&path, visit);
+            walk_rq_files_once(&path, visit, visited);
         } else if path.extension().and_then(|s| s.to_str()) == Some("rq") {
             visit(&path);
         }

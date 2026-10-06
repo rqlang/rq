@@ -93,6 +93,31 @@ fn main() {
             "request_read_json_body_sends_json_content_type",
             test_read_json_body_sends_json_content_type,
         ),
+        Trial::test(
+            "request_run_prints_lint_summary",
+            test_request_run_prints_lint_summary,
+        ),
+        Trial::test(
+            "request_run_json_lint_summary_uses_warning_key",
+            test_request_run_json_lint_summary_uses_warning_key,
+        ),
+        Trial::test(
+            "request_run_no_lint_skips_lint_summary",
+            test_request_run_no_lint_skips_lint_summary,
+        ),
+        Trial::test(
+            "request_run_lint_summary_quotes_source_with_spaces",
+            test_request_run_lint_summary_quotes_source_with_spaces,
+        ),
+        Trial::test(
+            "request_run_file_lint_ignores_sibling_files",
+            test_request_run_file_lint_ignores_sibling_files,
+        ),
+        #[cfg(unix)]
+        Trial::test(
+            "request_run_terminates_on_symlink_loop",
+            test_request_run_terminates_on_symlink_loop,
+        ),
     ];
 
     // Discover tests from organized directories
@@ -120,6 +145,119 @@ fn test_request_json_warning_uses_warning_key() -> Result<(), Failed> {
     let warning: serde_json::Value = serde_json::from_str(stderr.trim())
         .map_err(|e| format!("stderr is not valid JSON: {e}\n{stderr}"))?;
     if warning["warning"]["message"] != "No requests found in the file" {
+        return Err(format!("Unexpected stderr: {stderr}").into());
+    }
+    Ok(())
+}
+
+const LINT_WARNING_FIXTURE: &str = "tests/request/run/fixtures/lint_warning/users.rq";
+
+fn run_lint_warning_fixture(extra: &[&str]) -> Result<std::process::Output, Failed> {
+    rq_cmd()
+        .args([
+            "request",
+            "run",
+            "-s",
+            LINT_WARNING_FIXTURE,
+            "-n",
+            "missing",
+        ])
+        .args(extra)
+        .output()
+        .map_err(|e| format!("Failed to execute: {e}").into())
+}
+
+fn test_request_run_prints_lint_summary() -> Result<(), Failed> {
+    let output = run_lint_warning_fixture(&[])?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let expected = format!(
+        "Warning: 1 lint warning found, run `rq check -s {LINT_WARNING_FIXTURE}` for details\n\
+         Error: Request not found: missing\n"
+    );
+    if stderr != expected || output.status.code() != Some(5) {
+        return Err(format!("Unexpected stderr: {stderr}").into());
+    }
+    Ok(())
+}
+
+fn test_request_run_json_lint_summary_uses_warning_key() -> Result<(), Failed> {
+    let output = run_lint_warning_fixture(&["-o", "json"])?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let first_line = stderr.lines().next().unwrap_or("");
+    let warning: serde_json::Value = serde_json::from_str(first_line)
+        .map_err(|e| format!("stderr is not valid JSON: {e}\n{stderr}"))?;
+    let message = warning["warning"]["message"].as_str().unwrap_or("");
+    if !message.starts_with("1 lint warning found") {
+        return Err(format!("Unexpected stderr: {stderr}").into());
+    }
+    Ok(())
+}
+
+fn test_request_run_no_lint_skips_lint_summary() -> Result<(), Failed> {
+    let output = run_lint_warning_fixture(&["--no-lint"])?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if stderr != "Error: Request not found: missing\n" {
+        return Err(format!("Unexpected stderr: {stderr}").into());
+    }
+    Ok(())
+}
+
+fn test_request_run_lint_summary_quotes_source_with_spaces() -> Result<(), Failed> {
+    let dir = std::env::temp_dir().join(format!("rq lint quoted {}", std::process::id()));
+    std::fs::create_dir_all(&dir).map_err(|e| format!("Failed to create temp dir: {e}"))?;
+    let source = dir.join("my users.rq");
+    std::fs::copy(LINT_WARNING_FIXTURE, &source)
+        .map_err(|e| format!("Failed to copy fixture: {e}"))?;
+    let output = rq_cmd()
+        .args(["request", "run", "-s"])
+        .arg(&source)
+        .args(["-n", "missing"])
+        .output()
+        .map_err(|e| format!("Failed to execute: {e}"));
+    std::fs::remove_dir_all(&dir).ok();
+    let output = output?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let expected = format!("run `rq check -s \"{}\"` for details", source.display());
+    if !stderr.contains(&expected) {
+        return Err(format!("Unexpected stderr: {stderr}").into());
+    }
+    Ok(())
+}
+
+fn test_request_run_file_lint_ignores_sibling_files() -> Result<(), Failed> {
+    let output = rq_cmd()
+        .args([
+            "request",
+            "run",
+            "-s",
+            "tests/request/run/fixtures/lint_scope/get.rq",
+            "-n",
+            "missing",
+        ])
+        .output()
+        .map_err(|e| format!("Failed to execute: {e}"))?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if stderr != "Error: Request not found: missing\n" {
+        return Err(format!("Unexpected stderr: {stderr}").into());
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+fn test_request_run_terminates_on_symlink_loop() -> Result<(), Failed> {
+    let root = common::symlink_loop_dir("rq_run_symlink_loop")?;
+    let mut cmd = rq_cmd();
+    cmd.args(["request", "run", "-s"])
+        .arg(root.join("sub"))
+        .args(["-n", "missing"]);
+    let output = common::output_within(cmd, std::time::Duration::from_secs(20));
+    std::fs::remove_dir_all(&root).ok();
+    let output = output?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if output.status.code() != Some(5)
+        || !stderr.starts_with("Warning: 1 lint warning found")
+        || !stderr.contains("Request 'missing' not found")
+    {
         return Err(format!("Unexpected stderr: {stderr}").into());
     }
     Ok(())
@@ -770,6 +908,8 @@ fn run_directory_test(dir_name: &str, file_name: &str) -> Result<(), Failed> {
     } else {
         cmd.args(["request", "run", "--source", &input_file]);
     }
+
+    cmd.arg("--no-lint");
 
     if let Some(ref env) = env_name {
         cmd.args(["--environment", env]);

@@ -9,4 +9,5 @@ Options:
   -e, --env <ENVIRONMENT>      Environment name
   -v, --variable <NAME=VALUE>  Override requests variables
   -o, --output <OUTPUT>        Output format: text or json [default: text] [possible values: text, json]
+      --no-lint                Skip the lint summary printed before running
   -h, --help                   Print help

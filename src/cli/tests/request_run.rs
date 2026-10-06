@@ -106,6 +106,10 @@ fn main() {
             test_request_run_no_lint_skips_lint_summary,
         ),
         Trial::test(
+            "request_run_lint_summary_quotes_source_with_spaces",
+            test_request_run_lint_summary_quotes_source_with_spaces,
+        ),
+        Trial::test(
             "request_run_file_lint_ignores_sibling_files",
             test_request_run_file_lint_ignores_sibling_files,
         ),
@@ -193,6 +197,28 @@ fn test_request_run_no_lint_skips_lint_summary() -> Result<(), Failed> {
     let output = run_lint_warning_fixture(&["--no-lint"])?;
     let stderr = String::from_utf8_lossy(&output.stderr);
     if stderr != "Error: Request not found: missing\n" {
+        return Err(format!("Unexpected stderr: {stderr}").into());
+    }
+    Ok(())
+}
+
+fn test_request_run_lint_summary_quotes_source_with_spaces() -> Result<(), Failed> {
+    let dir = std::env::temp_dir().join(format!("rq lint quoted {}", std::process::id()));
+    std::fs::create_dir_all(&dir).map_err(|e| format!("Failed to create temp dir: {e}"))?;
+    let source = dir.join("my users.rq");
+    std::fs::copy(LINT_WARNING_FIXTURE, &source)
+        .map_err(|e| format!("Failed to copy fixture: {e}"))?;
+    let output = rq_cmd()
+        .args(["request", "run", "-s"])
+        .arg(&source)
+        .args(["-n", "missing"])
+        .output()
+        .map_err(|e| format!("Failed to execute: {e}"));
+    std::fs::remove_dir_all(&dir).ok();
+    let output = output?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let expected = format!("run `rq check -s \"{}\"` for details", source.display());
+    if !stderr.contains(&expected) {
         return Err(format!("Unexpected stderr: {stderr}").into());
     }
     Ok(())

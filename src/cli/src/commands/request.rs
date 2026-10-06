@@ -262,8 +262,17 @@ fn print_lint_summary(client: &RqClient, source: &str, output: OutputFormat) {
     }
     let count = diagnostics.len();
     let noun = if count == 1 { "warning" } else { "warnings" };
+    let source = quoted_source(source);
     let message = format!("{count} lint {noun} found, run `rq check -s {source}` for details");
     print_warnings(&[RqError::Generic(message)], output);
+}
+
+fn quoted_source(source: &str) -> String {
+    if source.chars().any(char::is_whitespace) {
+        format!("\"{source}\"")
+    } else {
+        source.to_string()
+    }
 }
 
 fn with_typed_request_name(error: RqError, typed_name: Option<&str>) -> RqError {

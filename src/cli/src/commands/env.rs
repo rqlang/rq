@@ -1,4 +1,4 @@
-use crate::commands::shared::{render_names, OutputArgs, SourceArgs};
+use crate::commands::shared::{render_names, FormatArgs, SourceArgs};
 use clap::{Args, Subcommand};
 use rq_lib::RqClient;
 
@@ -22,7 +22,7 @@ pub struct ListArgs {
     pub source: SourceArgs,
 
     #[command(flatten)]
-    pub output: OutputArgs,
+    pub format: FormatArgs,
 }
 
 pub fn execute_list(args: &ListArgs) -> Result<(), Box<dyn std::error::Error>> {
@@ -31,7 +31,7 @@ pub fn execute_list(args: &ListArgs) -> Result<(), Box<dyn std::error::Error>> {
     print!(
         "{}",
         render_names(
-            args.output.output,
+            args.format.format,
             names,
             "Environments found:",
             "No environments found in .rq files"

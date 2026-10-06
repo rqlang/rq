@@ -1,4 +1,4 @@
-use crate::commands::shared::{EnvArgs, OutputArgs, SourceArgs};
+use crate::commands::shared::{EnvArgs, FormatArgs, SourceArgs};
 use crate::core::error::{CheckFailed, RqError};
 use crate::core::formatter::OutputFormat;
 use clap::Args;
@@ -16,7 +16,7 @@ pub struct CheckArgs {
     pub env_args: EnvArgs,
 
     #[command(flatten)]
-    pub output: OutputArgs,
+    pub format: FormatArgs,
 
     #[arg(
         long = "deny-warnings",
@@ -65,7 +65,7 @@ pub fn execute(args: &CheckArgs) -> Result<(), Box<dyn std::error::Error>> {
         warnings: warnings.into_iter().map(to_check_warning).collect(),
     };
 
-    match args.output.output {
+    match args.format.format {
         OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&result)?),
         OutputFormat::Text => print!("{}", render_text(&result)),
     }

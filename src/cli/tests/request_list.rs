@@ -36,7 +36,7 @@ fn test_request_list_json() -> Result<(), Box<dyn std::error::Error>> {
             "list",
             "-s",
             "tests/request/run/input",
-            "--output",
+            "--format",
             "json",
         ])
         .output()?;
@@ -142,7 +142,7 @@ fn test_request_list_invalid_output() {
             "list",
             "-s",
             "tests/request/run/input",
-            "--output",
+            "--format",
             "invalid",
         ])
         .output()
@@ -151,7 +151,7 @@ fn test_request_list_invalid_output() {
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("invalid value 'invalid'"));
-    assert!(stderr.contains("--output <OUTPUT>"));
+    assert!(stderr.contains("--format <FORMAT>"));
     assert!(stderr.contains("[possible values: text, json]"));
 }
 
@@ -164,7 +164,7 @@ fn test_request_list_json_endpoint_request_is_listed_by_full_name(
             "list",
             "-s",
             "tests/request/run/input/endpoint.rq",
-            "-o",
+            "-f",
             "json",
         ])
         .output()?;

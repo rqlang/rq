@@ -5,7 +5,7 @@ mod commands;
 mod core;
 
 use commands::Commands;
-use core::error::{error_to_json, CheckFailed};
+use core::error::{error_to_json, CheckFailed, RqError};
 use core::exit_code::ExitCode;
 use core::formatter::OutputFormat;
 use core::logger::log_finished;
@@ -51,22 +51,40 @@ async fn main() {
 }
 
 fn extract_output_format(args: &[String]) -> OutputFormat {
-    for i in 0..args.len() {
-        if (args[i] == "-o" || args[i] == "--output")
-            && i + 1 < args.len()
-            && args[i + 1].eq_ignore_ascii_case("json")
-        {
-            return OutputFormat::Json;
-        }
-        if args[i].eq_ignore_ascii_case("-ojson") || args[i].eq_ignore_ascii_case("--output=json") {
+    let pairs = args.iter().zip(args.iter().skip(1).map(Some).chain([None]));
+    for (arg, next) in pairs {
+        let inline_value = arg
+            .strip_prefix("--format=")
+            .or_else(|| arg.strip_prefix("--output="))
+            .or_else(|| arg.strip_prefix("-f").filter(|value| !value.is_empty()))
+            .or_else(|| arg.strip_prefix("-o").filter(|value| !value.is_empty()));
+        let value = match arg.as_str() {
+            "-f" | "--format" | "-o" | "--output" => next.map(String::as_str),
+            _ => inline_value,
+        };
+        if value.is_some_and(|value| value.eq_ignore_ascii_case("json")) {
             return OutputFormat::Json;
         }
     }
     OutputFormat::Text
 }
 
+fn reject_legacy_output_flag(args: &[String]) -> Result<(), RqError> {
+    let uses_legacy_flag = args
+        .iter()
+        .skip(1)
+        .any(|arg| arg == "--output" || arg.starts_with("--output=") || arg.starts_with("-o"));
+    if uses_legacy_flag {
+        return Err(RqError::Generic(
+            "-o/--output was renamed to -f/--format".to_string(),
+        ));
+    }
+    Ok(())
+}
+
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
+    reject_legacy_output_flag(&args)?;
     let is_subcommand = args.len() > 1
         && (args[1] == "env"
             || args[1] == "auth"

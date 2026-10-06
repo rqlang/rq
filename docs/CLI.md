@@ -85,7 +85,7 @@ Global options:
 Unless otherwise noted, most commands share these common flags:
 
 - `-s, --source <SOURCE>` – Path to a `.rq` file or directory (defaults to current directory).
-- `-o, --output <OUTPUT>` – Output format: `text` or `json` (defaults to `text`, case-insensitive).
+- `-f, --format <FORMAT>` – Output format: `text` or `json` (defaults to `text`, case-insensitive).
 
 ## Managing requests: `rq request`
 
@@ -112,7 +112,7 @@ rq request list [OPTIONS]
 Options:
 
 - `-s, --source <SOURCE>` – Path to the `.rq` file or directory (default: `.`).
-- `-o, --output <OUTPUT>` – Output format: `text` or `json` (default: `text`).
+- `-f, --format <FORMAT>` – Output format: `text` or `json` (default: `text`).
 
 Behavior:
 
@@ -123,7 +123,7 @@ Example:
 
 ```bash
 rq request list -s tests/request/run/input
-rq request list -s tests/request/run/input -o json
+rq request list -s tests/request/run/input -f json
 ```
 
 ### `rq request show`
@@ -140,7 +140,7 @@ Options:
 - `-n, --name <NAME>` – Name of the request to show (required). If the request is defined inside an endpoint, use `<endpoint>/<request>` or `<endpoint>.<request>` (for example `users/list` or `users.list`).
 - `-e, --env <ENVIRONMENT>` – Environment name to resolve variables and env-specific settings.
 - `--no-var-interpolation` – Skip variable interpolation and show raw values.
-- `-o, --output <OUTPUT>` – Output format: `text` or `json` (default: `text`).
+- `-f, --format <FORMAT>` – Output format: `text` or `json` (default: `text`).
 
 Behavior:
 
@@ -152,7 +152,7 @@ Example:
 
 ```bash
 rq request show -s tests/request/run/input -n basic
-rq request show -s tests/request/run/input -n basic -e local -o json
+rq request show -s tests/request/run/input -n basic -e local -f json
 ```
 
 ### `rq request run`
@@ -169,7 +169,7 @@ Options:
 - `-n, --name <NAME>` – Name of the request to run. If omitted, every request in the source runs. If the request is defined inside an endpoint, use `<endpoint>/<request>` or `<endpoint>.<request>` (for example `users/list` or `users.list`).
 - `-e, --env <ENVIRONMENT>` – Environment name.
 - `-v, --variable <NAME=VALUE>` – Override variables at runtime (can be provided multiple times).
-- `-o, --output <OUTPUT>` – Output format: `text` or `json` (default: `text`).
+- `-f, --format <FORMAT>` – Output format: `text` or `json` (default: `text`).
 - `--no-lint` – Skip the lint summary printed before running.
 
 Behavior:
@@ -245,7 +245,7 @@ rq env list [OPTIONS]
 Options:
 
 - `-s, --source <SOURCE>` – Path to the `.rq` file or directory (default: `.`).
-- `-o, --output <OUTPUT>` – Output format: `text` or `json` (default: `text`).
+- `-f, --format <FORMAT>` – Output format: `text` or `json` (default: `text`).
 
 Behavior:
 
@@ -257,7 +257,7 @@ Examples:
 
 ```bash
 rq env list -s tests/env/list/input/simple.rq
-rq env list -s tests/env/list/input -o json
+rq env list -s tests/env/list/input -f json
 
 # Using the current directory as source
 cd tests/request/run/input
@@ -294,7 +294,7 @@ rq auth list [OPTIONS]
 Options:
 
 - `-s, --source <SOURCE>` – Path to the `.rq` file or directory (default: `.`).
-- `-o, --output <OUTPUT>` – Output format: `text` or `json` (default: `text`).
+- `-f, --format <FORMAT>` – Output format: `text` or `json` (default: `text`).
 
 Behavior:
 
@@ -306,7 +306,7 @@ Examples:
 
 ```bash
 rq auth list -s tests/request/run/input
-rq auth list -s tests/request/run/input -o json
+rq auth list -s tests/request/run/input -f json
 ```
 
 ### `rq auth show`
@@ -322,7 +322,7 @@ Options:
 - `-s, --source <SOURCE>` – Path to the `.rq` file or directory (default: `.`).
 - `-n, --name <NAME>` – Name of the auth configuration (required).
 - `-e, --env <ENVIRONMENT>` – Environment name to resolve environment-specific overrides for that auth provider.
-- `-o, --output <OUTPUT>` – Output format: `text` or `json` (default: `text`).
+- `-f, --format <FORMAT>` – Output format: `text` or `json` (default: `text`).
 
 Behavior:
 
@@ -342,7 +342,7 @@ Examples:
 
 ```bash
 rq auth show -s tests/request/run/input -n bearer_auth
-rq auth show -s tests/request/run/input -n github_oauth -o json
+rq auth show -s tests/request/run/input -n github_oauth -f json
 rq auth show -s tests/request/run/input -n local_auth -e local
 ```
 
@@ -362,7 +362,7 @@ Options:
 
 - `-s, --source <SOURCE>` – Path to the `.rq` file or directory (default: `.`).
 - `-e, --env <ENVIRONMENT>` – Environment name to use for variable resolution.
-- `-o, --output <OUTPUT>` – Output format: `text` (default) or `json`.
+- `-f, --format <FORMAT>` – Output format: `text` (default) or `json`.
 - `--deny-warnings` – Exit with code `1` when lint reports any warning.
 
 Behavior:
@@ -379,7 +379,7 @@ Example:
 ```bash
 rq check -s src/
 rq check -s src/api.rq -e local
-rq check -s src/ -o json
+rq check -s src/ -f json
 rq check -s src/ --deny-warnings
 ```
 
@@ -429,14 +429,14 @@ Example output (json, with errors and warnings):
 
 ## Output formats
 
-Across all commands, the `-o, --output` flag controls how results are printed:
+Across all commands, the `-f, --format` flag controls how results are printed:
 
 - `text` – Human-readable, stable but meant for terminals.
 - `json` – Machine-readable, designed for scripting and automated checks.
 
-The value is case-insensitive, so `--output json` and `--output JSON` are equivalent. Invalid values cause a clear clap error indicating the allowed values.
+The value is case-insensitive, so `--format json` and `--format JSON` are equivalent. Invalid values cause a clear clap error indicating the allowed values.
 
-When integrating rq into other tools or CI, prefer `--output json` so you can parse responses reliably.
+When integrating rq into other tools or CI, prefer `--format json` so you can parse responses reliably.
 
 ### JSON conventions
 

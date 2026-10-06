@@ -51,7 +51,7 @@ fn test_auth_show_bearer_json() -> Result<(), Box<dyn std::error::Error>> {
             "bearer_auth",
             "-s",
             "tests/request/run/input",
-            "-o",
+            "-f",
             "json",
         ])
         .output()?;
@@ -151,7 +151,7 @@ fn test_auth_show_oauth2_json() -> Result<(), Box<dyn std::error::Error>> {
             "github_oauth",
             "-s",
             "tests/request/run/input",
-            "-o",
+            "-f",
             "json",
         ])
         .output()?;
@@ -296,7 +296,7 @@ auth test_bearer(auth_type.bearer) {
             temp_dir.to_str().unwrap(),
             "-e",
             "local",
-            "-o",
+            "-f",
             "json",
         ])
         .output()?;
@@ -364,7 +364,7 @@ auth local(auth_type.oauth2_authorization_code) {
             temp_dir.to_str().unwrap(),
             "-e",
             "localhost",
-            "-o",
+            "-f",
             "json",
         ])
         .output()?;
@@ -459,7 +459,7 @@ auth test_bearer(auth_type.bearer) {
             temp_dir.to_str().unwrap(),
             "-e",
             "local",
-            "-o",
+            "-f",
             "json",
         ])
         .output()?;
@@ -487,7 +487,7 @@ auth test_bearer(auth_type.bearer) {
             temp_dir.to_str().unwrap(),
             "-e",
             "dev",
-            "-o",
+            "-f",
             "json",
         ])
         .output()?;
@@ -531,7 +531,7 @@ fn test_auth_show_unresolved_no_var_interpolation() -> Result<(), Box<dyn std::e
             "-s",
             temp_dir.to_str().unwrap(),
             "--no-var-interpolation",
-            "-o",
+            "-f",
             "json",
         ])
         .output()?;
@@ -590,7 +590,7 @@ auth test_bearer(auth_type.bearer) {
             "test_bearer",
             "-s",
             temp_dir.to_str().unwrap(),
-            "-o",
+            "-f",
             "json",
         ])
         .output()?;
@@ -637,7 +637,7 @@ auth minimal_oauth(auth_type.oauth2_authorization_code) {
             "minimal_oauth",
             "-s",
             temp_dir.to_str().unwrap(),
-            "-o",
+            "-f",
             "json",
         ])
         .output()?;
@@ -708,7 +708,7 @@ auth custom_oauth(auth_type.oauth2_authorization_code) {
             "custom_oauth",
             "-s",
             temp_dir.to_str().unwrap(),
-            "-o",
+            "-f",
             "json",
         ])
         .output()?;
@@ -761,7 +761,7 @@ fn test_auth_show_interpolation_from_let() -> Result<(), Box<dyn std::error::Err
             "tests/request/run/input",
             "-n",
             "test_auth_let_interpolation",
-            "-o",
+            "-f",
             "json",
         ])
         .output()?;
@@ -803,7 +803,7 @@ fn test_auth_show_interpolation_from_env_file() -> Result<(), Box<dyn std::error
             "tests/request/run/input",
             "-n",
             "test_auth_env_interpolation",
-            "-o",
+            "-f",
             "json",
         ])
         .output()?;
@@ -845,7 +845,7 @@ fn test_auth_show_interpolation_combined() -> Result<(), Box<dyn std::error::Err
             "tests/request/run/input",
             "-n",
             "test_auth_combined_interpolation",
-            "-o",
+            "-f",
             "json",
         ])
         .output()?;
@@ -887,7 +887,7 @@ fn test_auth_show_bare_identifier_reference() -> Result<(), Box<dyn std::error::
             "tests/request/run/input",
             "-n",
             "test_bare_reference",
-            "-o",
+            "-f",
             "json",
         ])
         .output()?;
@@ -1008,7 +1008,7 @@ fn test_error_line_number_bare_variable() -> Result<(), Box<dyn std::error::Erro
             "keycloak",
             "-s",
             "tests/auth/show/input",
-            "-o",
+            "-f",
             "json",
         ])
         .output()?;

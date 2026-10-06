@@ -25,6 +25,10 @@ fn main() {
             test_request_text_output_starts_with_status,
         ),
         Trial::test(
+            "request_legacy_output_flag_points_to_format",
+            test_request_legacy_output_flag_points_to_format,
+        ),
+        Trial::test(
             "request_debug_logs_masked_request_and_response",
             test_request_debug_logs_masked_request_and_response,
         ),
@@ -136,7 +140,7 @@ fn test_request_json_warning_uses_warning_key() -> Result<(), Failed> {
             "run",
             "-s",
             "tests/request/run/input/foo.rq",
-            "-o",
+            "-f",
             "json",
         ])
         .output()
@@ -181,7 +185,7 @@ fn test_request_run_prints_lint_summary() -> Result<(), Failed> {
 }
 
 fn test_request_run_json_lint_summary_uses_warning_key() -> Result<(), Failed> {
-    let output = run_lint_warning_fixture(&["-o", "json"])?;
+    let output = run_lint_warning_fixture(&["-f", "json"])?;
     let stderr = String::from_utf8_lossy(&output.stderr);
     let first_line = stderr.lines().next().unwrap_or("");
     let warning: serde_json::Value = serde_json::from_str(first_line)
@@ -270,7 +274,7 @@ fn test_request_json_output_ends_with_newline() -> Result<(), Failed> {
             "run",
             "-s",
             "tests/request/run/input/foo.rq",
-            "-o",
+            "-f",
             "json",
         ])
         .output()
@@ -296,6 +300,25 @@ fn test_request_text_output_starts_with_status() -> Result<(), Failed> {
         || !status_line.ends_with(" ms")
     {
         return Err(format!("Unexpected output: {stdout}").into());
+    }
+    Ok(())
+}
+
+fn test_request_legacy_output_flag_points_to_format() -> Result<(), Failed> {
+    let output = rq_cmd()
+        .args([
+            "request",
+            "run",
+            "-s",
+            "tests/request/run/input/basic.rq",
+            "-o",
+            "json",
+        ])
+        .output()
+        .map_err(|e| format!("Failed to execute: {e}"))?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if output.status.success() || !stderr.contains("-o/--output was renamed to -f/--format") {
+        return Err(format!("Unexpected stderr: {stderr}").into());
     }
     Ok(())
 }
@@ -394,7 +417,7 @@ fn test_request_secrets() -> Result<(), Failed> {
         .args([
             "request",
             "run",
-            "-o",
+            "-f",
             "json",
             "-s",
             "tests/request/run/fixtures/secrets/secrets.rq",
@@ -427,7 +450,7 @@ fn test_request_secrets_uppercase_prefixes() -> Result<(), Failed> {
         .args([
             "request",
             "run",
-            "-o",
+            "-f",
             "json",
             "-s",
             "tests/request/run/fixtures/secrets_uppercase_prefixes/test.rq",
@@ -459,7 +482,7 @@ fn test_request_auth_token_backdoor() -> Result<(), Failed> {
         .args([
             "request",
             "run",
-            "-o",
+            "-f",
             "json",
             "-s",
             "tests/request/run/fixtures/auth_token_backdoor/test.rq",
@@ -488,7 +511,7 @@ fn test_request_auth_token_backdoor_upper() -> Result<(), Failed> {
         .args([
             "request",
             "run",
-            "-o",
+            "-f",
             "json",
             "-s",
             "tests/request/run/fixtures/auth_token_backdoor_upper/test.rq",
@@ -517,7 +540,7 @@ fn test_request_cli_variable_override() -> Result<(), Failed> {
         .args([
             "request",
             "run",
-            "-o",
+            "-f",
             "json",
             "-s",
             "tests/request/run/fixtures/cli_override/override.rq",
@@ -548,7 +571,7 @@ fn test_request_dotenv() -> Result<(), Failed> {
         .args([
             "request",
             "run",
-            "-o",
+            "-f",
             "json",
             "-s",
             "tests/request/run/fixtures/dotenv/dotenv.rq",
@@ -675,7 +698,7 @@ fn sent_request_headers(
     source: &str,
 ) -> Result<serde_json::Map<String, serde_json::Value>, Failed> {
     let output = rq_cmd()
-        .args(["request", "run", "-s", source, "-o", "json"])
+        .args(["request", "run", "-s", source, "-f", "json"])
         .output()
         .map_err(|e| format!("Failed to execute command: {e}"))?;
 
@@ -755,7 +778,7 @@ fn test_request_run_connection_refused() -> Result<(), Failed> {
             "run",
             "-s",
             "tests/request/run/fixtures/connection_refused/test.rq",
-            "-o",
+            "-f",
             "json",
         ])
         .output()
@@ -920,7 +943,7 @@ fn run_directory_test(dir_name: &str, file_name: &str) -> Result<(), Failed> {
     }
 
     if Path::new(&expected_json).exists() {
-        cmd.args(["-o", "json"]);
+        cmd.args(["-f", "json"]);
     }
 
     let output = cmd

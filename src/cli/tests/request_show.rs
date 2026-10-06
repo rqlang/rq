@@ -108,7 +108,7 @@ fn test_request_show_json() -> Result<(), Box<dyn std::error::Error>> {
             "tests/request/run/input/auth/attribute.rq",
             "-n",
             "simple_auth",
-            "-o",
+            "-f",
             "json",
         ])
         .output()?;
@@ -333,7 +333,7 @@ fn test_request_show_unresolved_fails() -> Result<(), Box<dyn std::error::Error>
             temp_dir.to_str().unwrap(),
             "-n",
             "my_request",
-            "-o",
+            "-f",
             "json",
         ])
         .output()?;
@@ -376,7 +376,7 @@ fn test_request_show_unresolved_no_var_interpolation() -> Result<(), Box<dyn std
             "-n",
             "my_request",
             "--no-var-interpolation",
-            "-o",
+            "-f",
             "json",
         ])
         .output()?;
@@ -447,7 +447,7 @@ fn test_request_show_timeout_json() -> Result<(), Box<dyn std::error::Error>> {
             "tests/request/run/input/timeout_success.rq",
             "-n",
             "get",
-            "-o",
+            "-f",
             "json",
         ])
         .output()?;
@@ -480,7 +480,7 @@ fn test_request_show_resolved_variables_json() -> Result<(), Box<dyn std::error:
             "tests/fixtures/request_show_vars.rq",
             "-n",
             "my_request",
-            "-o",
+            "-f",
             "json",
         ])
         .output()?;
@@ -611,7 +611,7 @@ fn test_request_show_unresolved_variable_is_syntax_error() -> Result<(), Box<dyn
     let output = rq_cmd()
         .args(["request", "show", "-s"])
         .arg(&file)
-        .args(["-n", "get", "-o", "json"])
+        .args(["-n", "get", "-f", "json"])
         .output()?;
     std::fs::remove_dir_all(&temp_dir).ok();
 

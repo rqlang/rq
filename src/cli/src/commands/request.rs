@@ -1,5 +1,5 @@
 use crate::commands::shared::{
-    print_warnings, render_names, EnvArgs, Location, OutputArgs, SourceArgs,
+    print_warnings, render_names, EnvArgs, FormatArgs, Location, SourceArgs,
 };
 use crate::commands::validators;
 use crate::core::error::RqError;
@@ -122,7 +122,7 @@ pub struct ListArgs {
     pub source: SourceArgs,
 
     #[command(flatten)]
-    pub output: OutputArgs,
+    pub format: FormatArgs,
 }
 
 #[derive(Debug, Args)]
@@ -140,7 +140,7 @@ pub struct ShowArgs {
     pub no_var_interpolation: bool,
 
     #[command(flatten)]
-    pub output: OutputArgs,
+    pub format: FormatArgs,
 }
 
 #[derive(Debug, Args)]
@@ -164,7 +164,7 @@ pub struct RunArgs {
     pub variable: Vec<String>,
 
     #[command(flatten)]
-    pub output: OutputArgs,
+    pub format: FormatArgs,
 
     #[arg(
         long = "no-lint",
@@ -176,13 +176,13 @@ pub struct RunArgs {
 pub fn execute_list(args: &ListArgs) -> Result<(), Box<dyn std::error::Error>> {
     let source_path = Path::new(&args.source.source);
     let (requests, parse_errors) = RqClient::default().list_requests(source_path)?;
-    print_warnings(&parse_errors, args.output.output);
+    print_warnings(&parse_errors, args.format.format);
 
     let names = requests.into_iter().map(|r| r.name).collect();
     print!(
         "{}",
         render_names(
-            args.output.output,
+            args.format.format,
             names,
             "Requests found:",
             "No requests found"
@@ -215,7 +215,7 @@ pub fn execute_show(args: &ShowArgs) -> Result<(), Box<dyn std::error::Error>> {
     let view = RequestDetailsView::from(details);
     print!(
         "{}",
-        render(args.output.output, &view, RequestDetailsView::to_text)
+        render(args.format.format, &view, RequestDetailsView::to_text)
     );
 
     Ok(())
@@ -230,7 +230,7 @@ pub async fn execute_run(args: &RunArgs) -> Result<(), Box<dyn std::error::Error
         .map(|n| n.replace('.', "/"));
     let client = RqClient::default();
     if !args.no_lint {
-        print_lint_summary(&client, &args.source.source, args.output.output);
+        print_lint_summary(&client, &args.source.source, args.format.format);
     }
     let (results, warnings) = client
         .run(
@@ -242,12 +242,12 @@ pub async fn execute_run(args: &RunArgs) -> Result<(), Box<dyn std::error::Error
         .await
         .map_err(|e| with_typed_request_name(e, args.request_name_args.name.as_deref()))?;
 
-    print_warnings(&warnings, args.output.output);
+    print_warnings(&warnings, args.format.format);
 
     let view = ExecutionResultsView { results };
     print!(
         "{}",
-        render(args.output.output, &view, ExecutionResultsView::to_text)
+        render(args.format.format, &view, ExecutionResultsView::to_text)
     );
 
     Ok(())

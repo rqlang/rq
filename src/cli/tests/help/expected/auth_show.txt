@@ -8,5 +8,5 @@ Options:
   -n, --name <NAME>           Name of the auth configuration to show
   -e, --env <ENVIRONMENT>     Environment name
       --no-var-interpolation  Skip variable interpolation
-  -o, --output <OUTPUT>       Output format: text or json [default: text] [possible values: text, json]
+  -f, --format <FORMAT>       Output format: text or json [default: text] [possible values: text, json]
   -h, --help                  Print help

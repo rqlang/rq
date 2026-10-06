@@ -8,9 +8,9 @@ nav_order: 10
 
 # Lint Rules
 
-Beyond parse and semantic errors, rq checks `.rq` files against a set of idiom and style rules. The same rules run in the editor — see [Idiom linting](VSCODE_EXTENSION.md#idiom-linting) — and in the `lint_rq` tool of the [MCP Server](MCP_SERVER.md).
+Beyond parse and semantic errors, rq checks `.rq` files against a set of idiom and style rules. The same rules run in `rq check`, which reports them as warnings (see [Validating files](CLI.md#validating-files-rq-check)), in the editor — see [Idiom linting](VSCODE_EXTENSION.md#idiom-linting) — and in the `lint_rq` tool of the [MCP Server](MCP_SERVER.md).
 
-Every finding names the rule that produced it. In VS Code the id is shown next to the `rq lint` source in the Problems panel, e.g. `rq lint(empty_url_string)`; the MCP server returns it in the `rule` field. That id is what an `rq-lint-ignore` comment takes.
+Every finding names the rule that produced it. In VS Code the id is shown next to the `rq lint` source in the Problems panel, e.g. `rq lint(empty_url_string)`; `rq check` prints it as `warning[empty_url_string]`; the MCP server returns it in the `rule` field. That id is what an `rq-lint-ignore` comment takes.
 
 ## Rules
 

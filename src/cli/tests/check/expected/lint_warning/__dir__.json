@@ -1,0 +1,13 @@
+{
+  "errors": [],
+  "warnings": [
+    {
+      "file": "{{regex:.*users\\.rq$}}",
+      "line": 2,
+      "column": 13,
+      "rule": "empty_url_string",
+      "message": "{{*}}",
+      "suggested_fix": "{{*}}"
+    }
+  ]
+}

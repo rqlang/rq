@@ -350,7 +350,7 @@ Error handling:
 
 ## Validating files: `rq check`
 
-Parse and validate `.rq` files without executing any requests.
+Parse and validate `.rq` files without executing any requests, and run the [lint rules](LINT_RULES.md) over them. Errors fail the check; lint findings are reported as warnings.
 
 ```bash
 rq check [OPTIONS]
@@ -361,13 +361,16 @@ Options:
 - `-s, --source <SOURCE>` – Path to the `.rq` file or directory (default: `.`).
 - `-e, --env <ENVIRONMENT>` – Environment name to use for variable resolution.
 - `-o, --output <OUTPUT>` – Output format: `text` (default) or `json`.
+- `--deny-warnings` – Exit with code `1` when lint reports any warning.
 
 Behavior:
 
-- In `text` mode, prints one line per error as `file:line:column: message`, followed by the error count, or `No errors found`.
-- In `json` mode, outputs a single `errors` array. Each entry contains `message` and, when known, `file`, `line` and `column`.
+- In `text` mode, prints one line per error as `file:line:column: message`, then one line per warning as `file:line:column: warning[rule]: message` followed by an indented `help:` line when the rule suggests a fix. It ends with the error and warning counts, or `No errors found`.
+- In `json` mode, outputs an `errors` array and a `warnings` array. Each error contains `message` and, when known, `file`, `line` and `column`. Each warning contains `file`, `line`, `column`, `rule`, `message` and, when the rule has one, `suggested_fix`.
 - Errors that are not tied to a position (for example, a file that cannot be read) are reported with their message only.
-- Exits with code `1` if any errors are found; exits with code `0` on success.
+- Files that fail to parse are not linted; fix their errors first.
+- Cross-file rules see every `.rq` file under the source directory, or under the file's own directory when `--source` is a file.
+- Exits with code `1` if any errors are found, or if any warnings are found with `--deny-warnings`; exits with code `0` otherwise.
 
 Example:
 
@@ -375,25 +378,29 @@ Example:
 rq check -s src/
 rq check -s src/api.rq -e local
 rq check -s src/ -o json
+rq check -s src/ --deny-warnings
 ```
 
 Example output (text):
 
 ```text
 src/api.rq:5:3: unexpected token
+src/users.rq:2:13: warning[empty_url_string]: Request `list` passes an empty URL string. ...
+  help: Replace `rq list("")` with `rq list()`.
 
-1 error found
+1 error, 1 warning found
 ```
 
-Example output (json, no errors):
+Example output (json, no findings):
 
 ```json
 {
-  "errors": []
+  "errors": [],
+  "warnings": []
 }
 ```
 
-Example output (json, with errors):
+Example output (json, with errors and warnings):
 
 ```json
 {
@@ -403,6 +410,16 @@ Example output (json, with errors):
       "line": 5,
       "column": 3,
       "message": "unexpected token"
+    }
+  ],
+  "warnings": [
+    {
+      "file": "src/users.rq",
+      "line": 2,
+      "column": 13,
+      "rule": "empty_url_string",
+      "message": "Request `list` passes an empty URL string. ...",
+      "suggested_fix": "Replace `rq list(\"\")` with `rq list()`."
     }
   ]
 }

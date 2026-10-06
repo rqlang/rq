@@ -35,6 +35,14 @@ fn main() {
             "check_debug_reports_summary",
             test_check_debug_reports_summary,
         ),
+        Trial::test(
+            "check_text_reports_lint_warning",
+            test_check_text_reports_lint_warning,
+        ),
+        Trial::test(
+            "check_deny_warnings_fails_on_lint_warning",
+            test_check_deny_warnings_fails_on_lint_warning,
+        ),
     ];
 
     trials.extend(discover_check_tests());
@@ -171,6 +179,44 @@ fn test_check_debug_reports_summary() -> Result<(), Failed> {
         || !stderr.contains("* Finished with exit code 1")
     {
         return Err(format!("Unexpected debug trace: {stderr}").into());
+    }
+    Ok(())
+}
+
+fn test_check_text_reports_lint_warning() -> Result<(), Failed> {
+    let output = rq_cmd()
+        .args(["check", "-s", "tests/check/input/lint_warning"])
+        .output()
+        .map_err(|e| format!("Failed to execute: {e}"))?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let first_line = stdout.lines().next().unwrap_or("");
+    if !output.status.success()
+        || !first_line.contains("users.rq:2:13: warning[empty_url_string]: ")
+        || !stdout.contains("\n  help: Replace `rq list(\"\")` with `rq list()`.\n")
+        || !stdout.ends_with("\n0 errors, 1 warning found\n")
+    {
+        return Err(format!("Unexpected output: {stdout}").into());
+    }
+    Ok(())
+}
+
+fn test_check_deny_warnings_fails_on_lint_warning() -> Result<(), Failed> {
+    let output = rq_cmd()
+        .args([
+            "check",
+            "-s",
+            "tests/check/input/lint_warning",
+            "--deny-warnings",
+        ])
+        .output()
+        .map_err(|e| format!("Failed to execute: {e}"))?;
+    if output.status.code() != Some(1) || !output.stderr.is_empty() {
+        return Err(format!(
+            "Unexpected exit {:?}, stderr: {}",
+            output.status.code(),
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
     }
     Ok(())
 }

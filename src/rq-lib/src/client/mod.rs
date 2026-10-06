@@ -5,6 +5,7 @@ use crate::native;
 use crate::client::models::{RequestDetails, RequestExecutionResult, RequestInfo};
 use crate::error::RqError;
 use crate::http::HttpClient;
+use crate::lint::{lint_rq_file, LintDiagnostic, WorkspaceCollector};
 use crate::logger::Logger;
 use crate::syntax::parse_result::AuthLocation;
 use crate::syntax::{Fs, Request, RqFile, SecretProvider, Variable, VariableValue};
@@ -1052,6 +1053,28 @@ impl RqClient {
         Ok(Self::dedup_syntax_errors(errors))
     }
 
+    pub fn lint_path(&self, path: &Path) -> Result<Vec<LintDiagnostic>, RqError> {
+        let (targets, workspace_root) = if self.fs.is_file(path) {
+            let parent = path.parent().filter(|p| !p.as_os_str().is_empty());
+            (vec![path.to_path_buf()], parent.unwrap_or(Path::new(".")))
+        } else if self.fs.is_dir(path) {
+            (self.discover_rq_files(path)?, path)
+        } else {
+            return Err(RqError::DirectoryNotFound(path.display().to_string()));
+        };
+        let workspace = self.read_workspace_sources(workspace_root);
+        let diagnostics: Vec<LintDiagnostic> = targets
+            .iter()
+            .flat_map(|target| self.lint_file(target, &workspace))
+            .collect();
+        Logger::debug(&format!(
+            "* Linted {} file(s): {} warning(s)",
+            targets.len(),
+            diagnostics.len()
+        ));
+        Ok(diagnostics)
+    }
+
     fn load_rq_file(&self, path: &Path) -> Result<RqFile, RqError> {
         let result = self.parse_rq_file(path);
         match &result {
@@ -1191,6 +1214,69 @@ impl RqClient {
             ))
         })?;
         RqFile::from_content(canonical, &content, &*self.fs).map_err(Self::map_parse_error)
+    }
+
+    fn read_workspace_sources(&self, root: &Path) -> Vec<(PathBuf, String)> {
+        let mut paths = Vec::new();
+        self.collect_readable_rq_paths(root, &mut paths);
+        paths
+            .into_iter()
+            .filter_map(|path| {
+                let canonical = self.fs.canonicalize(&path).ok()?;
+                let content = self.fs.read(&canonical).ok()?;
+                Some((canonical, content))
+            })
+            .collect()
+    }
+
+    fn collect_readable_rq_paths(&self, dir: &Path, paths: &mut Vec<PathBuf>) {
+        let Ok(entries) = self.fs.read_dir(dir) else {
+            return;
+        };
+        for path in entries {
+            if self.fs.is_dir(&path) {
+                if !crate::paths::is_skipped_directory(&path) {
+                    self.collect_readable_rq_paths(&path, paths);
+                }
+            } else if path.extension().and_then(|s| s.to_str()) == Some("rq") {
+                paths.push(path);
+            }
+        }
+    }
+
+    fn lint_file(&self, target: &Path, workspace: &[(PathBuf, String)]) -> Vec<LintDiagnostic> {
+        let Ok(canonical) = self.fs.canonicalize(target) else {
+            return Vec::new();
+        };
+        let Ok(source) = self.fs.read(&canonical) else {
+            return Vec::new();
+        };
+        let Ok(rq_file) = RqFile::from_content(canonical.clone(), &source, &*self.fs) else {
+            return Vec::new();
+        };
+        let mut collector = WorkspaceCollector::new(&rq_file);
+        for (path, content) in workspace.iter().filter(|(path, _)| path != &canonical) {
+            collector.absorb(path, content, &*self.fs);
+        }
+        let (workspace_requests, workspace_endpoints) = collector.finish();
+        let display_path = crate::paths::clean_path(&canonical);
+        lint_rq_file(
+            &rq_file,
+            &source,
+            &display_path,
+            &workspace_requests,
+            &workspace_endpoints,
+        )
+        .diagnostics
+        .into_iter()
+        .map(|diagnostic| LintDiagnostic {
+            file: diagnostic
+                .file
+                .clone()
+                .or_else(|| Some(display_path.clone())),
+            ..diagnostic
+        })
+        .collect()
     }
 
     fn map_parse_error(error: Box<dyn std::error::Error>) -> RqError {

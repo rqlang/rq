@@ -34,7 +34,7 @@ OpenSSL is vendored, so the binaries do not depend on the system `libssl`. The L
 
 The repository keeps `version = "0.0.0"` in the root `Cargo.toml`; the workflows rewrite it before building.
 
-- **Dev (`release_cd.yaml`)**: `{next minor}-dev.{commits since tag}`. With latest tag `0.7.0` and 5 commits since, the version is `0.8.0-dev.5`. Without any tag it starts from `0.0.0`.
+- **Dev (`release_cd.yaml`)**: `{next minor}-dev.{commits since tag}`. With latest tag `0.7.0` and 5 commits since, the version is `0.8.0-dev.5`. Without any tag the base is `0.0.0`, so the version is `0.1.0-dev.{commits}`.
 - **Release (`release_prod.yaml`)**: the release tag, without a leading `v` if present.
 
 ## Release process
@@ -60,7 +60,7 @@ gh attestation verify rq-linux-x86_64 --repo rqlang/rq
 
 ## Dev builds
 
-`release_cd.yaml` uploads the CLI binaries and the VSIX as workflow artifacts (not releases). Only the latest push to `main` is built; a newer push cancels the running build. The `deployment/install-rq-dev*` scripts download these artifacts from the latest successful run.
+`release_cd.yaml` uploads the CLI binaries and the VSIX as workflow artifacts (not releases). One build runs at a time: a running build always finishes, and of the pushes that arrive meanwhile only the latest is built next. The `deployment/install-rq-dev*` scripts download these artifacts from the latest successful run.
 
 ## Local build
 

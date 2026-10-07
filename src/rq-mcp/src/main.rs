@@ -5,10 +5,10 @@ use rmcp::{
         wrapper::Parameters,
     },
     model::{
-        AnnotateAble, CallToolResult, Content, GetPromptRequestParams, GetPromptResult,
-        Implementation, ListPromptsResult, ListResourcesResult, PaginatedRequestParams,
-        PromptMessage, PromptMessageRole, ProtocolVersion, RawResource, ReadResourceRequestParams,
-        ReadResourceResult, ResourceContents, ServerCapabilities, ServerInfo,
+        CallToolResult, ContentBlock, GetPromptResult, Implementation, ListResourcesResult,
+        PaginatedRequestParams, PromptMessage, ProtocolVersion, ReadResourceRequestParams,
+        ReadResourceResponse, ReadResourceResult, Resource, ResourceContents, Role,
+        ServerCapabilities, ServerConfig,
     },
     prompt, prompt_handler, prompt_router, schemars,
     service::RequestContext,
@@ -137,7 +137,7 @@ impl RqMcp {
         .map_err(|m| McpError::internal_error(m, None))?;
         let json = serde_json::to_string(&result)
             .map_err(|e| McpError::internal_error(format!("serialize failed: {e}"), None))?;
-        Ok(CallToolResult::success(vec![Content::text(json)]))
+        Ok(CallToolResult::success(vec![ContentBlock::text(json)]))
     }
 
     #[tool(
@@ -155,7 +155,7 @@ impl RqMcp {
         let result = rq_lib::lint::lint(&source, path.as_deref(), workspace);
         let json = serde_json::to_string(&result)
             .map_err(|e| McpError::internal_error(format!("serialize failed: {e}"), None))?;
-        Ok(CallToolResult::success(vec![Content::text(json)]))
+        Ok(CallToolResult::success(vec![ContentBlock::text(json)]))
     }
 
     #[tool(
@@ -169,7 +169,7 @@ impl RqMcp {
             ReferenceDoc::LanguageDefinition => LANGUAGE_DEFINITION_MD,
             ReferenceDoc::Idioms => IDIOMS_MD,
         };
-        Ok(CallToolResult::success(vec![Content::text(body)]))
+        Ok(CallToolResult::success(vec![ContentBlock::text(body)]))
     }
 
     #[tool(
@@ -184,10 +184,10 @@ impl RqMcp {
                 let json = serde_json::to_string(&result).map_err(|e| {
                     McpError::internal_error(format!("serialize failed: {e}"), None)
                 })?;
-                Ok(CallToolResult::success(vec![Content::text(json)]))
+                Ok(CallToolResult::success(vec![ContentBlock::text(json)]))
             }
             Err(ListRequestsError::User(msg)) => {
-                Ok(CallToolResult::error(vec![Content::text(msg)]))
+                Ok(CallToolResult::error(vec![ContentBlock::text(msg)]))
             }
             Err(ListRequestsError::Internal(msg)) => Err(McpError::internal_error(msg, None)),
         }
@@ -204,10 +204,9 @@ impl RqMcp {
     ) -> Result<GetPromptResult, McpError> {
         let body = build_generate_rq_prompt(&args);
         Ok(
-            GetPromptResult::new(vec![PromptMessage::new_text(PromptMessageRole::User, body)])
-                .with_description(
-                    "Author a validated rqlang (.rq) snippet for the described intent.",
-                ),
+            GetPromptResult::new(vec![PromptMessage::new_text(Role::User, body)]).with_description(
+                "Author a validated rqlang (.rq) snippet for the described intent.",
+            ),
         )
     }
 }
@@ -437,8 +436,8 @@ fn map_diagnostic(error: RqError, display_path: &str, draft_path: &Path) -> Vali
 #[tool_handler]
 #[prompt_handler]
 impl ServerHandler for RqMcp {
-    fn get_info(&self) -> ServerInfo {
-        ServerInfo::new(
+    fn get_info(&self) -> ServerConfig {
+        ServerConfig::new(
             ServerCapabilities::builder()
                 .enable_tools()
                 .enable_resources()
@@ -481,51 +480,47 @@ impl ServerHandler for RqMcp {
         _request: Option<PaginatedRequestParams>,
         _: RequestContext<RoleServer>,
     ) -> Result<ListResourcesResult, McpError> {
-        Ok(ListResourcesResult {
-            resources: vec![
-                RawResource::new(LANGUAGE_DEFINITION_URI, "language-definition")
-                    .with_title("rqlang Language Definition")
-                    .with_description(
-                        "Full reference for the rqlang DSL: statement forms (rq, ep, env, \
+        Ok(ListResourcesResult::with_all_items(vec![
+            Resource::new(LANGUAGE_DEFINITION_URI, "language-definition")
+                .with_title("rqlang Language Definition")
+                .with_description(
+                    "Full reference for the rqlang DSL: statement forms (rq, ep, env, \
                      auth, let, import), variable interpolation, attributes, and built-in \
                      functions. Read this before generating any .rq snippet.",
-                    )
-                    .with_mime_type("text/markdown")
-                    .with_size(LANGUAGE_DEFINITION_MD.len() as u32)
-                    .no_annotation(),
-                RawResource::new(IDIOMS_URI, "idioms")
-                    .with_title("rqlang Idioms & Style Guide")
-                    .with_description(
-                        "Opinionated style preferences and canonical examples for generating \
+                )
+                .with_mime_type("text/markdown")
+                .with_size(LANGUAGE_DEFINITION_MD.len() as u64),
+            Resource::new(IDIOMS_URI, "idioms")
+                .with_title("rqlang Idioms & Style Guide")
+                .with_description(
+                    "Opinionated style preferences and canonical examples for generating \
                      .rq files (when to introduce an ep, verb-only naming, JSON body \
                      syntax, multi-file split with import, etc.). Read alongside the \
                      language definition before drafting or refactoring any .rq snippet.",
-                    )
-                    .with_mime_type("text/markdown")
-                    .with_size(IDIOMS_MD.len() as u32)
-                    .no_annotation(),
-            ],
-            next_cursor: None,
-            meta: None,
-        })
+                )
+                .with_mime_type("text/markdown")
+                .with_size(IDIOMS_MD.len() as u64),
+        ]))
     }
 
     async fn read_resource(
         &self,
         request: ReadResourceRequestParams,
         _: RequestContext<RoleServer>,
-    ) -> Result<ReadResourceResult, McpError> {
+    ) -> Result<ReadResourceResponse, McpError> {
         match request.uri.as_str() {
             LANGUAGE_DEFINITION_URI => Ok(ReadResourceResult::new(vec![ResourceContents::text(
                 LANGUAGE_DEFINITION_MD,
                 request.uri,
             )
-            .with_mime_type("text/markdown")])),
-            IDIOMS_URI => Ok(ReadResourceResult::new(vec![ResourceContents::text(
-                IDIOMS_MD,
-                request.uri,
-            )
-            .with_mime_type("text/markdown")])),
+            .with_mime_type("text/markdown")])
+            .into()),
+            IDIOMS_URI => {
+                Ok(ReadResourceResult::new(vec![
+                    ResourceContents::text(IDIOMS_MD, request.uri).with_mime_type("text/markdown")
+                ])
+                .into())
+            }
             _ => Err(McpError::resource_not_found(
                 "resource_not_found",
                 Some(json!({ "uri": request.uri })),

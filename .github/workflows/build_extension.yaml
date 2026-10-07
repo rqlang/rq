@@ -1,0 +1,113 @@
+name: Build VS Code Extension
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+      channel:
+        description: 'dev bundles the dev installer scripts, prod the release ones'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  build:
+    name: Build VS Code Extension
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: ./src/vscode-extension
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: src/vscode-extension/package-lock.json
+
+      - name: Install wasm-pack
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack
+
+      - name: Bundle installer scripts
+        env:
+          SUFFIX: ${{ inputs.channel == 'dev' && '-dev' || '' }}
+        run: |
+          mkdir -p scripts
+          cp "../../deployment/install-rq${SUFFIX}.sh" scripts/
+          cp "../../deployment/install-rq${SUFFIX}.ps1" scripts/
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install vsce
+        run: npm install -g @vscode/vsce
+
+      - name: Set version in Cargo.toml
+        working-directory: ${{ github.workspace }}
+        env:
+          VERSION: ${{ inputs.version }}
+        run: sed -i "s/^version = \".*\"/version = \"${VERSION}\"/" Cargo.toml
+
+      - name: Set version in package.json
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          current=$(node -p "require('./package.json').version")
+          echo "Current version: $current"
+          echo "Target version:  $VERSION"
+          if [ "$current" != "$VERSION" ]; then
+            npm version "$VERSION" --no-git-tag-version
+          else
+            echo "package.json already at $VERSION; skipping npm version"
+          fi
+
+      - name: Lint TypeScript
+        run: npm run lint
+
+      - name: Compile TypeScript
+        run: npm run compile
+
+      - name: Verify compilation output
+        run: |
+          if [ ! -f "out/extension.js" ]; then
+            echo "Error: extension.js not found in out/ directory"
+            exit 1
+          fi
+          ls -lh out/
+
+      - name: Package extension
+        run: |
+          vsce package --allow-missing-repository
+          ls -lh *.vsix
+
+      - name: Verify the MCP server was bundled
+        run: |
+          vsix=$(ls *.vsix | head -n 1)
+          for entry in extension/out/mcpServer.js extension/out/wasm/rq_wasm_bg.wasm; do
+            if ! unzip -Z1 "$vsix" | grep -Fx "$entry" > /dev/null; then
+              echo "Error: $entry missing from $vsix"
+              unzip -l "$vsix"
+              exit 1
+            fi
+          done
+          echo "OK: MCP server and wasm bundled in $vsix"
+
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: rq-language-extension-${{ inputs.version }}
+          path: src/vscode-extension/*.vsix
+          if-no-files-found: error

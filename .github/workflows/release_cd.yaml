@@ -10,7 +10,7 @@ permissions:
 
 concurrency:
   group: release-cd
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true

@@ -1077,7 +1077,7 @@ dependencies = [
  "js-sys",
  "p256",
  "p384",
- "pem 3.0.6",
+ "pem",
  "rand",
  "rsa",
  "serde",
@@ -1400,16 +1400,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pem"
-version = "4.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d354a98a3d1251555de99e8fdd8afda05573c31b82f59063a7b0a29b5527f120"
-dependencies = [
- "base64 0.23.1",
- "serde_core",
-]
-
-[[package]]
 name = "pem-rfc7468"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1709,7 +1699,7 @@ dependencies = [
  "jsonwebtoken",
  "lazy_static",
  "openssl",
- "pem 4.0.0",
+ "pem",
  "regex",
  "reqwest",
  "serde",
@@ -1727,7 +1717,6 @@ dependencies = [
  "anyhow",
  "rmcp",
  "rq-lib",
- "schemars",
  "serde",
  "serde_json",
  "tempfile",

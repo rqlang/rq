@@ -258,7 +258,7 @@ pub struct RunArgs {
         long = "print",
         value_name = "PARTS",
         default_value = "mb",
-        help = "Response parts to print: m (meta), h (headers), b (body)"
+        help = "Response parts to print, combinable (e.g. mhb): m (meta), h (headers), b (body)"
     )]
     pub print: PrintParts,
 

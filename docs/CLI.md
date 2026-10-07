@@ -170,7 +170,7 @@ Options:
 - `-e, --env <ENVIRONMENT>` – Environment name.
 - `-v, --variable <NAME=VALUE>` – Override variables at runtime (can be provided multiple times).
 - `-f, --format <FORMAT>` – Output format: `text` or `json` (default: `text`).
-- `-p, --print <PARTS>` – Response parts to print, as any combination of `m` (meta: request name, method, URL, status and elapsed time), `h` (response headers) and `b` (response body). Defaults to `mb`. The same parts are printed in `text` and `json` mode.
+- `-p, --print <PARTS>` – Response parts to print, as any combination of `m` (meta: request name, method, URL, status and elapsed time), `h` (response headers) and `b` (response body). Letters combine in a single value, in any order: `-p hb` prints the headers and the body, `-p mhb` prints everything. Defaults to `mb`. The same parts are printed in `text` and `json` mode.
 - `--no-lint` – Skip the lint summary printed before running.
 
 Behavior:
@@ -198,6 +198,9 @@ rq request run -s tests/request/run/input/basic.rq -n basic
 
 # Print only the response headers
 rq request run -s tests/request/run/input/basic.rq -p h
+
+# Print the meta, the response headers and the body
+rq request run -s tests/request/run/input/basic.rq -p mhb
 
 # Run using an environment and a CLI variable override
 rq request run -s tests/request/run/fixtures/cli_override/override.rq -e local -v color=red

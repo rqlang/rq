@@ -14,14 +14,16 @@ jobs:
   publish:
     name: Publish Extension
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Download VSIX from release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.inputs.tag }}
         run: |
           mkdir -p extension-artifact
-          gh release download ${{ github.event.inputs.tag }} \
-            --repo ${{ github.repository }} \
+          gh release download "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
             --pattern "*.vsix" \
             --dir extension-artifact
 
@@ -40,4 +42,7 @@ jobs:
           echo "vsix_path=$VSIX_PATH" >> $GITHUB_OUTPUT
 
       - name: Publish to VS Code Marketplace
-        run: npx @vscode/vsce publish --pat ${{ secrets.MARKETPLACE_PAT }} --packagePath ${{ steps.find_vsix.outputs.vsix_path }}
+        env:
+          VSCE_PAT: ${{ secrets.MARKETPLACE_PAT }}
+          VSIX_PATH: ${{ steps.find_vsix.outputs.vsix_path }}
+        run: npx @vscode/vsce publish --packagePath "$VSIX_PATH"

@@ -33,16 +33,8 @@ jobs:
         with:
           components: rustfmt, clippy
 
-      - name: Cache cargo registry & target
-        uses: actions/cache@v5
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
 
       - name: Formatting check
         run: cargo fmt --all -- --check
@@ -79,9 +71,6 @@ jobs:
 
       - name: Test (all tests)
         run: cargo test --workspace --verbose
-
-      - name: Build (release)
-        run: cargo build --release --verbose
 
       - name: Stop echo server
         if: always()

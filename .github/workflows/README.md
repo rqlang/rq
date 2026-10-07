@@ -44,7 +44,7 @@ The repository keeps `version = "0.0.0"` in the root `Cargo.toml`; the workflows
 3. Publish the release. `release_prod.yaml` then:
    - builds the CLI for every platform and the VSIX,
    - once every build has succeeded, uploads all binaries, the VSIX and a `SHA256SUMS` file to the release,
-   - records a build provenance attestation for every uploaded file.
+   - records build provenance attestations for every binary and the VSIX listed in `SHA256SUMS`.
 4. Run `publish_extension.yaml` with the tag to publish the VSIX to the Marketplace.
 
 Nothing is uploaded to the release unless every build succeeds. To retry a failed release, re-run the failed jobs of the workflow run.

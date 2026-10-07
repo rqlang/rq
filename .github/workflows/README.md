@@ -1,92 +1,69 @@
-# Release Workflows
+# Workflows
 
-This directory contains GitHub Actions workflows for building and releasing the `rq` CLI tool.
+GitHub Actions workflows for building, testing and releasing `rq`.
 
-## Workflows
+## Overview
 
-### 1. CLI Release Production (`cli_release_prod.yaml`)
+| Workflow | Trigger | Purpose |
+|---|---|---|
+| `cli_bvt.yaml` | PR to `main` touching Rust code | fmt, clippy, build and test the Cargo workspace |
+| `wasm_bvt.yaml` | PR to `main` touching `rq-wasm` or `rq-lib` | fmt, clippy, test and `wasm32` check of `rq-wasm` |
+| `extension_bvt.yaml` | PR to `main` touching the extension | Lint, compile and test the VS Code extension |
+| `codeql.yml` | Nightly | CodeQL analysis for Rust and JavaScript |
+| `fuzz_nightly.yaml` | Nightly and manual | Fuzz the tokenizer and parser; opens an issue on a crash |
+| `release_cd.yaml` | Push to `main` | Dev builds of the CLI and the extension as workflow artifacts |
+| `release_prod.yaml` | GitHub Release published | Release builds uploaded to the GitHub Release |
+| `publish_extension.yaml` | Manual | Publishes a release VSIX to the VS Code Marketplace |
+| `build_cli.yaml` | Called by the release workflows | Builds and signs the CLI for every platform |
+| `build_extension.yaml` | Called by the release workflows | Packages the VS Code extension VSIX |
 
-**Trigger:** Manual creation of a GitHub Release
+## CLI platforms
 
-**Purpose:** Builds and uploads compiled binaries to an existing GitHub Release.
+`build_cli.yaml` builds one binary per target and uploads it as a workflow artifact named after the asset:
 
-**Versioning:** Extracted from git tag
-- Tag `v1.0.0` → Version `1.0.0`
-- Tag `v0.1.5` → Version `0.1.5`
-- Full semantic version from tag
+| Asset | Target | Runner |
+|---|---|---|
+| `rq-linux-x86_64` | `x86_64-unknown-linux-gnu` | `ubuntu-22.04` |
+| `rq-windows-x86_64.exe` | `x86_64-pc-windows-msvc` | `windows-latest` |
+| `rq-macos-x86_64` | `x86_64-apple-darwin` | `macos-latest` |
+| `rq-macos-aarch64` | `aarch64-apple-darwin` | `macos-latest` |
 
-**Platforms:**
-- Linux x86_64
-- Windows x86_64
-- macOS x86_64
-- macOS ARM64 (Apple Silicon)
+OpenSSL is vendored, so the binaries do not depend on the system `libssl`. The Linux binary is built on Ubuntu 22.04 so that it runs on any distribution with glibc 2.35 or newer. The Windows binary is signed with the certificate in `CODE_SIGNING_CERT`.
 
-**Artifacts:** Binary executables uploaded to the Release
+## Versioning
 
-**Usage:**
-1. Go to GitHub repository → Releases → "Draft a new release"
-2. Create a tag (e.g., `v1.0.0`) and set release title/description
-3. Publish the release
-4. Workflow automatically builds and uploads binaries to the release
+The repository keeps `version = "0.0.0"` in the root `Cargo.toml`; the workflows rewrite it before building.
 
-### 2. Release CD (`release_cd.yaml`)
+- **Dev (`release_cd.yaml`)**: `{next minor}-dev.{commits since tag}`. With latest tag `0.7.0` and 5 commits since, the version is `0.8.0-dev.5`. Without any tag it starts from `0.0.0`.
+- **Release (`release_prod.yaml`)**: the release tag, without a leading `v` if present.
 
-**Trigger:** Push to `main` branch
+## Release process
 
-**Purpose:** Automated dev builds of both CLI (Windows) and VS Code extension.
+1. Make sure `main` is green.
+2. On GitHub, go to Releases → "Draft a new release", create the tag (e.g. `0.8.0`) and write the notes.
+3. Publish the release. `release_prod.yaml` then:
+   - builds the CLI for every platform and the VSIX,
+   - once every build has succeeded, uploads all binaries, the VSIX and a `SHA256SUMS` file to the release,
+   - records a build provenance attestation for every uploaded file.
+4. Run `publish_extension.yaml` with the tag to publish the VSIX to the Marketplace.
 
-**Versioning:** `{base}-dev.{commits_since_tag}`
-- Finds the latest `v*` git tag (e.g., `v0.1.0` → `0.1.0`)
-- If no tag exists, defaults to `0.0.0`
-- Counts commits since that tag as the build number
-- Final version: `0.1.0-dev.5`
+Nothing is uploaded to the release unless every build succeeds. To retry a failed release, re-run the failed jobs of the workflow run.
 
-**Jobs:**
-- **Build CLI (Windows x86_64):** Cargo build, zip archive, upload artifact
-- **Build VS Code Extension:** npm ci, vsce package, upload VSIX artifact
+`rq-linux-ubuntu-22.04-x86_64` is still uploaded as a copy of `rq-linux-x86_64` so that existing installers keep working.
 
-**Artifacts:** CLI zip and VSIX uploaded as workflow artifacts (not releases)
-
-## Version Management
-
-### Release Versions (Production)
-
-Release versions come from the tag created when publishing a GitHub Release. The workflow is triggered when you publish a release in GitHub UI.
-
-### Dev Versions (CD Builds)
-
-Dev versions are derived automatically from git tags. When you push to `main`, the CD pipeline finds the latest `v*` tag and counts commits since it:
-
-```
-Latest tag: v0.1.0, 5 commits since → version 0.1.0-dev.5
-No tags exist → version 0.0.0-dev.1
-```
-
-No VERSION file is needed.
-
-### Local Development Version
-
-For local development builds, the version remains `0.0.0` as specified in `cli/Cargo.toml`. The workflows automatically update this during CI/CD builds.
-
-## Manual Local Build
+## Verifying a download
 
 ```bash
-cd cli
-cargo build --release
+sha256sum --check --ignore-missing SHA256SUMS
+gh attestation verify rq-linux-x86_64 --repo rqlang/rq
 ```
 
-## Release Process
+## Dev builds
 
-1. **Prepare:** Ensure all changes are merged and tested
-2. **Create Release:** Go to GitHub → Releases → "Draft a new release"
-3. **Set Version:** Create tag (e.g., `v1.0.0`), add title and release notes
-4. **Publish:** Click "Publish release"
-5. **Monitor:** Check GitHub Actions for build status
-6. **Verify:** Once workflow completes, download and test release binaries
+`release_cd.yaml` uploads the CLI binaries and the VSIX as workflow artifacts (not releases). Only the latest push to `main` is built; a newer push cancels the running build. The `deployment/install-rq-dev*` scripts download these artifacts from the latest successful run.
 
-## Notes
+## Local build
 
-- The run number automatically increments with each workflow execution
-- Semantic versioning is preserved with the `-dev.X` suffix for CD builds
-- Release builds are clean versions suitable for distribution
-- All builds include automated tests before artifact creation
+```bash
+cargo build --release -p rq
+```

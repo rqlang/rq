@@ -21,6 +21,7 @@ use rq_lib::error::RqError;
 use rq_lib::RqClient;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 use tracing_subscriber::EnvFilter;
 
@@ -31,6 +32,8 @@ const IDIOMS_URI: &str = "rqlang://docs/idioms";
 const IDIOMS_MD: &str = include_str!("../../../docs/RQLANG_IDIOMS.md");
 
 const DRAFT_FILE_NAME: &str = "draft.rq";
+
+const SUPPORTED_PROTOCOL_VERSIONS: &[ProtocolVersion] = &[ProtocolVersion::V_2024_11_05];
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 struct ValidateRqParams {
@@ -433,6 +436,47 @@ fn map_diagnostic(error: RqError, display_path: &str, draft_path: &Path) -> Vali
     }
 }
 
+fn rq_resources() -> Vec<Resource> {
+    vec![
+        Resource::new(LANGUAGE_DEFINITION_URI, "language-definition")
+            .with_title("rqlang Language Definition")
+            .with_description(
+                "Full reference for the rqlang DSL: statement forms (rq, ep, env, \
+                 auth, let, import), variable interpolation, attributes, and built-in \
+                 functions. Read this before generating any .rq snippet.",
+            )
+            .with_mime_type("text/markdown")
+            .with_size(LANGUAGE_DEFINITION_MD.len() as u64),
+        Resource::new(IDIOMS_URI, "idioms")
+            .with_title("rqlang Idioms & Style Guide")
+            .with_description(
+                "Opinionated style preferences and canonical examples for generating \
+                 .rq files (when to introduce an ep, verb-only naming, JSON body \
+                 syntax, multi-file split with import, etc.). Read alongside the \
+                 language definition before drafting or refactoring any .rq snippet.",
+            )
+            .with_mime_type("text/markdown")
+            .with_size(IDIOMS_MD.len() as u64),
+    ]
+}
+
+fn read_rq_resource(uri: String) -> Result<ReadResourceResult, McpError> {
+    let body = match uri.as_str() {
+        LANGUAGE_DEFINITION_URI => LANGUAGE_DEFINITION_MD,
+        IDIOMS_URI => IDIOMS_MD,
+        _ => {
+            return Err(McpError::resource_not_found(
+                "resource_not_found",
+                Some(json!({ "uri": uri })),
+            ))
+        }
+    };
+    Ok(ReadResourceResult::new(vec![ResourceContents::text(
+        body, uri,
+    )
+    .with_mime_type("text/markdown")]))
+}
+
 #[tool_handler]
 #[prompt_handler]
 impl ServerHandler for RqMcp {
@@ -475,32 +519,16 @@ impl ServerHandler for RqMcp {
         ))
     }
 
+    fn supported_protocol_versions(&self) -> Cow<'static, [ProtocolVersion]> {
+        Cow::Borrowed(SUPPORTED_PROTOCOL_VERSIONS)
+    }
+
     async fn list_resources(
         &self,
         _request: Option<PaginatedRequestParams>,
         _: RequestContext<RoleServer>,
     ) -> Result<ListResourcesResult, McpError> {
-        Ok(ListResourcesResult::with_all_items(vec![
-            Resource::new(LANGUAGE_DEFINITION_URI, "language-definition")
-                .with_title("rqlang Language Definition")
-                .with_description(
-                    "Full reference for the rqlang DSL: statement forms (rq, ep, env, \
-                     auth, let, import), variable interpolation, attributes, and built-in \
-                     functions. Read this before generating any .rq snippet.",
-                )
-                .with_mime_type("text/markdown")
-                .with_size(LANGUAGE_DEFINITION_MD.len() as u64),
-            Resource::new(IDIOMS_URI, "idioms")
-                .with_title("rqlang Idioms & Style Guide")
-                .with_description(
-                    "Opinionated style preferences and canonical examples for generating \
-                     .rq files (when to introduce an ep, verb-only naming, JSON body \
-                     syntax, multi-file split with import, etc.). Read alongside the \
-                     language definition before drafting or refactoring any .rq snippet.",
-                )
-                .with_mime_type("text/markdown")
-                .with_size(IDIOMS_MD.len() as u64),
-        ]))
+        Ok(ListResourcesResult::with_all_items(rq_resources()))
     }
 
     async fn read_resource(
@@ -508,24 +536,7 @@ impl ServerHandler for RqMcp {
         request: ReadResourceRequestParams,
         _: RequestContext<RoleServer>,
     ) -> Result<ReadResourceResponse, McpError> {
-        match request.uri.as_str() {
-            LANGUAGE_DEFINITION_URI => Ok(ReadResourceResult::new(vec![ResourceContents::text(
-                LANGUAGE_DEFINITION_MD,
-                request.uri,
-            )
-            .with_mime_type("text/markdown")])
-            .into()),
-            IDIOMS_URI => {
-                Ok(ReadResourceResult::new(vec![
-                    ResourceContents::text(IDIOMS_MD, request.uri).with_mime_type("text/markdown")
-                ])
-                .into())
-            }
-            _ => Err(McpError::resource_not_found(
-                "resource_not_found",
-                Some(json!({ "uri": request.uri })),
-            )),
-        }
+        read_rq_resource(request.uri).map(Into::into)
     }
 }
 
@@ -556,6 +567,7 @@ async fn main() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rmcp::model::{ClientCapabilities, InitializeRequestParams};
 
     #[test]
     fn validate_source_returns_ok_for_clean_request() {
@@ -946,6 +958,64 @@ mod tests {
         assert!(reference_text(ReferenceDoc::LanguageDefinition).contains("rq "));
         assert!(reference_text(ReferenceDoc::Idioms)
             .contains("Never hand-write an `Authorization` header"));
+    }
+
+    #[test]
+    fn initialize_keeps_the_pinned_protocol_version_when_the_client_asks_for_a_newer_one() {
+        let request = InitializeRequestParams::new(
+            ClientCapabilities::default(),
+            Implementation::new("client", "1.0.0"),
+        )
+        .with_protocol_version(ProtocolVersion::V_2025_06_18);
+        let target = RqMcp::new()
+            .negotiate_initialize(&request)
+            .expect("negotiate_initialize failed");
+        assert_eq!(target.protocol_version, ProtocolVersion::V_2024_11_05);
+    }
+
+    #[test]
+    fn rq_resources_lists_both_documents_with_their_sizes() {
+        let target: Vec<(String, Option<u64>)> = rq_resources()
+            .into_iter()
+            .map(|resource| (resource.uri, resource.size))
+            .collect();
+        assert_eq!(
+            target,
+            vec![
+                (
+                    LANGUAGE_DEFINITION_URI.to_string(),
+                    Some(LANGUAGE_DEFINITION_MD.len() as u64)
+                ),
+                (IDIOMS_URI.to_string(), Some(IDIOMS_MD.len() as u64)),
+            ]
+        );
+    }
+
+    #[test]
+    fn read_rq_resource_returns_the_language_definition() {
+        let target = read_rq_resource(LANGUAGE_DEFINITION_URI.to_string()).expect("read failed");
+        assert_eq!(
+            target.contents,
+            vec![
+                ResourceContents::text(LANGUAGE_DEFINITION_MD, LANGUAGE_DEFINITION_URI)
+                    .with_mime_type("text/markdown")
+            ]
+        );
+    }
+
+    #[test]
+    fn read_rq_resource_returns_the_idioms_guide() {
+        let target = read_rq_resource(IDIOMS_URI.to_string()).expect("read failed");
+        assert_eq!(
+            target.contents,
+            vec![ResourceContents::text(IDIOMS_MD, IDIOMS_URI).with_mime_type("text/markdown")]
+        );
+    }
+
+    #[test]
+    fn read_rq_resource_rejects_an_unknown_uri() {
+        let target = read_rq_resource("rqlang://docs/unknown".to_string());
+        assert!(target.is_err());
     }
 
     #[test]

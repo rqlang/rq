@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: release-cd
+  cancel-in-progress: true
+
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
@@ -67,196 +71,20 @@ jobs:
           echo "Computed version: $version"
 
   build-cli:
-    name: Build CLI ${{ matrix.os }}
+    name: Build CLI
     needs: version
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        include:
-          - os: ubuntu-22.04
-            target: x86_64-unknown-linux-gnu
-            artifact_name: rq
-            asset_name: rq-linux-ubuntu-22.04-x86_64
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            artifact_name: rq
-            asset_name: rq-linux-x86_64
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            artifact_name: rq.exe
-            asset_name: rq-windows-x86_64.exe
-          - os: macos-latest
-            target: x86_64-apple-darwin
-            artifact_name: rq
-            asset_name: rq-macos-x86_64
-          - os: macos-latest
-            target: aarch64-apple-darwin
-            artifact_name: rq
-            asset_name: rq-macos-aarch64
-    env:
-      CARGO_TERM_COLOR: always
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
-
-      - name: Set version in Cargo.toml
-        shell: bash
-        run: |
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            sed -i "s/^version = \".*\"/version = \"${{ needs.version.outputs.version }}\"/" Cargo.toml
-          else
-            sed -i.bak "s/^version = \".*\"/version = \"${{ needs.version.outputs.version }}\"/" Cargo.toml
-          fi
-
-      - name: Install system OpenSSL (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
-          echo "OPENSSL_NO_VENDOR=1" >> $GITHUB_ENV
-
-      - name: Cache cargo registry
-        uses: actions/cache@v5
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ matrix.os }}-cargo-${{ hashFiles('Cargo.lock') }}
-          restore-keys: |
-            ${{ matrix.os }}-cargo-
-
-      - name: Build (release)
-        run: cargo build --release --target ${{ matrix.target }} --verbose
-
-      - name: Code sign macOS binary
-        if: runner.os == 'macOS'
-        run: |
-          codesign --force --deep --sign - \
-            --options runtime --timestamp \
-            target/${{ matrix.target }}/release/${{ matrix.artifact_name }}
-
-      - name: Code sign Windows binary
-        if: matrix.os == 'windows-latest'
-        shell: pwsh
-        env:
-          PFX_BASE64: ${{ secrets.CODE_SIGNING_CERT }}
-          PFX_PASSWORD: ${{ secrets.CODE_SIGNING_CERT_PWD }}
-        run: |
-          $pfxPath = Join-Path -Path $env:RUNNER_TEMP -ChildPath "certificate.pfx"
-          [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:PFX_BASE64))
-
-          $signtool = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin" -Filter "signtool.exe" -Recurse | Where-Object { $_.FullName -like "*x64*" } | Sort-Object FullName -Descending | Select-Object -First 1
-          if (-not $signtool) { throw "signtool.exe not found" }
-
-          & $signtool.FullName sign /f $pfxPath /p $env:PFX_PASSWORD /tr http://timestamp.digicert.com /td sha256 /fd sha256 "target/${{ matrix.target }}/release/${{ matrix.artifact_name }}"
-
-          Remove-Item $pfxPath
-
-      - name: Locate binary
-        id: binpath
-        shell: bash
-        run: |
-          bin="target/${{ matrix.target }}/release/${{ matrix.artifact_name }}"
-          if [ ! -f "$bin" ]; then echo "Binary not found: $bin"; exit 1; fi
-          echo "path=$bin" >> $GITHUB_OUTPUT
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: ${{ matrix.asset_name }}
-          path: ${{ steps.binpath.outputs.path }}
-          if-no-files-found: error
+    uses: ./.github/workflows/build_cli.yaml
+    with:
+      version: ${{ needs.version.outputs.version }}
+      cache: true
+    secrets:
+      CODE_SIGNING_CERT: ${{ secrets.CODE_SIGNING_CERT }}
+      CODE_SIGNING_CERT_PWD: ${{ secrets.CODE_SIGNING_CERT_PWD }}
 
   build-extension:
     name: Build VS Code Extension
     needs: version
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./src/vscode-extension
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '22'
-          cache: 'npm'
-          cache-dependency-path: src/vscode-extension/package-lock.json
-
-      - name: Bundle installer scripts
-        run: |
-          mkdir -p scripts
-          cp ../../deployment/install-rq-dev.sh scripts/
-          cp ../../deployment/install-rq-dev.ps1 scripts/
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Update Cargo.toml version
-        working-directory: ${{ github.workspace }}
-        run: sed -i.bak "s/^version = \".*\"/version = \"${{ needs.version.outputs.version }}\"/" Cargo.toml
-
-      - name: Install wasm-pack
-        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
-
-      - name: Install vsce
-        run: npm install -g @vscode/vsce
-
-      - name: Update version in package.json
-        shell: bash
-        run: |
-          current=$(node -p "require('./package.json').version")
-          target="${{ needs.version.outputs.version }}"
-          echo "Current version: $current"
-          echo "Target version:  $target"
-          if [ "$current" != "$target" ]; then
-            npm version "$target" --no-git-tag-version
-          else
-            echo "package.json already at $target; skipping npm version"
-          fi
-
-      - name: Lint TypeScript
-        run: npm run lint
-
-      - name: Compile TypeScript
-        run: npm run compile
-
-      - name: Verify compilation output
-        run: |
-          if [ ! -f "out/extension.js" ]; then
-            echo "Error: extension.js not found in out/ directory"
-            exit 1
-          fi
-          echo "✓ Extension compiled successfully"
-          ls -lh out/
-
-      - name: Package extension
-        run: |
-          vsce package --allow-missing-repository
-          ls -lh *.vsix
-
-      - name: Verify the MCP server was bundled
-        run: |
-          vsix=$(ls *.vsix | head -n 1)
-          for entry in extension/out/mcpServer.js extension/out/wasm/rq_wasm_bg.wasm; do
-            if ! unzip -Z1 "$vsix" | grep -Fx "$entry" > /dev/null; then
-              echo "Error: $entry missing from $vsix"
-              unzip -l "$vsix"
-              exit 1
-            fi
-          done
-          echo "OK: MCP server and wasm bundled in $vsix"
-
-      - name: Upload VSIX artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: rq-language-extension-${{ needs.version.outputs.version }}
-          path: src/vscode-extension/*.vsix
-          if-no-files-found: error
+    uses: ./.github/workflows/build_extension.yaml
+    with:
+      version: ${{ needs.version.outputs.version }}
+      channel: dev

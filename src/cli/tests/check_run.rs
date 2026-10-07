@@ -85,7 +85,7 @@ fn test_check_endpoint_shared_url_var_deduped() -> Result<(), Failed> {
     .map_err(|e| format!("Failed to write temp file: {e}"))?;
     let input_str = input.to_string_lossy().to_string();
     let output = rq_cmd()
-        .args(["check", "-s", &input_str, "-o", "json"])
+        .args(["check", "-s", &input_str, "-f", "json"])
         .output()
         .map_err(|e| format!("Failed to execute: {e}"))?;
     std::fs::remove_file(&input).ok();
@@ -166,7 +166,7 @@ fn test_check_reports_unreadable_file() -> Result<(), Failed> {
     .map_err(|e| format!("Failed to write temp file: {e}"))?;
     let dir_str = dir.to_string_lossy().to_string();
     let output = rq_cmd()
-        .args(["check", "-s", &dir_str, "-o", "json"])
+        .args(["check", "-s", &dir_str, "-f", "json"])
         .output()
         .map_err(|e| format!("Failed to execute: {e}"))?;
     std::fs::remove_dir_all(&dir).ok();
@@ -240,7 +240,7 @@ fn test_check_file_lints_against_sibling_files() -> Result<(), Failed> {
             "check",
             "-s",
             "tests/request/run/fixtures/lint_scope/get.rq",
-            "-o",
+            "-f",
             "json",
         ])
         .output()
@@ -267,7 +267,7 @@ fn test_check_terminates_on_symlink_loop() -> Result<(), Failed> {
     let mut cmd = rq_cmd();
     cmd.args(["check", "-s"])
         .arg(root.join("sub"))
-        .args(["-o", "json"]);
+        .args(["-f", "json"]);
     let output = output_within(cmd, Duration::from_secs(20));
     std::fs::remove_dir_all(&root).ok();
     let output = output?;
@@ -352,7 +352,7 @@ fn run_check_test(dir: &str, file: &str, expected_path: &str) -> Result<(), Fail
     };
 
     let mut cmd = rq_cmd();
-    cmd.args(["check", "--source", &source, "-o", "json"]);
+    cmd.args(["check", "--source", &source, "-f", "json"]);
     if let Some(ref env) = env_name {
         cmd.args(["--env", env]);
     }

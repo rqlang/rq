@@ -290,6 +290,7 @@ Check these whenever a change touches the language, and state which ones you ver
 - **Formatter content preservation** — formatting only changes whitespace outside string literals and comments: it never adds, drops or reorders tokens, and never edits the inside of a literal or of a comment. In a document that leaves a quote unterminated the literal boundaries are undefined, so only the weaker guarantee holds there: no token is added, dropped or reordered.
 - **CLI ↔ extension parity** — a language-level feature is reachable from both surfaces: `rq-wasm/src/bindings.rs` plus the matching `rqClient.ts` method, not only the CLI.
 - **No panics on user input** — no `.unwrap()`, `.expect()`, `panic!`, slicing or indexing on any path reachable from a `.rq` file, a CLI argument or an HTTP response.
+- **Format-independent output** — every CLI command prints the same content whatever `-f/--format` says: `text` and `json` only change the representation, never which fields, sections or items appear, nor their defaults. A flag that filters the output (such as `-p/--print`) applies to every format alike.
 - **Variable precedence** — `variable_context.rs` resolution order stays unchanged unless the change is explicitly about precedence, and then it comes with a test per level.
 
 ## What NOT to Do

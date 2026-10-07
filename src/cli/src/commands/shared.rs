@@ -5,16 +5,16 @@ use clap::Args;
 use serde::Serialize;
 
 #[derive(Debug, Args)]
-pub struct OutputArgs {
+pub struct FormatArgs {
     #[arg(
-        short = 'o',
-        long = "output",
+        short = 'f',
+        long = "format",
         help = "Output format: text or json",
         default_value_t = OutputFormat::Text,
         value_enum,
         ignore_case = true
     )]
-    pub output: OutputFormat,
+    pub format: OutputFormat,
 }
 
 #[derive(Debug, Args)]

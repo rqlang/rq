@@ -98,7 +98,7 @@ rq test("http://localhost/test");
     fs::write(&nested_file, nested_content)?;
 
     let output = rq_cmd()
-        .args(["env", "list", "-s", "tests/temp_nested", "-o", "json"])
+        .args(["env", "list", "-s", "tests/temp_nested", "-f", "json"])
         .output()?;
 
     let _ = std::fs::remove_dir_all("tests/temp_nested");
@@ -133,7 +133,7 @@ fn test_env_list_json_case_insensitive() -> Result<(), Box<dyn std::error::Error
             "list",
             "-s",
             "tests/env/list/input/simple.rq",
-            "--output",
+            "--format",
             "JSON",
         ])
         .output()?;
@@ -163,7 +163,7 @@ fn test_env_list_multiple() -> Result<(), Box<dyn std::error::Error>> {
             "list",
             "-s",
             "tests/env/list/input/multiple.rq",
-            "-o",
+            "-f",
             "json",
         ])
         .output()?;
@@ -190,7 +190,7 @@ fn test_env_list_invalid_output() {
             "list",
             "-s",
             "tests/request/run/input",
-            "--output",
+            "--format",
             "invalid",
         ])
         .output()
@@ -199,6 +199,6 @@ fn test_env_list_invalid_output() {
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("invalid value 'invalid'"));
-    assert!(stderr.contains("--output <OUTPUT>"));
+    assert!(stderr.contains("--format <FORMAT>"));
     assert!(stderr.contains("[possible values: text, json]"));
 }

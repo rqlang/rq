@@ -1,16 +1,17 @@
 use crate::commands::shared::{
-    print_warnings, render_names, EnvArgs, Location, OutputArgs, SourceArgs,
+    print_warnings, render_names, EnvArgs, FormatArgs, Location, SourceArgs,
 };
 use crate::commands::validators;
 use crate::core::error::RqError;
-use crate::core::formatter::{pretty_body, render, OutputFormat, TextBlock};
+use crate::core::formatter::{pretty_body, render, to_json, OutputFormat, TextBlock};
 use clap::{Args, Subcommand};
 use rq_lib::client::models::RequestDetails;
 use rq_lib::lint::LintScope;
 use rq_lib::{RequestExecutionResult, RqClient};
 use serde::Serialize;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
+use std::str::FromStr;
 
 #[derive(Serialize)]
 struct AuthConfigView {
@@ -54,9 +55,77 @@ impl From<RequestDetails> for RequestDetailsView {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PrintParts {
+    meta: bool,
+    headers: bool,
+    body: bool,
+}
+
+impl FromStr for PrintParts {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        if value.is_empty() {
+            return Err("Expected at least one of m, h, b".to_string());
+        }
+        let mut parts = Self {
+            meta: false,
+            headers: false,
+            body: false,
+        };
+        for part in value.chars() {
+            match part {
+                'm' => parts.meta = true,
+                'h' => parts.headers = true,
+                'b' => parts.body = true,
+                other => return Err(format!("Invalid part '{other}', expected any of m, h, b")),
+            }
+        }
+        Ok(parts)
+    }
+}
+
 #[derive(Serialize)]
+struct ResultsEnvelope<'a> {
+    results: Vec<PrintedResultView<'a>>,
+}
+
+#[derive(Serialize)]
+struct PrintedResultView<'a> {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    request_name: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    method: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    url: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    status: Option<u16>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    elapsed_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    response_headers: Option<&'a HashMap<String, String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    body: Option<&'a str>,
+}
+
+impl<'a> PrintedResultView<'a> {
+    fn new(result: &'a RequestExecutionResult, parts: PrintParts) -> Self {
+        Self {
+            request_name: parts.meta.then_some(result.request_name.as_str()),
+            method: parts.meta.then_some(result.method.as_str()),
+            url: parts.meta.then_some(result.url.as_str()),
+            status: parts.meta.then_some(result.status),
+            elapsed_ms: parts.meta.then_some(result.elapsed_ms),
+            response_headers: parts.headers.then_some(&result.response_headers),
+            body: parts.body.then_some(result.body.as_str()),
+        }
+    }
+}
+
 struct ExecutionResultsView {
     results: Vec<RequestExecutionResult>,
+    parts: PrintParts,
 }
 
 impl RequestDetailsView {
@@ -79,10 +148,28 @@ impl RequestDetailsView {
 }
 
 impl ExecutionResultsView {
+    fn render(&self, format: OutputFormat) -> String {
+        match format {
+            OutputFormat::Json => self.to_json(),
+            OutputFormat::Text => self.to_text(),
+        }
+    }
+
+    fn to_json(&self) -> String {
+        to_json(&ResultsEnvelope {
+            results: self
+                .results
+                .iter()
+                .map(|result| PrintedResultView::new(result, self.parts))
+                .collect(),
+        })
+    }
+
     fn to_text(&self) -> String {
         self.results
             .iter()
-            .map(render_execution_result)
+            .map(|result| render_execution_result(result, self.parts))
+            .filter(|rendered| !rendered.is_empty())
             .collect::<Vec<_>>()
             .join("\n")
     }
@@ -122,7 +209,7 @@ pub struct ListArgs {
     pub source: SourceArgs,
 
     #[command(flatten)]
-    pub output: OutputArgs,
+    pub format: FormatArgs,
 }
 
 #[derive(Debug, Args)]
@@ -140,7 +227,7 @@ pub struct ShowArgs {
     pub no_var_interpolation: bool,
 
     #[command(flatten)]
-    pub output: OutputArgs,
+    pub format: FormatArgs,
 }
 
 #[derive(Debug, Args)]
@@ -164,7 +251,16 @@ pub struct RunArgs {
     pub variable: Vec<String>,
 
     #[command(flatten)]
-    pub output: OutputArgs,
+    pub format: FormatArgs,
+
+    #[arg(
+        short = 'p',
+        long = "print",
+        value_name = "PARTS",
+        default_value = "mb",
+        help = "Response parts to print, combinable (e.g. mhb): m (meta), h (headers), b (body)"
+    )]
+    pub print: PrintParts,
 
     #[arg(
         long = "no-lint",
@@ -176,13 +272,13 @@ pub struct RunArgs {
 pub fn execute_list(args: &ListArgs) -> Result<(), Box<dyn std::error::Error>> {
     let source_path = Path::new(&args.source.source);
     let (requests, parse_errors) = RqClient::default().list_requests(source_path)?;
-    print_warnings(&parse_errors, args.output.output);
+    print_warnings(&parse_errors, args.format.format);
 
     let names = requests.into_iter().map(|r| r.name).collect();
     print!(
         "{}",
         render_names(
-            args.output.output,
+            args.format.format,
             names,
             "Requests found:",
             "No requests found"
@@ -215,7 +311,7 @@ pub fn execute_show(args: &ShowArgs) -> Result<(), Box<dyn std::error::Error>> {
     let view = RequestDetailsView::from(details);
     print!(
         "{}",
-        render(args.output.output, &view, RequestDetailsView::to_text)
+        render(args.format.format, &view, RequestDetailsView::to_text)
     );
 
     Ok(())
@@ -230,7 +326,7 @@ pub async fn execute_run(args: &RunArgs) -> Result<(), Box<dyn std::error::Error
         .map(|n| n.replace('.', "/"));
     let client = RqClient::default();
     if !args.no_lint {
-        print_lint_summary(&client, &args.source.source, args.output.output);
+        print_lint_summary(&client, &args.source.source, args.format.format);
     }
     let (results, warnings) = client
         .run(
@@ -242,13 +338,13 @@ pub async fn execute_run(args: &RunArgs) -> Result<(), Box<dyn std::error::Error
         .await
         .map_err(|e| with_typed_request_name(e, args.request_name_args.name.as_deref()))?;
 
-    print_warnings(&warnings, args.output.output);
+    print_warnings(&warnings, args.format.format);
 
-    let view = ExecutionResultsView { results };
-    print!(
-        "{}",
-        render(args.output.output, &view, ExecutionResultsView::to_text)
-    );
+    let view = ExecutionResultsView {
+        results,
+        parts: args.print,
+    };
+    print!("{}", view.render(args.format.format));
 
     Ok(())
 }
@@ -284,20 +380,47 @@ fn with_typed_request_name(error: RqError, typed_name: Option<&str>) -> RqError 
     }
 }
 
-fn render_execution_result(result: &RequestExecutionResult) -> String {
+fn render_execution_result(result: &RequestExecutionResult, parts: PrintParts) -> String {
+    let sections = [
+        parts.meta.then(|| render_meta(result)),
+        parts
+            .headers
+            .then(|| render_headers(&result.response_headers)),
+        parts
+            .body
+            .then(|| pretty_body(&result.body).trim_end().to_string()),
+    ];
+    let rendered = sections
+        .into_iter()
+        .flatten()
+        .filter(|section| !section.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    if rendered.is_empty() {
+        rendered
+    } else {
+        format!("{rendered}\n")
+    }
+}
+
+fn render_meta(result: &RequestExecutionResult) -> String {
     let reason = http::StatusCode::from_u16(result.status)
         .ok()
         .and_then(|status| status.canonical_reason())
         .map(|reason| format!(" {reason}"))
         .unwrap_or_default();
-    let mut out = format!(
-        "{}  {} {}\n{}{reason} · {} ms\n",
+    format!(
+        "{}  {} {}\n{}{reason} · {} ms",
         result.request_name, result.method, result.url, result.status, result.elapsed_ms
-    );
-    if !result.body.is_empty() {
-        out.push('\n');
-        out.push_str(pretty_body(&result.body).trim_end());
-        out.push('\n');
-    }
-    out
+    )
+}
+
+fn render_headers(headers: &HashMap<String, String>) -> String {
+    headers
+        .iter()
+        .collect::<BTreeMap<_, _>>()
+        .into_iter()
+        .map(|(name, value)| format!("{name}: {value}"))
+        .collect::<Vec<_>>()
+        .join("\n")
 }

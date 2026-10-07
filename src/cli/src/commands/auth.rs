@@ -1,4 +1,4 @@
-use crate::commands::shared::{render_names, EnvArgs, Location, OutputArgs, SourceArgs};
+use crate::commands::shared::{render_names, EnvArgs, FormatArgs, Location, SourceArgs};
 use crate::core::formatter::{render, TextBlock};
 use clap::{Args, Subcommand};
 use rq_lib::RqClient;
@@ -50,7 +50,7 @@ pub struct ListArgs {
     pub source: SourceArgs,
 
     #[command(flatten)]
-    pub output: OutputArgs,
+    pub format: FormatArgs,
 }
 
 #[derive(Debug, Args)]
@@ -73,7 +73,7 @@ pub struct ShowArgs {
     pub no_var_interpolation: bool,
 
     #[command(flatten)]
-    pub output: OutputArgs,
+    pub format: FormatArgs,
 }
 
 pub fn execute_list(args: &ListArgs) -> Result<(), Box<dyn std::error::Error>> {
@@ -83,7 +83,7 @@ pub fn execute_list(args: &ListArgs) -> Result<(), Box<dyn std::error::Error>> {
     print!(
         "{}",
         render_names(
-            args.output.output,
+            args.format.format,
             names,
             "Auth configurations found:",
             "No auth configurations found"
@@ -112,7 +112,7 @@ pub fn execute_show(args: &ShowArgs) -> Result<(), Box<dyn std::error::Error>> {
     };
     print!(
         "{}",
-        render(args.output.output, &view, AuthDetailsView::to_text)
+        render(args.format.format, &view, AuthDetailsView::to_text)
     );
 
     Ok(())

@@ -38,7 +38,7 @@ fn test_auth_list_json_output() -> Result<(), Box<dyn std::error::Error>> {
             "list",
             "-s",
             "tests/request/run/input",
-            "-o",
+            "-f",
             "json",
         ])
         .output()?;
@@ -78,7 +78,7 @@ fn test_auth_list_json_case_insensitive() -> Result<(), Box<dyn std::error::Erro
             "list",
             "-s",
             "tests/request/run/input",
-            "--output",
+            "--format",
             "JSON",
         ])
         .output()?;
@@ -237,7 +237,7 @@ rq test("http://localhost:8080/test");
             "list",
             "-s",
             temp_dir.to_str().unwrap(),
-            "-o",
+            "-f",
             "json",
         ])
         .output()?;
@@ -307,7 +307,7 @@ rq test("http://localhost:8080/test");
             "list",
             "-s",
             temp_dir.to_str().unwrap(),
-            "-o",
+            "-f",
             "json",
         ])
         .output()?;
@@ -352,7 +352,7 @@ fn test_auth_list_invalid_output() {
             "list",
             "-s",
             "tests/request/run/input",
-            "--output",
+            "--format",
             "invalid",
         ])
         .output()
@@ -361,7 +361,7 @@ fn test_auth_list_invalid_output() {
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("invalid value 'invalid'"));
-    assert!(stderr.contains("--output <OUTPUT>"));
+    assert!(stderr.contains("--format <FORMAT>"));
     assert!(stderr.contains("[possible values: text, json]"));
 }
 
@@ -491,7 +491,7 @@ fn test_auth_list_json_contains_only_names() -> Result<(), Box<dyn std::error::E
             "list",
             "-s",
             "tests/request/run/input/auth/attribute_bare_identifier.rq",
-            "-o",
+            "-f",
             "json",
         ])
         .output()?;

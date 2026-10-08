@@ -469,6 +469,7 @@ fn walk_rq_files(root: &std::path::Path, visit: &mut dyn FnMut(&std::path::Path)
     walk_rq_files_once(root, visit, &mut std::collections::HashSet::new());
 }
 
+#[cfg(feature = "native")]
 fn walk_rq_files_once(
     root: &std::path::Path,
     visit: &mut dyn FnMut(&std::path::Path),

@@ -63,7 +63,7 @@ The CLI is distributed for macOS and Linux (x86_64 and arm64) through the tap [`
 brew install rqlang/tap/rqlang
 ```
 
-`publish_homebrew.yaml` renders `Formula/rqlang.rb` from the release `SHA256SUMS` with `deployment/homebrew/render-formula.sh`, installs and tests it from a local tap on every platform, and only then pushes it to the tap with the `HOMEBREW_TAP_TOKEN` secret (a fine-grained token with `Contents: write` on `rqlang/homebrew-tap`). Pre-releases are rejected, and the tap never moves back to an older version than the one it already has. To retry or republish a release, run it manually with the tag. Releases published before `SHA256SUMS` and `rq-linux-aarch64` existed (0.7.0 and older) cannot be published this way.
+`publish_homebrew.yaml` renders `Formula/rqlang.rb` from the release `SHA256SUMS` with `deployment/homebrew/render-formula.sh`, installs and tests it from a local tap on every platform, and only then pushes it to the tap with the `HOMEBREW_TAP_TOKEN` secret (a fine-grained token with `Contents: Read and write` on `rqlang/homebrew-tap`). Pre-releases are rejected, and the tap never moves back to an older version than the one it already has. To retry or republish a release, run it manually with the tag. Releases published before `SHA256SUMS` and `rq-linux-aarch64` existed (0.7.0 and older) cannot be published this way.
 
 To test the renderer locally:
 
@@ -80,7 +80,7 @@ scoop bucket add rqlang https://github.com/rqlang/scoop-bucket
 scoop install rqlang/rqlang
 ```
 
-`publish_scoop.yaml` renders `bucket/rqlang.json` from the release `SHA256SUMS` with `deployment/scoop/render-manifest.sh`, installs it on Windows with the Scoop installer pinned in `SCOOP_INSTALLER_COMMIT` and checks that `rq --version` reports exactly that version, and only then pushes it to the bucket with the `SCOOP_BUCKET_TOKEN` secret (a fine-grained token with `Contents: write` on `rqlang/scoop-bucket`). The manifest has no `checkver`/`autoupdate`: this workflow is the only thing that updates it. Pre-releases are rejected, and the bucket never moves back to an older version than the one it already has. To retry or republish a release, run it manually with the tag. Releases published before `SHA256SUMS` existed (0.7.0 and older) cannot be published this way.
+`publish_scoop.yaml` renders `bucket/rqlang.json` from the release `SHA256SUMS` with `deployment/scoop/render-manifest.sh`, installs it on Windows with the Scoop installer pinned in `SCOOP_INSTALLER_COMMIT` and checks that `rq --version` reports exactly that version, and only then pushes it to the bucket with the `SCOOP_BUCKET_TOKEN` secret (a fine-grained token with `Contents: Read and write` on `rqlang/scoop-bucket`). The manifest has no `checkver`/`autoupdate`: this workflow is the only thing that updates it. Pre-releases are rejected, and the bucket never moves back to an older version than the one it already has. To retry or republish a release, run it manually with the tag. Releases published before `SHA256SUMS` existed (0.7.0 and older) cannot be published this way.
 
 Installing through Scoop and through `deployment/install-rq.ps1` side by side leaves two `rq.exe` on `PATH`; use one or the other.
 

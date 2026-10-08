@@ -1,0 +1,13 @@
+{
+  "version": "1.2.3",
+  "description": "Manage and execute HTTP requests defined in .rq files",
+  "homepage": "https://github.com/rqlang/rq",
+  "license": "Apache-2.0",
+  "architecture": {
+    "64bit": {
+      "url": "https://github.com/rqlang/rq/releases/download/1.2.3/rq-windows-x86_64.exe#/rq.exe",
+      "hash": "6666666666666666666666666666666666666666666666666666666666666666"
+    }
+  },
+  "bin": "rq.exe"
+}

@@ -24,11 +24,12 @@ GitHub Actions workflows for building, testing and releasing `rq`.
 | Asset | Target | Runner |
 |---|---|---|
 | `rq-linux-x86_64` | `x86_64-unknown-linux-gnu` | `ubuntu-22.04` |
+| `rq-linux-aarch64` | `aarch64-unknown-linux-gnu` | `ubuntu-22.04-arm` |
 | `rq-windows-x86_64.exe` | `x86_64-pc-windows-msvc` | `windows-latest` |
 | `rq-macos-x86_64` | `x86_64-apple-darwin` | `macos-latest` |
 | `rq-macos-aarch64` | `aarch64-apple-darwin` | `macos-latest` |
 
-OpenSSL is vendored, so the binaries do not depend on the system `libssl`. The Linux binary is built on Ubuntu 22.04 so that it runs on any distribution with glibc 2.35 or newer. The Windows binary is signed with the certificate in `CODE_SIGNING_CERT`.
+OpenSSL is vendored, so the binaries do not depend on the system `libssl`. The Linux binaries are built on Ubuntu 22.04 so that they run on any distribution with glibc 2.35 or newer. The Windows binary is signed with the certificate in `CODE_SIGNING_CERT`.
 
 ## Versioning
 

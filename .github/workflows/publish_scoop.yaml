@@ -25,6 +25,7 @@ concurrency:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   BUCKET_REPOSITORY: rqlang/scoop-bucket
+  SCOOP_INSTALLER_COMMIT: 1e2f334083d609986d8c8bc9e31ae8e87c39fab4
 
 jobs:
   render:
@@ -88,7 +89,9 @@ jobs:
       - name: Install Scoop
         shell: pwsh
         run: |
-          Invoke-Expression "& {$(Invoke-RestMethod https://get.scoop.sh)} -RunAsAdmin"
+          $installer = Join-Path $env:RUNNER_TEMP 'install-scoop.ps1'
+          Invoke-WebRequest -Uri "https://raw.githubusercontent.com/ScoopInstaller/Install/$env:SCOOP_INSTALLER_COMMIT/install.ps1" -OutFile $installer
+          & $installer -RunAsAdmin
           Join-Path $env:USERPROFILE 'scoop\shims' | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
       - name: Install and test manifest
@@ -98,9 +101,9 @@ jobs:
         run: |
           scoop install .\rqlang.json
           if ($LASTEXITCODE -ne 0) { throw "scoop install failed" }
-          $output = rq --version
+          $output = (rq --version | Out-String).Trim()
           Write-Host $output
-          if ($output -notmatch [regex]::Escape($env:VERSION)) { throw "rq --version did not report $env:VERSION" }
+          if ($output -cnotmatch "^rq $([regex]::Escape($env:VERSION))$") { throw "rq --version reported '$output', expected 'rq $env:VERSION'" }
 
   push:
     name: Push to Bucket
@@ -128,6 +131,10 @@ jobs:
           mkdir -p bucket
           if [ -f bucket/rqlang.json ]; then
             current=$(jq -r .version bucket/rqlang.json)
+            if ! [[ "$current" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::bucket/rqlang.json has an invalid version '$current'; fix it in $BUCKET_REPOSITORY before publishing"
+              exit 1
+            fi
             newest=$(printf '%s\n%s\n' "$current" "$VERSION" | sort -V | tail -n1)
             if [ "$current" != "$VERSION" ] && [ "$newest" = "$current" ]; then
               echo "::notice::Bucket already has $current, newer than $VERSION; leaving it unchanged"

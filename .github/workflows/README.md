@@ -62,7 +62,7 @@ The CLI is distributed for macOS and Linux (x86_64 and arm64) through the tap [`
 brew install rqlang/tap/rqlang
 ```
 
-`publish_homebrew.yaml` renders `Formula/rqlang.rb` from the release `SHA256SUMS` with `deployment/homebrew/render-formula.sh`, installs and tests it from a local tap on every platform, and only then pushes it to the tap with the `HOMEBREW_TAP_TOKEN` secret (a fine-grained token with `Contents: write` on `rqlang/homebrew-tap`). To retry or republish a release, run it manually with the tag. Releases published before `SHA256SUMS` and `rq-linux-aarch64` existed (0.7.0 and older) cannot be published this way.
+`publish_homebrew.yaml` renders `Formula/rqlang.rb` from the release `SHA256SUMS` with `deployment/homebrew/render-formula.sh`, installs and tests it from a local tap on every platform, and only then pushes it to the tap with the `HOMEBREW_TAP_TOKEN` secret (a fine-grained token with `Contents: write` on `rqlang/homebrew-tap`). Pre-releases are rejected, and the tap never moves back to an older version than the one it already has. To retry or republish a release, run it manually with the tag. Releases published before `SHA256SUMS` and `rq-linux-aarch64` existed (0.7.0 and older) cannot be published this way.
 
 To test the renderer locally:
 

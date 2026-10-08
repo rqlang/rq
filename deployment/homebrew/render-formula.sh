@@ -3,13 +3,14 @@
 set -euo pipefail
 
 if [[ $# -ne 2 ]]; then
-  printf 'Usage: %s VERSION SHA256SUMS\n' "$0" >&2
+  printf 'Usage: %s TAG SHA256SUMS\n' "$0" >&2
   exit 2
 fi
 
-VERSION="$1"
+TAG="$1"
+VERSION="${TAG#v}"
 SUMS_FILE="$2"
-BASE_URL="https://github.com/rqlang/rq/releases/download/${VERSION}"
+BASE_URL="https://github.com/rqlang/rq/releases/download/${TAG}"
 
 [[ "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { printf 'Invalid version: %s\n' "${VERSION}" >&2; exit 1; }
 [[ -r "${SUMS_FILE}" ]] || { printf 'Cannot read %s\n' "${SUMS_FILE}" >&2; exit 1; }

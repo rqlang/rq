@@ -45,11 +45,11 @@ test_fails_on_prerelease_version() {
   fi
 }
 
-test_fails_on_v_prefixed_version() {
-  if "${RENDER}" v1.2.3 SHA256SUMS > /dev/null 2>&1; then
-    fail "fails on v-prefixed version"
+test_keeps_v_prefixed_tag_in_urls() {
+  if "${RENDER}" v1.2.3 SHA256SUMS | diff -u <(sed 's|/download/1.2.3/|/download/v1.2.3/|' expected.rb) -; then
+    pass "keeps v-prefixed tag in urls"
   else
-    pass "fails on v-prefixed version"
+    fail "keeps v-prefixed tag in urls"
   fi
 }
 
@@ -57,6 +57,6 @@ test_renders_expected_formula
 test_rendered_formula_is_valid_ruby
 test_fails_when_asset_missing
 test_fails_on_prerelease_version
-test_fails_on_v_prefixed_version
+test_keeps_v_prefixed_tag_in_urls
 
 exit "${FAILED}"

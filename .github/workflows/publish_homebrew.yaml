@@ -43,6 +43,17 @@ jobs:
           TAG: ${{ inputs.tag }}
         run: echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
 
+      - name: Reject pre-releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          prerelease=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isPrerelease --jq .isPrerelease)
+          if [ "$prerelease" = "true" ]; then
+            echo "::error::$TAG is a pre-release; only stable releases are published to Homebrew"
+            exit 1
+          fi
+
       - name: Download SHA256SUMS from release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -51,9 +62,9 @@ jobs:
 
       - name: Render formula
         env:
-          VERSION: ${{ steps.version.outputs.version }}
+          TAG: ${{ inputs.tag }}
         run: |
-          deployment/homebrew/render-formula.sh "$VERSION" SHA256SUMS > rqlang.rb
+          deployment/homebrew/render-formula.sh "$TAG" SHA256SUMS > rqlang.rb
           cat rqlang.rb
 
       - name: Upload formula
@@ -77,18 +88,24 @@ jobs:
       HOMEBREW_NO_ENV_HINTS: 1
     steps:
       - name: Set up Homebrew
-        uses: Homebrew/actions/setup-homebrew@main
+        uses: Homebrew/actions/setup-homebrew@e99025eb970cfa124b8284a35463d87426917478
 
       - name: Download formula
         uses: actions/download-artifact@v8
         with:
           name: homebrew-formula
 
-      - name: Install and test from a local tap
+      - name: Add formula to a local tap
         run: |
           brew tap-new --no-git rqlang/verify
           cp rqlang.rb "$(brew --repository)/Library/Taps/rqlang/homebrew-verify/Formula/"
-          brew audit --strict --online rqlang/verify/rqlang
+
+      - name: Audit formula
+        if: matrix.os == 'ubuntu-latest'
+        run: brew audit --strict --online rqlang/verify/rqlang
+
+      - name: Install and test formula
+        run: |
           brew install rqlang/verify/rqlang
           brew test rqlang/verify/rqlang
 
@@ -116,6 +133,15 @@ jobs:
           VERSION: ${{ needs.render.outputs.version }}
         run: |
           mkdir -p Formula
+          if [ -f Formula/rqlang.rb ]; then
+            current=$(grep -m1 -oE '/releases/download/[^/]+/' Formula/rqlang.rb | cut -d/ -f4)
+            current="${current#v}"
+            newest=$(printf '%s\n%s\n' "$current" "$VERSION" | sort -V | tail -n1)
+            if [ "$current" != "$VERSION" ] && [ "$newest" = "$current" ]; then
+              echo "::notice::Tap already has $current, newer than $VERSION; leaving it unchanged"
+              exit 0
+            fi
+          fi
           cp ../rqlang.rb Formula/rqlang.rb
           git add Formula/rqlang.rb
           if git diff --cached --quiet; then

@@ -59,6 +59,7 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           path: artifacts
+          pattern: rq-*
 
       - name: Stage release assets
         run: |
@@ -84,3 +85,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.event.release.tag_name }}
         run: gh release upload "$TAG" dist/* --clobber --repo "$GITHUB_REPOSITORY"
+
+  publish-homebrew:
+    name: Publish Homebrew Formula
+    needs: publish
+    if: ${{ !github.event.release.prerelease }}
+    uses: ./.github/workflows/publish_homebrew.yaml
+    with:
+      tag: ${{ github.event.release.tag_name }}
+    secrets:
+      HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}

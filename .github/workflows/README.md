@@ -15,6 +15,7 @@ GitHub Actions workflows for building, testing and releasing `rq`.
 | `release_prod.yaml` | GitHub Release published | Release builds uploaded to the GitHub Release |
 | `publish_extension.yaml` | Manual | Publishes a release VSIX to the VS Code Marketplace |
 | `publish_homebrew.yaml` | Called by `release_prod.yaml`, or manual | Renders, verifies and pushes the Homebrew formula to the tap |
+| `publish_scoop.yaml` | Called by `release_prod.yaml`, or manual | Renders, verifies and pushes the Scoop manifest to the bucket |
 | `build_cli.yaml` | Called by the release workflows | Builds and signs the CLI for every platform |
 | `build_extension.yaml` | Called by the release workflows | Packages the VS Code extension VSIX |
 
@@ -47,7 +48,7 @@ The repository keeps `version = "0.0.0"` in the root `Cargo.toml`; the workflows
    - builds the CLI for every platform and the VSIX,
    - once every build has succeeded, uploads all binaries, the VSIX and a `SHA256SUMS` file to the release,
    - records build provenance attestations for every binary and the VSIX listed in `SHA256SUMS`,
-   - unless the release is a pre-release, publishes the Homebrew formula (see below).
+   - unless the release is a pre-release, publishes the Homebrew formula and the Scoop manifest (see below).
 4. Run `publish_extension.yaml` with the tag to publish the VSIX to the Marketplace.
 
 Nothing is uploaded to the release unless every build succeeds. To retry a failed release, re-run the failed jobs of the workflow run.
@@ -68,6 +69,25 @@ To test the renderer locally:
 
 ```bash
 deployment/homebrew/test/run.sh
+```
+
+## Scoop
+
+The CLI is distributed for Windows (x86_64) through the bucket [`rqlang/scoop-bucket`](https://github.com/rqlang/scoop-bucket). The manifest is named `rqlang`, matching the Homebrew formula; the installed command is still `rq`.
+
+```powershell
+scoop bucket add rqlang https://github.com/rqlang/scoop-bucket
+scoop install rqlang/rqlang
+```
+
+`publish_scoop.yaml` renders `bucket/rqlang.json` from the release `SHA256SUMS` with `deployment/scoop/render-manifest.sh`, installs it with Scoop on Windows and checks `rq --version`, and only then pushes it to the bucket with the `SCOOP_BUCKET_TOKEN` secret (a fine-grained token with `Contents: write` on `rqlang/scoop-bucket`). The manifest has no `checkver`/`autoupdate`: this workflow is the only thing that updates it. Pre-releases are rejected, and the bucket never moves back to an older version than the one it already has. To retry or republish a release, run it manually with the tag. Releases published before `SHA256SUMS` existed (0.7.0 and older) cannot be published this way.
+
+Installing through Scoop and through `deployment/install-rq.ps1` side by side leaves two `rq.exe` on `PATH`; use one or the other.
+
+To test the renderer locally:
+
+```bash
+deployment/scoop/test/run.sh
 ```
 
 ## Verifying a download

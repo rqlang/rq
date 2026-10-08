@@ -95,3 +95,13 @@ jobs:
       tag: ${{ github.event.release.tag_name }}
     secrets:
       HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+
+  publish-scoop:
+    name: Publish Scoop Manifest
+    needs: publish
+    if: ${{ !github.event.release.prerelease }}
+    uses: ./.github/workflows/publish_scoop.yaml
+    with:
+      tag: ${{ github.event.release.tag_name }}
+    secrets:
+      SCOOP_BUCKET_TOKEN: ${{ secrets.SCOOP_BUCKET_TOKEN }}

@@ -28,7 +28,7 @@ usage() {
 Usage: $0 [OPTIONS]
 
 Options:
-  -r, --release-tag TAG   GitHub release tag to install (e.g. v0.4.0).
+  -r, --release-tag TAG   GitHub release tag to install (e.g. 0.7.0).
                           If omitted, the latest release is used.
   -d, --install-dir DIR   Directory to install the rq binary into.
                           Overrides the default location logic.
@@ -64,15 +64,25 @@ ASSET_NAME=""
 
 case "${OS_NAME}" in
   Linux)
-    ASSET_NAME="rq-linux-x86_64"
+    case "${ARCH}" in
+      x86_64|amd64)
+        ASSET_NAME="rq-linux-x86_64"
 
-    if [[ -r /etc/os-release ]]; then
-      # shellcheck disable=SC1091
-      . /etc/os-release
-      if [[ "${ID:-}" == "ubuntu" && "${VERSION_ID:-}" == "22.04" ]]; then
-        ASSET_NAME="rq-linux-ubuntu-22.04-x86_64"
-      fi
-    fi
+        if [[ -r /etc/os-release ]]; then
+          # shellcheck disable=SC1091
+          . /etc/os-release
+          if [[ "${ID:-}" == "ubuntu" && "${VERSION_ID:-}" == "22.04" ]]; then
+            ASSET_NAME="rq-linux-ubuntu-22.04-x86_64"
+          fi
+        fi
+        ;;
+      aarch64|arm64)
+        ASSET_NAME="rq-linux-aarch64"
+        ;;
+      *)
+        error "Unsupported Linux architecture: ${ARCH}. Prebuilt binaries exist for x86_64 and aarch64 only."
+        ;;
+    esac
     ;;
   Darwin)
     if [[ "${ARCH}" == "arm64" ]]; then

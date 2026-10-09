@@ -127,20 +127,86 @@ fi
 
 info "Installing release '${RELEASE_TAG}' from repository ${OWNER}/${REPO}."
 
-ASSET_URL="$(printf '%s' "${RELEASE_JSON}" \
-  | awk -v asset="${ASSET_NAME}" '
-    BEGIN { RS = "," }
-    /\/releases\/assets\// && /"url"/ {
-      s = $0
-      gsub(/.*"url"[[:space:]]*:[[:space:]]*"/, "", s)
-      gsub(/".*/, "", s)
-      candidate = s
-    }
-    /"name"/ && index($0, "\"" asset "\"") {
-      print candidate
-      exit
-    }
-  ')"
+find_asset_url() {
+  printf '%s' "${RELEASE_JSON}" \
+    | awk -v asset="$1" '
+      BEGIN { RS = "," }
+      /\/releases\/assets\// && /"url"/ {
+        s = $0
+        gsub(/.*"url"[[:space:]]*:[[:space:]]*"/, "", s)
+        gsub(/".*/, "", s)
+        candidate = s
+      }
+      /"name"/ && index($0, "\"" asset "\"") {
+        print candidate
+        exit
+      }
+    '
+}
+
+download_asset() {
+  local name="$1"
+  local url="$2"
+  local destination="$3"
+  local signed_url
+
+  info "Downloading asset '${name}' via API (${url})"
+
+  signed_url="$(curl -sS -w "%{redirect_url}" -o /dev/null \
+    -H "User-Agent: rq-installer-script" \
+    -H "Accept: application/octet-stream" \
+    "${url}")"
+
+  if [[ -z "${signed_url}" ]]; then
+    error "GitHub API did not return a redirect for asset '${name}'. The release or asset may not exist."
+  fi
+
+  if ! curl -fsSL -o "${destination}" "${signed_url}"; then
+    error "Failed to download asset '${name}' from GitHub."
+  fi
+
+  if [[ ! -f "${destination}" ]]; then
+    error "Download appeared to succeed but file not found at ${destination}"
+  fi
+}
+
+sha256_of() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{ print $1 }'
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" | awk '{ print $1 }'
+  else
+    error "Neither sha256sum nor shasum is available to verify the download."
+  fi
+}
+
+verify_checksum() {
+  local checksums_url
+  local expected
+  local actual
+
+  checksums_url="$(find_asset_url "SHA256SUMS")"
+  if [[ -z "${checksums_url}" ]]; then
+    warn "Release '${RELEASE_TAG}' publishes no SHA256SUMS. Skipping checksum verification."
+    return
+  fi
+
+  download_asset "SHA256SUMS" "${checksums_url}" "${CHECKSUMS_PATH}"
+
+  expected="$(awk -v asset="${ASSET_NAME}" '$2 == asset || $2 == "*" asset { print $1; exit }' "${CHECKSUMS_PATH}")"
+  if [[ -z "${expected}" ]]; then
+    error "SHA256SUMS of release '${RELEASE_TAG}' has no entry for '${ASSET_NAME}'."
+  fi
+
+  actual="$(sha256_of "${DOWNLOAD_PATH}")"
+  if [[ "${actual}" != "${expected}" ]]; then
+    error "Checksum mismatch for '${ASSET_NAME}': expected ${expected}, got ${actual}."
+  fi
+
+  info "Checksum verified (sha256 ${actual})."
+}
+
+ASSET_URL="$(find_asset_url "${ASSET_NAME}")"
 
 if [[ -z "${ASSET_URL}" ]]; then
   AVAILABLE_ASSETS_LIST="$(printf '%s\n' "${RELEASE_JSON}" | sed -n 's/.*"name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
@@ -150,27 +216,11 @@ fi
 
 TMPDIR="${TMPDIR:-/tmp}"
 DOWNLOAD_PATH="${TMPDIR}/rq_$$"
+CHECKSUMS_PATH="${TMPDIR}/rq_$$.sha256sums"
+trap 'rm -f "${DOWNLOAD_PATH}" "${CHECKSUMS_PATH}"' EXIT
 
-info "Downloading asset '${ASSET_NAME}' via API (${ASSET_URL})"
-
-CURL_REDIRECT_ARGS=("-sS" "-w" "%{redirect_url}" "-o" "/dev/null"
-  "-H" "User-Agent: rq-installer-script"
-  "-H" "Accept: application/octet-stream")
-
-SIGNED_URL="$(curl "${CURL_REDIRECT_ARGS[@]}" "${ASSET_URL}")"
-
-if [[ -z "${SIGNED_URL}" ]]; then
-  error "GitHub API did not return a redirect for asset '${ASSET_NAME}'. The release or asset may not exist."
-fi
-
-info "Downloading from signed URL..."
-if ! curl -fSL -o "${DOWNLOAD_PATH}" "${SIGNED_URL}"; then
-  error "Failed to download asset '${ASSET_NAME}' from GitHub."
-fi
-
-if [[ ! -f "${DOWNLOAD_PATH}" ]]; then
-  error "Download appeared to succeed but file not found at ${DOWNLOAD_PATH}"
-fi
+download_asset "${ASSET_NAME}" "${ASSET_URL}" "${DOWNLOAD_PATH}"
+verify_checksum
 
 chmod +x "${DOWNLOAD_PATH}"
 
@@ -218,7 +268,5 @@ case ":${PATH}:" in
     warn "  export PATH=\"${INSTALL_ROOT}:\$PATH\""
     ;;
 esac
-
-rm -f "${DOWNLOAD_PATH}"
 
 printf 'Success: Installed rq to %s\n' "${INSTALL_BIN}" >&2

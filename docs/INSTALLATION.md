@@ -26,7 +26,7 @@ Each release publishes a `.vsix` file as a release asset on GitHub. You can down
 
 ## CLI on Linux (Install Script)
 
-The install script downloads the CLI binary for your architecture (`x86_64` or `aarch64`) from the latest GitHub release, renames it to `rq` and copies it to a directory on your `PATH`:
+The install script downloads the CLI binary for your architecture (`x86_64` or `aarch64`) from the latest GitHub release, checks it against the release's `SHA256SUMS`, renames it to `rq` and copies it to a directory on your `PATH`:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/rqlang/rq/main/deployment/install-rq.sh | bash

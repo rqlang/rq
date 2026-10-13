@@ -172,10 +172,10 @@ fi
 
 info "Installing release '${RELEASE_TAG}' from repository ${OWNER}/${REPO}."
 
-TMPDIR="${TMPDIR:-/tmp}"
-DOWNLOAD_PATH="${TMPDIR}/rq_$$"
-CHECKSUMS_PATH="${TMPDIR}/rq_$$.sha256sums"
-trap 'rm -f "${DOWNLOAD_PATH}" "${CHECKSUMS_PATH}"' EXIT
+WORK_DIR="$(mktemp -d)"
+trap 'rm -rf "${WORK_DIR}"' EXIT
+DOWNLOAD_PATH="${WORK_DIR}/rq"
+CHECKSUMS_PATH="${WORK_DIR}/SHA256SUMS"
 
 info "Downloading '${ASSET_NAME}'."
 if ! download_release_file "${ASSET_NAME}" "${DOWNLOAD_PATH}"; then

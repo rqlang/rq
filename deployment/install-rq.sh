@@ -152,9 +152,9 @@ verify_checksum() {
     return
   fi
 
-  expected="$(awk -v asset="${ASSET_NAME}" '$2 == asset || $2 == "*" asset { print $1; exit }' "${CHECKSUMS_PATH}")"
-  if [[ -z "${expected}" ]]; then
-    error "SHA256SUMS of release '${RELEASE_TAG}' has no entry for '${ASSET_NAME}'."
+  expected="$(awk -v asset="${ASSET_NAME}" '$2 == asset || $2 == "*" asset { print $1 }' "${CHECKSUMS_PATH}")"
+  if [[ ! "${expected}" =~ ^[0-9a-f]{64}$ ]]; then
+    error "SHA256SUMS of release '${RELEASE_TAG}' has a missing or invalid sha256 for '${ASSET_NAME}'."
   fi
 
   actual="$(sha256_of "${DOWNLOAD_PATH}")"

@@ -157,10 +157,36 @@ test_fails_when_checksum_entry_missing() {
   grep -v ' rq-linux-x86_64$' "${SCRATCH}/releases/1.2.3/SHA256SUMS" > "${SCRATCH}/SHA256SUMS" || true
   mv "${SCRATCH}/SHA256SUMS" "${SCRATCH}/releases/1.2.3/SHA256SUMS"
   set_latest 1.2.3
-  if ! run_installer Linux x86_64 && grep -q "has no entry for 'rq-linux-x86_64'" "${SCRATCH}/output" && [[ ! -e "${SCRATCH}/install/rq" ]]; then
+  if ! run_installer Linux x86_64 && grep -q "missing or invalid sha256 for 'rq-linux-x86_64'" "${SCRATCH}/output" && [[ ! -e "${SCRATCH}/install/rq" ]]; then
     pass "fails when SHA256SUMS has no entry for the asset"
   else
     fail "fails when SHA256SUMS has no entry for the asset"
+  fi
+}
+
+test_fails_when_checksum_entry_invalid() {
+  reset_fixture
+  add_asset 1.2.3 rq-linux-x86_64 "rq 1.2.3"
+  printf '<html>Not Found</html>  rq-linux-x86_64\n' > "${SCRATCH}/releases/1.2.3/SHA256SUMS"
+  set_latest 1.2.3
+  if ! run_installer Linux x86_64 && grep -q "missing or invalid sha256 for 'rq-linux-x86_64'" "${SCRATCH}/output" && [[ ! -e "${SCRATCH}/install/rq" ]]; then
+    pass "fails when SHA256SUMS has an invalid sha256 for the asset"
+  else
+    fail "fails when SHA256SUMS has an invalid sha256 for the asset"
+  fi
+}
+
+test_fails_when_checksum_entry_duplicated() {
+  reset_fixture
+  add_asset 1.2.3 rq-linux-x86_64 "rq 1.2.3"
+  publish_checksums 1.2.3
+  cat "${SCRATCH}/releases/1.2.3/SHA256SUMS" "${SCRATCH}/releases/1.2.3/SHA256SUMS" > "${SCRATCH}/SHA256SUMS"
+  mv "${SCRATCH}/SHA256SUMS" "${SCRATCH}/releases/1.2.3/SHA256SUMS"
+  set_latest 1.2.3
+  if ! run_installer Linux x86_64 && grep -q "missing or invalid sha256 for 'rq-linux-x86_64'" "${SCRATCH}/output" && [[ ! -e "${SCRATCH}/install/rq" ]]; then
+    pass "fails when SHA256SUMS lists the asset twice"
+  else
+    fail "fails when SHA256SUMS lists the asset twice"
   fi
 }
 
@@ -208,6 +234,8 @@ test_fails_on_unsupported_architecture
 test_fails_when_asset_missing
 test_fails_on_checksum_mismatch
 test_fails_when_checksum_entry_missing
+test_fails_when_checksum_entry_invalid
+test_fails_when_checksum_entry_duplicated
 test_warns_when_release_has_no_checksums
 test_fails_when_binary_does_not_run
 test_replaces_existing_binary

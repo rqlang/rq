@@ -4,11 +4,10 @@ set -euo pipefail
 
 OWNER="rqlang"
 REPO="rq"
-API_BASE="https://api.github.com/repos/${OWNER}/${REPO}"
+RELEASES_URL="https://github.com/${OWNER}/${REPO}/releases"
 
 RELEASE_TAG=""
 INSTALL_DIR=""
-RELEASE_JSON=""
 
 info() {
   printf '[INFO ] %s\n' "$*" >&2
@@ -90,76 +89,46 @@ esac
 
 info "Detected platform: OS=${OS_NAME}, ARCH=${ARCH}, asset=${ASSET_NAME}"
 
-if [[ -z "${RELEASE_TAG}" ]]; then
-  info "Release tag not provided. Fetching latest release from GitHub (${OWNER}/${REPO})."
+resolve_latest_tag() {
+  local effective_url
 
-  CURL_ARGS=("-fsSL" "-H" "User-Agent: rq-installer-script")
-
-  if ! RELEASE_JSON="$(curl "${CURL_ARGS[@]}" "${API_BASE}/releases/latest")"; then
-    warn "Latest release endpoint returned an error. Falling back to releases list (including pre-releases)."
-
-    if ! RELEASE_JSON="$(curl "${CURL_ARGS[@]}" "${API_BASE}/releases?per_page=1")"; then
-      error "Failed to retrieve releases list from GitHub."
-    fi
+  if ! effective_url="$(curl -fsSLI -o /dev/null -w '%{url_effective}' \
+    -H "User-Agent: rq-installer-script" \
+    "${RELEASES_URL}/latest")"; then
+    error "Failed to resolve the latest release from ${RELEASES_URL}/latest."
   fi
 
-  RELEASE_TAG="$(printf '%s\n' "${RELEASE_JSON}" | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)"
-  if [[ -z "${RELEASE_TAG}" ]]; then
-    error "Could not determine latest release tag from GitHub response."
-  fi
-else
-  info "Using specified release tag '${RELEASE_TAG}'."
-
-  CURL_ARGS=("-fsSL" "-H" "User-Agent: rq-installer-script")
-
-  if ! RELEASE_JSON="$(curl "${CURL_ARGS[@]}" "${API_BASE}/releases/tags/${RELEASE_TAG}")"; then
-    error "Failed to retrieve release '${RELEASE_TAG}' from GitHub."
-  fi
-fi
-
-info "Installing release '${RELEASE_TAG}' from repository ${OWNER}/${REPO}."
-
-find_asset_url() {
-  printf '%s' "${RELEASE_JSON}" \
-    | awk -v asset="$1" '
-      BEGIN { RS = "," }
-      /\/releases\/assets\// && /"url"/ {
-        s = $0
-        gsub(/.*"url"[[:space:]]*:[[:space:]]*"/, "", s)
-        gsub(/".*/, "", s)
-        candidate = s
-      }
-      /"name"/ && index($0, "\"" asset "\"") {
-        print candidate
-        exit
-      }
-    '
+  case "${effective_url}" in
+    "${RELEASES_URL}/tag/"*)
+      printf '%s' "${effective_url#"${RELEASES_URL}/tag/"}"
+      ;;
+    *)
+      error "Could not determine the latest release tag from ${effective_url}."
+      ;;
+  esac
 }
 
-download_asset() {
+download_release_file() {
   local name="$1"
-  local url="$2"
-  local destination="$3"
-  local signed_url
+  local destination="$2"
+  local status
 
-  info "Downloading asset '${name}' via API (${url})"
-
-  signed_url="$(curl -sS -w "%{redirect_url}" -o /dev/null \
+  if ! status="$(curl -sSL -o "${destination}" -w '%{http_code}' \
     -H "User-Agent: rq-installer-script" \
-    -H "Accept: application/octet-stream" \
-    "${url}")"
-
-  if [[ -z "${signed_url}" ]]; then
-    error "GitHub API did not return a redirect for asset '${name}'. The release or asset may not exist."
+    "${RELEASES_URL}/download/${RELEASE_TAG}/${name}")"; then
+    error "Failed to download '${name}' from release '${RELEASE_TAG}'."
   fi
 
-  if ! curl -fsSL -o "${destination}" "${signed_url}"; then
-    error "Failed to download asset '${name}' from GitHub."
-  fi
-
-  if [[ ! -f "${destination}" ]]; then
-    error "Download appeared to succeed but file not found at ${destination}"
-  fi
+  case "${status}" in
+    200)
+      ;;
+    404)
+      return 1
+      ;;
+    *)
+      error "Downloading '${name}' from release '${RELEASE_TAG}' returned HTTP ${status}."
+      ;;
+  esac
 }
 
 sha256_of() {
@@ -173,17 +142,13 @@ sha256_of() {
 }
 
 verify_checksum() {
-  local checksums_url
   local expected
   local actual
 
-  checksums_url="$(find_asset_url "SHA256SUMS")"
-  if [[ -z "${checksums_url}" ]]; then
+  if ! download_release_file "SHA256SUMS" "${CHECKSUMS_PATH}"; then
     warn "Release '${RELEASE_TAG}' publishes no SHA256SUMS. Skipping checksum verification."
     return
   fi
-
-  download_asset "SHA256SUMS" "${checksums_url}" "${CHECKSUMS_PATH}"
 
   expected="$(awk -v asset="${ASSET_NAME}" '$2 == asset || $2 == "*" asset { print $1; exit }' "${CHECKSUMS_PATH}")"
   if [[ -z "${expected}" ]]; then
@@ -198,20 +163,25 @@ verify_checksum() {
   info "Checksum verified (sha256 ${actual})."
 }
 
-ASSET_URL="$(find_asset_url "${ASSET_NAME}")"
-
-if [[ -z "${ASSET_URL}" ]]; then
-  AVAILABLE_ASSETS_LIST="$(printf '%s\n' "${RELEASE_JSON}" | sed -n 's/.*"name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
-  AVAILABLE_ASSETS="$(printf '%s\n' "${AVAILABLE_ASSETS_LIST}" | tr '\n' ', ' | sed 's/, $//')"
-  error "Asset '${ASSET_NAME}' not found in release '${RELEASE_TAG}'. Available assets: ${AVAILABLE_ASSETS}"
+if [[ -z "${RELEASE_TAG}" ]]; then
+  info "Release tag not provided. Resolving the latest release of ${OWNER}/${REPO}."
+  RELEASE_TAG="$(resolve_latest_tag)"
+else
+  info "Using specified release tag '${RELEASE_TAG}'."
 fi
+
+info "Installing release '${RELEASE_TAG}' from repository ${OWNER}/${REPO}."
 
 TMPDIR="${TMPDIR:-/tmp}"
 DOWNLOAD_PATH="${TMPDIR}/rq_$$"
 CHECKSUMS_PATH="${TMPDIR}/rq_$$.sha256sums"
 trap 'rm -f "${DOWNLOAD_PATH}" "${CHECKSUMS_PATH}"' EXIT
 
-download_asset "${ASSET_NAME}" "${ASSET_URL}" "${DOWNLOAD_PATH}"
+info "Downloading '${ASSET_NAME}'."
+if ! download_release_file "${ASSET_NAME}" "${DOWNLOAD_PATH}"; then
+  error "Release '${RELEASE_TAG}' has no asset '${ASSET_NAME}', or the release does not exist. See ${RELEASES_URL} for the available releases and assets."
+fi
+
 verify_checksum
 
 chmod +x "${DOWNLOAD_PATH}"

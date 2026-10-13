@@ -67,14 +67,6 @@ case "${OS_NAME}" in
     case "${ARCH}" in
       x86_64|amd64)
         ASSET_NAME="rq-linux-x86_64"
-
-        if [[ -r /etc/os-release ]]; then
-          # shellcheck disable=SC1091
-          . /etc/os-release
-          if [[ "${ID:-}" == "ubuntu" && "${VERSION_ID:-}" == "22.04" ]]; then
-            ASSET_NAME="rq-linux-ubuntu-22.04-x86_64"
-          fi
-        fi
         ;;
       aarch64|arm64)
         ASSET_NAME="rq-linux-aarch64"

@@ -57,6 +57,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+command -v curl >/dev/null 2>&1 || error "curl is required to download rq. Install it and run this script again."
+
 OS_NAME="$(uname -s)"
 ARCH="$(uname -m)"
 ASSET_NAME=""

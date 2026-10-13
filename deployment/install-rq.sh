@@ -215,7 +215,11 @@ if [[ ! -d "${INSTALL_ROOT}" ]]; then
 fi
 
 info "Copying rq to ${INSTALL_BIN}"
-cp "${DOWNLOAD_PATH}" "${INSTALL_BIN}"
+STAGED_BIN="$(mktemp "${INSTALL_ROOT}/.rq.XXXXXX")"
+trap 'rm -rf "${WORK_DIR}" "${STAGED_BIN}"' EXIT
+cp "${DOWNLOAD_PATH}" "${STAGED_BIN}"
+chmod 755 "${STAGED_BIN}"
+mv -f "${STAGED_BIN}" "${INSTALL_BIN}"
 
 if [[ ! -x "${INSTALL_BIN}" ]]; then
   error "Failed to install rq to ${INSTALL_BIN}"

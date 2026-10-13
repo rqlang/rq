@@ -32,6 +32,8 @@ The install script downloads the CLI binary for your architecture (`x86_64` or `
 curl -fsSL https://raw.githubusercontent.com/rqlang/rq/main/deployment/install-rq.sh | bash
 ```
 
+The Linux binaries need glibc 2.34 or newer and OpenSSL 3 (`libssl.so.3`), which Ubuntu 22.04, Debian 12, RHEL 9 and later ship by default. The script runs the downloaded binary before installing it, so on an older system it stops with an error and installs nothing.
+
 Where it installs depends on who runs it:
 
 - **As a regular user**: `~/.local/bin/rq`. No `sudo` needed, and only your user gets `rq`.
@@ -68,7 +70,7 @@ To uninstall, delete the binary: `rm ~/.local/bin/rq` (or `sudo rm /usr/local/bi
 
 ## CLI (Manual Download)
 
-If you want to use the rq CLI independently, you can download the prebuilt **portable** binary directly from the GitHub Releases page. The binaries are self-contained and do not require any additional runtime or installation steps.
+If you want to use the rq CLI independently, you can download the prebuilt **portable** binary directly from the GitHub Releases page. They need no installation steps; on Linux they need glibc 2.34 or newer and OpenSSL 3 (`libssl.so.3`).
 
 1. Open the Releases page in your browser:
 	- https://github.com/rqlang/rq/releases

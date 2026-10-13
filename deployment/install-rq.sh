@@ -186,6 +186,12 @@ verify_checksum
 
 chmod +x "${DOWNLOAD_PATH}"
 
+if ! VERSION_OUTPUT="$("${DOWNLOAD_PATH}" --version 2>&1)"; then
+  error "The downloaded '${ASSET_NAME}' does not run on this system, so nothing was installed. On Linux it needs glibc 2.34 or newer and OpenSSL 3 (libssl.so.3). Output: ${VERSION_OUTPUT}"
+fi
+
+info "Downloaded binary runs: ${VERSION_OUTPUT}"
+
 # Decide installation root:
 # 1. If --install-dir was provided, use that.
 # 2. If running as root (e.g. via sudo), install to /usr/local/bin.

@@ -90,6 +90,16 @@ To test the renderer locally:
 deployment/scoop/test/run.sh
 ```
 
+## Install script
+
+`deployment/install-rq.sh` installs the CLI on Linux and macOS straight from the release downloads on github.com, without the GitHub API. It verifies the binary against the release `SHA256SUMS` when the release publishes one, runs it before installing, and swaps it into place with a rename so it can upgrade a running `rq`.
+
+To test it locally (it runs against a fake `curl`, no network needed):
+
+```bash
+deployment/test/install-rq/run.sh
+```
+
 ## Verifying a download
 
 ```bash

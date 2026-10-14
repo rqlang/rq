@@ -15,6 +15,10 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+if [[ -n "${FAKE_CURL_LOG:-}" ]]; then
+  printf '%s\n' "${url}" >> "${FAKE_CURL_LOG}"
+fi
+
 case "${url}" in
   "${RELEASES_URL}/latest")
     if [[ -f "${FAKE_RELEASES}/latest" ]]; then

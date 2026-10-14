@@ -98,6 +98,41 @@ test_fails_when_curl_missing() {
   fi
 }
 
+test_truncated_script_does_nothing() {
+  local size
+  local cut
+  local cuts=()
+  local executed=0
+  local main_offset
+  reset_fixture
+  add_asset 1.2.3 rq-linux-x86_64 "rq 1.2.3"
+  publish_checksums 1.2.3
+  set_latest 1.2.3
+  size=$(wc -c < "${INSTALLER}")
+  main_offset="$(grep -bxF 'main "$@"' "${INSTALLER}" | cut -d: -f1 || true)"
+  if [[ -z "${main_offset}" ]]; then
+    fail "a truncated script runs nothing (no main \"\$@\" call found)"
+    return
+  fi
+  cuts+=("${main_offset}")
+  for cut in $(seq 1 40); do
+    cuts+=("$(( size * cut / 41 ))")
+  done
+  for cut in "${cuts[@]}"; do
+    head -c "${cut}" "${INSTALLER}" \
+      | PATH="${SCRATCH}/bin:${PATH}" FAKE_RELEASES="${SCRATCH}/releases" FAKE_CURL_LOG="${SCRATCH}/curl.log" FAKE_OS=Linux FAKE_ARCH=x86_64 \
+        bash -s -- -d "${SCRATCH}/install" > "${SCRATCH}/output" 2>&1 || true
+    if grep -q '^\[' "${SCRATCH}/output"; then
+      executed=$((executed + 1))
+    fi
+  done
+  if [[ "${executed}" -eq 0 ]] && [[ ! -e "${SCRATCH}/curl.log" ]] && [[ -z "$(ls -A "${SCRATCH}/install")" ]]; then
+    pass "a truncated script runs nothing"
+  else
+    fail "a truncated script runs nothing"
+  fi
+}
+
 test_installs_latest_release() {
   reset_fixture
   add_asset 1.2.3 rq-linux-x86_64 "rq 1.2.3"
@@ -363,6 +398,7 @@ test_replaces_existing_binary() {
 }
 
 test_fails_when_curl_missing
+test_truncated_script_does_nothing
 test_installs_latest_release
 test_installs_to_local_bin_when_not_root
 test_installs_to_usr_local_bin_when_root

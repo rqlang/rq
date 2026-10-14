@@ -218,7 +218,12 @@ INSTALL_BIN="${INSTALL_ROOT}/rq"
 
 if [[ ! -d "${INSTALL_ROOT}" ]]; then
   info "Creating install directory: ${INSTALL_ROOT}"
-  mkdir -p "${INSTALL_ROOT}"
+  mkdir -p "${INSTALL_ROOT}" 2>/dev/null \
+    || error "Cannot create ${INSTALL_ROOT}. Run the script with sudo, or pick a directory you own with --install-dir."
+fi
+
+if [[ ! -w "${INSTALL_ROOT}" ]]; then
+  error "Cannot write to ${INSTALL_ROOT}. Run the script with sudo, or pick a directory you own with --install-dir."
 fi
 
 info "Copying rq to ${INSTALL_BIN}"

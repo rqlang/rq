@@ -218,6 +218,34 @@ test_fails_when_binary_does_not_run() {
   fi
 }
 
+test_fails_when_install_dir_not_writable() {
+  reset_fixture
+  add_asset 1.2.3 rq-linux-x86_64 "rq 1.2.3"
+  publish_checksums 1.2.3
+  set_latest 1.2.3
+  chmod 555 "${SCRATCH}/install"
+  if ! run_installer Linux x86_64 && grep -q "Cannot write to ${SCRATCH}/install" "${SCRATCH}/output"; then
+    pass "fails with a clear message when the install directory is not writable"
+  else
+    fail "fails with a clear message when the install directory is not writable"
+  fi
+  chmod 755 "${SCRATCH}/install"
+}
+
+test_fails_when_install_dir_cannot_be_created() {
+  reset_fixture
+  add_asset 1.2.3 rq-linux-x86_64 "rq 1.2.3"
+  publish_checksums 1.2.3
+  set_latest 1.2.3
+  chmod 555 "${SCRATCH}/install"
+  if ! run_installer Linux x86_64 -d "${SCRATCH}/install/nested" && grep -q "Cannot create ${SCRATCH}/install/nested" "${SCRATCH}/output"; then
+    pass "fails with a clear message when the install directory cannot be created"
+  else
+    fail "fails with a clear message when the install directory cannot be created"
+  fi
+  chmod 755 "${SCRATCH}/install"
+}
+
 test_replaces_existing_binary() {
   reset_fixture
   add_asset 1.2.3 rq-linux-x86_64 "rq 1.2.3"
@@ -244,6 +272,8 @@ test_fails_when_checksum_entry_invalid
 test_fails_when_checksum_entry_duplicated
 test_fails_when_release_has_no_checksums
 test_fails_when_binary_does_not_run
+test_fails_when_install_dir_not_writable
+test_fails_when_install_dir_cannot_be_created
 test_replaces_existing_binary
 
 exit "${FAILED}"

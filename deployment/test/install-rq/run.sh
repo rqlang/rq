@@ -211,10 +211,10 @@ test_fails_when_binary_does_not_run() {
   add_broken_asset 1.2.3 rq-linux-x86_64
   publish_checksums 1.2.3
   set_latest 1.2.3
-  if ! run_installer Linux x86_64 && grep -q "does not run on this system" "${SCRATCH}/output" && [[ ! -e "${SCRATCH}/install/rq" ]]; then
-    pass "fails when the downloaded binary does not run"
+  if ! run_installer Linux x86_64 && grep -q "does not run on this system" "${SCRATCH}/output" && [[ -z "$(ls -A "${SCRATCH}/install")" ]]; then
+    pass "fails without leaving files when the downloaded binary does not run"
   else
-    fail "fails when the downloaded binary does not run"
+    fail "fails without leaving files when the downloaded binary does not run"
   fi
 }
 

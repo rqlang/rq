@@ -114,6 +114,10 @@ test_installs_to_usr_local_bin_when_root() {
     skip "installs to /usr/local/bin when root (not running as root)"
     return
   fi
+  if [[ -e /usr/local/bin/rq ]]; then
+    skip "installs to /usr/local/bin when root (/usr/local/bin/rq already exists)"
+    return
+  fi
   reset_fixture
   add_asset 1.2.3 rq-linux-x86_64 "rq 1.2.3"
   publish_checksums 1.2.3

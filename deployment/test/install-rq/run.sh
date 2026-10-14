@@ -81,6 +81,23 @@ installed_version() {
   "${SCRATCH}/install/rq" 2>/dev/null || true
 }
 
+test_fails_when_curl_missing() {
+  local bash_path
+  reset_fixture
+  add_asset 1.2.3 rq-linux-x86_64 "rq 1.2.3"
+  publish_checksums 1.2.3
+  set_latest 1.2.3
+  mkdir -p "${SCRATCH}/empty-path"
+  bash_path="$(command -v bash)"
+  if ! PATH="${SCRATCH}/empty-path" "${bash_path}" "${INSTALLER}" -d "${SCRATCH}/install" > "${SCRATCH}/output" 2>&1 \
+    && grep -q "curl is required to download rq" "${SCRATCH}/output" \
+    && [[ -z "$(ls -A "${SCRATCH}/install")" ]]; then
+    pass "fails without installing when curl is missing"
+  else
+    fail "fails without installing when curl is missing"
+  fi
+}
+
 test_installs_latest_release() {
   reset_fixture
   add_asset 1.2.3 rq-linux-x86_64 "rq 1.2.3"
@@ -345,6 +362,7 @@ test_replaces_existing_binary() {
   fi
 }
 
+test_fails_when_curl_missing
 test_installs_latest_release
 test_installs_to_local_bin_when_not_root
 test_installs_to_usr_local_bin_when_root

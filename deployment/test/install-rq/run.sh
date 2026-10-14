@@ -64,6 +64,19 @@ run_installer() {
     bash "${INSTALLER}" -d "${SCRATCH}/install" "$@" > "${SCRATCH}/output" 2>&1
 }
 
+run_installer_without_install_dir() {
+  local path_prefix="$1"
+  mkdir -p "${SCRATCH}/home"
+  HOME="${SCRATCH}/home" PATH="${path_prefix}${SCRATCH}/bin:${PATH}" FAKE_RELEASES="${SCRATCH}/releases" FAKE_OS=Linux FAKE_ARCH=x86_64 \
+    bash "${INSTALLER}" > "${SCRATCH}/output" 2>&1
+}
+
+skip() { printf 'skip %s\n' "$1"; }
+
+running_as_root() {
+  [[ "$(id -u)" -eq 0 ]]
+}
+
 installed_version() {
   "${SCRATCH}/install/rq" 2>/dev/null || true
 }
@@ -77,6 +90,72 @@ test_installs_latest_release() {
     pass "installs the latest release"
   else
     fail "installs the latest release"
+  fi
+}
+
+test_installs_to_local_bin_when_not_root() {
+  if running_as_root; then
+    skip "installs to ~/.local/bin when not root (running as root)"
+    return
+  fi
+  reset_fixture
+  add_asset 1.2.3 rq-linux-x86_64 "rq 1.2.3"
+  publish_checksums 1.2.3
+  set_latest 1.2.3
+  if run_installer_without_install_dir "" && [[ "$("${SCRATCH}/home/.local/bin/rq")" == "rq 1.2.3" ]]; then
+    pass "installs to ~/.local/bin when not root"
+  else
+    fail "installs to ~/.local/bin when not root"
+  fi
+}
+
+test_installs_to_usr_local_bin_when_root() {
+  if ! running_as_root; then
+    skip "installs to /usr/local/bin when root (not running as root)"
+    return
+  fi
+  reset_fixture
+  add_asset 1.2.3 rq-linux-x86_64 "rq 1.2.3"
+  publish_checksums 1.2.3
+  set_latest 1.2.3
+  if run_installer_without_install_dir "" && [[ "$(/usr/local/bin/rq)" == "rq 1.2.3" ]]; then
+    pass "installs to /usr/local/bin when root"
+  else
+    fail "installs to /usr/local/bin when root"
+  fi
+  rm -f /usr/local/bin/rq
+}
+
+test_warns_when_install_dir_not_in_path() {
+  reset_fixture
+  add_asset 1.2.3 rq-linux-x86_64 "rq 1.2.3"
+  publish_checksums 1.2.3
+  set_latest 1.2.3
+  if run_installer Linux x86_64 && grep -q "${SCRATCH}/install is not in your PATH" "${SCRATCH}/output"; then
+    pass "warns when the install directory is not in PATH"
+  else
+    fail "warns when the install directory is not in PATH"
+  fi
+}
+
+test_does_not_warn_when_install_dir_in_path() {
+  reset_fixture
+  add_asset 1.2.3 rq-linux-x86_64 "rq 1.2.3"
+  publish_checksums 1.2.3
+  set_latest 1.2.3
+  if PATH="${SCRATCH}/install:${PATH}" run_installer Linux x86_64 && ! grep -q "not in your PATH" "${SCRATCH}/output"; then
+    pass "does not warn when the install directory is in PATH"
+  else
+    fail "does not warn when the install directory is in PATH"
+  fi
+}
+
+test_fails_when_latest_release_cannot_be_resolved() {
+  reset_fixture
+  if ! run_installer Linux x86_64 && grep -q "Could not determine the latest release tag" "${SCRATCH}/output" && [[ -z "$(ls -A "${SCRATCH}/install")" ]]; then
+    pass "fails when the latest release cannot be resolved"
+  else
+    fail "fails when the latest release cannot be resolved"
   fi
 }
 
@@ -219,6 +298,10 @@ test_fails_when_binary_does_not_run() {
 }
 
 test_fails_when_install_dir_not_writable() {
+  if running_as_root; then
+    skip "fails with a clear message when the install directory is not writable (running as root)"
+    return
+  fi
   reset_fixture
   add_asset 1.2.3 rq-linux-x86_64 "rq 1.2.3"
   publish_checksums 1.2.3
@@ -233,6 +316,10 @@ test_fails_when_install_dir_not_writable() {
 }
 
 test_fails_when_install_dir_cannot_be_created() {
+  if running_as_root; then
+    skip "fails with a clear message when the install directory cannot be created (running as root)"
+    return
+  fi
   reset_fixture
   add_asset 1.2.3 rq-linux-x86_64 "rq 1.2.3"
   publish_checksums 1.2.3
@@ -261,6 +348,11 @@ test_replaces_existing_binary() {
 }
 
 test_installs_latest_release
+test_installs_to_local_bin_when_not_root
+test_installs_to_usr_local_bin_when_root
+test_warns_when_install_dir_not_in_path
+test_does_not_warn_when_install_dir_in_path
+test_fails_when_latest_release_cannot_be_resolved
 test_installs_requested_release
 test_picks_aarch64_asset_on_arm_linux
 test_picks_aarch64_asset_on_apple_silicon

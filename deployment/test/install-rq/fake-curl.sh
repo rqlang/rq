@@ -17,7 +17,11 @@ done
 
 case "${url}" in
   "${RELEASES_URL}/latest")
-    printf '%s/tag/%s' "${RELEASES_URL}" "$(cat "${FAKE_RELEASES}/latest")"
+    if [[ -f "${FAKE_RELEASES}/latest" ]]; then
+      printf '%s/tag/%s' "${RELEASES_URL}" "$(cat "${FAKE_RELEASES}/latest")"
+    else
+      printf '%s' "${RELEASES_URL}"
+    fi
     ;;
   "${RELEASES_URL}/download/"*)
     file="${FAKE_RELEASES}/${url#"${RELEASES_URL}/download/"}"

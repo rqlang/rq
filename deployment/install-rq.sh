@@ -27,7 +27,7 @@ usage() {
 Usage: $0 [OPTIONS]
 
 Options:
-  -r, --release-tag TAG   GitHub release tag to install (e.g. 0.7.0).
+  -r, --release-tag TAG   GitHub release tag to install (e.g. 0.8.0).
                           If omitted, the latest release is used.
   -d, --install-dir DIR   Directory to install the rq binary into.
                           Overrides the default location logic.

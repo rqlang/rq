@@ -54,12 +54,12 @@ export PATH="$HOME/.local/bin:$PATH"
 To install a specific release or choose the target directory yourself, pass options after `bash -s --`:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/rqlang/rq/main/deployment/install-rq.sh | bash -s -- --release-tag 0.7.0 --install-dir /opt/rq/bin
+curl -fsSL https://raw.githubusercontent.com/rqlang/rq/main/deployment/install-rq.sh | bash -s -- --release-tag 0.8.0 --install-dir /opt/rq/bin
 ```
 
 | Option | Meaning |
 |---|---|
-| `-r, --release-tag TAG` | Release to install (for example `0.7.0`). Defaults to the latest release. |
+| `-r, --release-tag TAG` | Release to install (for example `0.8.0`). Defaults to the latest release. |
 | `-d, --install-dir DIR` | Directory to copy `rq` into. Overrides the default location. |
 
 Running the script again installs over the existing binary, so the same command upgrades `rq`. Check the result with:

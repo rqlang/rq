@@ -24,9 +24,55 @@ Each release publishes a `.vsix` file as a release asset on GitHub. You can down
 4. Click the **`...`** icon (top-right of the Extensions panel, next to the refresh button).
 5. Select **Install from VSIX...** and choose the downloaded file.
 
+## CLI on Linux (Install Script)
+
+The install script downloads the CLI binary for your architecture (`x86_64` or `aarch64`) from the latest GitHub release, checks it against the release's `SHA256SUMS`, renames it to `rq` and copies it to a directory on your `PATH`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/rqlang/rq/main/deployment/install-rq.sh | bash
+```
+
+Releases published before `SHA256SUMS` existed (0.7.0 and older) cannot be verified, so the script refuses to install them; download those manually as described below.
+
+The Linux binaries need glibc 2.34 or newer and OpenSSL 3 (`libssl.so.3`), which Ubuntu 22.04, Debian 12, RHEL 9 and later ship by default. The script runs the downloaded binary before installing it, so on an older system it stops with an error and installs nothing.
+
+Where it installs depends on who runs it:
+
+- **As a regular user**: `~/.local/bin/rq`. No `sudo` needed, and only your user gets `rq`.
+- **As root**: `/usr/local/bin/rq`, available to every user on the machine:
+
+  ```bash
+  curl -fsSL https://raw.githubusercontent.com/rqlang/rq/main/deployment/install-rq.sh | sudo bash
+  ```
+
+Most distributions already put `~/.local/bin` on the `PATH`. If yours does not, the script says so and prints the line to add to your shell profile (`~/.bashrc`, `~/.zshrc`, …):
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+To install a specific release or choose the target directory yourself, pass options after `bash -s --`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/rqlang/rq/main/deployment/install-rq.sh | bash -s -- --release-tag 0.8.0 --install-dir /opt/rq/bin
+```
+
+| Option | Meaning |
+|---|---|
+| `-r, --release-tag TAG` | Release to install (for example `0.8.0`). Defaults to the latest release. |
+| `-d, --install-dir DIR` | Directory to copy `rq` into. Overrides the default location. |
+
+Running the script again installs over the existing binary, so the same command upgrades `rq`. Check the result with:
+
+```bash
+rq --version
+```
+
+To uninstall, delete the binary: `rm ~/.local/bin/rq` (or `sudo rm /usr/local/bin/rq`).
+
 ## CLI (Manual Download)
 
-If you want to use the rq CLI independently, you can download the prebuilt **portable** binary directly from the GitHub Releases page. The binaries are self-contained and do not require any additional runtime or installation steps.
+If you want to use the rq CLI independently, you can download the prebuilt **portable** binary directly from the GitHub Releases page. They need no installation steps; on Linux they need glibc 2.34 or newer and OpenSSL 3 (`libssl.so.3`).
 
 1. Open the Releases page in your browser:
 	- https://github.com/rqlang/rq/releases
@@ -34,6 +80,7 @@ If you want to use the rq CLI independently, you can download the prebuilt **por
 	- **Windows**: `rq-windows-x86_64.exe`
 	- **Linux (Ubuntu 22.04 x86_64)**: `rq-linux-ubuntu-22.04-x86_64`
 	- **Linux (other x86_64)**: `rq-linux-x86_64`
+	- **Linux (aarch64)**: `rq-linux-aarch64`
 	- **macOS Intel (x86_64)**: `rq-macos-x86_64`
 	- **macOS Apple Silicon (M1/M2)**: `rq-macos-aarch64`
 3. Optionally rename the downloaded file to a shorter name (for example `rq`).

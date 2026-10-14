@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+
+case "$1" in
+  -s) printf '%s\n' "${FAKE_OS}" ;;
+  -m) printf '%s\n' "${FAKE_ARCH}" ;;
+  *) printf '%s\n' "${FAKE_OS}" ;;
+esac

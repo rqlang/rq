@@ -1,0 +1,36 @@
+name: Deployment BVT
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'deployment/**'
+      - '.github/workflows/deployment_bvt.yaml'
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  test:
+    name: Test deployment scripts on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Test install script
+        run: deployment/test/install-rq/run.sh
+
+      - name: Test Homebrew formula renderer
+        run: deployment/homebrew/test/run.sh
+
+      - name: Test Scoop manifest renderer
+        run: deployment/scoop/test/run.sh

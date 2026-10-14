@@ -303,36 +303,30 @@ test_fails_when_binary_does_not_run() {
 
 test_fails_when_install_dir_not_writable() {
   if running_as_root; then
-    skip "fails with a clear message when the install directory is not writable (running as root)"
+    skip "fails before downloading when the install directory is not writable (running as root)"
     return
   fi
   reset_fixture
-  add_asset 1.2.3 rq-linux-x86_64 "rq 1.2.3"
-  publish_checksums 1.2.3
-  set_latest 1.2.3
   chmod 555 "${SCRATCH}/install"
   if ! run_installer Linux x86_64 && grep -q "Cannot write to ${SCRATCH}/install" "${SCRATCH}/output"; then
-    pass "fails with a clear message when the install directory is not writable"
+    pass "fails before downloading when the install directory is not writable"
   else
-    fail "fails with a clear message when the install directory is not writable"
+    fail "fails before downloading when the install directory is not writable"
   fi
   chmod 755 "${SCRATCH}/install"
 }
 
 test_fails_when_install_dir_cannot_be_created() {
   if running_as_root; then
-    skip "fails with a clear message when the install directory cannot be created (running as root)"
+    skip "fails before downloading when the install directory cannot be created (running as root)"
     return
   fi
   reset_fixture
-  add_asset 1.2.3 rq-linux-x86_64 "rq 1.2.3"
-  publish_checksums 1.2.3
-  set_latest 1.2.3
   chmod 555 "${SCRATCH}/install"
   if ! run_installer Linux x86_64 -d "${SCRATCH}/install/nested" && grep -q "Cannot create ${SCRATCH}/install/nested" "${SCRATCH}/output"; then
-    pass "fails with a clear message when the install directory cannot be created"
+    pass "fails before downloading when the install directory cannot be created"
   else
-    fail "fails with a clear message when the install directory cannot be created"
+    fail "fails before downloading when the install directory cannot be created"
   fi
   chmod 755 "${SCRATCH}/install"
 }

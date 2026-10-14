@@ -165,27 +165,6 @@ main() {
 
   info "Detected platform: OS=${OS_NAME}, ARCH=${ARCH}, asset=${ASSET_NAME}"
 
-  if [[ -z "${RELEASE_TAG}" ]]; then
-    info "Release tag not provided. Resolving the latest release of ${OWNER}/${REPO}."
-    RELEASE_TAG="$(resolve_latest_tag)"
-  else
-    info "Using specified release tag '${RELEASE_TAG}'."
-  fi
-
-  info "Installing release '${RELEASE_TAG}' from repository ${OWNER}/${REPO}."
-
-  WORK_DIR="$(mktemp -d)"
-  trap 'rm -rf "${WORK_DIR}"' EXIT
-  DOWNLOAD_PATH="${WORK_DIR}/rq"
-  CHECKSUMS_PATH="${WORK_DIR}/SHA256SUMS"
-
-  info "Downloading '${ASSET_NAME}'."
-  if ! download_release_file "${ASSET_NAME}" "${DOWNLOAD_PATH}"; then
-    error "Release '${RELEASE_TAG}' has no asset '${ASSET_NAME}', or the release does not exist. See ${RELEASES_URL} for the available releases and assets."
-  fi
-
-  verify_checksum
-
   # Decide installation root:
   # 1. If --install-dir was provided, use that.
   # 2. If running as root (e.g. via sudo), install to /usr/local/bin.
@@ -218,6 +197,27 @@ main() {
   if [[ ! -w "${INSTALL_ROOT}" ]]; then
     error "Cannot write to ${INSTALL_ROOT}. Run the script with sudo, or pick a directory you own with --install-dir."
   fi
+
+  if [[ -z "${RELEASE_TAG}" ]]; then
+    info "Release tag not provided. Resolving the latest release of ${OWNER}/${REPO}."
+    RELEASE_TAG="$(resolve_latest_tag)"
+  else
+    info "Using specified release tag '${RELEASE_TAG}'."
+  fi
+
+  info "Installing release '${RELEASE_TAG}' from repository ${OWNER}/${REPO}."
+
+  WORK_DIR="$(mktemp -d)"
+  trap 'rm -rf "${WORK_DIR}"' EXIT
+  DOWNLOAD_PATH="${WORK_DIR}/rq"
+  CHECKSUMS_PATH="${WORK_DIR}/SHA256SUMS"
+
+  info "Downloading '${ASSET_NAME}'."
+  if ! download_release_file "${ASSET_NAME}" "${DOWNLOAD_PATH}"; then
+    error "Release '${RELEASE_TAG}' has no asset '${ASSET_NAME}', or the release does not exist. See ${RELEASES_URL} for the available releases and assets."
+  fi
+
+  verify_checksum
 
   info "Copying rq to ${INSTALL_BIN}"
   STAGED_BIN="$(mktemp "${INSTALL_ROOT}/.rq.XXXXXX")"

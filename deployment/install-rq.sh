@@ -148,8 +148,7 @@ verify_checksum() {
   local actual
 
   if ! download_release_file "SHA256SUMS" "${CHECKSUMS_PATH}"; then
-    warn "Release '${RELEASE_TAG}' publishes no SHA256SUMS. Skipping checksum verification."
-    return
+    error "Release '${RELEASE_TAG}' publishes no SHA256SUMS, so '${ASSET_NAME}' cannot be verified and was not installed. Releases before 0.8.0 have none; download them manually from ${RELEASES_URL}."
   fi
 
   expected="$(awk -v asset="${ASSET_NAME}" '$2 == asset || $2 == "*" asset { print $1 }' "${CHECKSUMS_PATH}")"

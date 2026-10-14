@@ -84,6 +84,8 @@ test_installs_requested_release() {
   reset_fixture
   add_asset 1.0.0 rq-linux-x86_64 "rq 1.0.0"
   add_asset 1.2.3 rq-linux-x86_64 "rq 1.2.3"
+  publish_checksums 1.0.0
+  publish_checksums 1.2.3
   set_latest 1.2.3
   if run_installer Linux x86_64 -r 1.0.0 && [[ "$(installed_version)" == "rq 1.0.0" ]]; then
     pass "installs the requested release"
@@ -96,6 +98,7 @@ test_picks_aarch64_asset_on_arm_linux() {
   reset_fixture
   add_asset 1.2.3 rq-linux-x86_64 "rq x86_64"
   add_asset 1.2.3 rq-linux-aarch64 "rq aarch64"
+  publish_checksums 1.2.3
   set_latest 1.2.3
   if run_installer Linux aarch64 && [[ "$(installed_version)" == "rq aarch64" ]]; then
     pass "picks the aarch64 asset on ARM Linux"
@@ -108,6 +111,7 @@ test_picks_aarch64_asset_on_apple_silicon() {
   reset_fixture
   add_asset 1.2.3 rq-macos-x86_64 "rq x86_64"
   add_asset 1.2.3 rq-macos-aarch64 "rq aarch64"
+  publish_checksums 1.2.3
   set_latest 1.2.3
   if run_installer Darwin arm64 && [[ "$(installed_version)" == "rq aarch64" ]]; then
     pass "picks the aarch64 asset on Apple Silicon"
@@ -129,6 +133,7 @@ test_fails_on_unsupported_architecture() {
 test_fails_when_asset_missing() {
   reset_fixture
   add_asset 1.2.3 rq-linux-x86_64 "rq 1.2.3"
+  publish_checksums 1.2.3
   set_latest 1.2.3
   if ! run_installer Linux aarch64 && grep -q "has no asset 'rq-linux-aarch64'" "${SCRATCH}/output" && [[ ! -e "${SCRATCH}/install/rq" ]]; then
     pass "fails when the asset is missing"
@@ -190,14 +195,14 @@ test_fails_when_checksum_entry_duplicated() {
   fi
 }
 
-test_warns_when_release_has_no_checksums() {
+test_fails_when_release_has_no_checksums() {
   reset_fixture
   add_asset 1.2.3 rq-linux-x86_64 "rq 1.2.3"
   set_latest 1.2.3
-  if run_installer Linux x86_64 && grep -q "publishes no SHA256SUMS" "${SCRATCH}/output" && [[ "$(installed_version)" == "rq 1.2.3" ]]; then
-    pass "warns and installs when the release has no SHA256SUMS"
+  if ! run_installer Linux x86_64 && grep -q "publishes no SHA256SUMS" "${SCRATCH}/output" && [[ ! -e "${SCRATCH}/install/rq" ]]; then
+    pass "fails when the release has no SHA256SUMS"
   else
-    fail "warns and installs when the release has no SHA256SUMS"
+    fail "fails when the release has no SHA256SUMS"
   fi
 }
 
@@ -216,6 +221,7 @@ test_fails_when_binary_does_not_run() {
 test_replaces_existing_binary() {
   reset_fixture
   add_asset 1.2.3 rq-linux-x86_64 "rq 1.2.3"
+  publish_checksums 1.2.3
   set_latest 1.2.3
   printf '#!/bin/sh\necho "rq 0.0.1"\n' > "${SCRATCH}/install/rq"
   chmod +x "${SCRATCH}/install/rq"
@@ -236,7 +242,7 @@ test_fails_on_checksum_mismatch
 test_fails_when_checksum_entry_missing
 test_fails_when_checksum_entry_invalid
 test_fails_when_checksum_entry_duplicated
-test_warns_when_release_has_no_checksums
+test_fails_when_release_has_no_checksums
 test_fails_when_binary_does_not_run
 test_replaces_existing_binary
 

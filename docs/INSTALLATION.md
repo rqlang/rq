@@ -32,6 +32,8 @@ The install script downloads the CLI binary for your architecture (`x86_64` or `
 curl -fsSL https://raw.githubusercontent.com/rqlang/rq/main/deployment/install-rq.sh | bash
 ```
 
+Releases published before `SHA256SUMS` existed (0.7.0 and older) cannot be verified, so the script refuses to install them; download those manually as described below.
+
 The Linux binaries need glibc 2.34 or newer and OpenSSL 3 (`libssl.so.3`), which Ubuntu 22.04, Debian 12, RHEL 9 and later ship by default. The script runs the downloaded binary before installing it, so on an older system it stops with an error and installs nothing.
 
 Where it installs depends on who runs it:

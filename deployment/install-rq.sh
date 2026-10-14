@@ -35,62 +35,6 @@ Options:
 EOF
 }
 
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    -r|--release-tag)
-      [[ $# -ge 2 ]] || error "Missing value for $1"
-      RELEASE_TAG="$2"
-      shift 2
-      ;;
-    -d|--install-dir)
-      [[ $# -ge 2 ]] || error "Missing value for $1"
-      INSTALL_DIR="$2"
-      shift 2
-      ;;
-    -h|--help)
-      usage
-      exit 0
-      ;;
-    *)
-      error "Unknown argument: $1"
-      ;;
-  esac
-done
-
-command -v curl >/dev/null 2>&1 || error "curl is required to download rq. Install it and run this script again."
-
-OS_NAME="$(uname -s)"
-ARCH="$(uname -m)"
-ASSET_NAME=""
-
-case "${OS_NAME}" in
-  Linux)
-    case "${ARCH}" in
-      x86_64|amd64)
-        ASSET_NAME="rq-linux-x86_64"
-        ;;
-      aarch64|arm64)
-        ASSET_NAME="rq-linux-aarch64"
-        ;;
-      *)
-        error "Unsupported Linux architecture: ${ARCH}. Prebuilt binaries exist for x86_64 and aarch64 only."
-        ;;
-    esac
-    ;;
-  Darwin)
-    if [[ "${ARCH}" == "arm64" ]]; then
-      ASSET_NAME="rq-macos-aarch64"
-    else
-      ASSET_NAME="rq-macos-x86_64"
-    fi
-    ;;
-  *)
-    error "Unsupported OS: ${OS_NAME}. This installer supports Linux and macOS only."
-    ;;
-esac
-
-info "Detected platform: OS=${OS_NAME}, ARCH=${ARCH}, asset=${ASSET_NAME}"
-
 resolve_latest_tag() {
   local effective_url
 
@@ -164,80 +108,140 @@ verify_checksum() {
   info "Checksum verified (sha256 ${actual})."
 }
 
-if [[ -z "${RELEASE_TAG}" ]]; then
-  info "Release tag not provided. Resolving the latest release of ${OWNER}/${REPO}."
-  RELEASE_TAG="$(resolve_latest_tag)"
-else
-  info "Using specified release tag '${RELEASE_TAG}'."
-fi
+main() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -r|--release-tag)
+        [[ $# -ge 2 ]] || error "Missing value for $1"
+        RELEASE_TAG="$2"
+        shift 2
+        ;;
+      -d|--install-dir)
+        [[ $# -ge 2 ]] || error "Missing value for $1"
+        INSTALL_DIR="$2"
+        shift 2
+        ;;
+      -h|--help)
+        usage
+        exit 0
+        ;;
+      *)
+        error "Unknown argument: $1"
+        ;;
+    esac
+  done
 
-info "Installing release '${RELEASE_TAG}' from repository ${OWNER}/${REPO}."
+  command -v curl >/dev/null 2>&1 || error "curl is required to download rq. Install it and run this script again."
 
-WORK_DIR="$(mktemp -d)"
-trap 'rm -rf "${WORK_DIR}"' EXIT
-DOWNLOAD_PATH="${WORK_DIR}/rq"
-CHECKSUMS_PATH="${WORK_DIR}/SHA256SUMS"
+  OS_NAME="$(uname -s)"
+  ARCH="$(uname -m)"
+  ASSET_NAME=""
 
-info "Downloading '${ASSET_NAME}'."
-if ! download_release_file "${ASSET_NAME}" "${DOWNLOAD_PATH}"; then
-  error "Release '${RELEASE_TAG}' has no asset '${ASSET_NAME}', or the release does not exist. See ${RELEASES_URL} for the available releases and assets."
-fi
+  case "${OS_NAME}" in
+    Linux)
+      case "${ARCH}" in
+        x86_64|amd64)
+          ASSET_NAME="rq-linux-x86_64"
+          ;;
+        aarch64|arm64)
+          ASSET_NAME="rq-linux-aarch64"
+          ;;
+        *)
+          error "Unsupported Linux architecture: ${ARCH}. Prebuilt binaries exist for x86_64 and aarch64 only."
+          ;;
+      esac
+      ;;
+    Darwin)
+      if [[ "${ARCH}" == "arm64" ]]; then
+        ASSET_NAME="rq-macos-aarch64"
+      else
+        ASSET_NAME="rq-macos-x86_64"
+      fi
+      ;;
+    *)
+      error "Unsupported OS: ${OS_NAME}. This installer supports Linux and macOS only."
+      ;;
+  esac
 
-verify_checksum
+  info "Detected platform: OS=${OS_NAME}, ARCH=${ARCH}, asset=${ASSET_NAME}"
 
-# Decide installation root:
-# 1. If --install-dir was provided, use that.
-# 2. If running as root (e.g. via sudo), install to /usr/local/bin.
-# 3. Otherwise, install to ~/.local/bin (no sudo required).
-
-PREFERRED_ROOT="/usr/local/bin"
-FALLBACK_ROOT="${HOME}/.local/bin"
-
-if [[ -n "${INSTALL_DIR}" ]]; then
-  INSTALL_ROOT="${INSTALL_DIR}"
-  info "Using custom install directory: ${INSTALL_ROOT}"
-else
-  EFFECTIVE_UID="${EUID:-$(id -u)}"
-  if [[ "${EFFECTIVE_UID}" -eq 0 ]]; then
-    INSTALL_ROOT="${PREFERRED_ROOT}"
+  if [[ -z "${RELEASE_TAG}" ]]; then
+    info "Release tag not provided. Resolving the latest release of ${OWNER}/${REPO}."
+    RELEASE_TAG="$(resolve_latest_tag)"
   else
-    INSTALL_ROOT="${FALLBACK_ROOT}"
-    info "Not running as root. Installing to ${INSTALL_ROOT} instead of ${PREFERRED_ROOT}."
+    info "Using specified release tag '${RELEASE_TAG}'."
   fi
-fi
 
-INSTALL_BIN="${INSTALL_ROOT}/rq"
+  info "Installing release '${RELEASE_TAG}' from repository ${OWNER}/${REPO}."
 
-if [[ ! -d "${INSTALL_ROOT}" ]]; then
-  info "Creating install directory: ${INSTALL_ROOT}"
-  mkdir -p "${INSTALL_ROOT}" 2>/dev/null \
-    || error "Cannot create ${INSTALL_ROOT}. Run the script with sudo, or pick a directory you own with --install-dir."
-fi
+  WORK_DIR="$(mktemp -d)"
+  trap 'rm -rf "${WORK_DIR}"' EXIT
+  DOWNLOAD_PATH="${WORK_DIR}/rq"
+  CHECKSUMS_PATH="${WORK_DIR}/SHA256SUMS"
 
-if [[ ! -w "${INSTALL_ROOT}" ]]; then
-  error "Cannot write to ${INSTALL_ROOT}. Run the script with sudo, or pick a directory you own with --install-dir."
-fi
+  info "Downloading '${ASSET_NAME}'."
+  if ! download_release_file "${ASSET_NAME}" "${DOWNLOAD_PATH}"; then
+    error "Release '${RELEASE_TAG}' has no asset '${ASSET_NAME}', or the release does not exist. See ${RELEASES_URL} for the available releases and assets."
+  fi
 
-info "Copying rq to ${INSTALL_BIN}"
-STAGED_BIN="$(mktemp "${INSTALL_ROOT}/.rq.XXXXXX")"
-trap 'rm -rf "${WORK_DIR}" "${STAGED_BIN}"' EXIT
-install -m 755 "${DOWNLOAD_PATH}" "${STAGED_BIN}"
+  verify_checksum
 
-if ! VERSION_OUTPUT="$("${STAGED_BIN}" --version 2>&1)"; then
-  error "The downloaded '${ASSET_NAME}' does not run on this system, so nothing was installed. On Linux it needs glibc 2.34 or newer and OpenSSL 3 (libssl.so.3). Output: ${VERSION_OUTPUT}"
-fi
+  # Decide installation root:
+  # 1. If --install-dir was provided, use that.
+  # 2. If running as root (e.g. via sudo), install to /usr/local/bin.
+  # 3. Otherwise, install to ~/.local/bin (no sudo required).
 
-info "Downloaded binary runs: ${VERSION_OUTPUT}"
-mv -f "${STAGED_BIN}" "${INSTALL_BIN}"
+  PREFERRED_ROOT="/usr/local/bin"
+  FALLBACK_ROOT="${HOME}/.local/bin"
 
-case ":${PATH}:" in
-  *:"${INSTALL_ROOT}":*)
-    ;;
-  *)
-    warn "${INSTALL_ROOT} is not in your PATH."
-    warn "Add the following line to your shell profile (e.g., ~/.bashrc, ~/.zshrc, or ~/.bash_profile):"
-    warn "  export PATH=\"${INSTALL_ROOT}:\$PATH\""
-    ;;
-esac
+  if [[ -n "${INSTALL_DIR}" ]]; then
+    INSTALL_ROOT="${INSTALL_DIR}"
+    info "Using custom install directory: ${INSTALL_ROOT}"
+  else
+    EFFECTIVE_UID="${EUID:-$(id -u)}"
+    if [[ "${EFFECTIVE_UID}" -eq 0 ]]; then
+      INSTALL_ROOT="${PREFERRED_ROOT}"
+    else
+      INSTALL_ROOT="${FALLBACK_ROOT}"
+      info "Not running as root. Installing to ${INSTALL_ROOT} instead of ${PREFERRED_ROOT}."
+    fi
+  fi
 
-printf 'Success: Installed rq to %s\n' "${INSTALL_BIN}" >&2
+  INSTALL_BIN="${INSTALL_ROOT}/rq"
+
+  if [[ ! -d "${INSTALL_ROOT}" ]]; then
+    info "Creating install directory: ${INSTALL_ROOT}"
+    mkdir -p "${INSTALL_ROOT}" 2>/dev/null \
+      || error "Cannot create ${INSTALL_ROOT}. Run the script with sudo, or pick a directory you own with --install-dir."
+  fi
+
+  if [[ ! -w "${INSTALL_ROOT}" ]]; then
+    error "Cannot write to ${INSTALL_ROOT}. Run the script with sudo, or pick a directory you own with --install-dir."
+  fi
+
+  info "Copying rq to ${INSTALL_BIN}"
+  STAGED_BIN="$(mktemp "${INSTALL_ROOT}/.rq.XXXXXX")"
+  trap 'rm -rf "${WORK_DIR}" "${STAGED_BIN}"' EXIT
+  install -m 755 "${DOWNLOAD_PATH}" "${STAGED_BIN}"
+
+  if ! VERSION_OUTPUT="$("${STAGED_BIN}" --version 2>&1)"; then
+    error "The downloaded '${ASSET_NAME}' does not run on this system, so nothing was installed. On Linux it needs glibc 2.34 or newer and OpenSSL 3 (libssl.so.3). Output: ${VERSION_OUTPUT}"
+  fi
+
+  info "Downloaded binary runs: ${VERSION_OUTPUT}"
+  mv -f "${STAGED_BIN}" "${INSTALL_BIN}"
+
+  case ":${PATH}:" in
+    *:"${INSTALL_ROOT}":*)
+      ;;
+    *)
+      warn "${INSTALL_ROOT} is not in your PATH."
+      warn "Add the following line to your shell profile (e.g., ~/.bashrc, ~/.zshrc, or ~/.bash_profile):"
+      warn "  export PATH=\"${INSTALL_ROOT}:\$PATH\""
+      ;;
+  esac
+
+  printf 'Success: Installed rq to %s\n' "${INSTALL_BIN}" >&2
+}
+
+main "$@"

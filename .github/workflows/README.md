@@ -9,6 +9,7 @@ GitHub Actions workflows for building, testing and releasing `rq`.
 | `cli_bvt.yaml` | PR to `main` touching Rust code | fmt, clippy, build and test the Cargo workspace |
 | `wasm_bvt.yaml` | PR to `main` touching `rq-wasm` or `rq-lib` | fmt, clippy, test and `wasm32` check of `rq-wasm` |
 | `extension_bvt.yaml` | PR to `main` touching the extension | Lint, compile and test the VS Code extension |
+| `deployment_bvt.yaml` | PR to `main` touching `deployment/` | Tests the install script and the Homebrew and Scoop renderers on Linux and macOS |
 | `codeql.yml` | Nightly | CodeQL analysis for Rust and JavaScript |
 | `fuzz_nightly.yaml` | Nightly and manual | Fuzz the tokenizer and parser; opens an issue on a crash |
 | `release_cd.yaml` | Push to `main` | Dev builds of the CLI and the extension as workflow artifacts |
@@ -94,7 +95,7 @@ deployment/scoop/test/run.sh
 
 `deployment/install-rq.sh` installs the CLI on Linux and macOS straight from the release downloads on github.com, without the GitHub API. It verifies the binary against the release `SHA256SUMS` when the release publishes one, runs it before installing, and swaps it into place with a rename so it can upgrade a running `rq`.
 
-To test it locally (it runs against a fake `curl`, no network needed):
+`deployment_bvt.yaml` runs its tests on every PR that touches `deployment/`. To run them locally (they use a fake `curl`, no network needed):
 
 ```bash
 deployment/test/install-rq/run.sh

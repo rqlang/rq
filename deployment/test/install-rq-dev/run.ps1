@@ -120,7 +120,7 @@ function Test-InstallsUnderCustomName {
 function Test-RejectsNameWithSeparator {
     Reset-Fixture
     Add-Artifact 'rq 0.9.0-dev.3'
-    if (-not (Invoke-Installer ($InstallDirArgs + @('-Name', '..\rq'))) -and $script:Output -match "Invalid executable name" -and (Get-InstallEntries).Count -eq 0) {
+    if (-not (Invoke-Installer ($InstallDirArgs + @('-Name', '..\rq'))) -and $script:Output -match "Invalid executable name" -and @(Get-InstallEntries).Count -eq 0) {
         Pass 'rejects a name that contains a path separator'
     } else { Fail 'rejects a name that contains a path separator' }
 }
@@ -136,7 +136,7 @@ function Test-InstallsUnderNameWithBrackets {
 function Test-RejectsNameWithWildcard {
     Reset-Fixture
     Add-Artifact 'rq 0.9.0-dev.3'
-    if (-not (Invoke-Installer ($InstallDirArgs + @('-Name', 'rq*'))) -and $script:Output -match "Invalid executable name" -and (Get-InstallEntries).Count -eq 0) {
+    if (-not (Invoke-Installer ($InstallDirArgs + @('-Name', 'rq*'))) -and $script:Output -match "Invalid executable name" -and @(Get-InstallEntries).Count -eq 0) {
         Pass 'rejects a name that is not a valid file name'
     } else { Fail 'rejects a name that is not a valid file name' }
 }
@@ -198,7 +198,7 @@ function Test-DoesNotDuplicateUserPathEntry {
 function Test-FailsWhenGhMissing {
     Reset-Fixture
     $systemPath = Join-Path $Env:WINDIR 'System32'
-    if (-not (Invoke-Installer $InstallDirArgs @{} $systemPath) -and $script:Output -match 'GitHub CLI \(gh\) not found in PATH' -and (Get-InstallEntries).Count -eq 0) {
+    if (-not (Invoke-Installer $InstallDirArgs @{} $systemPath) -and $script:Output -match 'GitHub CLI \(gh\) not found in PATH' -and @(Get-InstallEntries).Count -eq 0) {
         Pass 'fails when gh is missing'
     } else { Fail 'fails when gh is missing' }
 }
@@ -206,7 +206,7 @@ function Test-FailsWhenGhMissing {
 function Test-ShowsGhApiError {
     Reset-Fixture
     Add-Artifact 'rq 0.9.0-dev.3'
-    if (-not (Invoke-Installer $InstallDirArgs @{ FAKE_GH_API_ERROR = 'HTTP 401: Bad credentials' }) -and $script:Output -match 'HTTP 401: Bad credentials' -and $script:Output -match 'Failed to query the runs of release_cd.yaml' -and (Get-InstallEntries).Count -eq 0) {
+    if (-not (Invoke-Installer $InstallDirArgs @{ FAKE_GH_API_ERROR = 'HTTP 401: Bad credentials' }) -and $script:Output -match 'HTTP 401: Bad credentials' -and $script:Output -match 'Failed to query the runs of release_cd.yaml' -and @(Get-InstallEntries).Count -eq 0) {
         Pass 'shows the gh error when the runs query fails'
     } else { Fail 'shows the gh error when the runs query fails' }
 }
@@ -214,7 +214,7 @@ function Test-ShowsGhApiError {
 function Test-FailsWhenNoSuccessfulRun {
     Reset-Fixture
     Remove-Item -Path (Join-Path $Scratch 'artifacts\run_id')
-    if (-not (Invoke-Installer $InstallDirArgs) -and $script:Output -match 'No successful runs of release_cd.yaml' -and (Get-InstallEntries).Count -eq 0) {
+    if (-not (Invoke-Installer $InstallDirArgs) -and $script:Output -match 'No successful runs of release_cd.yaml' -and @(Get-InstallEntries).Count -eq 0) {
         Pass 'fails when there is no successful run'
     } else { Fail 'fails when there is no successful run' }
 }
@@ -230,7 +230,7 @@ function Test-DownloadsFromLatestRun {
 
 function Test-FailsWhenArtifactMissing {
     Reset-Fixture
-    if (-not (Invoke-Installer $InstallDirArgs) -and $script:Output -match "Failed to download artifact 'rq-windows-x86_64.exe' from run 42" -and (Get-InstallEntries).Count -eq 0) {
+    if (-not (Invoke-Installer $InstallDirArgs) -and $script:Output -match "Failed to download artifact 'rq-windows-x86_64.exe' from run 42" -and @(Get-InstallEntries).Count -eq 0) {
         Pass 'fails when the artifact is missing'
     } else { Fail 'fails when the artifact is missing' }
 }
@@ -238,7 +238,7 @@ function Test-FailsWhenArtifactMissing {
 function Test-FailsWhenBinaryDoesNotRun {
     Reset-Fixture
     Add-Artifact 'error while loading' 127
-    if (-not (Invoke-Installer $InstallDirArgs) -and $script:Output -match 'does not run on this system' -and (Get-InstallEntries).Count -eq 0) {
+    if (-not (Invoke-Installer $InstallDirArgs) -and $script:Output -match 'does not run on this system' -and @(Get-InstallEntries).Count -eq 0) {
         Pass 'fails without leaving files when the downloaded binary does not run'
     } else { Fail 'fails without leaving files when the downloaded binary does not run' }
 }

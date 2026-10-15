@@ -105,3 +105,13 @@ jobs:
       tag: ${{ github.event.release.tag_name }}
     secrets:
       SCOOP_BUCKET_TOKEN: ${{ secrets.SCOOP_BUCKET_TOKEN }}
+
+  publish-winget:
+    name: Publish WinGet Manifest
+    needs: publish
+    if: ${{ !github.event.release.prerelease }}
+    uses: ./.github/workflows/publish_winget.yaml
+    with:
+      tag: ${{ github.event.release.tag_name }}
+    secrets:
+      WINGET_PKGS_TOKEN: ${{ secrets.WINGET_PKGS_TOKEN }}

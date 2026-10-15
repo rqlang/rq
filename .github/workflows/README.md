@@ -9,7 +9,7 @@ GitHub Actions workflows for building, testing and releasing `rq`.
 | `cli_bvt.yaml` | PR to `main` touching Rust code | fmt, clippy, build and test the Cargo workspace |
 | `wasm_bvt.yaml` | PR to `main` touching `rq-wasm` or `rq-lib` | fmt, clippy, test and `wasm32` check of `rq-wasm` |
 | `extension_bvt.yaml` | PR to `main` touching the extension | Lint, compile and test the VS Code extension |
-| `deployment_bvt.yaml` | PR to `main` touching `deployment/` | Tests the install script and the Homebrew and Scoop renderers on Linux and macOS |
+| `deployment_bvt.yaml` | PR to `main` touching `deployment/` | Tests the install script and the Homebrew, Scoop and WinGet renderers on Linux and macOS |
 | `codeql.yml` | Nightly | CodeQL analysis for Rust and JavaScript |
 | `fuzz_nightly.yaml` | Nightly and manual | Fuzz the tokenizer and parser; opens an issue on a crash |
 | `release_cd.yaml` | Push to `main` | Dev builds of the CLI and the extension as workflow artifacts |
@@ -17,6 +17,7 @@ GitHub Actions workflows for building, testing and releasing `rq`.
 | `publish_extension.yaml` | Manual | Publishes a release VSIX to the VS Code Marketplace |
 | `publish_homebrew.yaml` | Called by `release_prod.yaml`, or manual | Renders, verifies and pushes the Homebrew formula to the tap |
 | `publish_scoop.yaml` | Called by `release_prod.yaml`, or manual | Renders, verifies and pushes the Scoop manifest to the bucket |
+| `publish_winget.yaml` | Called by `release_prod.yaml`, or manual | Renders, verifies and submits the WinGet manifests to `microsoft/winget-pkgs` |
 | `build_cli.yaml` | Called by the release workflows | Builds and signs the CLI for every platform |
 | `build_extension.yaml` | Called by the release workflows | Packages the VS Code extension VSIX |
 
@@ -49,7 +50,7 @@ The repository keeps `version = "0.0.0"` in the root `Cargo.toml`; the workflows
    - builds the CLI for every platform and the VSIX,
    - once every build has succeeded, uploads all binaries, the VSIX and a `SHA256SUMS` file to the release,
    - records build provenance attestations for every binary and the VSIX listed in `SHA256SUMS`,
-   - unless the release is a pre-release, publishes the Homebrew formula and the Scoop manifest (see below).
+   - unless the release is a pre-release, publishes the Homebrew formula and the Scoop manifest, and opens a pull request with the WinGet manifests (see below).
 4. Run `publish_extension.yaml` with the tag to publish the VSIX to the Marketplace.
 
 Nothing is uploaded to the release unless every build succeeds. To retry a failed release, re-run the failed jobs of the workflow run.
@@ -89,6 +90,24 @@ To test the renderer locally:
 
 ```bash
 deployment/scoop/test/run.sh
+```
+
+## WinGet
+
+The CLI is distributed for Windows (x86_64) through the community repository [`microsoft/winget-pkgs`](https://github.com/microsoft/winget-pkgs) as the portable package `rqlang.rq`; the installed command is `rq`.
+
+```powershell
+winget install rqlang.rq
+```
+
+`publish_winget.yaml` renders the version, installer and `en-US` locale manifests from the release `SHA256SUMS` with `deployment/winget/render-manifests.sh`, validates them with `winget validate`, installs them on Windows with `winget install --manifest` and checks that `rq --version` reports exactly that version. Only then does it open a pull request against `microsoft/winget-pkgs` with `wingetcreate submit`, pinned in `WINGETCREATE_VERSION` and checked against `WINGETCREATE_SHA256`. The pull request comes from a fork of `winget-pkgs` owned by the account behind the `WINGET_PKGS_TOKEN` secret (a classic token with the `public_repo` scope; `wingetcreate` does not support fine-grained tokens). The package is available once the WinGet moderators merge it. Pre-releases are rejected, and nothing is submitted when the version is already in `winget-pkgs` or an open pull request already submits it. To retry or republish a release, run it manually with the tag. Releases published before `SHA256SUMS` existed (0.7.0 and older) cannot be published this way.
+
+Installing through WinGet, Scoop and `deployment/install-rq.ps1` side by side leaves several `rq.exe` on `PATH`; use one of them.
+
+To test the renderer locally:
+
+```bash
+deployment/winget/test/run.sh
 ```
 
 ## Install script

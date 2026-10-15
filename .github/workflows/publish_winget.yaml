@@ -1,0 +1,170 @@
+name: Publish WinGet Manifest
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+    secrets:
+      WINGET_PKGS_TOKEN:
+        required: true
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to publish (e.g. 0.8.0)'
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-winget
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  PACKAGE_IDENTIFIER: rqlang.rq
+  PACKAGE_PATH: manifests/r/rqlang/rq
+  WINGET_PKGS_REPOSITORY: microsoft/winget-pkgs
+  WINGETCREATE_VERSION: v1.12.13.0
+  WINGETCREATE_SHA256: 24042bd37915805615e6cf969ac57c6439124c3fe85823327f5f3fb24bd9ffea
+
+jobs:
+  render:
+    name: Render Manifests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Read version from tag
+        id: version
+        env:
+          TAG: ${{ inputs.tag }}
+        run: echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Reject pre-releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          prerelease=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isPrerelease --jq .isPrerelease)
+          if [ "$prerelease" = "true" ]; then
+            echo "::error::$TAG is a pre-release; only stable releases are published to WinGet"
+            exit 1
+          fi
+
+      - name: Download SHA256SUMS from release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern SHA256SUMS
+
+      - name: Render manifests
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          mkdir winget-manifests
+          deployment/winget/render-manifests.sh "$TAG" SHA256SUMS winget-manifests
+          tail -n +1 winget-manifests/*
+
+      - name: Upload manifests
+        uses: actions/upload-artifact@v7
+        with:
+          name: winget-manifests
+          path: winget-manifests
+          if-no-files-found: error
+
+  verify:
+    name: Verify on Windows
+    needs: render
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Download manifests
+        uses: actions/download-artifact@v8
+        with:
+          name: winget-manifests
+          path: winget-manifests
+
+      - name: Validate manifests
+        shell: pwsh
+        run: |
+          winget validate --manifest .\winget-manifests --disable-interactivity
+          if ($LASTEXITCODE -ne 0) { throw "winget validate failed" }
+
+      - name: Install and test manifests
+        shell: pwsh
+        env:
+          VERSION: ${{ needs.render.outputs.version }}
+        run: |
+          winget settings --enable LocalManifestFiles
+          if ($LASTEXITCODE -ne 0) { throw "could not enable local manifests" }
+          winget install --manifest .\winget-manifests --scope user --accept-package-agreements --accept-source-agreements --disable-interactivity
+          if ($LASTEXITCODE -ne 0) { throw "winget install failed" }
+          $rq = Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Links\rq.exe'
+          $output = (& $rq --version | Out-String).Trim()
+          Write-Host $output
+          if ($output -cnotmatch "^rq $([regex]::Escape($env:VERSION))$") { throw "rq --version reported '$output', expected 'rq $env:VERSION'" }
+
+  submit:
+    name: Submit to winget-pkgs
+    needs: [render, verify]
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check winget-pkgs for this version
+        id: existing
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.render.outputs.version }}
+        run: |
+          if gh api "repos/$WINGET_PKGS_REPOSITORY/contents/$PACKAGE_PATH/$VERSION" --silent 2>/dev/null; then
+            echo "::notice::$PACKAGE_IDENTIFIER $VERSION is already in $WINGET_PKGS_REPOSITORY"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          open_prs=$(gh pr list --repo "$WINGET_PKGS_REPOSITORY" --state open --search "$PACKAGE_IDENTIFIER $VERSION in:title" --json title --jq "[.[] | select(.title | contains(\"$PACKAGE_IDENTIFIER version $VERSION\"))] | length")
+          if [ "$open_prs" != "0" ]; then
+            echo "::notice::An open pull request already submits $PACKAGE_IDENTIFIER $VERSION"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if gh api "repos/$WINGET_PKGS_REPOSITORY/contents/$PACKAGE_PATH" --silent 2>/dev/null; then
+            echo "title=New version: $PACKAGE_IDENTIFIER version $VERSION" >> "$GITHUB_OUTPUT"
+          else
+            echo "title=New package: $PACKAGE_IDENTIFIER version $VERSION" >> "$GITHUB_OUTPUT"
+          fi
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      - name: Download manifests
+        if: steps.existing.outputs.skip == 'false'
+        uses: actions/download-artifact@v8
+        with:
+          name: winget-manifests
+          path: winget-manifests
+
+      - name: Download wingetcreate
+        if: steps.existing.outputs.skip == 'false'
+        shell: pwsh
+        run: |
+          $wingetcreate = Join-Path $env:RUNNER_TEMP 'wingetcreate.exe'
+          Invoke-WebRequest -Uri "https://github.com/microsoft/winget-create/releases/download/$env:WINGETCREATE_VERSION/wingetcreate.exe" -OutFile $wingetcreate
+          $actual = (Get-FileHash -Algorithm SHA256 $wingetcreate).Hash.ToLowerInvariant()
+          if ($actual -ne $env:WINGETCREATE_SHA256) { throw "wingetcreate.exe has sha256 $actual, expected $env:WINGETCREATE_SHA256" }
+
+      - name: Submit pull request
+        if: steps.existing.outputs.skip == 'false'
+        shell: pwsh
+        env:
+          WINGET_PKGS_TOKEN: ${{ secrets.WINGET_PKGS_TOKEN }}
+          PR_TITLE: ${{ steps.existing.outputs.title }}
+        run: |
+          $wingetcreate = Join-Path $env:RUNNER_TEMP 'wingetcreate.exe'
+          & $wingetcreate submit --prtitle $env:PR_TITLE --token $env:WINGET_PKGS_TOKEN --no-open .\winget-manifests
+          if ($LASTEXITCODE -ne 0) { throw "wingetcreate submit failed" }

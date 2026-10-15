@@ -54,3 +54,7 @@ jobs:
       - name: Test dev install script
         shell: pwsh
         run: deployment/test/install-rq-dev/run.ps1
+
+      - name: Test uninstall script
+        shell: pwsh
+        run: deployment/test/uninstall-rq/run.ps1

@@ -39,33 +39,32 @@ function Remove-DirectoryFromPath {
         [string]$Directory
     )
 
-    $Directory = [IO.Path]::GetFullPath($Directory)
+    $Directory = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Directory)
 
-    $userKey = 'HKCU:\Environment'
+    $key = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey('Environment')
     try {
-        $userPath = ''
-        if (Test-Path $userKey) {
-            $userPath = (Get-ItemProperty -Path $userKey -Name Path -ErrorAction SilentlyContinue).Path
-        }
+        $userPath = [string]$key.GetValue('Path', '', [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
         if (-not $userPath) {
             Write-Info "User PATH is empty, nothing to remove."
             return
         }
 
-        $parts = $userPath.Split(';') | Where-Object { $_ }
-        $filtered = $parts | Where-Object { $_.TrimEnd('\') -ne $Directory.TrimEnd('\') }
+        $parts = @($userPath.Split(';') | Where-Object { $_ })
+        $filtered = @($parts | Where-Object { [Environment]::ExpandEnvironmentVariables($_).TrimEnd('\') -ine $Directory.TrimEnd('\') })
 
         if ($filtered.Count -eq $parts.Count) {
             Write-Info "'$Directory' was not found in user PATH."
             return
         }
 
-        $newPath = ($filtered -join ';')
-        Set-ItemProperty -Path $userKey -Name Path -Value $newPath
+        $key.SetValue('Path', ($filtered -join ';'), [Microsoft.Win32.RegistryValueKind]::ExpandString)
         Write-Info "Removed '$Directory' from user PATH. Open a new terminal to see the change."
     }
     catch {
         Write-Warn "Failed to update user PATH: $($_.Exception.Message)"
+    }
+    finally {
+        $key.Dispose()
     }
 }
 
@@ -77,7 +76,7 @@ if (-not $InstallDir) {
     $InstallDir = Join-Path $Env:LOCALAPPDATA 'rq'
 }
 
-$InstallDir = [IO.Path]::GetFullPath($InstallDir)
+$InstallDir = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($InstallDir)
 $BinaryPath = Join-Path $InstallDir 'rq.exe'
 
 Write-Info "Uninstalling rq from '$InstallDir'"

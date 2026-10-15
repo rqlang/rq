@@ -91,5 +91,6 @@ From the repo root:
 ## Notes
 
 - `install-rq-dev.sh` / `install-rq-dev.ps1` require `gh` installed and authenticated.
-- If you choose “install on PATH” on macOS/Linux, it may require elevated permissions (sudo).
+- They install the latest dev build as `rq-dev` (`rq-dev.exe` on Windows), so it runs alongside a released `rq` without replacing it. Pass `--name` (`-Name` on Windows) to pick another name.
+- `install-rq-dev.sh` installs to `/usr/local/bin` when run as root and to `~/.local/bin` otherwise; `install-rq-dev.ps1` installs to `%LOCALAPPDATA%\rq-dev` and adds it to the user PATH. Both accept an install directory override (`--install-dir` / `-InstallDir`).
 - CLI unit/integration tests expect an HTTP echo server at `http://localhost:8080`.

@@ -40,3 +40,17 @@ jobs:
 
       - name: Test WinGet manifest renderer
         run: deployment/winget/test/run.sh
+
+  test-windows:
+    name: Test deployment scripts on windows-latest
+    runs-on: windows-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Test dev install script
+        shell: pwsh
+        run: deployment/test/install-rq-dev/run.ps1

@@ -132,7 +132,7 @@ gh attestation verify rq-linux-x86_64 --repo rqlang/rq
 
 ## Dev builds
 
-`release_cd.yaml` uploads the CLI binaries and the VSIX as workflow artifacts (not releases). One build runs at a time: a running build always finishes, and of the pushes that arrive meanwhile only the latest is built next. The `deployment/install-rq-dev*` scripts download these artifacts from the latest successful run.
+`release_cd.yaml` uploads the CLI binaries and the VSIX as workflow artifacts (not releases). One build runs at a time: a running build always finishes, and of the pushes that arrive meanwhile only the latest is built next. The `deployment/install-rq-dev*` scripts download these artifacts from the latest successful run; the CLI scripts install it as `rq-dev` so it does not replace a released `rq`.
 
 ## Local build
 

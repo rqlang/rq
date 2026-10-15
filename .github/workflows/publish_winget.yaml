@@ -184,9 +184,9 @@ jobs:
         if: steps.existing.outputs.skip == 'false'
         shell: pwsh
         env:
-          WINGET_PKGS_TOKEN: ${{ secrets.WINGET_PKGS_TOKEN }}
+          WINGET_CREATE_GITHUB_TOKEN: ${{ secrets.WINGET_PKGS_TOKEN }}
           PR_TITLE: ${{ steps.existing.outputs.title }}
         run: |
           $wingetcreate = Join-Path $env:RUNNER_TEMP 'wingetcreate.exe'
-          & $wingetcreate submit --prtitle $env:PR_TITLE --token $env:WINGET_PKGS_TOKEN --no-open .\winget-manifests
+          & $wingetcreate submit --prtitle $env:PR_TITLE --no-open .\winget-manifests
           if ($LASTEXITCODE -ne 0) { throw "wingetcreate submit failed" }

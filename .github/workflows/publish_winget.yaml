@@ -138,7 +138,8 @@ jobs:
             echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          open_prs=$(gh pr list --repo "$WINGET_PKGS_REPOSITORY" --state open --search "$PACKAGE_IDENTIFIER $VERSION in:title" --json title --jq "[.[] | select(.title | contains(\"$PACKAGE_IDENTIFIER version $VERSION\"))] | length")
+          export TITLE_SUFFIX=": $PACKAGE_IDENTIFIER version $VERSION"
+          open_prs=$(gh pr list --repo "$WINGET_PKGS_REPOSITORY" --state open --search "$PACKAGE_IDENTIFIER $VERSION in:title" --json title --jq '[.[] | select(.title | endswith($ENV.TITLE_SUFFIX))] | length')
           if [ "$open_prs" != "0" ]; then
             echo "::notice::An open pull request already submits $PACKAGE_IDENTIFIER $VERSION"
             echo "skip=true" >> "$GITHUB_OUTPUT"

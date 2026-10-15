@@ -29,6 +29,7 @@ sha_of() {
 WINDOWS_INTEL_SHA=$(sha_of rq-windows-x86_64.exe)
 
 cat > "${OUTPUT_DIR}/${PACKAGE_IDENTIFIER}.yaml" <<MANIFEST
+# yaml-language-server: \$schema=https://aka.ms/winget-manifest.version.${MANIFEST_VERSION}.schema.json
 PackageIdentifier: ${PACKAGE_IDENTIFIER}
 PackageVersion: ${VERSION}
 DefaultLocale: en-US
@@ -37,6 +38,7 @@ ManifestVersion: ${MANIFEST_VERSION}
 MANIFEST
 
 cat > "${OUTPUT_DIR}/${PACKAGE_IDENTIFIER}.installer.yaml" <<MANIFEST
+# yaml-language-server: \$schema=https://aka.ms/winget-manifest.installer.${MANIFEST_VERSION}.schema.json
 PackageIdentifier: ${PACKAGE_IDENTIFIER}
 PackageVersion: ${VERSION}
 InstallerType: portable
@@ -51,6 +53,7 @@ ManifestVersion: ${MANIFEST_VERSION}
 MANIFEST
 
 cat > "${OUTPUT_DIR}/${PACKAGE_IDENTIFIER}.locale.en-US.yaml" <<MANIFEST
+# yaml-language-server: \$schema=https://aka.ms/winget-manifest.defaultlocale.${MANIFEST_VERSION}.schema.json
 PackageIdentifier: ${PACKAGE_IDENTIFIER}
 PackageVersion: ${VERSION}
 PackageLocale: en-US

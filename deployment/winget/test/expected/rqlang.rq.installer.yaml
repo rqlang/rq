@@ -1,0 +1,11 @@
+PackageIdentifier: rqlang.rq
+PackageVersion: 1.2.3
+InstallerType: portable
+Commands:
+- rq
+Installers:
+- Architecture: x64
+  InstallerUrl: https://github.com/rqlang/rq/releases/download/1.2.3/rq-windows-x86_64.exe
+  InstallerSha256: 6A6A6A6A6A6A6A6A6A6A6A6A6A6A6A6A6A6A6A6A6A6A6A6A6A6A6A6A6A6A6A6A
+ManifestType: installer
+ManifestVersion: 1.12.0

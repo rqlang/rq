@@ -34,3 +34,6 @@ jobs:
 
       - name: Test Scoop manifest renderer
         run: deployment/scoop/test/run.sh
+
+      - name: Test WinGet manifest renderer
+        run: deployment/winget/test/run.sh

@@ -133,7 +133,19 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.render.outputs.version }}
         run: |
-          if gh api "repos/$WINGET_PKGS_REPOSITORY/contents/$PACKAGE_PATH/$VERSION" --silent 2>/dev/null; then
+          exists_in_winget_pkgs() {
+            local error_file="$RUNNER_TEMP/gh-api-error"
+            if gh api "repos/$WINGET_PKGS_REPOSITORY/contents/$1" --silent 2> "$error_file"; then
+              return 0
+            fi
+            if grep -q '(HTTP 404)' "$error_file"; then
+              return 1
+            fi
+            cat "$error_file" >&2
+            echo "::error::Could not check $1 in $WINGET_PKGS_REPOSITORY"
+            exit 1
+          }
+          if exists_in_winget_pkgs "$PACKAGE_PATH/$VERSION"; then
             echo "::notice::$PACKAGE_IDENTIFIER $VERSION is already in $WINGET_PKGS_REPOSITORY"
             echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
@@ -145,7 +157,7 @@ jobs:
             echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          if gh api "repos/$WINGET_PKGS_REPOSITORY/contents/$PACKAGE_PATH" --silent 2>/dev/null; then
+          if exists_in_winget_pkgs "$PACKAGE_PATH"; then
             echo "title=New version: $PACKAGE_IDENTIFIER version $VERSION" >> "$GITHUB_OUTPUT"
           else
             echo "title=New package: $PACKAGE_IDENTIFIER version $VERSION" >> "$GITHUB_OUTPUT"

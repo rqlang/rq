@@ -127,7 +127,7 @@ try {
     Unblock-File -Path $rqPath -ErrorAction Stop
 } catch {
     Write-Warn "Unblock-File failed: $($_.Exception.Message). Attempting to remove Zone.Identifier stream."
-    try { Remove-Item -Path "$rqPath:Zone.Identifier" -ErrorAction SilentlyContinue } catch { }
+    try { Remove-Item -LiteralPath $rqPath -Stream Zone.Identifier -ErrorAction SilentlyContinue } catch { }
 }
 
 # Install into a per-user directory under LOCALAPPDATA (no admin required)

@@ -14,7 +14,8 @@ GitHub Actions workflows for building, testing and releasing `rq`.
 | `fuzz_nightly.yaml` | Nightly and manual | Fuzz the tokenizer and parser; opens an issue on a crash |
 | `release_cd.yaml` | Push to `main` | Dev builds of the CLI and the extension as workflow artifacts |
 | `release_prod.yaml` | GitHub Release published | Release builds uploaded to the GitHub Release |
-| `publish_extension.yaml` | Manual | Publishes a release VSIX to the VS Code Marketplace |
+| `publish_release.yaml` | Manual | Publishes a release to the chosen channels, or only verifies them with `dry_run` |
+| `publish_extension.yaml` | Called by `publish_release.yaml`, or manual | Publishes a release VSIX to the VS Code Marketplace |
 | `publish_homebrew.yaml` | Called by `release_prod.yaml`, or manual | Renders, verifies and pushes the Homebrew formula to the tap |
 | `publish_scoop.yaml` | Called by `release_prod.yaml`, or manual | Renders, verifies and pushes the Scoop manifest to the bucket |
 | `publish_winget.yaml` | Called by `release_prod.yaml`, or manual | Renders, verifies and submits the WinGet manifests to `microsoft/winget-pkgs` |

@@ -1,142 +1,157 @@
 <#!
 .SYNOPSIS
-install-rq-dev.ps1 # noqa: E501
+Installs the rq CLI from the latest successful dev build on GitHub Actions.
 
-Downloads the latest rq-windows-amd64 GitHub Actions artifact,
-unblocks rq.exe, and installs it into %LOCALAPPDATA%\rq.
+.DESCRIPTION
+Downloads the rq-windows-x86_64.exe artifact of the latest successful
+release_cd.yaml run and installs it as rq-dev.exe into
+"$Env:LOCALAPPDATA\rq-dev", next to the released rq without replacing it.
 The install directory is added to the user PATH if not already present.
 
-.NOTES
-Requires: gh CLI installed and authenticated (gh auth login). Requires PowerShell 5.1+ or PowerShell Core.
-#>
+.PARAMETER Name
+Name of the installed executable, without extension. Defaults to rq-dev.
 
-# Allow script to be called with -ReleaseTag param for compatibility, though ignored for dev builds
-Param(
-    [string]$ReleaseTag = "",
-    [string]$InstallDir = ""
+.PARAMETER InstallDir
+Directory to install into. Defaults to "$Env:LOCALAPPDATA\rq-dev".
+
+.NOTES
+Requires gh CLI installed and authenticated (gh auth login), and PowerShell 5.1+ or PowerShell Core.
+#>
+[CmdletBinding()]
+param(
+    [Parameter()]
+    [string]$Name = 'rq-dev',
+
+    [Parameter()]
+    [string]$InstallDir
 )
 
-set-strictmode -version latest
+Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $Repo = 'rqlang/rq'
 $Workflow = 'release_cd.yaml'
 $ArtifactName = 'rq-windows-x86_64.exe'
 
-if (-not $Env:LOCALAPPDATA) {
-    throw 'LOCALAPPDATA environment variable is not set; cannot determine user install directory.'
-}
-$DestinationBin = Join-Path $Env:LOCALAPPDATA 'rq'
-
-if ($InstallDir) {
-    $DestinationBin = $InstallDir
-}
-
-function Write-Info($msg){ Write-Host "[INFO ] $msg" -ForegroundColor Cyan }
-function Write-Warn($msg){ Write-Warning $msg }
-function Write-Err ($msg){ Write-Host "[ERROR] $msg" -ForegroundColor Red }
+function Write-Info($msg) { Write-Host "[INFO ] $msg" -ForegroundColor Cyan }
 
 function Get-LatestRunId {
-    Write-Info "Auto-detecting latest successful workflow run (repo=$Repo workflow=$Workflow)"
-    
     $endpoint = "repos/$Repo/actions/workflows/$Workflow/runs?status=success&per_page=1"
-    
-    $latestId = $null
+    $runId = gh api $endpoint --jq '.workflow_runs[0].id // empty'
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to query the runs of $Workflow in $Repo. Check that gh is authenticated (gh auth status)."
+    }
+    if (-not $runId) {
+        throw "No successful runs of $Workflow found in $Repo."
+    }
+    return "$runId".Trim()
+}
+
+function Get-VersionOutput([string]$Executable) {
+    $previousPreference = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
     try {
-        $latestId = gh api $endpoint --jq '.workflow_runs[0].id' 2>$null
+        $output = & $Executable --version 2>&1 | Out-String
+        $exitCode = $LASTEXITCODE
     } catch {
-        Write-Warn "Primary gh api query failed: $($_.Exception.Message)" 
+        $output = $_.Exception.Message
+        $exitCode = 1
+    } finally {
+        $ErrorActionPreference = $previousPreference
     }
-    if (-not $latestId) {
-        $jsonRaw = gh api $endpoint 2>$null
-        if ($jsonRaw) {
-            try {
-                $obj = $jsonRaw | ConvertFrom-Json -Depth 6
-                $latestId = $obj.workflow_runs[0].id
-            } catch { Write-Warn "Fallback JSON parse failed: $($_.Exception.Message)" }
+    if ($exitCode -ne 0) {
+        throw "The downloaded '$ArtifactName' does not run on this system, so nothing was installed. Output: $output"
+    }
+    return $output.Trim()
+}
+
+function Send-EnvironmentChange {
+    if (-not ('RqDevInstaller.NativeMethods' -as [type])) {
+        Add-Type -Namespace RqDevInstaller -Name NativeMethods -MemberDefinition @'
+[DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out UIntPtr lpdwResult);
+'@
+    }
+    $result = [UIntPtr]::Zero
+    [RqDevInstaller.NativeMethods]::SendMessageTimeout([IntPtr]0xffff, 0x1A, [UIntPtr]::Zero, 'Environment', 2, 5000, [ref]$result) | Out-Null
+}
+
+function Add-DirectoryToUserPath([string]$Directory) {
+    $key = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey('Environment')
+    try {
+        $userPath = [string]$key.GetValue('Path', '', [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+        $parts = @($userPath.Split(';') | Where-Object { $_ })
+        $present = $parts | Where-Object { [Environment]::ExpandEnvironmentVariables($_).TrimEnd('\') -ieq $Directory.TrimEnd('\') }
+        if ($present) {
+            return
         }
+        $key.SetValue('Path', (($parts + $Directory) -join ';'), [Microsoft.Win32.RegistryValueKind]::ExpandString)
+    } finally {
+        $key.Dispose()
     }
-    if (-not $latestId) { throw "No successful workflow runs found for repo '$Repo' (workflow: $Workflow)" }
-    Write-Info "Using latest run id: $latestId"
-    return [long]$latestId
+    Send-EnvironmentChange
+    $Env:Path = "$Env:Path;$Directory"
+    Write-Info "Added '$Directory' to the user PATH. Open a new terminal to pick it up."
+}
+
+if (-not $Name -or $Name.IndexOfAny([IO.Path]::GetInvalidFileNameChars()) -ge 0) {
+    throw "Invalid executable name '$Name'."
 }
 
 if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
-    throw 'GitHub CLI (gh) not found in PATH. Install from https://cli.github.com/ and authenticate with gh auth login.'
+    throw 'GitHub CLI (gh) not found in PATH. Install it from https://cli.github.com/ and run gh auth login.'
 }
 
-$RunId = Get-LatestRunId
-
-$ghArgs = @('-R', $Repo, 'run', 'download', $RunId, '--name', $ArtifactName, '--dir', '.')
-
-$originalDir = Get-Location
-try {
-    if (-not ([IO.Path]::IsPathRooted($DestinationBin))) {
-        $DestinationBin = Join-Path -Path $originalDir -ChildPath $DestinationBin
+if (-not $InstallDir) {
+    if (-not $Env:LOCALAPPDATA) {
+        throw 'LOCALAPPDATA environment variable is not set; cannot determine the install directory.'
     }
-} catch {}
-
-if (-not (Test-Path $DestinationBin)) {
-    Write-Info "Creating destination bin directory (pre-download): $DestinationBin"
-    New-Item -ItemType Directory -Path $DestinationBin -Force | Out-Null
+    $InstallDir = Join-Path $Env:LOCALAPPDATA 'rq-dev'
 }
-$resolvedDestBin = Resolve-Path -Path $DestinationBin
-Write-Info "Resolved destination bin: $resolvedDestBin"
+$InstallDir = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($InstallDir)
+if (-not (Test-Path -LiteralPath $InstallDir)) {
+    Write-Info "Creating install directory: $InstallDir"
+    [IO.Directory]::CreateDirectory($InstallDir) | Out-Null
+}
+$installExe = Join-Path $InstallDir "$Name.exe"
 
-$workRoot = Join-Path -Path ([IO.Path]::GetTempPath()) -ChildPath ("rq-artifact-" + [guid]::NewGuid().ToString('N'))
-New-Item -ItemType Directory -Path $workRoot | Out-Null
-Push-Location $workRoot
+$runId = Get-LatestRunId
+Write-Info "Using run $runId of $Workflow."
+
+$workDir = Join-Path ([IO.Path]::GetTempPath()) ("rq-dev-" + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $workDir | Out-Null
+$stagedExe = Join-Path $InstallDir (".$Name." + [guid]::NewGuid().ToString('N') + '.exe')
 try {
-    Write-Info "Downloading artifact '$ArtifactName' for run $RunId ..."
-    $downloadCmd = "gh " + ($ghArgs -join ' ')
-    Write-Info $downloadCmd
-    gh @ghArgs | Out-Null
-
-    $zips = Get-ChildItem -Filter '*.zip' -File -ErrorAction SilentlyContinue
-    foreach ($zip in $zips) {
-        $extractDir = Join-Path $workRoot ([IO.Path]::GetFileNameWithoutExtension($zip.Name))
-        Write-Info "Expanding $($zip.Name) ..."
-        Expand-Archive -Path $zip.FullName -DestinationPath $extractDir -Force
+    Write-Info "Downloading artifact '$ArtifactName'."
+    gh run download $runId --name $ArtifactName --dir $workDir -R $Repo
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to download artifact '$ArtifactName' from run $runId. It may have expired."
     }
 
-    $exeCandidates = @(Get-ChildItem -Recurse -Filter 'rq.exe' -File -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName)
-    if (-not $exeCandidates -or $exeCandidates.Count -eq 0) {
-        Write-Err "Did not find rq.exe inside artifact '$ArtifactName'. Contents:"
-        Get-ChildItem -Recurse | Select-Object FullName,Length | Out-Host
-        throw "rq.exe not found in artifact '$ArtifactName'."
+    $downloadedExe = Join-Path $workDir 'rq.exe'
+    if (-not (Test-Path -LiteralPath $downloadedExe)) {
+        $contents = (Get-ChildItem -LiteralPath $workDir -Name) -join ', '
+        throw "Artifact '$ArtifactName' has no rq.exe. Contents: $contents"
     }
 
-    if ($exeCandidates.Count -gt 1) {
-        Write-Warn "Multiple rq.exe files found; using first one. List: `n$($exeCandidates -join "`n")"
-    }
-    $sourceExe = $exeCandidates[0]
-    Write-Info "Using rq.exe at $sourceExe"
+    Copy-Item -LiteralPath $downloadedExe -Destination $stagedExe
+    $versionOutput = Get-VersionOutput $stagedExe
+    Write-Info "Downloaded binary runs: $versionOutput"
 
-    $destExe = Join-Path $resolvedDestBin 'rq.exe'
-    $backupExe = Join-Path $resolvedDestBin 'rq.exe.bck'
+    Write-Info "Copying $ArtifactName to $installExe"
+    Move-Item -LiteralPath $stagedExe -Destination $installExe -Force
 
-    if (Test-Path $destExe) {
-        Write-Info "Backing up existing rq.exe to rq.exe.bck"
-        Copy-Item -Path $destExe -Destination $backupExe -Force
-    }
-
-    Write-Info "Copying new rq.exe to $destExe"
-    Copy-Item -Path $sourceExe -Destination $destExe -Force
-
-    Write-Info 'Removing Zone.Identifier (unblock)'
     try {
-        Unblock-File -Path $destExe -ErrorAction Stop
+        Unblock-File -LiteralPath $installExe -ErrorAction Stop
     } catch {
-        Write-Warn "Unblock-File failed: $($_.Exception.Message). Attempting alternate stream removal."
-        try { Remove-Item -Path "$destExe:Zone.Identifier" -ErrorAction SilentlyContinue } catch { }
+        Remove-Item -LiteralPath $installExe -Stream Zone.Identifier -ErrorAction SilentlyContinue
     }
-
-    Write-Info 'Verifying executable'
-    if (-not (Test-Path $destExe)) { throw 'Failed to place rq.exe in destination.' }
-
-    Write-Host "Success: Installed rq.exe to $destExe" -ForegroundColor Green
 }
 finally {
-    Pop-Location
-    try { Remove-Item -Recurse -Force -Path $workRoot } catch { Write-Warn "Temp cleanup failed: $($_.Exception.Message)" }
+    Remove-Item -LiteralPath $stagedExe -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $workDir -Recurse -Force -ErrorAction SilentlyContinue
 }
+
+Add-DirectoryToUserPath $InstallDir
+
+Write-Host "Success: Installed $versionOutput to $installExe" -ForegroundColor Green

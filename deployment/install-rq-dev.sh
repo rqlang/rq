@@ -4,10 +4,9 @@ set -euo pipefail
 
 REPO="rqlang/rq"
 WORKFLOW="release_cd.yaml"
-ARTIFACT_NAME="rq-macos-x86_64"
 
-PREFERRED_ROOT="/usr/local/bin"
-FALLBACK_ROOT="${HOME}/.local/bin"
+BIN_NAME="rq-dev"
+INSTALL_DIR=""
 
 info()  { printf '[INFO ] %s\n' "$*" >&2; }
 warn()  { printf '[WARN ] %s\n' "$*" >&2; }
@@ -17,11 +16,12 @@ usage() {
   cat <<EOF
 Usage: $0 [OPTIONS]
 
-Downloads the latest rq CLI dev build artifact from GitHub Actions
-and installs it.
+Downloads the rq CLI from the latest successful dev build on GitHub Actions
+and installs it next to the released rq without replacing it.
 
 Options:
-  -d, --install-dir DIR   Directory to install the rq binary into.
+  -n, --name NAME         Name of the installed binary (default: rq-dev).
+  -d, --install-dir DIR   Directory to install the binary into.
                           Overrides the default location logic.
   -h, --help              Show this help and exit.
 
@@ -30,139 +30,142 @@ Requires:
 EOF
 }
 
-INSTALL_DIR=""
+resolve_artifact_name() {
+  local os_name
+  local arch
+  os_name="$(uname -s)"
+  arch="$(uname -m)"
 
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --release-tag)
-      # Ignored in dev script but accepted for compatibility with prod script invocation
-      shift 2
+  case "${os_name}" in
+    Linux)
+      case "${arch}" in
+        x86_64|amd64) printf 'rq-linux-x86_64' ;;
+        aarch64|arm64) printf 'rq-linux-aarch64' ;;
+        *) error "Unsupported Linux architecture: ${arch}. Dev builds exist for x86_64 and aarch64 only." ;;
+      esac
       ;;
-    -d|--install-dir)
-      [[ $# -ge 2 ]] || error "Missing value for $1"
-      INSTALL_DIR="$2"
-      shift 2
-      ;;
-    -h|--help)
-      usage
-      exit 0
+    Darwin)
+      if [[ "${arch}" == "arm64" ]]; then
+        printf 'rq-macos-aarch64'
+      else
+        printf 'rq-macos-x86_64'
+      fi
       ;;
     *)
-      error "Unknown argument: $1"
+      error "Unsupported OS: ${os_name}. This installer supports Linux and macOS only."
       ;;
   esac
-done
+}
 
-get_latest_run_id() {
-  info "Auto-detecting latest successful workflow run (repo=${REPO} workflow=${WORKFLOW})"
+resolve_install_root() {
+  if [[ -n "${INSTALL_DIR}" ]]; then
+    info "Using custom install directory: ${INSTALL_DIR}"
+    printf '%s' "${INSTALL_DIR}"
+  elif [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+    printf '/usr/local/bin'
+  else
+    info "Not running as root. Installing to ${HOME}/.local/bin instead of /usr/local/bin."
+    printf '%s' "${HOME}/.local/bin"
+  fi
+}
 
-  local endpoint="repos/${REPO}/actions/workflows/${WORKFLOW}/runs?status=success&per_page=1"
+latest_run_id() {
   local run_id
-
-  run_id="$(gh api "$endpoint" --jq '.workflow_runs[0].id' 2>/dev/null)" || true
-
-  if [[ -z "${run_id}" ]]; then
-    local json_raw
-    json_raw="$(gh api "$endpoint" 2>/dev/null)" || true
-    if [[ -n "${json_raw}" ]]; then
-      run_id="$(printf '%s' "${json_raw}" | sed -n 's/.*"id"[[:space:]]*:[[:space:]]*\([0-9]*\).*/\1/p' | head -n1)"
-    fi
+  if ! run_id="$(gh api "repos/${REPO}/actions/workflows/${WORKFLOW}/runs?status=success&per_page=1" \
+    --jq '.workflow_runs[0].id // empty')"; then
+    error "Failed to query the runs of ${WORKFLOW} in ${REPO}. Check that gh is authenticated (gh auth status)."
   fi
-
-  if [[ -z "${run_id}" ]]; then
-    error "No successful workflow runs found for repo '${REPO}' (workflow: ${WORKFLOW})"
-  fi
-
-  info "Using latest run id: ${run_id}"
+  [[ -n "${run_id}" ]] || error "No successful runs of ${WORKFLOW} found in ${REPO}."
   printf '%s' "${run_id}"
 }
 
-command -v gh >/dev/null 2>&1 || error "GitHub CLI (gh) not found in PATH. Install from https://cli.github.com/ and authenticate with gh auth login."
+main() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -n|--name)
+        [[ $# -ge 2 ]] || error "Missing value for $1"
+        BIN_NAME="$2"
+        shift 2
+        ;;
+      -d|--install-dir)
+        [[ $# -ge 2 ]] || error "Missing value for $1"
+        INSTALL_DIR="$2"
+        shift 2
+        ;;
+      -h|--help)
+        usage
+        exit 0
+        ;;
+      *)
+        error "Unknown argument: $1"
+        ;;
+    esac
+  done
 
-RUN_ID="$(get_latest_run_id)"
+  case "${BIN_NAME}" in
+    ""|.|..|*/*) error "Invalid binary name '${BIN_NAME}'." ;;
+  esac
 
-if [[ -n "${INSTALL_DIR}" ]]; then
-  INSTALL_ROOT="${INSTALL_DIR}"
-  info "Using custom install directory: ${INSTALL_ROOT}"
-else
-  EFFECTIVE_UID="${EUID:-$(id -u)}"
-  if [[ "${EFFECTIVE_UID}" -eq 0 ]]; then
-    INSTALL_ROOT="${PREFERRED_ROOT}"
-  else
-    INSTALL_ROOT="${FALLBACK_ROOT}"
-    info "Not running as root. Installing to ${INSTALL_ROOT} instead of ${PREFERRED_ROOT}."
+  command -v gh >/dev/null 2>&1 || error "GitHub CLI (gh) not found in PATH. Install it from https://cli.github.com/ and run gh auth login."
+
+  ARTIFACT_NAME="$(resolve_artifact_name)"
+  info "Detected platform artifact: ${ARTIFACT_NAME}"
+
+  INSTALL_ROOT="$(resolve_install_root)"
+  INSTALL_BIN="${INSTALL_ROOT}/${BIN_NAME}"
+
+  if [[ ! -d "${INSTALL_ROOT}" ]]; then
+    info "Creating install directory: ${INSTALL_ROOT}"
+    mkdir -p "${INSTALL_ROOT}" 2>/dev/null \
+      || error "Cannot create ${INSTALL_ROOT}. Pick a directory you own with --install-dir."
   fi
-fi
 
-if [[ ! -d "${INSTALL_ROOT}" ]]; then
-  info "Creating install directory: ${INSTALL_ROOT}"
-  mkdir -p "${INSTALL_ROOT}"
-fi
+  if [[ ! -w "${INSTALL_ROOT}" ]]; then
+    error "Cannot write to ${INSTALL_ROOT}. Pick a directory you own with --install-dir."
+  fi
 
-INSTALL_BIN="${INSTALL_ROOT}/rq"
+  if [[ -d "${INSTALL_BIN}" ]]; then
+    error "${INSTALL_BIN} is a directory. Remove it or pick another name with --name."
+  fi
 
-WORK_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/rq-dev-XXXXXX")"
+  RUN_ID="$(latest_run_id)"
+  info "Using run ${RUN_ID} of ${WORKFLOW}."
 
-cleanup() {
-  rm -rf "${WORK_ROOT}" 2>/dev/null || warn "Temp cleanup failed"
+  WORK_DIR="$(mktemp -d)"
+  trap 'rm -rf "${WORK_DIR}"' EXIT
+
+  info "Downloading artifact '${ARTIFACT_NAME}'."
+  gh run download "${RUN_ID}" --name "${ARTIFACT_NAME}" --dir "${WORK_DIR}" -R "${REPO}" \
+    || error "Failed to download artifact '${ARTIFACT_NAME}' from run ${RUN_ID}. It may have expired."
+
+  DOWNLOAD_PATH="${WORK_DIR}/rq"
+  if [[ ! -f "${DOWNLOAD_PATH}" ]]; then
+    error "Artifact '${ARTIFACT_NAME}' has no rq binary. Contents: $(ls -A "${WORK_DIR}")"
+  fi
+
+  info "Copying ${ARTIFACT_NAME} to ${INSTALL_BIN}"
+  STAGED_BIN="$(mktemp "${INSTALL_ROOT}/.${BIN_NAME}.XXXXXX")"
+  trap 'rm -rf "${WORK_DIR}" "${STAGED_BIN}"' EXIT
+  install -m 755 "${DOWNLOAD_PATH}" "${STAGED_BIN}"
+
+  if ! VERSION_OUTPUT="$("${STAGED_BIN}" --version 2>&1)"; then
+    error "The downloaded '${ARTIFACT_NAME}' does not run on this system, so nothing was installed. On Linux it needs glibc 2.34 or newer and OpenSSL 3 (libssl.so.3). Output: ${VERSION_OUTPUT}"
+  fi
+
+  info "Downloaded binary runs: ${VERSION_OUTPUT}"
+  mv -f "${STAGED_BIN}" "${INSTALL_BIN}"
+
+  case ":${PATH}:" in
+    *:"${INSTALL_ROOT}":*)
+      ;;
+    *)
+      warn "${INSTALL_ROOT} is not in your PATH."
+      warn "Add the following line to your shell profile (e.g., ~/.bashrc, ~/.zshrc, or ~/.bash_profile):"
+      warn "  export PATH=\"${INSTALL_ROOT}:\$PATH\""
+      ;;
+  esac
+
+  printf 'Success: Installed %s to %s\n' "${VERSION_OUTPUT}" "${INSTALL_BIN}" >&2
 }
-trap cleanup EXIT
 
-pushd "${WORK_ROOT}" >/dev/null
-
-info "Downloading artifact '${ARTIFACT_NAME}' for run ${RUN_ID} ..."
-info "gh run download ${RUN_ID} --name ${ARTIFACT_NAME} --dir . -R ${REPO}"
-gh run download "${RUN_ID}" --name "${ARTIFACT_NAME}" --dir . -R "${REPO}"
-
-for zip in *.zip; do
-  [[ -f "${zip}" ]] || continue
-  info "Expanding ${zip} ..."
-  unzip -o -q "${zip}"
-done
-
-# 'mapfile' is bash 4+, not available in macos bash 3.2 by default
-# Convert find output into array using while read loop
-RQ_CANDIDATES=()
-while IFS= read -r file; do
-    RQ_CANDIDATES+=("$file")
-done < <(find "${WORK_ROOT}" -name 'rq' -type f 2>/dev/null)
-
-if [[ ${#RQ_CANDIDATES[@]} -eq 0 ]]; then
-  error "Did not find rq binary inside artifact '${ARTIFACT_NAME}'. Contents:
-$(find "${WORK_ROOT}" -type f)"
-fi
-
-if [[ ${#RQ_CANDIDATES[@]} -gt 1 ]]; then
-  warn "Multiple rq binaries found; using first one:"
-  printf '  %s\n' "${RQ_CANDIDATES[@]}" >&2
-fi
-
-SOURCE_BIN="${RQ_CANDIDATES[0]}"
-chmod +x "${SOURCE_BIN}"
-info "Using rq at ${SOURCE_BIN}"
-
-if [[ -f "${INSTALL_BIN}" ]]; then
-  info "Backing up existing rq to rq.bck"
-  cp "${INSTALL_BIN}" "${INSTALL_BIN}.bck"
-fi
-
-info "Copying new rq to ${INSTALL_BIN}"
-cp "${SOURCE_BIN}" "${INSTALL_BIN}"
-
-if [[ ! -x "${INSTALL_BIN}" ]]; then
-  error "Failed to install rq to ${INSTALL_BIN}"
-fi
-
-popd >/dev/null
-
-case ":${PATH}:" in
-  *:"${INSTALL_ROOT}":*)
-    ;;
-  *)
-    warn "${INSTALL_ROOT} is not in your PATH."
-    warn "Add the following line to your shell profile (e.g., ~/.bashrc, ~/.zshrc, or ~/.bash_profile):"
-    warn "  export PATH=\"${INSTALL_ROOT}:\$PATH\""
-    ;;
-esac
-
-printf 'Success: Installed rq to %s\n' "${INSTALL_BIN}" >&2
+main "$@"

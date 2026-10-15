@@ -97,6 +97,35 @@ test_rejects_name_with_slash() {
   fi
 }
 
+test_rejects_dot_names() {
+  local name
+  local rejected=0
+  for name in . ..; do
+    reset_fixture
+    add_artifact rq-linux-x86_64 "rq 0.9.0-dev.3"
+    if ! run_installer Linux x86_64 --name "${name}" && grep -q "Invalid binary name '${name}'" "${SCRATCH}/output" && install_dir_is_empty; then
+      rejected=$((rejected + 1))
+    fi
+  done
+  if [[ "${rejected}" -eq 2 ]]; then
+    pass "rejects . and .. as names"
+  else
+    fail "rejects . and .. as names"
+  fi
+}
+
+test_fails_when_target_is_directory() {
+  reset_fixture
+  add_artifact rq-linux-x86_64 "rq 0.9.0-dev.3"
+  mkdir "${SCRATCH}/install/rq-dev"
+  if ! FAKE_GH_LOG="${SCRATCH}/gh.log" run_installer Linux x86_64 && grep -q "${SCRATCH}/install/rq-dev is a directory" "${SCRATCH}/output" \
+    && [[ -z "$(ls -A "${SCRATCH}/install/rq-dev")" ]] && [[ ! -e "${SCRATCH}/gh.log" ]]; then
+    pass "fails before downloading when the target is a directory"
+  else
+    fail "fails before downloading when the target is a directory"
+  fi
+}
+
 test_picks_artifact() {
   local os="$1"
   local arch="$2"
@@ -201,7 +230,8 @@ test_fails_when_install_dir_not_writable() {
   reset_fixture
   add_artifact rq-linux-x86_64 "rq 0.9.0-dev.3"
   chmod 555 "${SCRATCH}/install"
-  if ! FAKE_GH_LOG="${SCRATCH}/gh.log" run_installer Linux x86_64 && grep -q "Cannot write to ${SCRATCH}/install" "${SCRATCH}/output" && [[ ! -e "${SCRATCH}/gh.log" ]]; then
+  if ! FAKE_GH_LOG="${SCRATCH}/gh.log" run_installer Linux x86_64 && grep -q "Cannot write to ${SCRATCH}/install. Pick a directory you own with --install-dir." "${SCRATCH}/output" \
+    && ! grep -q sudo "${SCRATCH}/output" && [[ ! -e "${SCRATCH}/gh.log" ]]; then
     pass "fails before downloading when the install directory is not writable"
   else
     fail "fails before downloading when the install directory is not writable"
@@ -285,6 +315,8 @@ test_installs_as_rq_dev_by_default
 test_keeps_existing_rq
 test_installs_under_custom_name
 test_rejects_name_with_slash
+test_rejects_dot_names
+test_fails_when_target_is_directory
 test_picks_artifact Linux x86_64 rq-linux-x86_64
 test_picks_artifact Linux aarch64 rq-linux-aarch64
 test_picks_artifact Darwin arm64 rq-macos-aarch64

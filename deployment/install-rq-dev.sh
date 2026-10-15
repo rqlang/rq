@@ -102,7 +102,9 @@ main() {
     esac
   done
 
-  [[ -n "${BIN_NAME}" && "${BIN_NAME}" != */* ]] || error "Invalid binary name '${BIN_NAME}'."
+  case "${BIN_NAME}" in
+    ""|.|..|*/*) error "Invalid binary name '${BIN_NAME}'." ;;
+  esac
 
   command -v gh >/dev/null 2>&1 || error "GitHub CLI (gh) not found in PATH. Install it from https://cli.github.com/ and run gh auth login."
 
@@ -115,11 +117,15 @@ main() {
   if [[ ! -d "${INSTALL_ROOT}" ]]; then
     info "Creating install directory: ${INSTALL_ROOT}"
     mkdir -p "${INSTALL_ROOT}" 2>/dev/null \
-      || error "Cannot create ${INSTALL_ROOT}. Run the script with sudo, or pick a directory you own with --install-dir."
+      || error "Cannot create ${INSTALL_ROOT}. Pick a directory you own with --install-dir."
   fi
 
   if [[ ! -w "${INSTALL_ROOT}" ]]; then
-    error "Cannot write to ${INSTALL_ROOT}. Run the script with sudo, or pick a directory you own with --install-dir."
+    error "Cannot write to ${INSTALL_ROOT}. Pick a directory you own with --install-dir."
+  fi
+
+  if [[ -d "${INSTALL_BIN}" ]]; then
+    error "${INSTALL_BIN} is a directory. Remove it or pick another name with --name."
   fi
 
   RUN_ID="$(latest_run_id)"

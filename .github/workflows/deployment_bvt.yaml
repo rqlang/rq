@@ -29,6 +29,9 @@ jobs:
       - name: Test install script
         run: deployment/test/install-rq/run.sh
 
+      - name: Test dev install script
+        run: deployment/test/install-rq-dev/run.sh
+
       - name: Test Homebrew formula renderer
         run: deployment/homebrew/test/run.sh
 

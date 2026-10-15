@@ -34,7 +34,6 @@ $Workflow = 'release_cd.yaml'
 $ArtifactName = 'rq-windows-x86_64.exe'
 
 function Write-Info($msg) { Write-Host "[INFO ] $msg" -ForegroundColor Cyan }
-function Write-Warn($msg) { Write-Warning $msg }
 
 function Get-LatestRunId {
     $endpoint = "repos/$Repo/actions/workflows/$Workflow/runs?status=success&per_page=1"
@@ -66,22 +65,36 @@ function Get-VersionOutput([string]$Executable) {
     return $output.Trim()
 }
 
+function Send-EnvironmentChange {
+    if (-not ('RqDevInstaller.NativeMethods' -as [type])) {
+        Add-Type -Namespace RqDevInstaller -Name NativeMethods -MemberDefinition @'
+[DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out UIntPtr lpdwResult);
+'@
+    }
+    $result = [UIntPtr]::Zero
+    [RqDevInstaller.NativeMethods]::SendMessageTimeout([IntPtr]0xffff, 0x1A, [UIntPtr]::Zero, 'Environment', 2, 5000, [ref]$result) | Out-Null
+}
+
 function Add-DirectoryToUserPath([string]$Directory) {
-    $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
-    $parts = @()
-    if ($userPath) {
+    $key = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey('Environment')
+    try {
+        $userPath = [string]$key.GetValue('Path', '', [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
         $parts = @($userPath.Split(';') | Where-Object { $_ })
+        $present = $parts | Where-Object { [Environment]::ExpandEnvironmentVariables($_).TrimEnd('\') -ieq $Directory.TrimEnd('\') }
+        if ($present) {
+            return
+        }
+        $key.SetValue('Path', (($parts + $Directory) -join ';'), [Microsoft.Win32.RegistryValueKind]::ExpandString)
+    } finally {
+        $key.Dispose()
     }
-    $present = $parts | Where-Object { $_.TrimEnd('\') -ieq $Directory.TrimEnd('\') }
-    if ($present) {
-        return
-    }
-    [Environment]::SetEnvironmentVariable('Path', (($parts + $Directory) -join ';'), 'User')
+    Send-EnvironmentChange
     $Env:Path = "$Env:Path;$Directory"
     Write-Info "Added '$Directory' to the user PATH. Open a new terminal to pick it up."
 }
 
-if (-not $Name -or $Name.IndexOfAny([char[]]'\/:') -ge 0) {
+if (-not $Name -or $Name.IndexOfAny([IO.Path]::GetInvalidFileNameChars()) -ge 0) {
     throw "Invalid executable name '$Name'."
 }
 
@@ -95,10 +108,10 @@ if (-not $InstallDir) {
     }
     $InstallDir = Join-Path $Env:LOCALAPPDATA 'rq-dev'
 }
-$InstallDir = [IO.Path]::GetFullPath($InstallDir)
-if (-not (Test-Path $InstallDir)) {
+$InstallDir = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($InstallDir)
+if (-not (Test-Path -LiteralPath $InstallDir)) {
     Write-Info "Creating install directory: $InstallDir"
-    New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
+    [IO.Directory]::CreateDirectory($InstallDir) | Out-Null
 }
 $installExe = Join-Path $InstallDir "$Name.exe"
 
@@ -116,21 +129,27 @@ try {
     }
 
     $downloadedExe = Join-Path $workDir 'rq.exe'
-    if (-not (Test-Path $downloadedExe)) {
-        $contents = (Get-ChildItem -Path $workDir -Name) -join ', '
+    if (-not (Test-Path -LiteralPath $downloadedExe)) {
+        $contents = (Get-ChildItem -LiteralPath $workDir -Name) -join ', '
         throw "Artifact '$ArtifactName' has no rq.exe. Contents: $contents"
     }
 
-    Copy-Item -Path $downloadedExe -Destination $stagedExe
+    Copy-Item -LiteralPath $downloadedExe -Destination $stagedExe
     $versionOutput = Get-VersionOutput $stagedExe
     Write-Info "Downloaded binary runs: $versionOutput"
 
     Write-Info "Copying $ArtifactName to $installExe"
-    Move-Item -Path $stagedExe -Destination $installExe -Force
+    Move-Item -LiteralPath $stagedExe -Destination $installExe -Force
+
+    try {
+        Unblock-File -LiteralPath $installExe -ErrorAction Stop
+    } catch {
+        Remove-Item -LiteralPath $installExe -Stream Zone.Identifier -ErrorAction SilentlyContinue
+    }
 }
 finally {
-    Remove-Item -Path $stagedExe -Force -ErrorAction SilentlyContinue
-    Remove-Item -Path $workDir -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $stagedExe -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $workDir -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 Add-DirectoryToUserPath $InstallDir

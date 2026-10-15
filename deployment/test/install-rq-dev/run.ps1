@@ -5,11 +5,38 @@ $Installer = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\install-rq-d
 $Pwsh = (Get-Process -Id $PID).Path
 $Csc = Join-Path $Env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
 $Scratch = Join-Path ([IO.Path]::GetTempPath()) ("rq-dev-test-" + [guid]::NewGuid().ToString('N'))
-$OriginalUserPath = [Environment]::GetEnvironmentVariable('Path', 'User')
 $script:Failed = $false
 
 function Pass($name) { Write-Host "ok   $name" }
 function Fail($name) { Write-Host "FAIL $name"; $script:Failed = $true }
+
+function Get-RawUserPath {
+    $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment')
+    try {
+        if ($key.GetValueNames() -notcontains 'Path') { return $null }
+        return @{
+            Value = [string]$key.GetValue('Path', '', [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+            Kind = $key.GetValueKind('Path')
+        }
+    } finally {
+        $key.Dispose()
+    }
+}
+
+function Set-RawUserPath($RawPath) {
+    $key = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey('Environment')
+    try {
+        if ($null -eq $RawPath) {
+            $key.DeleteValue('Path', $false)
+        } else {
+            $key.SetValue('Path', $RawPath.Value, $RawPath.Kind)
+        }
+    } finally {
+        $key.Dispose()
+    }
+}
+
+$OriginalUserPath = Get-RawUserPath
 
 function Reset-Fixture {
     if (Test-Path $Scratch) { Remove-Item -Path $Scratch -Recurse -Force }
@@ -18,7 +45,7 @@ function Reset-Fixture {
     }
     Copy-Item -Path (Join-Path $PSScriptRoot 'fake-gh.ps1') -Destination (Join-Path $Scratch 'bin\gh.ps1')
     Set-Content -Path (Join-Path $Scratch 'artifacts\run_id') -Value '42'
-    [Environment]::SetEnvironmentVariable('Path', $OriginalUserPath, 'User')
+    Set-RawUserPath $OriginalUserPath
 }
 
 function New-FakeExe([string]$Path, [string]$Output, [int]$ExitCode) {
@@ -34,7 +61,7 @@ function Add-Artifact([string]$Output, [int]$ExitCode = 0) {
     New-FakeExe (Join-Path $dir 'rq.exe') $Output $ExitCode
 }
 
-function Invoke-Installer([string[]]$InstallerArgs, [hashtable]$Environment = @{}, [string]$PathOverride) {
+function Use-InstallerEnvironment([scriptblock]$Action, [hashtable]$Environment = @{}, [string]$PathOverride) {
     $saved = @{}
     $vars = @{ FAKE_ARTIFACTS = (Join-Path $Scratch 'artifacts') } + $Environment
     $vars['Path'] = if ($PathOverride) { $PathOverride } else { "$(Join-Path $Scratch 'bin');$Env:Path" }
@@ -43,22 +70,28 @@ function Invoke-Installer([string[]]$InstallerArgs, [hashtable]$Environment = @{
         [Environment]::SetEnvironmentVariable($key, $vars[$key], 'Process')
     }
     try {
-        $previousPreference = $ErrorActionPreference
-        $ErrorActionPreference = 'Continue'
-        $script:Output = & $Pwsh -NoProfile -ExecutionPolicy Bypass -File $Installer @InstallerArgs 2>&1 | Out-String
-        $script:ExitCode = $LASTEXITCODE
-        $ErrorActionPreference = $previousPreference
+        & $Action
     } finally {
         foreach ($key in $saved.Keys) {
             [Environment]::SetEnvironmentVariable($key, $saved[$key], 'Process')
         }
     }
+}
+
+function Invoke-Installer([string[]]$InstallerArgs, [hashtable]$Environment = @{}, [string]$PathOverride) {
+    Use-InstallerEnvironment {
+        $previousPreference = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        $script:Output = & $Pwsh -NoProfile -ExecutionPolicy Bypass -File $Installer @InstallerArgs 2>&1 | Out-String
+        $script:ExitCode = $LASTEXITCODE
+        $ErrorActionPreference = $previousPreference
+    } $Environment $PathOverride
     return $script:ExitCode -eq 0
 }
 
 function Get-InstalledVersion([string]$Name) {
     $exe = Join-Path $Scratch "install\$Name.exe"
-    if (-not (Test-Path $exe)) { return '' }
+    if (-not (Test-Path -LiteralPath $exe)) { return '' }
     return (& $exe | Out-String).Trim()
 }
 
@@ -90,6 +123,53 @@ function Test-RejectsNameWithSeparator {
     if (-not (Invoke-Installer ($InstallDirArgs + @('-Name', '..\rq'))) -and $script:Output -match "Invalid executable name" -and (Get-InstallEntries).Count -eq 0) {
         Pass 'rejects a name that contains a path separator'
     } else { Fail 'rejects a name that contains a path separator' }
+}
+
+function Test-InstallsUnderNameWithBrackets {
+    Reset-Fixture
+    Add-Artifact 'rq 0.9.0-dev.3'
+    if ((Invoke-Installer ($InstallDirArgs + @('-Name', 'rq[dev]'))) -and (Get-InstalledVersion 'rq[dev]') -eq 'rq 0.9.0-dev.3' -and ((Get-InstallEntries) -join ',') -eq 'rq[dev].exe') {
+        Pass 'installs under a name that contains brackets'
+    } else { Fail 'installs under a name that contains brackets' }
+}
+
+function Test-RejectsNameWithWildcard {
+    Reset-Fixture
+    Add-Artifact 'rq 0.9.0-dev.3'
+    if (-not (Invoke-Installer ($InstallDirArgs + @('-Name', 'rq*'))) -and $script:Output -match "Invalid executable name" -and (Get-InstallEntries).Count -eq 0) {
+        Pass 'rejects a name that is not a valid file name'
+    } else { Fail 'rejects a name that is not a valid file name' }
+}
+
+function Test-ResolvesRelativeInstallDirAgainstLocation {
+    Reset-Fixture
+    Add-Artifact 'rq 0.9.0-dev.3'
+    $location = Join-Path $Scratch 'location'
+    New-Item -ItemType Directory -Path $location | Out-Null
+    $previousDirectory = [Environment]::CurrentDirectory
+    [Environment]::CurrentDirectory = $Scratch
+    Push-Location $location
+    try {
+        Use-InstallerEnvironment { & $Installer -InstallDir 'tools' *> $null }
+    } catch {
+    } finally {
+        Pop-Location
+        [Environment]::CurrentDirectory = $previousDirectory
+    }
+    if ((Test-Path (Join-Path $location 'tools\rq-dev.exe')) -and -not (Test-Path (Join-Path $Scratch 'tools'))) {
+        Pass 'resolves a relative install directory against the current location'
+    } else { Fail 'resolves a relative install directory against the current location' }
+}
+
+function Test-KeepsVariablesInUserPath {
+    Reset-Fixture
+    Add-Artifact 'rq 0.9.0-dev.3'
+    Set-RawUserPath @{ Value = '%SystemRoot%\rq-test'; Kind = [Microsoft.Win32.RegistryValueKind]::ExpandString }
+    $ok = Invoke-Installer $InstallDirArgs
+    $raw = Get-RawUserPath
+    if ($ok -and $raw.Value -eq "%SystemRoot%\rq-test;$(Join-Path $Scratch 'install')" -and $raw.Kind -eq [Microsoft.Win32.RegistryValueKind]::ExpandString) {
+        Pass 'keeps environment variable references in the user PATH'
+    } else { Fail 'keeps environment variable references in the user PATH' }
 }
 
 function Test-AddsInstallDirToUserPath {
@@ -176,6 +256,10 @@ try {
     Test-InstallsAsRqDevByDefault
     Test-InstallsUnderCustomName
     Test-RejectsNameWithSeparator
+    Test-InstallsUnderNameWithBrackets
+    Test-RejectsNameWithWildcard
+    Test-ResolvesRelativeInstallDirAgainstLocation
+    Test-KeepsVariablesInUserPath
     Test-AddsInstallDirToUserPath
     Test-DoesNotDuplicateUserPathEntry
     Test-FailsWhenGhMissing
@@ -186,7 +270,7 @@ try {
     Test-FailsWhenBinaryDoesNotRun
     Test-ReplacesExistingBinary
 } finally {
-    [Environment]::SetEnvironmentVariable('Path', $OriginalUserPath, 'User')
+    Set-RawUserPath $OriginalUserPath
     Remove-Item -Path $Scratch -Recurse -Force -ErrorAction SilentlyContinue
 }
 

@@ -16,9 +16,9 @@ GitHub Actions workflows for building, testing and releasing `rq`.
 | `release_prod.yaml` | GitHub Release published | Release builds uploaded to the GitHub Release |
 | `publish_release.yaml` | Manual | Publishes a release to the chosen channels, or only verifies them with `dry_run` |
 | `publish_extension.yaml` | Called by `publish_release.yaml`, or manual | Publishes a release VSIX to the VS Code Marketplace |
-| `publish_homebrew.yaml` | Called by `release_prod.yaml`, or manual | Renders, verifies and pushes the Homebrew formula to the tap |
-| `publish_scoop.yaml` | Called by `release_prod.yaml`, or manual | Renders, verifies and pushes the Scoop manifest to the bucket |
-| `publish_winget.yaml` | Called by `release_prod.yaml`, or manual | Renders, verifies and submits the WinGet manifests to `microsoft/winget-pkgs` |
+| `publish_homebrew.yaml` | Called by `publish_release.yaml`, or manual | Renders, verifies and pushes the Homebrew formula to the tap |
+| `publish_scoop.yaml` | Called by `publish_release.yaml`, or manual | Renders, verifies and pushes the Scoop manifest to the bucket |
+| `publish_winget.yaml` | Called by `publish_release.yaml`, or manual | Renders, verifies and submits the WinGet manifests to `microsoft/winget-pkgs` |
 | `build_cli.yaml` | Called by the release workflows | Builds and signs the CLI for every platform |
 | `build_extension.yaml` | Called by the release workflows | Packages the VS Code extension VSIX |
 
@@ -50,9 +50,11 @@ The repository keeps `version = "0.0.0"` in the root `Cargo.toml`; the workflows
 3. Publish the release. `release_prod.yaml` then:
    - builds the CLI for every platform and the VSIX,
    - once every build has succeeded, uploads all binaries, the VSIX and a `SHA256SUMS` file to the release,
-   - records build provenance attestations for every binary and the VSIX listed in `SHA256SUMS`,
-   - unless the release is a pre-release, publishes the Homebrew formula and the Scoop manifest, and opens a pull request with the WinGet manifests (see below).
-4. Run `publish_extension.yaml` with the tag to publish the VSIX to the Marketplace.
+   - records build provenance attestations for every binary and the VSIX listed in `SHA256SUMS`.
+
+   Nothing is published to any channel yet, so the release assets can be tested first.
+4. Run `publish_release.yaml` with the tag and `dry_run` checked (the default). It renders and verifies the Homebrew formula, the Scoop manifest and the WinGet manifests, and finds the VSIX, without publishing anything.
+5. Run `publish_release.yaml` again with `dry_run` unchecked to publish to the VS Code Marketplace, the Homebrew tap and the Scoop bucket, and to open a pull request with the WinGet manifests (see below). Untick a channel to leave it out.
 
 Nothing is uploaded to the release unless every build succeeds. To retry a failed release, re-run the failed jobs of the workflow run.
 

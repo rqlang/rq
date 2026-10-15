@@ -6,6 +6,10 @@ on:
       tag:
         required: true
         type: string
+      dry_run:
+        required: false
+        type: boolean
+        default: false
     secrets:
       HOMEBREW_TAP_TOKEN:
         required: true
@@ -14,6 +18,10 @@ on:
       tag:
         description: 'Release tag to publish (e.g. 0.8.0)'
         required: true
+      dry_run:
+        description: 'Render and verify without publishing'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -112,6 +120,7 @@ jobs:
   push:
     name: Push to Tap
     needs: [render, verify]
+    if: ${{ !inputs.dry_run }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

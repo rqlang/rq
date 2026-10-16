@@ -225,7 +225,7 @@ main() {
   install -m 755 "${DOWNLOAD_PATH}" "${STAGED_BIN}"
 
   if ! VERSION_OUTPUT="$("${STAGED_BIN}" --version 2>&1)"; then
-    error "The downloaded '${ASSET_NAME}' does not run on this system, so nothing was installed. On Linux it needs glibc 2.34 or newer and OpenSSL 3 (libssl.so.3). Output: ${VERSION_OUTPUT}"
+    error "The downloaded '${ASSET_NAME}' does not run on this system, so nothing was installed. On Linux it needs glibc 2.34 or newer. Output: ${VERSION_OUTPUT}"
   fi
 
   info "Downloaded binary runs: ${VERSION_OUTPUT}"

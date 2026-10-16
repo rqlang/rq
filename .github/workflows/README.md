@@ -34,7 +34,7 @@ GitHub Actions workflows for building, testing and releasing `rq`.
 | `rq-macos-x86_64` | `x86_64-apple-darwin` | `macos-latest` |
 | `rq-macos-aarch64` | `aarch64-apple-darwin` | `macos-latest` |
 
-OpenSSL is vendored, so the binaries do not depend on the system `libssl`. The Linux binaries are built on Ubuntu 22.04 so that they run on any distribution with glibc 2.35 or newer. The Windows binary is signed with the certificate in `CODE_SIGNING_CERT`.
+The Linux binaries are built on Ubuntu 22.04 and link the system OpenSSL 3, so they need glibc 2.34 or newer and `libssl.so.3` at runtime. The Windows binary is signed with the certificate in `CODE_SIGNING_CERT`.
 
 ## Versioning
 

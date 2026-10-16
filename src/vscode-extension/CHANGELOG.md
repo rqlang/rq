@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.8.0]
+
+### Breaking Changes
+
+- Values are now type checked, so files that used to fail only when the request was sent are flagged in the Problems panel: a headers map or JSON value used as a url, a string used as headers, a JSON variable used as a header value, or a template endpoint parameter bound to the wrong type. Arrays (`let a = ["x"];`) are rejected at the declaration — a list of header entries is written `$[...]`.
+- An empty or whitespace-only `url` on `rq` or `ep` is now an error (`Parameter 'url' cannot be empty`). It stays valid where the URL is inherited: a `rq` inside an `ep`, or an `ep` extending a template.
+
+### Bug Fixes
+
+- Fixed the formatter changing request data: re-indenting a document also indented the continuation lines of multi-line string literals, so saving a `.rq` file changed the headers and bodies actually sent. Literals are now restored verbatim, line merging no longer crosses an unterminated string, and spacing rules no longer edit comment text (`// TODO:fix` stayed `// TODO: fix`).
+- Fixed formatting a multiline call collapsing a multiline `$[...]` or `${...}` argument onto one line. Multiline arrays and JSON bodies now keep one entry per line, recursively; repeated spaces outside strings and comments collapse to one; a nested `},` no longer splits; and a block comment opened mid-line is left alone.
+- Fixed `[method(...)]` offering no completions once its snippet had been exited. The HTTP verbs are now suggested whenever the cursor is inside the value, including in multi-line attributes.
+- Fixed a headers map missing its closing `]` being reported as `Expected ')'` at the end of the file. It is now reported at the offending token as `Expected string key or ']'`, or as `Expected ']'` at the end of input, in `rq`, `ep` and `let`.
+- Fixed snippets inserting sample values (`http://localhost:8080/...`, `https://auth.example.com/...`, `openid profile`, `./client-cert.p12`) that stayed in the file when tabbed past and could silently reach whatever listens on that port. They now insert empty placeholders, and the completion documentation shows an **Example:** with the samples filled in. `redirect_uri` keeps `http://localhost:8080/callback`, since its scheme selects the callback mode.
+- Fixed a JSON variable used as a header value being serialised into the header and sent.
+- Fixed a template endpoint with a wrong-typed parameter passing validation and failing at send time. A child endpoint inherits the bindings of the template it extends, so an inherited parameter is reported where it was declared.
+- Fixed `oauth2_implicit` accepting empty required fields such as `authorization_url`; it now reports them like the other OAuth2 providers.
+- Fixed the debug logging setting being lost when the WebAssembly worker restarted.
+
+### Enhancements
+
+- **Cancel a running request.** A stop button appears next to the running request in the request explorer, *RQ: Cancel Running Request* is available from the command palette, the progress notification can be cancelled, and the response panel's *Run Again* button turns into *Cancel* while the request runs. *Run Request* is disabled until the running one finishes or is cancelled.
+- **Suppress lint findings.** `// rq-lint-ignore <rule>[: reason]` on its own line covers the next statement (or the next entry inside an `env`, `auth`, `$[...]` or `${...}`), at the end of a line it covers that line, and `// rq-lint-ignore-file <rule>` covers the whole file. Rules are named explicitly — there is no catch-all. Two new rules that cannot be suppressed keep them honest: `invalid_lint_suppression` (unknown or missing rule, misplaced file directive) and `unused_lint_suppression` (a suppression that silences nothing).
+- **Quick fixes for lint findings.** *Quick Fix…* on a lint warning offers *Suppress `<rule>` on this line / for this statement / for this file*, merging into an existing directive when there is one and respecting indentation and CRLF. `hardcoded_secret` is never offered file-wide. An unused suppression offers *Remove unused suppression*.
+- **`io.read_json(path)`** reads a JSON file next to the `.rq` file and returns it as a JSON value, so the body is sent with `Content-Type: application/json` unless you declare one. Invalid JSON is reported before anything is sent. Autocomplete and signature help include it.
+- **Debug trace in the output channel.** With `rq.debugLogging` on, the RQ output channel shows a `curl -v`-style trace of each run: files parsed, environments, secret sources (by name only), where each variable comes from, the resolved request and the response, and OAuth2 token requests. Secret values are masked.
+- The bundled MCP server instructions and its `generate_rq` prompt forbid adding `rq-lint-ignore` comments unless you ask for them, so an assistant cannot pass the linter by silencing what it was asked to fix. Its tool schemas are now JSON Schema 2020-12.
+- Added a **Lint Rules** documentation page, linked from the VS Code extension guide, and *Suppressing lint findings* and *Value types* sections in the language definition.
+- Upgraded the extension's npm dependencies, including `@modelcontextprotocol/sdk` 1.32.
+
 ## [0.7.0]
 
 ### Bug Fixes

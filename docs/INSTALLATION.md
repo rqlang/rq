@@ -180,7 +180,9 @@ Releases published before 0.8.0 do not include `SHA256SUMS` or the `rq-linux-aar
 
 ### Linux requirements
 
-The Linux binaries, whichever way you install them, need glibc 2.34 or newer and OpenSSL 3 (`libssl.so.3`), which Ubuntu 22.04, Debian 12, RHEL 9 and later ship by default.
+The Linux binaries, whichever way you install them, need glibc 2.34 or newer, which Ubuntu 22.04, Debian 12, RHEL 9 and later ship by default. OpenSSL is built into the binary, so no system `libssl` is needed; HTTPS uses the system CA certificates (the `ca-certificates` package).
+
+Releases 0.7.0 and older were linked against the system OpenSSL and also need OpenSSL 3 (`libssl.so.3`).
 
 ## VS Code extension
 

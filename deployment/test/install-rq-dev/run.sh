@@ -36,7 +36,7 @@ add_artifact() {
 add_broken_artifact() {
   local name="$1"
   mkdir -p "${SCRATCH}/artifacts/${name}"
-  printf '#!/bin/sh\necho "error while loading shared libraries: libssl.so.3" >&2\nexit 127\n' > "${SCRATCH}/artifacts/${name}/rq"
+  printf '#!/bin/sh\necho "rq: /lib/x86_64-linux-gnu/libc.so.6: version GLIBC_2.34 not found (required by rq)" >&2\nexit 127\n' > "${SCRATCH}/artifacts/${name}/rq"
 }
 
 run_installer() {

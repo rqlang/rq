@@ -87,7 +87,7 @@ scoop install rqlang/rqlang
 
 `publish_scoop.yaml` renders `bucket/rqlang.json` from the release `SHA256SUMS` with `deployment/scoop/render-manifest.sh`, installs it on Windows with the Scoop installer pinned in `SCOOP_INSTALLER_COMMIT` and checks that `rq --version` reports exactly that version, and only then pushes it to the bucket with the `SCOOP_BUCKET_TOKEN` secret (a fine-grained token with `Contents: Read and write` on `rqlang/scoop-bucket`). The manifest has no `checkver`/`autoupdate`: this workflow is the only thing that updates it. Pre-releases are rejected, and the bucket never moves back to an older version than the one it already has. To retry or republish a release, run it manually with the tag. Releases published before `SHA256SUMS` existed (0.7.0 and older) cannot be published this way.
 
-Installing through Scoop and through `deployment/install-rq.ps1` side by side leaves two `rq.exe` on `PATH`; use one or the other.
+Installing through both Scoop and WinGet leaves two `rq.exe` on `PATH`; use one or the other.
 
 To test the renderer locally:
 
@@ -105,7 +105,7 @@ winget install rqlang.rq
 
 `publish_winget.yaml` renders the version, installer and `en-US` locale manifests from the release `SHA256SUMS` with `deployment/winget/render-manifests.sh`, validates them with `winget validate`, installs them on Windows with `winget install --manifest` and checks that `rq --version` reports exactly that version. Only then does it open a pull request against `microsoft/winget-pkgs` with `wingetcreate submit`, pinned in `WINGETCREATE_VERSION` and checked against `WINGETCREATE_SHA256`. The pull request comes from a fork of `winget-pkgs` owned by the account behind the `WINGET_PKGS_TOKEN` secret (a classic token with the `public_repo` scope; `wingetcreate` does not support fine-grained tokens). The package is available once the WinGet moderators merge it. Pre-releases are rejected, and nothing is submitted when the version is already in `winget-pkgs` or an open pull request already submits it. To retry or republish a release, run it manually with the tag. Releases published before `SHA256SUMS` existed (0.7.0 and older) cannot be published this way.
 
-Installing through WinGet, Scoop and `deployment/install-rq.ps1` side by side leaves several `rq.exe` on `PATH`; use one of them.
+Installing through both WinGet and Scoop leaves two `rq.exe` on `PATH`; use one or the other. `deployment/uninstall-rq.ps1` removes an `rq` installed by the former PowerShell install script.
 
 To test the renderer locally:
 
@@ -132,7 +132,7 @@ gh attestation verify rq-linux-x86_64 --repo rqlang/rq
 
 ## Dev builds
 
-`release_cd.yaml` uploads the CLI binaries and the VSIX as workflow artifacts (not releases). One build runs at a time: a running build always finishes, and of the pushes that arrive meanwhile only the latest is built next. The `deployment/install-rq-dev*` scripts download these artifacts from the latest successful run; the CLI scripts install it as `rq-dev` so it does not replace a released `rq`.
+`release_cd.yaml` uploads the CLI binaries and the VSIX as workflow artifacts (not releases). One build runs at a time: a running build always finishes, and of the pushes that arrive meanwhile only the latest is built next. The `deployment/install-rq-dev.sh` and `deployment/install-rq-dev.ps1` scripts install the CLI from the latest successful run as `rq-dev`, so it does not replace a released `rq`. The VSIX is downloaded from the run and installed from VS Code; see [LOCAL_DEVELOPMENT.md](../../docs/LOCAL_DEVELOPMENT.md#installing-dev-builds).
 
 ## Local build
 

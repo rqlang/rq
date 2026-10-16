@@ -15,8 +15,8 @@ rq ships as two pieces that can be installed independently:
 
 | Platform | Recommended | Alternatives |
 |---|---|---|
-| macOS (Apple Silicon or Intel) | [Homebrew](#homebrew-macos-and-linux) | [Manual download](#manual-download) |
-| Linux (x86_64 or aarch64) | [Install script](#install-script-linux) | [Homebrew](#homebrew-macos-and-linux), [manual download](#manual-download) |
+| macOS (Apple Silicon or Intel) | [Homebrew](#homebrew-macos-and-linux) | [Install script](#install-script-linux-and-macos), [manual download](#manual-download) |
+| Linux (x86_64 or aarch64) | [Install script](#install-script-linux-and-macos) | [Homebrew](#homebrew-macos-and-linux), [manual download](#manual-download) |
 | Windows (x86_64) | [WinGet](#winget-windows) | [Scoop](#scoop-windows), [manual download](#manual-download) |
 
 Homebrew, WinGet and Scoop only carry stable releases. Pre-releases are published on the [Releases page](https://github.com/rqlang/rq/releases) only, so use the install script with `--release-tag` or a manual download to try one.
@@ -63,6 +63,8 @@ WinGet installs it as a portable package and puts `rq` on your `PATH`; open a ne
 
 New versions reach WinGet through a pull request to [microsoft/winget-pkgs](https://github.com/microsoft/winget-pkgs), so they can appear there a few days after the GitHub release.
 
+If you installed `rq` earlier with the former PowerShell install script, it lives in `%LOCALAPPDATA%\rq`. Delete that folder and remove it from your user `PATH` (or run `deployment\uninstall-rq.ps1` from a clone of this repository) before switching to WinGet or Scoop, so that only one `rq.exe` is on the `PATH`.
+
 ### Scoop (Windows)
 
 The manifest lives in the [rqlang/scoop-bucket](https://github.com/rqlang/scoop-bucket) bucket. Add the bucket once, then install:
@@ -79,9 +81,9 @@ The manifest is called `rqlang`, but the command it installs is `rq`.
 | Upgrade | `scoop update rqlang` |
 | Uninstall | `scoop uninstall rqlang` |
 
-### Install script (Linux)
+### Install script (Linux and macOS)
 
-The install script downloads the CLI binary for your architecture (`x86_64` or `aarch64`) from the latest GitHub release, checks it against the release's `SHA256SUMS`, renames it to `rq` and copies it to a directory on your `PATH`:
+The install script downloads the CLI binary for your platform and architecture (`x86_64` or `aarch64`/Apple Silicon) from the latest GitHub release, checks it against the release's `SHA256SUMS`, renames it to `rq` and copies it to a directory on your `PATH`:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/rqlang/rq/main/deployment/install-rq.sh | bash
@@ -100,7 +102,7 @@ Where it installs depends on who runs it:
   curl -fsSL https://raw.githubusercontent.com/rqlang/rq/main/deployment/install-rq.sh | sudo bash
   ```
 
-Most distributions already put `~/.local/bin` on the `PATH`. If yours does not, the script says so and prints the line to add to your shell profile (`~/.bashrc`, `~/.zshrc`, …):
+Most Linux distributions already put `~/.local/bin` on the `PATH`; macOS does not. If it is missing, the script says so and prints the line to add to your shell profile (`~/.bashrc`, `~/.zshrc`, …):
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
@@ -154,8 +156,17 @@ Every release attaches a prebuilt, portable binary per platform. They need no in
 
    ```bash
    chmod +x rq-linux-x86_64
+   mkdir -p ~/.local/bin
    mv rq-linux-x86_64 ~/.local/bin/rq
    rq --version
+   ```
+
+   If `rq` is not found, add `~/.local/bin` to your `PATH` as shown in the [install script](#install-script-linux-and-macos) section.
+
+   The macOS binaries are not signed, so macOS blocks a file downloaded with a browser when it first runs. If `rq --version` is blocked, remove the quarantine flag and run it again:
+
+   ```bash
+   xattr -d com.apple.quarantine ~/.local/bin/rq
    ```
 
 On Windows, rename `rq-windows-x86_64.exe` to `rq.exe` and move it to a folder on your `PATH` (or add its folder to the `PATH`). You can also run it directly from the download folder:

@@ -46,11 +46,13 @@ Verify:
 ### Rust / Cargo
 
 - Install via rustup: https://rustup.rs/
+- Add the WASM target (needed by `src/rq-wasm`): `rustup target add wasm32-unknown-unknown`
 
 Verify:
 
 - `rustc --version`
 - `cargo --version`
+- `rustup target list --installed` includes `wasm32-unknown-unknown`
 
 ### wasm-pack
 
@@ -71,9 +73,9 @@ Verify:
 
 ## Quick repo check
 
-Run the Rust commands from the repo root; the workspace covers `src/cli` and `src/rq-lib`.
+Run the Rust commands from the repo root; the workspace covers `src/cli`, `src/rq-lib` and `src/rq-mcp`.
 
-- CLI and library (Rust):
+- CLI, library and MCP server (Rust):
   - Start the echo server (required for `cargo test`):
     - `docker run -d --rm --name rq-echo -p 8080:80 ealen/echo-server`
     - Wait until it responds:
@@ -95,7 +97,7 @@ Run the Rust commands from the repo root; the workspace covers `src/cli` and `sr
 
 ## Installing dev builds
 
-Every push to `main` runs `release_cd.yaml`, which builds the CLI for every platform and the extension VSIX as workflow artifacts. You can install the artifacts of the latest successful run to try `main` without building it yourself.
+Pushes to `main` run `release_cd.yaml`, which builds the CLI for every platform and the extension VSIX as workflow artifacts. One build runs at a time, and of the pushes that arrive meanwhile only the latest is built, so not every commit gets its own artifacts. You can install the artifacts of the latest successful run to try `main` without building it yourself.
 
 ### CLI (`rq-dev`)
 
@@ -138,11 +140,11 @@ Then install the `.vsix` from VS Code, as described in [Install from a VSIX](htt
 
 ## Release channels
 
-Released versions reach users through the GitHub Release, the VS Code Marketplace, Homebrew, Scoop, WinGet and the Linux install script; [INSTALLATION.md](INSTALLATION.md) is the user-facing guide and [.github/workflows/README.md](../.github/workflows/README.md) describes the release process.
+Released versions reach users through the GitHub Release, the VS Code Marketplace, Homebrew, Scoop, WinGet and the install script; [INSTALLATION.md](INSTALLATION.md) is the user-facing guide and [.github/workflows/README.md](../.github/workflows/README.md) describes the release process.
 
 | Channel | Source in this repo | Published to |
 |---|---|---|
-| Install script (Linux) | `deployment/install-rq.sh` | Served from `main` through `raw.githubusercontent.com` |
+| Install script (Linux and macOS) | `deployment/install-rq.sh` | Served from `main` through `raw.githubusercontent.com` |
 | Homebrew | `deployment/homebrew/render-formula.sh` | `Formula/rqlang.rb` in [rqlang/homebrew-tap](https://github.com/rqlang/homebrew-tap) |
 | Scoop | `deployment/scoop/render-manifest.sh` | `bucket/rqlang.json` in [rqlang/scoop-bucket](https://github.com/rqlang/scoop-bucket) |
 | WinGet | `deployment/winget/render-manifests.sh` | Pull request to [microsoft/winget-pkgs](https://github.com/microsoft/winget-pkgs) as `rqlang.rq` |

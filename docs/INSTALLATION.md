@@ -140,24 +140,25 @@ Every release attaches a prebuilt, portable binary per platform. They need no in
 
    `rq-linux-ubuntu-22.04-x86_64` is the same file as `rq-linux-x86_64`, kept under its old name for existing download links.
 
-3. Verify the download against `SHA256SUMS`:
+3. Verify the download against `SHA256SUMS`. On Linux and macOS, first set `asset` to the name of the file you downloaded; the commands in this step and the next one use it:
 
    ```bash
+   asset=rq-linux-x86_64
    sha256sum --check --ignore-missing SHA256SUMS
    ```
 
    On macOS use `shasum -a 256 --check --ignore-missing SHA256SUMS`; on Windows compare the output of `Get-FileHash rq-windows-x86_64.exe` with the line for that file. With the [GitHub CLI](https://cli.github.com/) you can also check that the file was built by this repository's release workflow:
 
    ```bash
-   gh attestation verify rq-linux-x86_64 --repo rqlang/rq
+   gh attestation verify "$asset" --repo rqlang/rq
    ```
 
 4. On Linux and macOS, make the file executable, rename it to `rq` and move it to a directory on your `PATH`:
 
    ```bash
-   chmod +x rq-linux-x86_64
+   chmod +x "$asset"
    mkdir -p ~/.local/bin
-   mv rq-linux-x86_64 ~/.local/bin/rq
+   mv "$asset" ~/.local/bin/rq
    rq --version
    ```
 

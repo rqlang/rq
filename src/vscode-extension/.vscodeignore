@@ -6,3 +6,8 @@ node_modules/**
 src/**
 tsconfig.json
 .eslintrc.json
+test/**
+jest.config.js
+tsconfig.test.json
+esbuild.js
+eslint.config.js

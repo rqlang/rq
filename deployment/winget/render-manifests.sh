@@ -53,7 +53,7 @@ ManifestVersion: ${MANIFEST_VERSION}
 MANIFEST
 
 cat > "${OUTPUT_DIR}/${PACKAGE_IDENTIFIER}.locale.en-US.yaml" <<MANIFEST
-# yaml-language-server: \$schema=https://aka.ms/winget-manifest.defaultlocale.${MANIFEST_VERSION}.schema.json
+# yaml-language-server: \$schema=https://aka.ms/winget-manifest.defaultLocale.${MANIFEST_VERSION}.schema.json
 PackageIdentifier: ${PACKAGE_IDENTIFIER}
 PackageVersion: ${VERSION}
 PackageLocale: en-US

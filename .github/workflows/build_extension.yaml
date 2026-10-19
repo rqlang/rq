@@ -97,6 +97,17 @@ jobs:
           done
           echo "OK: MCP server and wasm bundled in $vsix"
 
+      - name: Verify no development files were bundled
+        run: |
+          vsix=$(ls *.vsix | head -n 1)
+          leaked=$(unzip -Z1 "$vsix" | grep -E '^extension/(src|test|node_modules|coverage)/|\.map$|\.ts$|^extension/[^/]+\.config\.js$|^extension/esbuild\.js$|^extension/tsconfig[^/]*\.json$' || true)
+          if [ -n "$leaked" ]; then
+            echo "Error: development files found in $vsix:"
+            echo "$leaked"
+            exit 1
+          fi
+          echo "OK: no development files in $vsix"
+
       - name: Upload VSIX artifact
         uses: actions/upload-artifact@v7
         with:

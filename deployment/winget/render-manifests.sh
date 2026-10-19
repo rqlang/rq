@@ -12,7 +12,7 @@ VERSION="${TAG#v}"
 SUMS_FILE="$2"
 OUTPUT_DIR="$3"
 PACKAGE_IDENTIFIER="rqlang.rq"
-MANIFEST_VERSION="1.12.0"
+MANIFEST_VERSION="1.10.0"
 BASE_URL="https://github.com/rqlang/rq/releases/download/${TAG}"
 
 [[ "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { printf 'Invalid version: %s\n' "${VERSION}" >&2; exit 1; }

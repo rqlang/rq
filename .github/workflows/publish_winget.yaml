@@ -102,6 +102,7 @@ jobs:
       - name: Validate manifests
         shell: pwsh
         run: |
+          winget --version
           winget validate --manifest .\winget-manifests --disable-interactivity
           if ($LASTEXITCODE -ne 0) { throw "winget validate failed" }
 

@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.12.0.schema.json
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.10.0.schema.json
 PackageIdentifier: rqlang.rq
 PackageVersion: 1.2.3
 InstallerType: portable
@@ -9,4 +9,4 @@ Installers:
   InstallerUrl: https://github.com/rqlang/rq/releases/download/1.2.3/rq-windows-x86_64.exe
   InstallerSha256: 6A6A6A6A6A6A6A6A6A6A6A6A6A6A6A6A6A6A6A6A6A6A6A6A6A6A6A6A6A6A6A6A
 ManifestType: installer
-ManifestVersion: 1.12.0
+ManifestVersion: 1.10.0

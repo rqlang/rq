@@ -13,6 +13,7 @@ exclude:
   - cli/
   - src/cli/
   - deployment/
+  - fuzz/
   - tests/
   - vscode-extension/
   - src/vscode-extension/

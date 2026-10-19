@@ -41,14 +41,6 @@ jobs:
         with:
           tool: wasm-pack
 
-      - name: Bundle installer scripts
-        env:
-          SUFFIX: ${{ inputs.channel == 'dev' && '-dev' || '' }}
-        run: |
-          mkdir -p scripts
-          cp "../../deployment/install-rq${SUFFIX}.sh" scripts/
-          cp "../../deployment/install-rq${SUFFIX}.ps1" scripts/
-
       - name: Install dependencies
         run: npm ci
 

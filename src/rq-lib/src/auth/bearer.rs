@@ -1,4 +1,6 @@
 use super::auth_provider::{AuthFuture, AuthProvider};
+use crate::syntax::auth::Config;
+use crate::syntax::error::AuthError;
 use crate::syntax::variable_context::{Variable, VariableValue};
 
 const TOKEN_FIELD: &str = "token";
@@ -22,8 +24,27 @@ impl BearerProvider {
         }
     }
 
+    pub fn apply_configured_token(
+        auth_config: &Config,
+        mut headers: Vec<(String, String)>,
+    ) -> (Vec<(String, String)>, bool) {
+        match auth_config.fields.get(TOKEN_FIELD) {
+            Some(token) => {
+                Self::add_bearer_header(&mut headers, &token.value);
+                (headers, true)
+            }
+            None => (headers, false),
+        }
+    }
+
+    pub fn add_bearer_header(headers: &mut Vec<(String, String)>, token: &str) {
+        let auth_key = reqwest::header::AUTHORIZATION.as_str();
+        headers.retain(|(k, _)| !k.eq_ignore_ascii_case(auth_key));
+        headers.push((auth_key.to_string(), format!("Bearer {token}")));
+    }
+
     fn find_auth_token(variables: &[Variable]) -> Option<String> {
-        for var in variables {
+        for var in variables.iter().rev() {
             if var.name.eq_ignore_ascii_case("auth_token") {
                 if let VariableValue::String(token) = &var.value {
                     return Some(token.clone());
@@ -31,12 +52,6 @@ impl BearerProvider {
             }
         }
         None
-    }
-
-    pub fn add_bearer_header(headers: &mut Vec<(String, String)>, token: &str) {
-        let auth_key = reqwest::header::AUTHORIZATION.as_str();
-        headers.retain(|(k, _)| !k.eq_ignore_ascii_case(auth_key));
-        headers.push((auth_key.to_string(), format!("Bearer {token}")));
     }
 }
 
@@ -56,12 +71,17 @@ impl AuthProvider for BearerProvider {
         auth_config: &'a crate::syntax::auth::Config,
         _context: &'a crate::syntax::variable_context::VariableContext,
         url: String,
-        mut headers: Vec<(String, String)>,
+        headers: Vec<(String, String)>,
     ) -> AuthFuture<'a> {
         Box::pin(async move {
-            let token = &auth_config.fields[TOKEN_FIELD].value;
-            Self::add_bearer_header(&mut headers, token);
-            Ok((url, headers))
+            match Self::apply_configured_token(auth_config, headers) {
+                (headers, true) => Ok((url, headers)),
+                _ => Err(AuthError::new(format!(
+                    "Bearer auth '{}' has no '{TOKEN_FIELD}' field",
+                    auth_config.name
+                ))
+                .into()),
+            }
         })
     }
 }
@@ -112,5 +132,39 @@ mod tests {
         let (result, applied) = BearerProvider::apply_from_variables(&variables, headers);
         assert!(!applied);
         assert_eq!(result.len(), 1);
+    }
+
+    fn auth_token(value: &str) -> Variable {
+        Variable {
+            name: "auth_token".to_string(),
+            value: VariableValue::String(value.to_string()),
+        }
+    }
+
+    #[test]
+    fn the_highest_precedence_auth_token_wins() {
+        let variables = vec![auth_token("from-let"), auth_token("from-runtime")];
+        let (target, _) = BearerProvider::apply_from_variables(&variables, Vec::new());
+        assert_eq!(
+            target,
+            vec![(
+                "authorization".to_string(),
+                "Bearer from-runtime".to_string()
+            )]
+        );
+    }
+
+    #[test]
+    fn a_config_without_token_field_is_not_applied() {
+        let config = Config {
+            name: "token_auth".to_string(),
+            auth_type: crate::syntax::auth::AuthType::Bearer,
+            fields: std::collections::HashMap::new(),
+            file_path: std::path::PathBuf::new(),
+            line: 0,
+            character: 0,
+        };
+        let (_, applied) = BearerProvider::apply_configured_token(&config, Vec::new());
+        assert!(!applied);
     }
 }

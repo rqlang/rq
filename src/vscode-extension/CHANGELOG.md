@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Bug Fixes
+
+- Fixed a runtime `auth_token` losing to an `auth_token` defined with `let` in the file.
+
 ## [0.8.1]
 
 ### Breaking Changes

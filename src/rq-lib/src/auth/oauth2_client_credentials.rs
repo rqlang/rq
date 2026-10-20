@@ -28,6 +28,22 @@ impl OAuth2ClientCredentialsProvider {
     pub fn new() -> Self {
         Self
     }
+
+    fn required_field<'a>(
+        auth_config: &'a crate::syntax::auth::Config,
+        field: &str,
+    ) -> Result<&'a String, AuthError> {
+        auth_config
+            .fields
+            .get(field)
+            .map(|token| &token.value)
+            .ok_or_else(|| {
+                AuthError::new(format!(
+                    "OAuth2 Client Credentials auth '{}' has no '{field}' field",
+                    auth_config.name
+                ))
+            })
+    }
 }
 
 impl Default for OAuth2ClientCredentialsProvider {
@@ -55,8 +71,8 @@ impl AuthProvider for OAuth2ClientCredentialsProvider {
                 return Ok((url, headers));
             }
 
-            let client_id = &auth_config.fields[CLIENT_ID_FIELD].value;
-            let token_url = &auth_config.fields[TOKEN_URL_FIELD].value;
+            let client_id = Self::required_field(auth_config, CLIENT_ID_FIELD)?;
+            let token_url = Self::required_field(auth_config, TOKEN_URL_FIELD)?;
             let scope = auth_config.fields.get(SCOPE_FIELD).map(|t| &t.value);
             let client_secret = auth_config
                 .fields

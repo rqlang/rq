@@ -1,41 +1,37 @@
 import * as vscode from 'vscode';
 import * as rqClient from '../rqClient';
 import { performOAuth2Flow } from '../auth';
+import { EnvironmentProvider } from '../language/completionContext';
+import { pickEnvironment } from '../vscodeUtils';
 
-export function registerGetTokenCommand(context: vscode.ExtensionContext, outputChannel: vscode.OutputChannel) {
+export function registerGetTokenCommand(
+    context: vscode.ExtensionContext,
+    outputChannel: vscode.OutputChannel,
+    environmentProvider: EnvironmentProvider
+) {
     const command = vscode.commands.registerCommand('rq.getToken', async () => {
         try {
             console.log('Getting auth token from CLI...');
             
-            // Get the current workspace folder
             const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
             const sourceDirectory = workspaceFolder?.uri.fsPath;
             
-            // Step 1: Get environments
             console.log('Fetching environments...');
             const environments = await rqClient.listEnvironments(sourceDirectory);
             
+            const currentEnvironment = environmentProvider.getSelectedEnvironment();
             let selectedEnvironment: string | undefined;
             
-            if (environments.length > 0) {
-                // Show environment selection (optional)
-                const envChoice = await vscode.window.showQuickPick(
-                    ['(No environment)', ...environments],
-                    {
-                        placeHolder: 'Select an environment (optional)',
-                        title: 'Choose Environment'
-                    }
-                );
+            if (environments.length > 0 || currentEnvironment !== undefined) {
+                const choice = await pickEnvironment(environments, currentEnvironment, 'Choose Environment');
                 
-                if (envChoice === undefined) {
-                    // User cancelled
+                if (!choice) {
                     return;
                 }
                 
-                selectedEnvironment = envChoice === '(No environment)' ? undefined : envChoice;
+                selectedEnvironment = choice.environment;
             }
             
-            // Step 2: Get auth configurations
             console.log('Fetching auth configurations...');
             const authConfigs = await rqClient.listAuthConfigs(sourceDirectory);
             
@@ -44,7 +40,6 @@ export function registerGetTokenCommand(context: vscode.ExtensionContext, output
                 return;
             }
             
-            // Step 3: Filter for supported OAuth2 configurations
             const oauthConfigs = authConfigs
                 .filter(config => 
                     config.auth_type === 'oauth2_authorization_code' || 
@@ -63,11 +58,9 @@ export function registerGetTokenCommand(context: vscode.ExtensionContext, output
             });
             
             if (!selectedAuthName) {
-                // User cancelled
                 return;
             }
             
-            // Step 4: Get auth details
             console.log(`Fetching auth config: ${selectedAuthName}`);
             const authConfig = await rqClient.showAuthConfig(
                 selectedAuthName,
@@ -75,7 +68,6 @@ export function registerGetTokenCommand(context: vscode.ExtensionContext, output
                 selectedEnvironment
             );
             
-            // Step 5: Perform OAuth2 flow
             console.log(`Starting OAuth2 flow for auth type: ${authConfig.auth_type}`);
 
             let accessToken: string;

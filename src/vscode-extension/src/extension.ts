@@ -96,7 +96,7 @@ export function activate(context: vscode.ExtensionContext) {
     setHoverEnvironmentProvider(requestExplorerProvider);
     setCompletionEnvironmentProvider(requestExplorerProvider);
 
-    registerGetTokenCommand(context, rqOutputChannel);
+    registerGetTokenCommand(context, rqOutputChannel, requestExplorerProvider);
     registerClearOAuthCacheCommand(context);
 
     // Note: OAuth sessions are not cached in VS Code's authentication API

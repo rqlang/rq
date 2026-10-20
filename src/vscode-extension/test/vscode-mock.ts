@@ -35,6 +35,7 @@ export const window = {
     showErrorMessage: jest.fn().mockResolvedValue(undefined),
     showWarningMessage: jest.fn(),
     showQuickPick: jest.fn(),
+    createQuickPick: jest.fn(),
     showInputBox: jest.fn(),
     createOutputChannel: jest.fn(),
     createWebviewPanel: jest.fn(),

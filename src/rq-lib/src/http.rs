@@ -15,10 +15,11 @@ pub trait HttpClient: Send + Sync {
     fn execute<'a>(
         &'a self,
         request: &'a Request,
+        timeout: Option<Duration>,
     ) -> Pin<Box<dyn Future<Output = Result<HttpResponse, RqError>> + Send + 'a>>;
 }
 
-pub fn request_timeout(request: &Request) -> Result<Option<Duration>, RqError> {
+pub(crate) fn request_timeout(request: &Request) -> Result<Option<Duration>, RqError> {
     let Some(timeout) = &request.timeout else {
         return Ok(None);
     };
@@ -32,7 +33,11 @@ pub fn request_timeout(request: &Request) -> Result<Option<Duration>, RqError> {
             "HTTP Error: Timeout value '{timeout}' must be a non-negative finite number"
         )));
     }
-    Ok(Some(Duration::from_secs_f64(secs)))
+    Duration::try_from_secs_f64(secs).map(Some).map_err(|_| {
+        RqError::Generic(format!(
+            "HTTP Error: Timeout value '{timeout}' is too large"
+        ))
+    })
 }
 
 #[cfg(test)]
@@ -85,6 +90,12 @@ mod tests {
     fn a_non_numeric_timeout_is_rejected() {
         let target = request_timeout(&with_timeout("soon"));
         assert!(target.is_err_and(|e| e.to_string().contains("must be a number")));
+    }
+
+    #[test]
+    fn a_timeout_too_large_for_a_duration_is_rejected() {
+        let target = request_timeout(&with_timeout("1e30"));
+        assert!(target.is_err_and(|e| e.to_string().contains("is too large")));
     }
 
     #[test]

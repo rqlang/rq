@@ -466,6 +466,8 @@ async function acquireToken(auth: PreparedAuth, options: ExecuteRequestOptions):
     throw new Error(`Auth configuration '${auth.name}' (${auth.auth_type}) requires a token that could not be obtained`);
 }
 
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
+
 interface NodeHttpResponse {
     status: number;
     headers: Record<string, string>;
@@ -533,7 +535,7 @@ function nodeHttpRequest(url: string, method: string, reqHeaders: Record<string,
         });
 
         req.on('error', (err) => { cleanup(); reject(err); });
-        if (timeoutMs !== undefined) {
+        if (timeoutMs !== undefined && timeoutMs <= MAX_TIMER_DELAY_MS) {
             timer = setTimeout(() => {
                 req?.destroy(new Error(`Request timed out after ${timeoutMs}ms`));
             }, timeoutMs);

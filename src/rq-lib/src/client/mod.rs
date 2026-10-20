@@ -91,24 +91,28 @@ impl RqClient {
                     source_path,
                     environment,
                 )?;
-                let prepared_request = Self::authorize(prepared).await?;
-                Self::log_request(&prepared_request);
+                let authorized = Self::authorize(prepared).await?;
+                Self::log_request(&authorized.request);
 
                 let start_time = Instant::now();
-                match self.http.execute(&prepared_request).await {
+                match self
+                    .http
+                    .execute(&authorized.request, authorized.timeout)
+                    .await
+                {
                     Ok(response) => {
                         let elapsed = start_time.elapsed();
                         Self::log_response(&response, elapsed.as_millis());
 
                         let mut request_headers = HashMap::new();
-                        for (key, value) in &prepared_request.headers {
+                        for (key, value) in &authorized.request.headers {
                             request_headers.insert(key.clone(), value.clone());
                         }
 
                         results.push(RequestExecutionResult {
-                            request_name: prepared_request.name.clone(),
-                            method: prepared_request.method.as_str().to_string(),
-                            url: prepared_request.url.clone(),
+                            request_name: authorized.request.name.clone(),
+                            method: authorized.request.method.as_str().to_string(),
+                            url: authorized.request.url.clone(),
                             status: response.status,
                             elapsed_ms: elapsed.as_millis() as u64,
                             request_headers,
@@ -1100,8 +1104,6 @@ impl RqClient {
                 .push(("content-type".to_string(), "application/json".to_string()));
         }
 
-        crate::http::request_timeout(&request)?;
-
         Ok(request)
     }
 
@@ -1170,8 +1172,11 @@ impl RqClient {
         let resolved =
             self.resolve_request(req_with_vars.request, &context, &search_paths, environment)?;
         let (authorized, auth) = self.apply_auth(rq_file, resolved, &context, &search_paths)?;
+        let request = Self::apply_request_defaults(authorized)?;
+        let timeout = crate::http::request_timeout(&request)?;
         Ok(PreparedRequest {
-            request: Self::apply_request_defaults(authorized)?,
+            request,
+            timeout,
             auth,
             context,
         })
@@ -1263,20 +1268,16 @@ impl RqClient {
         ))
     }
 
-    async fn authorize(prepared: PreparedRequest) -> Result<Request, RqError> {
-        let PreparedRequest {
-            mut request,
-            auth,
-            context,
-        } = prepared;
-        let Some(auth) = auth.filter(|auth| auth.token_required) else {
-            return Ok(request);
+    async fn authorize(mut prepared: PreparedRequest) -> Result<PreparedRequest, RqError> {
+        let Some(auth) = prepared.auth.as_ref().filter(|auth| auth.token_required) else {
+            return Ok(prepared);
         };
+        let request = &mut prepared.request;
         let provider = crate::auth::get_provider(&auth.config.auth_type);
         let (url, headers) = provider
             .configure(
                 &auth.config,
-                &context,
+                &prepared.context,
                 request.url.clone(),
                 std::mem::take(&mut request.headers),
             )
@@ -1286,7 +1287,7 @@ impl RqClient {
             })?;
         request.url = url;
         request.headers = headers;
-        Ok(request)
+        Ok(prepared)
     }
 
     fn auth_name_of(request: &Request) -> Option<&str> {
@@ -2879,18 +2880,23 @@ mod prepare_tests {
     use std::path::Path;
     use std::pin::Pin;
     use std::sync::{Arc, Mutex};
+    use std::time::Duration;
 
     #[derive(Default)]
     struct CapturingHttp {
-        sent: Mutex<Vec<Request>>,
+        sent: Mutex<Vec<(Request, Option<Duration>)>>,
     }
 
     impl HttpClient for CapturingHttp {
         fn execute<'a>(
             &'a self,
             request: &'a Request,
+            timeout: Option<Duration>,
         ) -> Pin<Box<dyn Future<Output = Result<HttpResponse, RqError>> + Send + 'a>> {
-            self.sent.lock().expect("lock").push(request.clone());
+            self.sent
+                .lock()
+                .expect("lock")
+                .push((request.clone(), timeout));
             Box::pin(async {
                 Ok(HttpResponse {
                     status: 200,
@@ -2945,8 +2951,8 @@ mod prepare_tests {
             .await
             .expect("run failed");
         let prepared = prepare(&main, "api/create", &[]);
-        let sent = capture.sent.lock().expect("lock").clone();
-        assert_eq!(sent, vec![prepared.request]);
+        let target = capture.sent.lock().expect("lock").clone();
+        assert_eq!(target, vec![(prepared.request, prepared.timeout)]);
     }
 
     #[test]

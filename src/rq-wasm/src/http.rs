@@ -22,20 +22,22 @@ impl<F: Future> Future for SendFuture<F> {
     }
 }
 
+const MAX_TIMER_DELAY_MS: u128 = 2_147_483_647;
+
 pub struct WasmHttpClient;
 
 impl HttpClient for WasmHttpClient {
     fn execute<'a>(
         &'a self,
         request: &'a Request,
+        timeout: Option<Duration>,
     ) -> Pin<Box<dyn Future<Output = Result<HttpResponse, RqError>> + Send + 'a>> {
         let url = request.url.clone();
         let method = request.method.as_str().to_string();
         let headers = request.headers.clone();
         let body = request.body.clone();
-        let timeout = rq_lib::http::request_timeout(request);
         Box::pin(SendFuture(async move {
-            fetch(&url, &method, &headers, body.as_deref(), timeout?).await
+            fetch(&url, &method, &headers, body.as_deref(), timeout).await
         }))
     }
 }
@@ -57,12 +59,14 @@ async fn fetch(
         ));
     }
 
-    let abort_controller = timeout.map(|duration| {
-        let controller = js_sys::eval("new AbortController()")
-            .ok()
-            .filter(|v| !v.is_undefined() && !v.is_null());
-        (controller, duration.as_millis())
-    });
+    let abort_controller = timeout
+        .filter(|duration| duration.as_millis() <= MAX_TIMER_DELAY_MS)
+        .map(|duration| {
+            let controller = js_sys::eval("new AbortController()")
+                .ok()
+                .filter(|v| !v.is_undefined() && !v.is_null());
+            (controller, duration.as_millis())
+        });
 
     if matches!(&abort_controller, Some((None, _))) {
         return Err(RqError::Generic(

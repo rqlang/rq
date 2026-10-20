@@ -412,9 +412,9 @@ pub fn prepare_request(
         &variables,
     )
     .map_err(rq_err)?;
-    let timeout_ms = rq_lib::http::request_timeout(&prepared.request)
-        .map_err(rq_err)?
-        .map(|timeout| timeout.as_millis() as u64);
+    let timeout_ms = prepared
+        .timeout
+        .map(|timeout| u64::try_from(timeout.as_millis()).unwrap_or(u64::MAX));
     let auth = prepared.auth.map(|auth| PreparedAuthJson {
         name: auth.config.name,
         auth_type: auth.config.auth_type.as_str().to_string(),

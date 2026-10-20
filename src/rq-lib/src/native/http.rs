@@ -2,6 +2,7 @@ use crate::error::RqError;
 use crate::http::{HttpClient, HttpResponse};
 use crate::syntax::Request;
 use std::pin::Pin;
+use std::time::Duration;
 
 pub struct ReqwestHttpClient;
 
@@ -9,12 +10,16 @@ impl HttpClient for ReqwestHttpClient {
     fn execute<'a>(
         &'a self,
         request: &'a Request,
+        timeout: Option<Duration>,
     ) -> Pin<Box<dyn std::future::Future<Output = Result<HttpResponse, RqError>> + Send + 'a>> {
-        Box::pin(async move { execute_with_reqwest(request).await })
+        Box::pin(async move { execute_with_reqwest(request, timeout).await })
     }
 }
 
-async fn execute_with_reqwest(request: &Request) -> Result<HttpResponse, RqError> {
+async fn execute_with_reqwest(
+    request: &Request,
+    timeout: Option<Duration>,
+) -> Result<HttpResponse, RqError> {
     let client = reqwest::Client::new();
     let method = to_reqwest_method(&request.method);
     let mut req_builder = client.request(method, &request.url);
@@ -27,7 +32,7 @@ async fn execute_with_reqwest(request: &Request) -> Result<HttpResponse, RqError
         req_builder = req_builder.body(body.clone());
     }
 
-    if let Some(timeout) = crate::http::request_timeout(request)? {
+    if let Some(timeout) = timeout {
         req_builder = req_builder.timeout(timeout);
     }
 

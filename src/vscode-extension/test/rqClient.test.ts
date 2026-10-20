@@ -361,6 +361,17 @@ describe('executeRequest', () => {
             );
         });
 
+        test('waits without a timer when the timeout exceeds what a timer can hold', async () => {
+            mockPrepareRequest.mockReturnValue(prepared({ timeout_ms: 1e15 }));
+            const setTimeoutSpy = jest.spyOn(global, 'setTimeout');
+            makeHttpsMock();
+
+            await executeRequest({ requestName: 'test-req', sourceDirectory: '/tmp/project' });
+
+            expect(setTimeoutSpy).not.toHaveBeenCalledWith(expect.any(Function), 1e15);
+            setTimeoutSpy.mockRestore();
+        });
+
         test('cancels timeout timer on successful response so destroy is not called', async () => {
             mockPrepareRequest.mockReturnValue(prepared({ timeout_ms: 1000 }));
 

@@ -81,6 +81,7 @@ pub struct ReferenceLocation {
 #[derive(Debug, Clone)]
 pub struct PreparedRequest {
     pub request: crate::syntax::Request,
+    pub timeout: Option<std::time::Duration>,
     pub auth: Option<PreparedAuth>,
     pub(crate) context: crate::syntax::variable_context::VariableContext,
 }

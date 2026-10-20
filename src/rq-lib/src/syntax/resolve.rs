@@ -2,15 +2,20 @@ use super::{
     error::SyntaxError,
     fs::Fs,
     functions::{self, traits::FunctionContext},
+    keywords::{
+        KW_AUTH, KW_ENV, KW_EP, KW_RQ, OP_LT, PUNC_DOLLAR, PUNC_LBRACE, PUNC_LBRACKET, PUNC_LPAREN,
+        PUNC_RBRACE, PUNC_RBRACKET, PUNC_RPAREN, PUNC_SEMI,
+    },
     parse_result::{EndpointDefinition, Request},
     parsers::utils::parse_system_function,
     reader::TokenReader,
-    token::TokenType,
+    token::{Token, TokenType},
     tokenizer::tokenize,
     types::{slot_type_error, type_of_slot, ParameterSlot, SlotBinding, TypeLookup, ValueType},
     variable_context::{VariableContext, VariableValue},
 };
 use lazy_static::lazy_static;
+use std::ops::Range;
 use std::path::{Path, PathBuf};
 
 lazy_static! {
@@ -191,6 +196,52 @@ fn find_variable_in_io_files(
     None
 }
 
+pub struct SourcePosition<'a> {
+    pub file: &'a Path,
+    pub line: usize,
+    pub character: usize,
+}
+
+pub struct ScopedReference {
+    pub line: usize,
+    pub character: usize,
+    pub shared: bool,
+}
+
+pub fn find_request_scoped_references(
+    fs: &dyn Fs,
+    at: &SourcePosition,
+    var_name: &str,
+) -> Option<Vec<ScopedReference>> {
+    let content = fs.read(at.file).ok()?;
+    let Ok(tokens) = tokenize(&content) else {
+        return Some(Vec::new());
+    };
+    let offset = byte_offset(&content, at.line, at.character)?;
+    let scope = request_scopes(&tokens)
+        .into_iter()
+        .find(|scope| scope.declares(var_name) && scope.span.contains(&offset))?;
+    Some(
+        var_ref_offsets(&tokens, var_name)
+            .into_iter()
+            .filter_map(|offset| {
+                let shared = scope
+                    .endpoint_header
+                    .as_ref()
+                    .is_some_and(|header| header.contains(&offset));
+                (shared || scope.span.contains(&offset)).then(|| {
+                    let (line, character) = zero_based_line_col(&content, offset);
+                    ScopedReference {
+                        line,
+                        character,
+                        shared,
+                    }
+                })
+            })
+            .collect(),
+    )
+}
+
 pub fn find_all_variable_references(
     fs: &dyn Fs,
     paths: &[PathBuf],
@@ -228,7 +279,7 @@ fn zero_based_line_col(content: &str, pos: usize) -> (usize, usize) {
     (line, column)
 }
 
-fn is_in_env_block(tokens: &[super::token::Token], idx: usize) -> bool {
+fn is_in_env_block(tokens: &[Token], idx: usize) -> bool {
     use super::token::TokenType as TT;
     let mut depth = 0i32;
     let mut i = idx;
@@ -274,18 +325,31 @@ fn is_in_env_block(tokens: &[super::token::Token], idx: usize) -> bool {
 }
 
 fn find_all_var_refs_in_file(fs: &dyn Fs, path: &Path, var_name: &str) -> Vec<(usize, usize)> {
-    let mut results = Vec::new();
     let Ok(content) = fs.read(path) else {
-        return results;
+        return Vec::new();
     };
     let Ok(tokens) = tokenize(&content) else {
-        return results;
+        return Vec::new();
     };
+    let shadowing: Vec<Range<usize>> = request_scopes(&tokens)
+        .into_iter()
+        .filter(|scope| scope.declares(var_name))
+        .map(|scope| scope.span)
+        .collect();
+    var_ref_offsets(&tokens, var_name)
+        .into_iter()
+        .filter(|offset| !shadowing.iter().any(|span| span.contains(offset)))
+        .map(|offset| zero_based_line_col(&content, offset))
+        .collect()
+}
+
+fn var_ref_offsets(tokens: &[Token], var_name: &str) -> Vec<usize> {
+    let mut results = Vec::new();
 
     let escaped = regex::escape(var_name);
     let pattern_interp = format!(r"\{{\{{\s*{escaped}\s*\}}\}}");
     if let Ok(re) = regex::Regex::new(&pattern_interp) {
-        for token in &tokens {
+        for token in tokens {
             if token.token_type == TokenType::String {
                 let mut search_start = 0usize;
                 while search_start < token.value.len() {
@@ -294,7 +358,7 @@ fn find_all_var_refs_in_file(fs: &dyn Fs, path: &Path, var_name: &str) -> Vec<(u
                     };
                     let name_offset = mat.as_str().find(var_name).unwrap_or(0);
                     let abs_start = token.span.start + search_start + mat.start() + name_offset;
-                    results.push(zero_based_line_col(&content, abs_start));
+                    results.push(abs_start);
                     search_start += mat.start() + mat.len().max(1);
                 }
             }
@@ -305,7 +369,10 @@ fn find_all_var_refs_in_file(fs: &dyn Fs, path: &Path, var_name: &str) -> Vec<(u
         if token.token_type == TokenType::Comment {
             continue;
         }
-        if token.token_type == TokenType::Identifier && token.value == var_name {
+        if token.token_type == TokenType::Identifier
+            && token.value == var_name
+            && !is_declaration_name(tokens, i)
+        {
             let mut is_key = false;
             for next in tokens.iter().skip(i + 1) {
                 match next.token_type {
@@ -319,14 +386,195 @@ fn find_all_var_refs_in_file(fs: &dyn Fs, path: &Path, var_name: &str) -> Vec<(u
                     _ => break,
                 }
             }
-            if !is_key || is_in_env_block(&tokens, i) {
-                results.push(zero_based_line_col(&content, token.span.start));
+            if !is_key || is_in_env_block(tokens, i) {
+                results.push(token.span.start);
             }
         }
     }
 
     results.sort_unstable();
     results
+}
+
+struct RequestScope {
+    span: Range<usize>,
+    endpoint_header: Option<Range<usize>>,
+    required: Vec<String>,
+}
+
+impl RequestScope {
+    fn declares(&self, var_name: &str) -> bool {
+        self.required.iter().any(|name| name == var_name)
+    }
+}
+
+fn request_scopes(tokens: &[Token]) -> Vec<RequestScope> {
+    tokens
+        .iter()
+        .enumerate()
+        .filter(|(_, token)| token.token_type == TokenType::Keyword && token.value == KW_RQ)
+        .filter_map(|(index, _)| request_scope(tokens, index))
+        .collect()
+}
+
+fn request_scope(tokens: &[Token], rq_index: usize) -> Option<RequestScope> {
+    let first = attributes_start(tokens, rq_index);
+    let last = statement_end(tokens, rq_index);
+    Some(RequestScope {
+        span: tokens.get(first)?.span.start..tokens.get(last)?.span.end,
+        endpoint_header: endpoint_header(tokens, first),
+        required: required_names(tokens.get(first..rq_index)?),
+    })
+}
+
+fn endpoint_header(tokens: &[Token], before: usize) -> Option<Range<usize>> {
+    let open = enclosing_open_brace(tokens, before)?;
+    let ep_index = (0..open)
+        .rev()
+        .find(|&index| {
+            tokens
+                .get(index)
+                .is_some_and(|t| t.token_type == TokenType::Keyword)
+        })
+        .filter(|&index| tokens.get(index).is_some_and(|t| t.value == KW_EP))?;
+    let first = attributes_start(tokens, ep_index);
+    Some(tokens.get(first)?.span.start..tokens.get(open)?.span.end)
+}
+
+fn enclosing_open_brace(tokens: &[Token], before: usize) -> Option<usize> {
+    let mut depth = 0usize;
+    for index in (0..before).rev() {
+        if is_punctuation(tokens, index, PUNC_RBRACE) {
+            depth += 1;
+        } else if is_punctuation(tokens, index, PUNC_LBRACE) {
+            if depth == 0 {
+                return Some(index);
+            }
+            depth -= 1;
+        }
+    }
+    None
+}
+
+fn attributes_start(tokens: &[Token], rq_index: usize) -> usize {
+    let mut start = rq_index;
+    while let Some(open) = previous_significant(tokens, start)
+        .filter(|&close| is_punctuation(tokens, close, PUNC_RBRACKET))
+        .and_then(|close| attribute_open(tokens, close))
+    {
+        start = open;
+    }
+    start
+}
+
+fn attribute_open(tokens: &[Token], close: usize) -> Option<usize> {
+    let mut depth = 0usize;
+    for index in (0..=close).rev() {
+        if is_punctuation(tokens, index, PUNC_RBRACKET) {
+            depth += 1;
+        } else if is_punctuation(tokens, index, PUNC_LBRACKET) {
+            depth = depth.saturating_sub(1);
+            if depth == 0 {
+                let is_dictionary = previous_significant(tokens, index)
+                    .is_some_and(|previous| is_punctuation(tokens, previous, PUNC_DOLLAR));
+                return (!is_dictionary).then_some(index);
+            }
+        }
+    }
+    None
+}
+
+fn statement_end(tokens: &[Token], rq_index: usize) -> usize {
+    let mut depth = 0usize;
+    let mut last = rq_index;
+    for (index, token) in tokens.iter().enumerate().skip(rq_index + 1) {
+        match (&token.token_type, token.value.as_str()) {
+            (TokenType::Keyword, _) => {
+                return previous_significant(tokens, attributes_start(tokens, index))
+                    .filter(|&previous| previous > rq_index)
+                    .unwrap_or(rq_index)
+            }
+            (TokenType::Punctuation, PUNC_LPAREN | PUNC_LBRACKET | PUNC_LBRACE) => depth += 1,
+            (TokenType::Punctuation, PUNC_RPAREN | PUNC_RBRACKET | PUNC_RBRACE) if depth == 0 => {
+                return last
+            }
+            (TokenType::Punctuation, PUNC_RPAREN | PUNC_RBRACKET | PUNC_RBRACE) => depth -= 1,
+            (TokenType::Punctuation, PUNC_SEMI) if depth == 0 => return index,
+            _ => {}
+        }
+        if !is_trivia(token) {
+            last = index;
+        }
+    }
+    last
+}
+
+fn required_names(attribute_tokens: &[Token]) -> Vec<String> {
+    let significant: Vec<&Token> = attribute_tokens
+        .iter()
+        .filter(|token| !is_trivia(token))
+        .collect();
+    significant
+        .windows(3)
+        .filter_map(|window| match window {
+            [attribute, open, name]
+                if attribute.value == "required"
+                    && open.value == PUNC_LPAREN
+                    && name.token_type == TokenType::Identifier =>
+            {
+                Some(name.value.clone())
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+fn previous_significant(tokens: &[Token], before: usize) -> Option<usize> {
+    (0..before)
+        .rev()
+        .find(|&index| tokens.get(index).is_some_and(|token| !is_trivia(token)))
+}
+
+fn is_declaration_name(tokens: &[Token], index: usize) -> bool {
+    let Some(previous) = previous_significant(tokens, index) else {
+        return false;
+    };
+    match tokens.get(previous) {
+        Some(token) if token.token_type == TokenType::Keyword => {
+            [KW_EP, KW_RQ, KW_ENV, KW_AUTH].contains(&token.value.as_str())
+        }
+        Some(token) if token.value == OP_LT => previous_significant(tokens, previous)
+            .and_then(|name| previous_significant(tokens, name))
+            .and_then(|keyword| tokens.get(keyword))
+            .is_some_and(|token| token.token_type == TokenType::Keyword && token.value == KW_EP),
+        _ => false,
+    }
+}
+
+fn is_punctuation(tokens: &[Token], index: usize, value: &str) -> bool {
+    tokens
+        .get(index)
+        .is_some_and(|token| token.token_type == TokenType::Punctuation && token.value == value)
+}
+
+fn is_trivia(token: &Token) -> bool {
+    matches!(
+        token.token_type,
+        TokenType::Whitespace | TokenType::Newline | TokenType::Comment
+    )
+}
+
+fn byte_offset(content: &str, line: usize, character: usize) -> Option<usize> {
+    let line_start = match line {
+        0 => 0,
+        _ => content.match_indices('\n').nth(line - 1)?.0 + 1,
+    };
+    let line_text = content.get(line_start..)?.split('\n').next()?;
+    let column = line_text
+        .char_indices()
+        .nth(character)
+        .map_or(line_text.len(), |(index, _)| index);
+    Some(line_start + column)
 }
 
 fn find_all_ep_refs_in_file(fs: &dyn Fs, path: &Path, ep_name: &str) -> Vec<(usize, usize)> {

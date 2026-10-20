@@ -165,7 +165,7 @@ export const ATTRIBUTE_DEFINITIONS: AttributeDefinition[] = [
     {
         name: 'required',
         signature: '[required(var_name)]',
-        description: 'Declares a variable that must be supplied at runtime. May appear several times.',
+        description: 'Declares a variable, scoped to this request, that must be supplied at runtime. May appear several times.',
         targets: 'rq'
     }
 ];
@@ -254,6 +254,7 @@ export interface Variable {
     name: string;
     value: string;
     line: number;
+    character: number;
 }
 
 /**
@@ -262,16 +263,17 @@ export interface Variable {
  */
 export function parseVariables(document: vscode.TextDocument): Variable[] {
     const variables: Variable[] = [];
-    const varPattern = /^\s*let\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*(.+)$/;
+    const varPattern = /^(\s*let\s+)([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*(.+)$/;
 
     for (let i = 0; i < document.lineCount; i++) {
         const lineText = document.lineAt(i).text;
         const match = varPattern.exec(lineText);
         if (match) {
             variables.push({
-                name: match[1],
-                value: match[2].trim().replace(/;$/, ''),
-                line: i
+                name: match[2],
+                value: match[3].trim().replace(/;$/, ''),
+                line: i,
+                character: match[1].length
             });
         }
     }
@@ -313,4 +315,9 @@ export function findRequiredAttributeLineInScope(
 
 export function isRequiredAttributeFor(lineText: string, varName: string): boolean {
     return new RegExp(`\\[\\s*required\\s*\\(\\s*${escapeRegex(varName)}\\s*\\)`).test(lineText);
+}
+
+export function requiredAttributeColumn(lineText: string, varName: string): number {
+    const match = new RegExp(`(\\[\\s*required\\s*\\(\\s*)${escapeRegex(varName)}\\s*\\)`).exec(lineText);
+    return match ? match.index + match[1].length : 0;
 }

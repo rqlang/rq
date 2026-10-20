@@ -542,6 +542,8 @@ pub fn list_variable_refs(
     source: &str,
     name: &str,
     scope_file: Option<String>,
+    line: Option<usize>,
+    character: Option<usize>,
 ) -> Result<String, JsError> {
     let refs: Vec<ReferenceLocation> = make_client(
         parse_files(files_json)?,
@@ -552,6 +554,7 @@ pub fn list_variable_refs(
         Path::new(source),
         name,
         scope_file.as_deref().map(Path::new),
+        line.zip(character),
     )
     .map_err(rq_err)?;
     serde_json::to_string(&refs).map_err(|e| JsError::new(&e.to_string()))

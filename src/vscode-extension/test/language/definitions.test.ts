@@ -94,6 +94,14 @@ describe('parseVariables', () => {
         expect(result[0].line).toBe(0);
     });
 
+    test('records the column where the variable name starts', () => {
+        const target = makeDocument([
+            '  let   my_url = "http://example.com";'
+        ]);
+        const result = parseVariables(target);
+        expect(result[0].character).toBe(8);
+    });
+
     test('keeps a semicolon that is part of the value', () => {
         const target = makeDocument([
             'let separator = "a;b";'

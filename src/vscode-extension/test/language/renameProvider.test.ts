@@ -89,6 +89,22 @@ describe('prepareRename', () => {
 });
 
 describe('variable rename', () => {
+    test('refuses to rename a required variable that its endpoint also uses', async () => {
+        const doc = makeDocument(['    rq get(id);']);
+        const position = new vscode.Position(0, 12);
+
+        (doc.getWordRangeAtPosition as jest.Mock).mockReturnValue(
+            new vscode.Range(new vscode.Position(0, 11), new vscode.Position(0, 13))
+        );
+        (doc.getText as jest.Mock).mockReturnValue('id');
+        (cliService.varRefs as jest.Mock).mockResolvedValue([
+            { uri: { fsPath: '/test/file.rq' }, line: 0, character: 11, shared: false },
+            { uri: { fsPath: '/test/file.rq' }, line: 0, character: 20, shared: true }
+        ]);
+
+        await expect(provideRenameEdits(doc, position, 'item_id')).rejects.toThrow("Cannot rename 'id' only in this request");
+    });
+
     test('calls varRefs and returns WorkspaceEdit with edits for each ref', async () => {
         const doc = makeDocument(['rq get("{{base_url}}/v1");']);
         const position = new vscode.Position(0, 10);
@@ -98,13 +114,13 @@ describe('variable rename', () => {
         );
         (doc.getText as jest.Mock).mockReturnValue('base_url');
         (cliService.varRefs as jest.Mock).mockResolvedValue([
-            { file: '/workspace/a.rq', line: 0, character: 4 },
-            { file: '/workspace/b.rq', line: 2, character: 9 }
+            { uri: { fsPath: '/workspace/a.rq' }, line: 0, character: 4 },
+            { uri: { fsPath: '/workspace/b.rq' }, line: 2, character: 9 }
         ]);
 
         const result = await provideRenameEdits(doc, position, 'new_url');
 
-        expect(cliService.varRefs).toHaveBeenCalledWith('base_url', '/workspace', '/test/file.rq');
+        expect(cliService.varRefs).toHaveBeenCalledWith('base_url', doc, position, '/workspace');
         expect(result).toBeInstanceOf(vscode.WorkspaceEdit);
         expect((result as any).edits).toHaveLength(2);
         expect((result as any).edits[0].uri.fsPath).toBe('/workspace/a.rq');
@@ -163,13 +179,13 @@ describe('endpoint rename', () => {
         const position = new vscode.Position(0, parentStart + 1);
 
         (cliService.epRefs as jest.Mock).mockResolvedValue([
-            { file: '/workspace/base.rq', line: 0, character: 3 },
-            { file: '/workspace/child.rq', line: 0, character: 9 }
+            { uri: { fsPath: '/workspace/base.rq' }, line: 0, character: 3 },
+            { uri: { fsPath: '/workspace/child.rq' }, line: 0, character: 9 }
         ]);
 
         const result = await provideRenameEdits(doc, position, 'new_base');
 
-        expect(cliService.epRefs).toHaveBeenCalledWith('base', '/workspace', '/test/file.rq');
+        expect(cliService.epRefs).toHaveBeenCalledWith('base', doc, '/workspace');
         expect(cliService.showEndpoint).not.toHaveBeenCalled();
         expect(cliService.varRefs).not.toHaveBeenCalled();
         expect(result).toBeInstanceOf(vscode.WorkspaceEdit);
@@ -187,13 +203,13 @@ describe('endpoint rename', () => {
         const position = new vscode.Position(0, nameStart + 1);
 
         (cliService.epRefs as jest.Mock).mockResolvedValue([
-            { file: '/workspace/base.rq', line: 0, character: 3 },
-            { file: '/workspace/child.rq', line: 0, character: 9 }
+            { uri: { fsPath: '/workspace/base.rq' }, line: 0, character: 3 },
+            { uri: { fsPath: '/workspace/child.rq' }, line: 0, character: 9 }
         ]);
 
         const result = await provideRenameEdits(doc, position, 'new_base');
 
-        expect(cliService.epRefs).toHaveBeenCalledWith('base', '/workspace', '/test/file.rq');
+        expect(cliService.epRefs).toHaveBeenCalledWith('base', doc, '/workspace');
         expect(cliService.showEndpoint).not.toHaveBeenCalled();
         expect((result as any).edits).toHaveLength(2);
     });
@@ -261,15 +277,13 @@ describe('resolution scope', () => {
         );
         (doc.getText as jest.Mock).mockReturnValue('collection_id');
         (cliService.varRefs as jest.Mock).mockResolvedValue([
-            { file: '/workspace/inma/_shared.rq', line: 6, character: 4 }
+            { uri: { fsPath: '/workspace/inma/_shared.rq' }, line: 6, character: 4 }
         ]);
 
         await provideRenameEdits(doc, position, 'collection_ref');
 
         expect(cliService.varRefs).toHaveBeenCalledWith(
-            'collection_id',
-            '/workspace',
-            '/workspace/inma/collections.rq'
+            'collection_id', doc, position, '/workspace'
         );
     });
 });

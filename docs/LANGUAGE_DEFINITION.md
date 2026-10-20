@@ -535,6 +535,24 @@ You can apply `required` multiple times on the same request, once per variable:
 rq create(body: ${"name": "{{user_name}}", "role": "{{user_role}}"});
 ```
 
+`required` **declares** the variable, and its scope is the `rq` statement it is attached to: the attributes and the arguments of that request. The value always comes from the runtime — a `let`, an environment entry or a secret with the same name never satisfies it — so inside that request the declaration shadows any outer variable of the same name. Two requests that each declare `[required(resource_id)]` hold two independent variables that happen to share a name:
+
+```
+let resource_id = "1";
+
+ep items("http://localhost:8080/items") {
+  rq list("?from={{resource_id}}"); // the outer let
+
+  [required(resource_id)]
+  rq get(resource_id);              // declared by get
+
+  [required(resource_id)]
+  rq delete(resource_id);           // declared by delete
+}
+```
+
+Tools that follow references honour this scope: renaming `resource_id` inside `get` changes only `get`, and renaming the `let` changes the `let` and `list` but neither request that declares its own. Names written outside the request are not part of that scope, with one exception: the runtime value also reaches the enclosing endpoint's `url`, `headers`, `qs` and attributes, which every request of the endpoint shares. Finding references from inside the request lists those uses too, and renaming from there is refused, because the new name could not reach the endpoint without changing its other requests.
+
 The exact enforcement behaviour differs by tool:
 
 - **CLI** — see [`rq request run` and required variables](CLI.md#required-variables) for how to supply values via `--var` and what error code is returned when they are missing.

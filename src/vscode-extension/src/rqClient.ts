@@ -435,7 +435,7 @@ export async function executeRequest(options: ExecuteRequestOptions): Promise<Ex
         prepared = await prepare({ ...options.variables, auth_token: token });
     }
 
-    const headers: Record<string, string> = Object.fromEntries(prepared.headers);
+    const headers = toNodeHeaders(prepared.headers);
     const body = prepared.body ?? undefined;
     const startTime = Date.now();
     const response = await nodeHttpRequest(prepared.url, prepared.method, headers, body, prepared.timeout_ms ?? undefined, options.cancellation);
@@ -448,12 +448,34 @@ export async function executeRequest(options: ExecuteRequestOptions): Promise<Ex
             url: prepared.url,
             status: response.status,
             elapsed_ms: elapsed,
-            request_headers: headers,
+            request_headers: joinHeaderValues(headers),
             request_body: body,
             response_headers: response.headers,
             body: response.body,
         }],
     };
+}
+
+function toNodeHeaders(pairs: [string, string][]): Record<string, string | string[]> {
+    const headers: Record<string, string | string[]> = {};
+    const keysByLowerName = new Map<string, string>();
+    for (const [name, value] of pairs) {
+        const key = keysByLowerName.get(name.toLowerCase()) ?? name;
+        keysByLowerName.set(name.toLowerCase(), key);
+        const existing = headers[key];
+        if (existing === undefined) {
+            headers[key] = value;
+        } else {
+            headers[key] = Array.isArray(existing) ? [...existing, value] : [existing, value];
+        }
+    }
+    return headers;
+}
+
+function joinHeaderValues(headers: Record<string, string | string[]>): Record<string, string> {
+    return Object.fromEntries(
+        Object.entries(headers).map(([name, value]) => [name, Array.isArray(value) ? value.join(', ') : value])
+    );
 }
 
 async function acquireToken(auth: PreparedAuth, options: ExecuteRequestOptions): Promise<string> {
@@ -480,7 +502,7 @@ function throwIfCancelled(cancellation?: CancellationSignal): void {
     }
 }
 
-function nodeHttpRequest(url: string, method: string, reqHeaders: Record<string, string>, body?: string, timeoutMs?: number, cancellation?: CancellationSignal): Promise<NodeHttpResponse> {
+function nodeHttpRequest(url: string, method: string, reqHeaders: Record<string, string | string[]>, body?: string, timeoutMs?: number, cancellation?: CancellationSignal): Promise<NodeHttpResponse> {
     return new Promise((resolve, reject) => {
         if (cancellation?.isCancellationRequested) {
             reject(new Error(CANCELLED_MESSAGE));
@@ -490,7 +512,7 @@ function nodeHttpRequest(url: string, method: string, reqHeaders: Record<string,
         const isHttps = parsed.protocol === 'https:';
         const mod = isHttps ? https : http;
 
-        const outHeaders: Record<string, string> = { ...reqHeaders };
+        const outHeaders: Record<string, string | string[]> = { ...reqHeaders };
         if (body) {
             outHeaders['content-length'] = String(Buffer.byteLength(body, 'utf8'));
         }

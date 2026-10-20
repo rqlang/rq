@@ -259,6 +259,29 @@ describe('executeRequest', () => {
                 'content-length': '15',
             });
         });
+
+        test('sends every value of a repeated header', async () => {
+            mockPrepareRequest.mockReturnValue(prepared({
+                headers: [['Accept', 'text/plain'], ['accept', 'application/json']],
+            }));
+            makeHttpsMock();
+
+            await executeRequest({ requestName: 'test-req', sourceDirectory: '/tmp/project' });
+
+            const callArgs = (https.request as jest.Mock).mock.calls[0][0];
+            expect(callArgs.headers.Accept).toEqual(['text/plain', 'application/json']);
+        });
+
+        test('reports the values of a repeated header joined', async () => {
+            mockPrepareRequest.mockReturnValue(prepared({
+                headers: [['Accept', 'text/plain'], ['accept', 'application/json']],
+            }));
+            makeHttpsMock();
+
+            const target = await executeRequest({ requestName: 'test-req', sourceDirectory: '/tmp/project' });
+
+            expect(target.results[0].request_headers.Accept).toBe('text/plain, application/json');
+        });
     });
 
     describe('auth', () => {

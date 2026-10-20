@@ -165,7 +165,7 @@ export const ATTRIBUTE_DEFINITIONS: AttributeDefinition[] = [
     {
         name: 'required',
         signature: '[required(var_name)]',
-        description: 'Declares a variable that must be supplied at runtime. May appear several times.',
+        description: 'Declares a variable, scoped to this request, that must be supplied at runtime. May appear several times.',
         targets: 'rq'
     }
 ];

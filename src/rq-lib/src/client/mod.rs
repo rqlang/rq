@@ -12,6 +12,7 @@ use crate::lint::{lint_rq_file, LintDiagnostic, LintScope, WorkspaceCollector, W
 use crate::logger::Logger;
 use crate::syntax::auth::Config as AuthConfig;
 use crate::syntax::parse_result::{AuthLocation, RequestWithVariables};
+use crate::syntax::resolve::SourcePosition;
 use crate::syntax::variable_context::{VariableContext, VariableContextBuilder};
 use crate::syntax::{Fs, Request, RqFile, SecretProvider, Variable, VariableValue};
 
@@ -640,11 +641,24 @@ impl RqClient {
         source_path: &Path,
         name: &str,
         scope_file: Option<&Path>,
+        position: Option<(usize, usize)>,
     ) -> Result<Vec<crate::client::models::ReferenceLocation>, RqError> {
         let paths = self.reference_paths(source_path, scope_file, |closure| {
             self.variable_definition_file(closure, name)
         })?;
-        let refs = crate::syntax::resolve::find_all_variable_references(&*self.fs, &paths, name);
+        let at = scope_file
+            .zip(position)
+            .map(|(file, (line, character))| SourcePosition {
+                file,
+                line,
+                character,
+            });
+        let refs = crate::syntax::resolve::find_all_variable_references(
+            &*self.fs,
+            &paths,
+            name,
+            at.as_ref(),
+        );
         Ok(refs
             .into_iter()
             .map(
@@ -2426,7 +2440,7 @@ mod scope_file_tests {
         let scope = dir.path().join("inma/collections.rq");
 
         let target = RqClient::default()
-            .list_variable_references(dir.path(), "collection_id", Some(&scope))
+            .list_variable_references(dir.path(), "collection_id", Some(&scope), None)
             .expect("list_variable_references failed");
 
         assert!(
@@ -2443,7 +2457,7 @@ mod scope_file_tests {
         let dir = workspace();
 
         let target = RqClient::default()
-            .list_variable_references(dir.path(), "collection_id", None)
+            .list_variable_references(dir.path(), "collection_id", None, None)
             .expect("list_variable_references failed");
 
         assert!(target.iter().any(|r| ends_with(&r.file, "image/static.rq")));
@@ -2649,7 +2663,7 @@ mod navigation_tests {
         std::fs::write(dir.path().join("test.rq"), "rq get(\"{{base_url}}/v1\");\n")
             .expect("test.rq");
         let target = RqClient::default()
-            .list_variable_references(dir.path(), "base_url", None)
+            .list_variable_references(dir.path(), "base_url", None, None)
             .expect("list_variable_references failed");
         assert_eq!((target[0].line, target[0].character), (0, 10));
     }
@@ -2663,10 +2677,63 @@ mod navigation_tests {
         )
         .expect("test.rq");
         let target = RqClient::default()
-            .list_variable_references(dir.path(), "host", None)
+            .list_variable_references(dir.path(), "host", None, None)
             .expect("list_variable_references failed");
         let lines: Vec<usize> = target.iter().map(|r| r.line).collect();
         assert!(lines.contains(&1) && lines.contains(&4));
+    }
+
+    const CRUD_ENDPOINT: &str = "ep foo(\"http://localhost\") {\n    rq list();\n\n    [required(resource_id)]\n    rq get(resource_id);\n\n    [required(resource_id)]\n    rq put(resource_id, body: \"{{resource_id}}\");\n}\n";
+
+    fn variable_refs_at(
+        content: &str,
+        name: &str,
+        position: Option<(usize, usize)>,
+    ) -> Vec<(usize, usize)> {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let file = dir.path().join("test.rq");
+        std::fs::write(&file, content).expect("test.rq");
+        RqClient::default()
+            .list_variable_references(dir.path(), name, Some(&file), position)
+            .expect("list_variable_references failed")
+            .iter()
+            .map(|r| (r.line, r.character))
+            .collect()
+    }
+
+    #[test]
+    fn required_variable_references_stay_in_their_request() {
+        let target = variable_refs_at(CRUD_ENDPOINT, "resource_id", Some((4, 12)));
+        assert_eq!(target, vec![(3, 14), (4, 11)]);
+    }
+
+    #[test]
+    fn required_variable_references_resolve_from_the_attribute() {
+        let target = variable_refs_at(CRUD_ENDPOINT, "resource_id", Some((6, 16)));
+        assert_eq!(target, vec![(6, 14), (7, 11), (7, 33)]);
+    }
+
+    #[test]
+    fn required_variable_shadows_the_outer_definition() {
+        let content = format!(
+            "let resource_id = \"1\";\n{CRUD_ENDPOINT}rq other(\"/{{{{resource_id}}}}\");\n"
+        );
+        let target = variable_refs_at(&content, "resource_id", Some((0, 5)));
+        assert_eq!(target, vec![(0, 4), (10, 13)]);
+    }
+
+    #[test]
+    fn variable_used_outside_any_required_request_is_global() {
+        let content = format!("{CRUD_ENDPOINT}rq other(\"/{{{{resource_id}}}}\");\n");
+        let target = variable_refs_at(&content, "resource_id", Some((9, 16)));
+        assert_eq!(target, vec![(9, 13)]);
+    }
+
+    #[test]
+    fn required_variable_in_a_truncated_request_stays_in_it() {
+        let content = "[required(resource_id)]\nrq get(resource_id";
+        let target = variable_refs_at(content, "resource_id", Some((1, 8)));
+        assert_eq!(target, vec![(0, 10), (1, 7)]);
     }
 
     #[test]

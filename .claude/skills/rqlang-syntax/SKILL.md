@@ -339,6 +339,8 @@ rq create(body: ${"name": "{{user_name}}", "role": "{{user_role}}"});
 
 Enforcement: CLI errors with a documented exit code; VS Code extension prompts the user.
 
+Scope: `required` declares the variable for that `rq` statement only (its attributes and arguments). A `let`, env entry or secret never satisfies it, so it shadows any outer variable of the same name inside that request; two requests declaring `[required(x)]` hold independent variables. Rename and find-references stay within the request. The endpoint's `url`, `headers` and `qs` are outside that scope.
+
 ### Attributes on `ep` vs `rq`
 
 | Attribute | `ep` | `rq` |

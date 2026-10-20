@@ -1230,18 +1230,7 @@ impl RqClient {
                 .push(("content-type".to_string(), "application/json".to_string()));
         }
 
-        if let Some(timeout_str) = &request.timeout {
-            let secs = timeout_str.parse::<f64>().map_err(|_| {
-                RqError::Generic(format!(
-                    "HTTP Error: Timeout value '{timeout_str}' must be a number"
-                ))
-            })?;
-            if !secs.is_finite() || secs < 0.0 {
-                return Err(RqError::Generic(format!(
-                    "HTTP Error: Timeout value '{timeout_str}' must be a non-negative finite number"
-                )));
-            }
-        }
+        crate::http::request_timeout(&request)?;
 
         Ok(request)
     }

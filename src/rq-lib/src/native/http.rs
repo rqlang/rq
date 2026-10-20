@@ -27,22 +27,8 @@ async fn execute_with_reqwest(request: &Request) -> Result<HttpResponse, RqError
         req_builder = req_builder.body(body.clone());
     }
 
-    if let Some(timeout_str) = &request.timeout {
-        match timeout_str.parse::<f64>() {
-            Ok(secs) if secs.is_finite() && secs >= 0.0 => {
-                req_builder = req_builder.timeout(std::time::Duration::from_secs_f64(secs));
-            }
-            Ok(_) => {
-                return Err(RqError::Generic(format!(
-                    "HTTP Error: Timeout value '{timeout_str}' must be a non-negative finite number"
-                )));
-            }
-            Err(_) => {
-                return Err(RqError::Generic(format!(
-                    "HTTP Error: Timeout value '{timeout_str}' must be a number"
-                )));
-            }
-        }
+    if let Some(timeout) = crate::http::request_timeout(request)? {
+        req_builder = req_builder.timeout(timeout);
     }
 
     let response = req_builder

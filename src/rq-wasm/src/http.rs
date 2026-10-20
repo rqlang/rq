@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
+use std::time::Duration;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
 
@@ -32,9 +33,9 @@ impl HttpClient for WasmHttpClient {
         let method = request.method.as_str().to_string();
         let headers = request.headers.clone();
         let body = request.body.clone();
-        let timeout = request.timeout.clone();
+        let timeout = rq_lib::http::request_timeout(request);
         Box::pin(SendFuture(async move {
-            fetch(&url, &method, &headers, body.as_deref(), timeout.as_deref()).await
+            fetch(&url, &method, &headers, body.as_deref(), timeout?).await
         }))
     }
 }
@@ -44,7 +45,7 @@ async fn fetch(
     method: &str,
     headers: &[(String, String)],
     body: Option<&str>,
-    timeout: Option<&str>,
+    timeout: Option<Duration>,
 ) -> Result<HttpResponse, RqError> {
     let global = js_sys::global();
     let fetch_val = Reflect::get(&global, &JsValue::from_str("fetch"))
@@ -56,15 +57,12 @@ async fn fetch(
         ));
     }
 
-    let abort_controller = timeout
-        .and_then(|t| t.parse::<f64>().ok())
-        .filter(|secs| secs.is_finite() && *secs >= 0.0)
-        .map(|secs| {
-            let controller = js_sys::eval("new AbortController()")
-                .ok()
-                .filter(|v| !v.is_undefined() && !v.is_null());
-            (controller, (secs * 1000.0) as i32)
-        });
+    let abort_controller = timeout.map(|duration| {
+        let controller = js_sys::eval("new AbortController()")
+            .ok()
+            .filter(|v| !v.is_undefined() && !v.is_null());
+        (controller, duration.as_millis())
+    });
 
     if matches!(&abort_controller, Some((None, _))) {
         return Err(RqError::Generic(

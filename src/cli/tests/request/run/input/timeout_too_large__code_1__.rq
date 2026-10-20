@@ -1,0 +1,3 @@
+let huge = "1e30";
+[timeout($huge)]
+rq get("http://localhost:8080/get");

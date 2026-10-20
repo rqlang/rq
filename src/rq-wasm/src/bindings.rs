@@ -1,6 +1,7 @@
 use crate::{WasmFs, WasmHttpClient, WasmSecretProvider};
 use rq_lib::client::models::{
-    AuthListEntry, EndpointEntry, EnvironmentEntry, ReferenceLocation, RequestInfo, VariableEntry,
+    AuthListEntry, EndpointEntry, EnvironmentEntry, ReferenceLocation, RequestInfo, RequestTarget,
+    VariableEntry,
 };
 use rq_lib::error::RqError;
 use rq_lib::logger::Logger;
@@ -38,6 +39,14 @@ fn parse_secrets(secrets_json: &str) -> WasmSecretProvider {
     }
     let input: SecretsInput = serde_json::from_str(secrets_json).unwrap_or_default();
     WasmSecretProvider::new(input.env_file, input.os_vars)
+}
+
+fn parse_variables(variables_json: Option<&str>) -> Result<Vec<String>, JsError> {
+    match variables_json {
+        Some(s) => serde_json::from_str(s)
+            .map_err(|e| JsError::new(&format!("Invalid variables_json: {e}"))),
+        None => Ok(Vec::new()),
+    }
 }
 
 fn rq_err(e: RqError) -> JsError {
@@ -93,6 +102,28 @@ struct RequestDetailsJson {
     file: String,
     line: usize,
     character: usize,
+}
+
+#[derive(Serialize)]
+struct PreparedRequestJson {
+    name: String,
+    method: String,
+    url: String,
+    headers: Vec<(String, String)>,
+    body: Option<String>,
+    timeout_ms: Option<u64>,
+    auth: Option<PreparedAuthJson>,
+}
+
+#[derive(Serialize)]
+struct PreparedAuthJson {
+    name: String,
+    auth_type: String,
+    fields: HashMap<String, String>,
+    file: String,
+    line: usize,
+    character: usize,
+    token_required: bool,
 }
 
 #[derive(Serialize)]
@@ -321,20 +352,16 @@ pub fn get_request_details(
     interpolate: bool,
     skip_required_variables: bool,
     variables_json: Option<String>,
+    scope_file: Option<String>,
 ) -> Result<String, JsError> {
-    let variables: Vec<String> = match variables_json.as_deref() {
-        Some(s) => serde_json::from_str(s)
-            .map_err(|e| JsError::new(&format!("Invalid variables_json: {e}")))?,
-        None => vec![],
-    };
+    let variables = parse_variables(variables_json.as_deref())?;
     let details = make_client(
         parse_files(files_json)?,
         parse_secrets(secrets_json),
         source,
     )
     .get_request_details(
-        Path::new(source),
-        name,
+        RequestTarget::new(Path::new(source), name).in_file(scope_file.as_deref().map(Path::new)),
         env.as_deref(),
         interpolate,
         skip_required_variables,
@@ -359,6 +386,58 @@ pub fn get_request_details(
         file: details.file,
         line: details.line,
         character: details.character,
+    };
+    serde_json::to_string(&view).map_err(|e| JsError::new(&e.to_string()))
+}
+
+#[wasm_bindgen]
+pub fn prepare_request(
+    files_json: &str,
+    secrets_json: &str,
+    source: &str,
+    name: &str,
+    env: Option<String>,
+    variables_json: Option<String>,
+    scope_file: Option<String>,
+) -> Result<String, JsError> {
+    let variables = parse_variables(variables_json.as_deref())?;
+    let prepared = make_client(
+        parse_files(files_json)?,
+        parse_secrets(secrets_json),
+        source,
+    )
+    .prepare_request(
+        RequestTarget::new(Path::new(source), name).in_file(scope_file.as_deref().map(Path::new)),
+        env.as_deref(),
+        &variables,
+    )
+    .map_err(rq_err)?;
+    let timeout_ms = prepared
+        .timeout
+        .map(|timeout| u64::try_from(timeout.as_millis()).unwrap_or(u64::MAX));
+    let auth = prepared.auth.map(|auth| PreparedAuthJson {
+        name: auth.config.name,
+        auth_type: auth.config.auth_type.as_str().to_string(),
+        fields: auth
+            .config
+            .fields
+            .into_iter()
+            .map(|(k, v)| (k, v.value))
+            .collect(),
+        file: rq_lib::paths::clean_path(&auth.config.file_path),
+        line: auth.config.line,
+        character: auth.config.character,
+        token_required: auth.token_required,
+    });
+    let request = prepared.request;
+    let view = PreparedRequestJson {
+        name: request.name,
+        method: request.method.as_str().to_string(),
+        url: request.url,
+        headers: request.headers,
+        body: request.body,
+        timeout_ms,
+        auth,
     };
     serde_json::to_string(&view).map_err(|e| JsError::new(&e.to_string()))
 }
@@ -523,37 +602,4 @@ pub fn take_debug_logs() -> String {
 #[wasm_bindgen]
 pub fn version() -> String {
     rq_lib::version::app_version().to_string()
-}
-
-#[wasm_bindgen]
-pub async fn run_request(
-    files_json: &str,
-    secrets_json: &str,
-    source: &str,
-    request_name: &str,
-    env: Option<String>,
-    variables_json: Option<String>,
-) -> Result<String, JsError> {
-    let files = parse_files(files_json)?;
-    let secrets = parse_secrets(secrets_json);
-    let client = make_client(files, secrets, source);
-
-    let variables: Vec<String> = match variables_json.as_deref() {
-        Some(s) => serde_json::from_str(s)
-            .map_err(|e| JsError::new(&format!("Invalid variables_json: {e}")))?,
-        None => vec![],
-    };
-
-    let (results, _warnings) = client
-        .run(
-            Path::new(source),
-            Some(request_name),
-            env.as_deref(),
-            &variables,
-        )
-        .await
-        .map_err(rq_err)?;
-
-    serde_json::to_string(&serde_json::json!({ "results": results }))
-        .map_err(|e| JsError::new(&e.to_string()))
 }

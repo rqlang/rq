@@ -1,5 +1,12 @@
-use serde::Serialize;
 use std::collections::HashMap;
+use std::path::Path;
+use std::time::Duration;
+
+use serde::Serialize;
+
+use crate::syntax::auth::Config;
+use crate::syntax::variable_context::VariableContext;
+use crate::syntax::Request;
 
 #[derive(Debug, Serialize, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct AuthListEntry {
@@ -76,4 +83,39 @@ pub struct ReferenceLocation {
     pub file: String,
     pub line: usize,
     pub character: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct PreparedRequest {
+    pub request: Request,
+    pub timeout: Option<Duration>,
+    pub auth: Option<PreparedAuth>,
+    pub(crate) context: VariableContext,
+}
+
+#[derive(Debug, Clone)]
+pub struct PreparedAuth {
+    pub config: Config,
+    pub token_required: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct RequestTarget<'a> {
+    pub source: &'a Path,
+    pub scope_file: Option<&'a Path>,
+    pub name: &'a str,
+}
+
+impl<'a> RequestTarget<'a> {
+    pub fn new(source: &'a Path, name: &'a str) -> Self {
+        Self {
+            source,
+            scope_file: None,
+            name,
+        }
+    }
+
+    pub fn in_file(self, scope_file: Option<&'a Path>) -> Self {
+        Self { scope_file, ..self }
+    }
 }

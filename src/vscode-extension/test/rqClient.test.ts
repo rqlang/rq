@@ -1,32 +1,51 @@
 import * as https from 'https';
 import * as fs from 'fs';
 
-const mockGetRequestDetails = jest.fn();
-const mockGetAuthDetails = jest.fn();
-const mockVersion = jest.fn().mockReturnValue('0.0.0-test');
+const mockPrepareRequest = jest.fn();
 const mockSetDebugLogging = jest.fn();
 
 jest.mock('../src/wasm/rq_wasm', () => ({
-    get_request_details: mockGetRequestDetails,
-    get_auth_details: mockGetAuthDetails,
-    version: mockVersion,
+    prepare_request: mockPrepareRequest,
     set_debug_logging: mockSetDebugLogging,
 }), { virtual: true });
+
+const mockBuildFilesMap = jest.fn(async () => '{}');
+const mockBuildSecretsMap = jest.fn(async () => JSON.stringify({ env_file: null, os_vars: [] }));
+
+jest.mock('../src/utils', () => ({
+    ...jest.requireActual('../src/utils'),
+    buildFilesMap: mockBuildFilesMap,
+    buildSecretsMap: mockBuildSecretsMap,
+}));
 
 jest.mock('fs');
 jest.mock('https');
 
 import { executeRequest, setDebugLogging } from '../src/rqClient';
 
-const BASE_DETAILS = {
-    Request: 'test-req',
-    URL: 'https://example.com/api',
-    Method: 'GET',
-    Headers: {},
-    file: 'test.rq',
+const BASE_PREPARED = {
+    name: 'test-req',
+    url: 'https://example.com/api',
+    method: 'GET',
+    headers: [] as [string, string][],
+    body: null as string | null,
+    timeout_ms: null as number | null,
+    auth: null as unknown,
+};
+
+const PENDING_AUTH = {
+    name: 'login',
+    auth_type: 'oauth2_authorization_code',
+    fields: { client_id: 'app' },
+    file: '/tmp/project/auth.rq',
     line: 0,
     character: 0,
+    token_required: true,
 };
+
+function prepared(overrides: Partial<typeof BASE_PREPARED> = {}): string {
+    return JSON.stringify({ ...BASE_PREPARED, ...overrides });
+}
 
 function makeHttpsMock(statusCode = 200) {
     const mockResponse = {
@@ -60,7 +79,7 @@ beforeEach(() => {
 describe('executeRequest', () => {
     describe('cancellation', () => {
         test('rejects without sending when cancellation was already requested', async () => {
-            mockGetRequestDetails.mockReturnValue(JSON.stringify(BASE_DETAILS));
+            mockPrepareRequest.mockReturnValue(prepared());
             makeHttpsMock();
 
             await expect(executeRequest({
@@ -73,7 +92,7 @@ describe('executeRequest', () => {
         });
 
         test('destroys the in-flight request when cancellation fires', async () => {
-            mockGetRequestDetails.mockReturnValue(JSON.stringify(BASE_DETAILS));
+            mockPrepareRequest.mockReturnValue(prepared());
 
             const listeners: (() => void)[] = [];
             const cancellation = {
@@ -105,7 +124,7 @@ describe('executeRequest', () => {
         });
 
         test('disposes the cancellation subscription once the response completes', async () => {
-            mockGetRequestDetails.mockReturnValue(JSON.stringify(BASE_DETAILS));
+            mockPrepareRequest.mockReturnValue(prepared());
             makeHttpsMock();
             const dispose = jest.fn();
 
@@ -120,8 +139,8 @@ describe('executeRequest', () => {
     });
 
     describe('variable passing', () => {
-        test('passes variables as key=value JSON array to get_request_details', async () => {
-            mockGetRequestDetails.mockReturnValue(JSON.stringify(BASE_DETAILS));
+        test('passes variables as key=value JSON array to prepare_request', async () => {
+            mockPrepareRequest.mockReturnValue(prepared());
             makeHttpsMock();
 
             await executeRequest({
@@ -130,41 +149,36 @@ describe('executeRequest', () => {
                 variables: { userId: '123', name: 'Alice' },
             });
 
-            expect(mockGetRequestDetails).toHaveBeenCalledWith(
+            expect(mockPrepareRequest).toHaveBeenCalledWith(
                 expect.any(String),
                 expect.any(String),
-                expect.any(String),
+                '/tmp/project',
                 'test-req',
                 undefined,
-                true,
-                false,
                 JSON.stringify(['userId=123', 'name=Alice']),
+                undefined,
             );
         });
 
         test('passes undefined variables_json when no variables provided', async () => {
-            mockGetRequestDetails.mockReturnValue(JSON.stringify(BASE_DETAILS));
+            mockPrepareRequest.mockReturnValue(prepared());
             makeHttpsMock();
 
-            await executeRequest({
-                requestName: 'test-req',
-                sourceDirectory: '/tmp/project',
-            });
+            await executeRequest({ requestName: 'test-req', sourceDirectory: '/tmp/project' });
 
-            expect(mockGetRequestDetails).toHaveBeenCalledWith(
+            expect(mockPrepareRequest).toHaveBeenCalledWith(
                 expect.any(String),
                 expect.any(String),
-                expect.any(String),
+                '/tmp/project',
                 'test-req',
                 undefined,
-                true,
-                false,
+                undefined,
                 undefined,
             );
         });
 
-        test('passes environment to get_request_details', async () => {
-            mockGetRequestDetails.mockReturnValue(JSON.stringify(BASE_DETAILS));
+        test('passes environment to prepare_request', async () => {
+            mockPrepareRequest.mockReturnValue(prepared());
             makeHttpsMock();
 
             await executeRequest({
@@ -173,131 +187,163 @@ describe('executeRequest', () => {
                 environment: 'production',
             });
 
-            expect(mockGetRequestDetails).toHaveBeenCalledWith(
+            expect(mockPrepareRequest).toHaveBeenCalledWith(
                 expect.any(String),
                 expect.any(String),
-                expect.any(String),
+                '/tmp/project',
                 'test-req',
                 'production',
-                true,
-                false,
+                undefined,
                 undefined,
             );
         });
     });
 
-    describe('default headers', () => {
-        test('adds user-agent header when not present in request', async () => {
-            mockGetRequestDetails.mockReturnValue(JSON.stringify({ ...BASE_DETAILS, Headers: {} }));
-            const { mockRequest } = makeHttpsMock();
+    describe('source', () => {
+        test('prepares the request in the opened folder, scoped to the file that declares it', async () => {
+            mockPrepareRequest.mockReturnValue(prepared());
+            makeHttpsMock();
 
-            await executeRequest({ requestName: 'test-req', sourceDirectory: '/tmp/project' });
+            await executeRequest({
+                requestName: 'test-req',
+                sourceDirectory: '/tmp/project',
+                sourceFile: '/tmp/project/sub/main.rq',
+            });
 
-            const callArgs = (https.request as jest.Mock).mock.calls[0][0];
-            expect(callArgs.headers).toMatchObject({ 'user-agent': expect.stringMatching(/^rq\//) });
+            const call = mockPrepareRequest.mock.calls[0];
+            expect([call[2], call[6]]).toEqual(['/tmp/project', '/tmp/project/sub/main.rq']);
         });
 
-        test('does not override existing user-agent header', async () => {
-            mockGetRequestDetails.mockReturnValue(JSON.stringify({
-                ...BASE_DETAILS,
-                Headers: { 'user-agent': 'custom-agent/1.0' },
+        test('builds the files map from the opened folder', async () => {
+            mockPrepareRequest.mockReturnValue(prepared());
+            makeHttpsMock();
+
+            await executeRequest({
+                requestName: 'test-req',
+                sourceDirectory: '/tmp/project',
+                sourceFile: '/tmp/project/sub/main.rq',
+            });
+
+            expect(mockBuildFilesMap).toHaveBeenCalledWith('/tmp/project');
+        });
+
+        test('reads secrets from the opened folder, not from the request file', async () => {
+            mockPrepareRequest.mockReturnValue(prepared());
+            makeHttpsMock();
+
+            await executeRequest({
+                requestName: 'test-req',
+                sourceDirectory: '/tmp/project',
+                sourceFile: '/tmp/project/sub/main.rq',
+            });
+
+            expect(mockBuildSecretsMap).toHaveBeenCalledWith('/tmp/project');
+        });
+    });
+
+    describe('prepared request', () => {
+        test('sends the headers prepared by rq-lib without adding any', async () => {
+            mockPrepareRequest.mockReturnValue(prepared({
+                method: 'POST',
+                body: '{"key":"value"}',
+                headers: [['user-agent', 'rq/1.0.0'], ['x-custom', 'yes']],
             }));
             makeHttpsMock();
 
             await executeRequest({ requestName: 'test-req', sourceDirectory: '/tmp/project' });
 
             const callArgs = (https.request as jest.Mock).mock.calls[0][0];
-            expect(callArgs.headers['user-agent']).toBe('custom-agent/1.0');
+            expect(callArgs.headers).toEqual({
+                'user-agent': 'rq/1.0.0',
+                'x-custom': 'yes',
+                'content-length': '15',
+            });
         });
 
-        test('adds content-type application/json for JSON body when not present', async () => {
-            mockGetRequestDetails.mockReturnValue(JSON.stringify({
-                ...BASE_DETAILS,
-                Method: 'POST',
-                Body: '{"key":"value"}',
-                Headers: {},
+        test('sends every value of a repeated header', async () => {
+            mockPrepareRequest.mockReturnValue(prepared({
+                headers: [['Accept', 'text/plain'], ['accept', 'application/json']],
             }));
             makeHttpsMock();
 
             await executeRequest({ requestName: 'test-req', sourceDirectory: '/tmp/project' });
 
             const callArgs = (https.request as jest.Mock).mock.calls[0][0];
-            expect(callArgs.headers['content-type']).toBe('application/json');
+            expect(callArgs.headers.Accept).toEqual(['text/plain', 'application/json']);
         });
 
-        test('does not add content-type for non-JSON body', async () => {
-            mockGetRequestDetails.mockReturnValue(JSON.stringify({
-                ...BASE_DETAILS,
-                Method: 'POST',
-                Body: 'plain text body',
-                Headers: {},
+        test('reports the values of a repeated header joined', async () => {
+            mockPrepareRequest.mockReturnValue(prepared({
+                headers: [['Accept', 'text/plain'], ['accept', 'application/json']],
             }));
             makeHttpsMock();
 
-            await executeRequest({ requestName: 'test-req', sourceDirectory: '/tmp/project' });
+            const target = await executeRequest({ requestName: 'test-req', sourceDirectory: '/tmp/project' });
 
-            const callArgs = (https.request as jest.Mock).mock.calls[0][0];
-            expect(callArgs.headers['content-type']).toBeUndefined();
-        });
-
-        test('does not override existing content-type for JSON body', async () => {
-            mockGetRequestDetails.mockReturnValue(JSON.stringify({
-                ...BASE_DETAILS,
-                Method: 'POST',
-                Body: '{"key":"value"}',
-                Headers: { 'content-type': 'application/vnd.api+json' },
-            }));
-            makeHttpsMock();
-
-            await executeRequest({ requestName: 'test-req', sourceDirectory: '/tmp/project' });
-
-            const callArgs = (https.request as jest.Mock).mock.calls[0][0];
-            expect(callArgs.headers['content-type']).toBe('application/vnd.api+json');
+            expect(target.results[0].request_headers.Accept).toBe('text/plain, application/json');
         });
     });
 
     describe('auth', () => {
-        test('applies a bearer token as the authorization header', async () => {
-            mockGetRequestDetails.mockReturnValue(JSON.stringify({
-                ...BASE_DETAILS,
-                Auth: { name: 'my_bearer', type: 'bearer' },
-            }));
-            mockGetAuthDetails.mockReturnValue(JSON.stringify({
-                'Auth Configuration': 'my_bearer',
-                Type: 'bearer',
-                Fields: { token: 'secret-token' },
-                file: 'test.rq',
-                line: 0,
-                character: 0,
-            }));
+        test('prepares again with the acquired token when rq-lib asks for one', async () => {
+            mockPrepareRequest
+                .mockReturnValueOnce(prepared({ auth: PENDING_AUTH }))
+                .mockReturnValueOnce(prepared({
+                    headers: [['authorization', 'Bearer acquired']],
+                    auth: { ...PENDING_AUTH, token_required: false },
+                }));
             makeHttpsMock();
 
-            await executeRequest({ requestName: 'test-req', sourceDirectory: '/tmp/project' });
+            await executeRequest({
+                requestName: 'test-req',
+                sourceDirectory: '/tmp/project',
+                acquireToken: async () => 'acquired',
+            });
 
-            const callArgs = (https.request as jest.Mock).mock.calls[0][0];
-            expect(callArgs.headers['authorization']).toBe('Bearer secret-token');
+            expect(mockPrepareRequest.mock.calls[1][5]).toBe(JSON.stringify(['auth_token=acquired']));
         });
 
-        test('refuses to send a request whose auth type cannot be applied', async () => {
-            mockGetRequestDetails.mockReturnValue(JSON.stringify({
-                ...BASE_DETAILS,
-                Auth: { name: 'ghost', type: '' },
+        test('hands the selected environment to the token source', async () => {
+            mockPrepareRequest.mockReturnValue(prepared({ auth: PENDING_AUTH }));
+            makeHttpsMock();
+            const acquireToken = jest.fn().mockResolvedValue('acquired');
+
+            await executeRequest({
+                requestName: 'test-req',
+                sourceDirectory: '/tmp/project',
+                environment: 'dev',
+                acquireToken,
+            });
+
+            expect(acquireToken).toHaveBeenCalledWith(expect.objectContaining({ name: 'login', environment: 'dev' }));
+        });
+
+        test('does not ask for a token when rq-lib already applied one', async () => {
+            mockPrepareRequest.mockReturnValue(prepared({
+                headers: [['authorization', 'Bearer known']],
+                auth: { ...PENDING_AUTH, token_required: false },
             }));
+            makeHttpsMock();
+            const acquireToken = jest.fn();
+
+            await executeRequest({ requestName: 'test-req', sourceDirectory: '/tmp/project', acquireToken });
+
+            expect(acquireToken).not.toHaveBeenCalled();
+        });
+
+        test('refuses to send a request whose token cannot be obtained', async () => {
+            mockPrepareRequest.mockReturnValue(prepared({ auth: PENDING_AUTH }));
             makeHttpsMock();
 
             await expect(executeRequest({ requestName: 'test-req', sourceDirectory: '/tmp/project' }))
-                .rejects.toThrow("Auth configuration 'ghost' has unsupported type ''");
+                .rejects.toThrow("Auth configuration 'login' (oauth2_authorization_code) requires a token that could not be obtained");
             expect(https.request).not.toHaveBeenCalled();
         });
     });
 
     describe('response mapping', () => {
         test('returns execution result with correct shape', async () => {
-            mockGetRequestDetails.mockReturnValue(JSON.stringify({
-                ...BASE_DETAILS,
-                URL: 'https://example.com/users',
-                Method: 'GET',
-            }));
+            mockPrepareRequest.mockReturnValue(prepared({ url: 'https://example.com/users' }));
             makeHttpsMock(201);
 
             const result = await executeRequest({ requestName: 'test-req', sourceDirectory: '/tmp/project' });
@@ -314,7 +360,7 @@ describe('executeRequest', () => {
 
     describe('timeout', () => {
         test('triggers req.destroy with timeout error when request exceeds configured timeout', async () => {
-            mockGetRequestDetails.mockReturnValue(JSON.stringify({ ...BASE_DETAILS, Timeout: '0.01' }));
+            mockPrepareRequest.mockReturnValue(prepared({ timeout_ms: 10 }));
 
             let errorHandler: ((err: Error) => void) | undefined;
             const mockRequest = {
@@ -338,8 +384,19 @@ describe('executeRequest', () => {
             );
         });
 
+        test('waits without a timer when the timeout exceeds what a timer can hold', async () => {
+            mockPrepareRequest.mockReturnValue(prepared({ timeout_ms: 1e15 }));
+            const setTimeoutSpy = jest.spyOn(global, 'setTimeout');
+            makeHttpsMock();
+
+            await executeRequest({ requestName: 'test-req', sourceDirectory: '/tmp/project' });
+
+            expect(setTimeoutSpy).not.toHaveBeenCalledWith(expect.any(Function), 1e15);
+            setTimeoutSpy.mockRestore();
+        });
+
         test('cancels timeout timer on successful response so destroy is not called', async () => {
-            mockGetRequestDetails.mockReturnValue(JSON.stringify({ ...BASE_DETAILS, Timeout: '1' }));
+            mockPrepareRequest.mockReturnValue(prepared({ timeout_ms: 1000 }));
 
             const mockResponse = {
                 statusCode: 200,
@@ -367,7 +424,7 @@ describe('executeRequest', () => {
         });
 
         test('cancels timeout timer on request error so timeout does not fire additionally', async () => {
-            mockGetRequestDetails.mockReturnValue(JSON.stringify({ ...BASE_DETAILS, Timeout: '1' }));
+            mockPrepareRequest.mockReturnValue(prepared({ timeout_ms: 1000 }));
 
             let reqErrorHandler: ((err: Error) => void) | undefined;
             const mockRequest = {

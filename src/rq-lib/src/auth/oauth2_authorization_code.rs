@@ -1,5 +1,4 @@
 use super::auth_provider::{AuthFuture, AuthProvider};
-use super::bearer::BearerProvider;
 use crate::syntax::error::AuthError;
 
 pub struct OAuth2AuthorizationCodeProvider;
@@ -24,23 +23,11 @@ impl AuthProvider for OAuth2AuthorizationCodeProvider {
     fn configure<'a>(
         &'a self,
         auth_config: &'a crate::syntax::auth::Config,
-        context: &'a crate::syntax::variable_context::VariableContext,
-        url: String,
-        headers: Vec<(String, String)>,
+        _context: &'a crate::syntax::variable_context::VariableContext,
+        _url: String,
+        _headers: Vec<(String, String)>,
     ) -> AuthFuture<'a> {
         Box::pin(async move {
-            let variables = context.all_variables();
-            let (modified_headers, applied) =
-                BearerProvider::apply_from_variables(&variables, headers);
-
-            if applied {
-                crate::logger::Logger::debug(&format!(
-                    "* Using an existing token for OAuth2 Authorization Code auth '{}'",
-                    auth_config.name
-                ));
-                return Ok((url, modified_headers));
-            }
-
             Err(AuthError::new(format!(
                 "OAuth2 Authorization Code auth '{}' requires interactive authentication. This feature is not yet implemented.",
                 auth_config.name
@@ -55,8 +42,8 @@ mod tests {
     use super::*;
     use crate::syntax::variable_context::{Variable, VariableContext, VariableValue};
 
-    #[tokio::test]
-    async fn test_configure_fallback_to_bearer_with_auth_token() {
+    #[test]
+    fn a_runtime_auth_token_is_a_known_token() {
         let executor = OAuth2AuthorizationCodeProvider::new();
         let auth_config = crate::syntax::auth::Config {
             name: "test_oauth".to_string(),
@@ -66,31 +53,21 @@ mod tests {
             line: 0,
             character: 0,
         };
-        let context = VariableContext {
-            file_variables: vec![Variable {
+        let context = VariableContext::builder()
+            .cli_variables(vec![Variable {
                 name: "auth_token".to_string(),
-                value: VariableValue::String("fallback-bearer-token".to_string()),
-            }],
-            environment_variables: vec![],
-            secret_variables: vec![],
-            endpoint_variables: vec![],
-            request_variables: vec![],
-            cli_variables: vec![],
-        };
-        let url = "https://api.example.com/data".to_string();
-        let headers = vec![("Content-Type".to_string(), "application/json".to_string())];
-        let result = executor
-            .configure(&auth_config, &context, url.clone(), headers)
-            .await;
-        assert!(result.is_ok());
-        let (returned_url, returned_headers) = result.unwrap();
-        assert_eq!(returned_url, url);
-        assert_eq!(returned_headers.len(), 2);
+                value: VariableValue::String("runtime-token".to_string()),
+            }])
+            .build();
+        let target = executor.known_token(&auth_config, &context, Vec::new());
         assert_eq!(
-            returned_headers[1],
+            target,
             (
-                "authorization".to_string(),
-                "Bearer fallback-bearer-token".to_string()
+                vec![(
+                    "authorization".to_string(),
+                    "Bearer runtime-token".to_string()
+                )],
+                true
             )
         );
     }

@@ -1,3 +1,5 @@
+use crate::syntax::RqFile;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum VariableValue {
     String(String),
@@ -23,7 +25,7 @@ pub struct VariableContext {
     pub cli_variables: Vec<Variable>,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct VariableContextBuilder {
     file_variables: Vec<Variable>,
     environment_variables: Vec<Variable>,
@@ -111,6 +113,21 @@ impl VariableContext {
         VariableContextBuilder::default()
     }
 
+    pub fn for_file(
+        rq_file: &RqFile,
+        environment: Option<&str>,
+        secrets: Vec<Variable>,
+    ) -> VariableContextBuilder {
+        let environment_variables = environment
+            .and_then(|name| rq_file.environments.get(name))
+            .cloned()
+            .unwrap_or_default();
+        Self::builder()
+            .file_variables(rq_file.file_variables.clone())
+            .environment_variables(environment_variables)
+            .secret_variables(secrets)
+    }
+
     pub fn as_map(&self) -> std::collections::HashMap<&str, &VariableValue> {
         let mut map = std::collections::HashMap::new();
         for var in &self.file_variables {
@@ -147,6 +164,15 @@ impl VariableContext {
             .into_iter()
             .find(|(_, variables)| variables.iter().any(|v| v.name == name))
             .map(|(level, _)| level)
+    }
+
+    pub fn declared_value(&self, name: &str) -> Option<&VariableValue> {
+        self.environment_variables
+            .iter()
+            .rev()
+            .chain(self.file_variables.iter().rev())
+            .find(|v| v.name == name)
+            .map(|v| &v.value)
     }
 
     pub fn all_variables(&self) -> Vec<Variable> {
@@ -201,6 +227,41 @@ mod tests {
             assert_eq!(target.source_of("host"), Some(label));
             assert_eq!(winning, Some(VariableValue::String(label.to_string())));
         }
+    }
+
+    #[test]
+    fn declared_value_prefers_the_environment_over_let() {
+        let target = VariableContext::builder()
+            .file_variables(host("let"))
+            .environment_variables(host("env"))
+            .build();
+        assert_eq!(
+            target.declared_value("host"),
+            Some(&VariableValue::String("env".to_string()))
+        );
+    }
+
+    #[test]
+    fn declared_value_takes_the_last_let_definition() {
+        let target = VariableContext::builder()
+            .file_variables([host("imported"), host("local")].concat())
+            .build();
+        assert_eq!(
+            target.declared_value("host"),
+            Some(&VariableValue::String("local".to_string()))
+        );
+    }
+
+    #[test]
+    fn declared_value_ignores_secrets() {
+        let target = VariableContext::builder()
+            .file_variables(host("let"))
+            .secret_variables(host("secret"))
+            .build();
+        assert_eq!(
+            target.declared_value("host"),
+            Some(&VariableValue::String("let".to_string()))
+        );
     }
 
     #[test]

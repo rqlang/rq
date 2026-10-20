@@ -144,49 +144,49 @@ describe('runRequest Commands', () => {
             expect(provider.setItemRunning).toHaveBeenNthCalledWith(2, item, false);
         });
 
-        test('handles OAuth2 auth', async () => {
+        test('acquires an OAuth2 token when rq-lib asks for one', async () => {
             const request = { name: 'auth-req', endpoint: 'GET /', file: 'test.rq' };
             const item = new RequestTreeItem('auth-req', request, 0);
+            const pendingAuth = {
+                name: 'my-auth',
+                auth_type: 'oauth2_authorization_code',
+                fields: {},
+                file: 'test.rq',
+                line: 0,
+                character: 0,
+                token_required: true,
+            };
 
-            (cliService.showRequest as jest.Mock).mockResolvedValue({
-                name: 'auth-req',
-                auth: { name: 'my-auth', type: 'oauth2_authorization_code' },
-                requiredVariables: []
-            });
-            (cliService.showAuthConfig as jest.Mock).mockResolvedValue({ name: 'my-auth' });
+            (cliService.showRequest as jest.Mock).mockResolvedValue({ name: 'auth-req', requiredVariables: [] });
             (auth.performOAuth2Flow as jest.Mock).mockResolvedValue('mock-token');
-            (cliService.executeRequest as jest.Mock).mockResolvedValue({ results: [{}] });
+            let acquired: string | undefined;
+            (cliService.executeRequest as jest.Mock).mockImplementation(async (options: cliService.ExecuteRequestOptions) => {
+                acquired = await options.acquireToken?.(pendingAuth);
+                return { results: [{}] };
+            });
 
             await requestRunner.runRequest(item, provider);
 
-            expect(auth.performOAuth2Flow).toHaveBeenCalled();
-            expect(cliService.executeRequest).toHaveBeenCalledWith(expect.objectContaining({
-                variables: { auth_token: 'mock-token' }
-            }));
+            expect(auth.performOAuth2Flow).toHaveBeenCalledWith(pendingAuth, context, outputChannel);
+            expect(acquired).toBe('mock-token');
             expect(provider.setItemRunning).toHaveBeenCalledTimes(2);
             expect(provider.setItemRunning).toHaveBeenNthCalledWith(1, item, true);
             expect(provider.setItemRunning).toHaveBeenNthCalledWith(2, item, false);
         });
 
-        test('handles OAuth2 auth with required variables', async () => {
-            const request = { name: 'auth-req', endpoint: 'GET /', file: 'test.rq' };
+        test('runs the request against the file that declares it with its required variables', async () => {
+            const request = { name: 'auth-req', endpoint: 'GET /', file: '/workspace/sub/test.rq' };
             const item = new RequestTreeItem('auth-req', request, 0);
 
-            (cliService.showRequest as jest.Mock).mockResolvedValue({
-                name: 'auth-req',
-                auth: { name: 'my-auth', type: 'oauth2_authorization_code' },
-                requiredVariables: ['user_id']
-            });
-            (cliService.showAuthConfig as jest.Mock).mockResolvedValue({ name: 'my-auth' });
-            (auth.performOAuth2Flow as jest.Mock).mockResolvedValue('mock-token');
+            (cliService.showRequest as jest.Mock).mockResolvedValue({ name: 'auth-req', requiredVariables: ['user_id'] });
             (vscode.window.showInputBox as jest.Mock).mockResolvedValueOnce('42');
             (cliService.executeRequest as jest.Mock).mockResolvedValue({ results: [{}] });
 
             await requestRunner.runRequest(item, provider);
 
-            expect(auth.performOAuth2Flow).toHaveBeenCalled();
             expect(cliService.executeRequest).toHaveBeenCalledWith(expect.objectContaining({
-                variables: { auth_token: 'mock-token', user_id: '42' }
+                sourceFile: '/workspace/sub/test.rq',
+                variables: { user_id: '42' }
             }));
         });
 

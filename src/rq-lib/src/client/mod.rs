@@ -2,12 +2,17 @@ pub mod models;
 #[cfg(feature = "native")]
 use crate::native;
 
-use crate::client::models::{RequestDetails, RequestExecutionResult, RequestInfo};
+use crate::client::models::{
+    PreparedAuth, PreparedRequest, RequestDetails, RequestExecutionResult, RequestInfo,
+    RequestTarget, VariableEntry,
+};
 use crate::error::RqError;
 use crate::http::HttpClient;
 use crate::lint::{lint_rq_file, LintDiagnostic, LintScope, WorkspaceCollector, WorkspaceFile};
 use crate::logger::Logger;
-use crate::syntax::parse_result::AuthLocation;
+use crate::syntax::auth::Config as AuthConfig;
+use crate::syntax::parse_result::{AuthLocation, RequestWithVariables};
+use crate::syntax::variable_context::{VariableContext, VariableContextBuilder};
 use crate::syntax::{Fs, Request, RqFile, SecretProvider, Variable, VariableValue};
 
 use std::collections::{HashMap, HashSet};
@@ -58,25 +63,16 @@ impl RqClient {
 
         let mut all_results = Vec::new();
 
-        for rq_file in rq_files {
-            let filtered_requests = Self::filter_requests(rq_file.requests, request_name);
+        for mut rq_file in rq_files {
+            let filtered_requests =
+                Self::filter_requests(std::mem::take(&mut rq_file.requests), request_name);
 
             if filtered_requests.is_empty() {
                 continue;
             }
 
-            let env_vars = if let Some(env_name) = environment {
-                if let Some(vars) = rq_file.environments.get(env_name) {
-                    Self::log_environment(env_name, &rq_file.path, vars);
-                    vars.clone()
-                } else {
-                    return Err(RqError::EnvironmentNotFound(env_name.to_string()));
-                }
-            } else {
-                Vec::new()
-            };
-
-            let secret_vars = self.collect_secrets_for_env(source_path, environment);
+            Self::require_environment(&rq_file, environment)?;
+            let file_context = self.file_context(&rq_file, source_path, environment);
             let cli_vars = Self::parse_cli_variables(variables)?;
 
             Logger::debug(&format!(
@@ -88,130 +84,36 @@ impl RqClient {
             let mut results = Vec::new();
 
             for req_with_vars in filtered_requests {
-                let context = crate::syntax::variable_context::VariableContext::builder()
-                    .file_variables(rq_file.file_variables.clone())
-                    .environment_variables(env_vars.clone())
-                    .secret_variables(secret_vars.clone())
-                    .endpoint_variables(req_with_vars.endpoint_variables)
-                    .request_variables(req_with_vars.request_variables)
-                    .cli_variables(cli_vars.clone())
-                    .build();
-
-                let mut working = req_with_vars.request;
-
-                let mut seen = std::collections::HashSet::new();
-                let missing: Vec<&str> = working
-                    .required_variables
-                    .iter()
-                    .filter(|name| !cli_vars.iter().any(|v| &v.name == *name))
-                    .map(String::as_str)
-                    .filter(|name| seen.insert(*name))
-                    .collect();
-                if !missing.is_empty() {
-                    return Err(RqError::Validation(format!(
-                        "Required variable(s) not set: {}",
-                        missing.join(", ")
-                    )));
-                }
-
-                let search_paths = Self::build_search_paths(
-                    &working,
-                    &rq_file.path,
-                    &rq_file.imported_files,
+                let prepared = self.prepare(
+                    &rq_file,
+                    &file_context,
+                    req_with_vars,
+                    cli_vars.clone(),
                     source_path,
-                );
-
-                Self::reject_mistyped_slots(&working, &context)?;
-
-                if let Some(header_var) = working.headers_var.clone() {
-                    let headers = std::mem::take(&mut working.headers);
-                    working.headers = Self::apply_headers_var(&header_var, headers, &context)
-                        .map_err(|e| {
-                            let (line, col, path) = crate::syntax::resolve::find_variable_location(
-                                &*self.fs,
-                                &search_paths,
-                                &header_var,
-                            );
-                            RqError::Syntax(crate::syntax::error::SyntaxError::with_file(
-                                e,
-                                line,
-                                col,
-                                0..0,
-                                path.display().to_string(),
-                            ))
-                        })?;
-                }
-
-                Self::log_variable_sources(&working, &context, environment);
-
-                #[allow(unused_mut)]
-                let mut resolved_request = crate::syntax::resolve::resolve_variables(
-                    working,
-                    &context,
-                    &search_paths,
-                    &*self.fs,
+                    environment,
                 )?;
-
-                if let Some(auth_name) = resolved_request.auth.as_deref() {
-                    if !auth_name.trim().is_empty() {
-                        if let Some(auth_provider) = rq_file.auth_providers.get(auth_name) {
-                            let resolved_provider = crate::syntax::resolve::resolve_auth_provider(
-                                auth_provider.clone(),
-                                &context,
-                                &search_paths,
-                                &*self.fs,
-                            )?;
-
-                            Logger::debug(&format!(
-                                "* Applying auth '{auth_name}' ({})",
-                                resolved_provider.auth_type.as_str()
-                            ));
-                            let provider = crate::auth::get_provider(&resolved_provider.auth_type);
-                            match provider
-                                .configure(
-                                    &resolved_provider,
-                                    &context,
-                                    resolved_request.url.clone(),
-                                    resolved_request.headers.clone(),
-                                )
-                                .await
-                            {
-                                Ok((modified_url, modified_headers)) => {
-                                    resolved_request.url = modified_url;
-                                    resolved_request.headers = modified_headers;
-                                }
-                                Err(e) => {
-                                    return Err(RqError::Auth(format!(
-                                        "Configuration '{auth_name}' failed: {e}"
-                                    )));
-                                }
-                            }
-                        } else {
-                            return Err(RqError::Validation(format!(
-                                "Auth configuration '{auth_name}' not found"
-                            )));
-                        }
-                    }
-                }
-
-                let prepared_request = Self::prepare_request(resolved_request)?;
-                Self::log_request(&prepared_request);
+                let authorized = Self::authorize(prepared).await?;
+                Self::log_request(&authorized.request);
 
                 let start_time = Instant::now();
-                match self.http.execute(&prepared_request).await {
+                match self
+                    .http
+                    .execute(&authorized.request, authorized.timeout)
+                    .await
+                {
                     Ok(response) => {
                         let elapsed = start_time.elapsed();
                         Self::log_response(&response, elapsed.as_millis());
 
                         let mut request_headers = HashMap::new();
-                        for (key, value) in &prepared_request.headers {
+                        for (key, value) in &authorized.request.headers {
                             request_headers.insert(key.clone(), value.clone());
                         }
 
                         results.push(RequestExecutionResult {
-                            request_name: prepared_request.name.clone(),
-                            method: prepared_request.method.as_str().to_string(),
-                            url: prepared_request.url.clone(),
+                            request_name: authorized.request.name.clone(),
+                            method: authorized.request.method.as_str().to_string(),
+                            url: authorized.request.url.clone(),
                             status: response.status,
                             elapsed_ms: elapsed.as_millis() as u64,
                             request_headers,
@@ -295,203 +197,102 @@ impl RqClient {
 
     pub fn get_request_details(
         &self,
-        source_path: &Path,
-        request_name: &str,
+        target: RequestTarget,
         environment: Option<&str>,
         interpolate_variables: bool,
         skip_required_variables: bool,
         variables: &[String],
     ) -> Result<RequestDetails, RqError> {
+        let source_path = target.source;
         self.log_source(source_path);
-        let (rq_files, _) = self.get_rq_files_to_process(source_path, Some(request_name))?;
-
-        let rq_file = rq_files
-            .into_iter()
-            .next()
-            .ok_or_else(|| RqError::RequestNotFound(request_name.to_string()))?;
-
+        let (rq_file, req_with_vars) = self.load_request(target)?;
         let request_file = crate::paths::clean_path(&rq_file.path);
-
-        let req_with_vars = rq_file
-            .requests
-            .into_iter()
-            .find(|r| r.request.name == request_name)
-            .ok_or_else(|| RqError::RequestNotFound(request_name.to_string()))?;
-
         let request_line = req_with_vars.request.line;
         let request_character = req_with_vars.request.character;
 
-        let mut loaded_variables = rq_file.file_variables.clone();
-        let mut loaded_auth_providers = rq_file.auth_providers.clone();
-        let mut processed_files = std::collections::HashSet::new();
-        processed_files.insert(rq_file.path.clone());
-
-        let mut files_to_process = rq_file.imported_files.clone();
-
-        while let Some(file_path) = files_to_process.pop() {
-            if processed_files.contains(&file_path) {
-                continue;
-            }
-            processed_files.insert(file_path.clone());
-
-            if self.fs.exists(&file_path) {
-                if let Ok(content) = self.fs.read(&file_path) {
-                    if let Ok(tokens) = crate::syntax::tokenize(&content) {
-                        if let Ok(result) = crate::syntax::analysis::analyze(
-                            &tokens,
-                            file_path.clone(),
-                            &content,
-                            &*self.fs,
-                        ) {
-                            loaded_variables.extend(result.file_variables);
-                            for (k, v) in result.auth_providers {
-                                loaded_auth_providers.insert(k, v);
-                            }
-                            for import in result.imported_files {
-                                if !processed_files.contains(&import) {
-                                    files_to_process.push(import);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        let env_vars = if let Some(env_name) = environment {
-            if let Some(vars) = rq_file.environments.get(env_name) {
-                Self::log_environment(env_name, &rq_file.path, vars);
-                vars.clone()
-            } else {
-                return Err(RqError::EnvironmentNotFound(env_name.to_string()));
-            }
-        } else {
-            Vec::new()
-        };
-
-        let secret_vars = self.collect_secrets_for_env(source_path, environment);
-        let mut cli_vars = Self::parse_cli_variables(variables)?;
-
-        let endpoint_variables = req_with_vars.endpoint_variables;
-        let request_variables = req_with_vars.request_variables;
-        let mut working = req_with_vars.request;
-
-        if interpolate_variables && skip_required_variables {
-            let defined: std::collections::HashSet<String> = loaded_variables
-                .iter()
-                .chain(env_vars.iter())
-                .chain(secret_vars.iter())
-                .chain(endpoint_variables.iter())
-                .chain(request_variables.iter())
-                .chain(cli_vars.iter())
-                .map(|v| v.name.clone())
-                .collect();
-            for name in &working.required_variables {
-                if !defined.contains(name) {
-                    cli_vars.push(crate::syntax::variable_context::Variable {
-                        name: name.clone(),
-                        value: crate::syntax::variable_context::VariableValue::String(
-                            String::new(),
-                        ),
-                    });
-                }
-            }
-        }
-
-        let context = crate::syntax::variable_context::VariableContext::builder()
-            .file_variables(loaded_variables)
-            .environment_variables(env_vars)
-            .secret_variables(secret_vars)
-            .endpoint_variables(endpoint_variables)
-            .request_variables(request_variables)
-            .cli_variables(cli_vars)
-            .build();
+        Self::require_environment(&rq_file, environment)?;
+        let cli_vars = Self::parse_cli_variables(variables)?;
 
         if !interpolate_variables {
-            let (auth_name, auth_type) = if let Some(auth_name) = working.auth.as_deref() {
-                if auth_name.trim().is_empty() {
-                    (None, None)
-                } else if let Some(auth_provider) = loaded_auth_providers.get(auth_name) {
-                    (
-                        Some(auth_name.to_string()),
-                        Some(auth_provider.auth_type.as_str().to_string()),
-                    )
-                } else {
-                    (Some(auth_name.to_string()), None)
-                }
-            } else {
-                (None, None)
-            };
-            return Ok(RequestDetails {
-                name: working.name,
+            let auth_name = Self::auth_name_of(&req_with_vars.request);
+            let auth_type = auth_name
+                .and_then(|name| rq_file.auth_providers.get(name))
+                .map(|config| config.auth_type.as_str().to_string());
+            let auth_name = auth_name.map(str::to_string);
+            return Ok(Self::request_details(
+                req_with_vars.request,
                 auth_name,
                 auth_type,
-                url: working.url,
-                headers: working.headers,
-                method: working.method.as_str().to_string(),
-                body: working.body,
-                timeout: working.timeout,
-                required_variables: working.required_variables,
-                file: request_file,
-                line: request_line,
-                character: request_character,
-            });
+                request_file,
+                request_line,
+                request_character,
+            ));
+        }
+
+        let RequestWithVariables {
+            request,
+            endpoint_variables,
+            request_variables,
+        } = req_with_vars;
+        let file_context = self.file_context(&rq_file, source_path, environment);
+        let mut context = Self::request_context(
+            &file_context,
+            endpoint_variables,
+            request_variables,
+            cli_vars,
+        );
+        if skip_required_variables {
+            let defined = context.as_map();
+            let placeholders = Self::empty_variables(
+                request
+                    .required_variables
+                    .iter()
+                    .filter(|name| !defined.contains_key(name.as_str())),
+            );
+            context.cli_variables.extend(placeholders);
         }
 
         let search_paths = Self::build_search_paths(
-            &working,
+            &request,
             &rq_file.path,
             &rq_file.imported_files,
-            source_path,
+            &self.env_file_path(source_path),
         );
+        let resolved = self.resolve_request(request, &context, &search_paths, environment)?;
+        let auth_config = Self::auth_config_of(&rq_file, &resolved)?;
+        let auth_name = auth_config.map(|config| config.name.clone());
+        let auth_type = auth_config.map(|config| config.auth_type.as_str().to_string());
 
-        Self::reject_mistyped_slots(&working, &context)?;
-
-        if let Some(header_var) = working.headers_var.clone() {
-            let headers = std::mem::take(&mut working.headers);
-            working.headers =
-                Self::apply_headers_var(&header_var, headers, &context).map_err(|e| {
-                    RqError::Validation(format!(
-                        "Failed to expand headers variable '{header_var}': {e}"
-                    ))
-                })?;
-        }
-
-        Self::log_variable_sources(&working, &context, environment);
-
-        let resolved =
-            crate::syntax::resolve::resolve_variables(working, &context, &search_paths, &*self.fs)?;
-
-        let (auth_name, auth_type) = if let Some(auth_name) = resolved.auth.as_deref() {
-            if auth_name.trim().is_empty() {
-                (None, None)
-            } else {
-                let auth_provider = loaded_auth_providers.get(auth_name).ok_or_else(|| {
-                    RqError::Validation(format!("Auth configuration '{auth_name}' not found"))
-                })?;
-                (
-                    Some(auth_name.to_string()),
-                    Some(auth_provider.auth_type.as_str().to_string()),
-                )
-            }
-        } else {
-            (None, None)
-        };
-
-        Ok(RequestDetails {
-            name: resolved.name,
+        Ok(Self::request_details(
+            resolved,
             auth_name,
             auth_type,
-            url: resolved.url,
-            headers: resolved.headers,
-            method: resolved.method.as_str().to_string(),
-            body: resolved.body,
-            timeout: resolved.timeout,
-            required_variables: resolved.required_variables,
-            file: request_file,
-            line: request_line,
-            character: request_character,
-        })
+            request_file,
+            request_line,
+            request_character,
+        ))
+    }
+
+    pub fn prepare_request(
+        &self,
+        target: RequestTarget,
+        environment: Option<&str>,
+        variables: &[String],
+    ) -> Result<PreparedRequest, RqError> {
+        let source_path = target.source;
+        self.log_source(source_path);
+        let (rq_file, req_with_vars) = self.load_request(target)?;
+        Self::require_environment(&rq_file, environment)?;
+        let file_context = self.file_context(&rq_file, source_path, environment);
+        let cli_vars = Self::parse_cli_variables(variables)?;
+        self.prepare(
+            &rq_file,
+            &file_context,
+            req_with_vars,
+            cli_vars,
+            source_path,
+            environment,
+        )
     }
 
     pub fn list_auth(
@@ -573,31 +374,18 @@ impl RqClient {
             ));
         }
 
-        let content = self.fs.read(&file_path).map_err(RqError::Generic)?;
-        let tokens =
-            crate::syntax::tokenize(&content).map_err(|e| RqError::Generic(e.to_string()))?;
-        let parse_result =
-            crate::syntax::analysis::analyze(&tokens, file_path.clone(), &content, &*self.fs)
-                .map_err(|e| RqError::Generic(e.to_string()))?;
-        let imported_files = parse_result.imported_files.clone();
-        let all_variables = crate::syntax::collect_all_variables(
-            &parse_result,
-            environment,
-            &*self.secrets,
-            source_path,
-        )
-        .map_err(|e| RqError::Generic(e.to_string()))?;
+        let rq_file = self.load_rq_file(&file_path)?;
+        Self::require_environment(&rq_file, environment)?;
+        let context = self
+            .file_context(&rq_file, source_path, environment)
+            .build();
 
         let mut source_files = vec![file_path.clone()];
-        source_files.extend(imported_files);
-        let env_path = source_path.join(".env");
+        source_files.extend(rq_file.imported_files.iter().cloned());
+        let env_path = self.env_file_path(source_path);
         if self.fs.exists(&env_path) {
             source_files.push(env_path);
         }
-
-        let context = crate::syntax::variable_context::VariableContext::builder()
-            .file_variables(all_variables)
-            .build();
 
         let config = crate::syntax::resolve::resolve_auth_provider(
             auth_provider,
@@ -787,7 +575,7 @@ impl RqClient {
         &self,
         source_path: &Path,
         environment: Option<&str>,
-    ) -> Result<Vec<crate::client::models::VariableEntry>, RqError> {
+    ) -> Result<Vec<VariableEntry>, RqError> {
         if !self.fs.exists(source_path) {
             return Err(RqError::DirectoryNotFound(
                 source_path.display().to_string(),
@@ -798,83 +586,6 @@ impl RqClient {
         Ok(self.collect_variable_entries(&paths, environment))
     }
 
-    fn collect_variable_entries(
-        &self,
-        paths: &[PathBuf],
-        environment: Option<&str>,
-    ) -> Vec<crate::client::models::VariableEntry> {
-        let mut seen = HashSet::new();
-        let mut entries: Vec<crate::client::models::VariableEntry> = Vec::new();
-
-        for path in paths {
-            if let Some(rq_file) = self.load_rq_file_lenient(path) {
-                let let_values: HashMap<&str, &VariableValue> = rq_file
-                    .file_variables
-                    .iter()
-                    .map(|v| (v.name.as_str(), &v.value))
-                    .collect();
-
-                if let Some(env_name) = environment {
-                    if let Some(key_map) = rq_file.env_variable_locations.get(env_name) {
-                        let env_values: HashMap<&str, &VariableValue> = rq_file
-                            .environments
-                            .get(env_name)
-                            .map(|vars| vars.iter().map(|v| (v.name.as_str(), &v.value)).collect())
-                            .unwrap_or_default();
-
-                        for (var_name, (file, line, character)) in key_map {
-                            if seen.insert(var_name.clone()) {
-                                let value = env_values
-                                    .get(var_name.as_str())
-                                    .map(|v| v.display())
-                                    .unwrap_or_default();
-                                entries.push(crate::client::models::VariableEntry {
-                                    name: var_name.clone(),
-                                    value,
-                                    file: crate::paths::clean_path_str(file).to_string(),
-                                    line: *line,
-                                    character: *character,
-                                    source: format!("env:{env_name}"),
-                                });
-                            }
-                        }
-                    }
-                }
-                for (var_name, (file, line, character)) in &rq_file.let_variable_locations {
-                    if seen.insert(var_name.clone()) {
-                        let value = let_values
-                            .get(var_name.as_str())
-                            .map(|v| v.display())
-                            .unwrap_or_default();
-                        entries.push(crate::client::models::VariableEntry {
-                            name: var_name.clone(),
-                            value,
-                            file: crate::paths::clean_path_str(file).to_string(),
-                            line: *line,
-                            character: *character,
-                            source: "let".to_string(),
-                        });
-                    }
-                }
-                for (var_name, (file, line, character)) in &rq_file.required_variable_locations {
-                    if seen.insert(var_name.clone()) {
-                        entries.push(crate::client::models::VariableEntry {
-                            name: var_name.clone(),
-                            value: String::new(),
-                            file: crate::paths::clean_path_str(file).to_string(),
-                            line: *line,
-                            character: *character,
-                            source: "required".to_string(),
-                        });
-                    }
-                }
-            }
-        }
-
-        entries.sort_by(|a, b| a.name.cmp(&b.name));
-        entries
-    }
-
     pub fn get_variable(
         &self,
         source_path: &Path,
@@ -882,63 +593,34 @@ impl RqClient {
         environment: Option<&str>,
         interpolate_variables: bool,
         scope_file: Option<&Path>,
-    ) -> Result<crate::client::models::VariableEntry, RqError> {
+    ) -> Result<VariableEntry, RqError> {
         if !self.fs.exists(source_path) {
             return Err(RqError::DirectoryNotFound(
                 source_path.display().to_string(),
             ));
         }
 
-        let paths = self.resolution_paths(source_path, scope_file)?;
-        let entry = self
-            .collect_variable_entries(&paths, environment)
-            .into_iter()
-            .find(|e| e.name == name)
-            .ok_or_else(|| RqError::Validation(format!("Variable '{name}' not found")))?;
+        let (rq_file, entry) =
+            self.find_variable_entry(source_path, scope_file, name, environment)?;
 
         if !interpolate_variables {
             return Ok(entry);
         }
 
-        let mut all_vars: Vec<crate::syntax::Variable> = Vec::new();
-        let mut target_raw: Option<VariableValue> = None;
-
-        for path in &paths {
-            if let Ok(rq_file) = self.load_rq_file(path) {
-                for var in &rq_file.file_variables {
-                    if target_raw.is_none() && var.name == name {
-                        target_raw = Some(var.value.clone());
-                    }
-                    all_vars.push(var.clone());
-                }
-                if let Some(env_name) = environment {
-                    if let Some(env_vars) = rq_file.environments.get(env_name) {
-                        for var in env_vars {
-                            if var.name == name {
-                                target_raw = Some(var.value.clone());
-                            }
-                            all_vars.push(var.clone());
-                        }
-                    }
-                }
-            }
-        }
-
-        let secret_vars = self.collect_secrets_for_env(source_path, environment);
-
-        let context = crate::syntax::variable_context::VariableContext::builder()
-            .file_variables(all_vars)
-            .secret_variables(secret_vars)
+        let context = self
+            .file_context(&rq_file, source_path, environment)
             .build();
 
-        let raw_value = match target_raw {
-            Some(VariableValue::String(s)) => s,
+        let raw_value = match context.declared_value(name) {
+            Some(VariableValue::String(s)) => s.clone(),
             Some(VariableValue::Reference(r)) => format!("{{{{{r}}}}}"),
             _ => return Ok(entry),
         };
 
-        let mut source_files = paths;
-        let env_path = source_path.join(".env");
+        let mut source_files: Vec<PathBuf> = std::iter::once(rq_file.path.clone())
+            .chain(rq_file.imported_files.iter().cloned())
+            .collect();
+        let env_path = self.env_file_path(source_path);
         if self.fs.exists(&env_path) {
             source_files.push(env_path);
         }
@@ -947,7 +629,7 @@ impl RqClient {
             crate::syntax::resolve::resolve_string(&raw_value, &context, &source_files, &*self.fs)
                 .map_err(|e| RqError::Generic(e.to_string()))?;
 
-        Ok(crate::client::models::VariableEntry {
+        Ok(VariableEntry {
             value: resolved,
             ..entry
         })
@@ -1326,7 +1008,7 @@ impl RqClient {
         }
     }
 
-    fn prepare_request(mut request: Request) -> Result<Request, RqError> {
+    fn apply_request_defaults(mut request: Request) -> Result<Request, RqError> {
         if !request
             .headers
             .iter()
@@ -1351,35 +1033,396 @@ impl RqClient {
                 .push(("content-type".to_string(), "application/json".to_string()));
         }
 
-        if let Some(timeout_str) = &request.timeout {
-            let secs = timeout_str.parse::<f64>().map_err(|_| {
-                RqError::Generic(format!(
-                    "HTTP Error: Timeout value '{timeout_str}' must be a number"
-                ))
-            })?;
-            if !secs.is_finite() || secs < 0.0 {
-                return Err(RqError::Generic(format!(
-                    "HTTP Error: Timeout value '{timeout_str}' must be a non-negative finite number"
-                )));
-            }
-        }
-
         Ok(request)
     }
 
-    fn collect_secrets_for_env(&self, source_path: &Path, env: Option<&str>) -> Vec<Variable> {
-        let dir = if self.fs.is_dir(source_path) {
-            source_path.to_path_buf()
-        } else if let Some(parent) = source_path.parent() {
-            if parent.as_os_str().is_empty() {
-                PathBuf::from(".")
-            } else {
-                parent.to_path_buf()
+    fn collect_variable_entries(
+        &self,
+        paths: &[PathBuf],
+        environment: Option<&str>,
+    ) -> Vec<VariableEntry> {
+        let mut seen = HashSet::new();
+        let mut entries: Vec<VariableEntry> = paths
+            .iter()
+            .filter_map(|path| self.load_rq_file_lenient(path))
+            .flat_map(|rq_file| Self::variable_entries_of(&rq_file, environment))
+            .filter(|entry| seen.insert(entry.name.clone()))
+            .collect();
+        entries.sort_by(|a, b| a.name.cmp(&b.name));
+        entries
+    }
+
+    fn variable_entries_of(rq_file: &RqFile, environment: Option<&str>) -> Vec<VariableEntry> {
+        let mut seen = HashSet::new();
+        let mut entries: Vec<VariableEntry> = Vec::new();
+        let let_values: HashMap<&str, &VariableValue> = rq_file
+            .file_variables
+            .iter()
+            .map(|v| (v.name.as_str(), &v.value))
+            .collect();
+
+        if let Some(env_name) = environment {
+            if let Some(key_map) = rq_file.env_variable_locations.get(env_name) {
+                let env_values: HashMap<&str, &VariableValue> = rq_file
+                    .environments
+                    .get(env_name)
+                    .map(|vars| vars.iter().map(|v| (v.name.as_str(), &v.value)).collect())
+                    .unwrap_or_default();
+
+                for (var_name, (file, line, character)) in key_map {
+                    if seen.insert(var_name.clone()) {
+                        let value = env_values
+                            .get(var_name.as_str())
+                            .map(|v| v.display())
+                            .unwrap_or_default();
+                        entries.push(VariableEntry {
+                            name: var_name.clone(),
+                            value,
+                            file: crate::paths::clean_path_str(file).to_string(),
+                            line: *line,
+                            character: *character,
+                            source: format!("env:{env_name}"),
+                        });
+                    }
+                }
             }
-        } else {
-            PathBuf::from(".")
+        }
+        for (var_name, (file, line, character)) in &rq_file.let_variable_locations {
+            if seen.insert(var_name.clone()) {
+                let value = let_values
+                    .get(var_name.as_str())
+                    .map(|v| v.display())
+                    .unwrap_or_default();
+                entries.push(VariableEntry {
+                    name: var_name.clone(),
+                    value,
+                    file: crate::paths::clean_path_str(file).to_string(),
+                    line: *line,
+                    character: *character,
+                    source: "let".to_string(),
+                });
+            }
+        }
+        for (var_name, (file, line, character)) in &rq_file.required_variable_locations {
+            if seen.insert(var_name.clone()) {
+                entries.push(VariableEntry {
+                    name: var_name.clone(),
+                    value: String::new(),
+                    file: crate::paths::clean_path_str(file).to_string(),
+                    line: *line,
+                    character: *character,
+                    source: "required".to_string(),
+                });
+            }
+        }
+        entries
+    }
+
+    fn find_variable_entry(
+        &self,
+        source_path: &Path,
+        scope_file: Option<&Path>,
+        name: &str,
+        environment: Option<&str>,
+    ) -> Result<(RqFile, VariableEntry), RqError> {
+        let candidates = match scope_file {
+            Some(file) if self.fs.is_file(file) => vec![file.to_path_buf()],
+            _ if self.fs.is_file(source_path) => vec![source_path.to_path_buf()],
+            _ => self.collect_paths(source_path)?,
         };
-        self.secrets.collect(&dir, env)
+        candidates
+            .iter()
+            .filter_map(|path| self.load_rq_file_lenient(path))
+            .find_map(|rq_file| {
+                Self::variable_entries_of(&rq_file, environment)
+                    .into_iter()
+                    .find(|e| e.name == name)
+                    .map(|entry| (rq_file, entry))
+            })
+            .ok_or_else(|| RqError::Validation(format!("Variable '{name}' not found")))
+    }
+
+    fn load_request(
+        &self,
+        target: RequestTarget,
+    ) -> Result<(RqFile, RequestWithVariables), RqError> {
+        let request_name = target.name;
+        let request_source = target
+            .scope_file
+            .filter(|file| self.fs.is_file(file))
+            .unwrap_or(target.source);
+        let (rq_files, _) = self.get_rq_files_to_process(request_source, Some(request_name))?;
+        let mut rq_file = rq_files
+            .into_iter()
+            .next()
+            .ok_or_else(|| RqError::RequestNotFound(request_name.to_string()))?;
+        let req_with_vars =
+            Self::filter_requests(std::mem::take(&mut rq_file.requests), Some(request_name))
+                .into_iter()
+                .next()
+                .ok_or_else(|| RqError::RequestNotFound(request_name.to_string()))?;
+        Ok((rq_file, req_with_vars))
+    }
+
+    fn prepare(
+        &self,
+        rq_file: &RqFile,
+        file_context: &VariableContextBuilder,
+        req_with_vars: RequestWithVariables,
+        cli_vars: Vec<Variable>,
+        source_path: &Path,
+        environment: Option<&str>,
+    ) -> Result<PreparedRequest, RqError> {
+        let RequestWithVariables {
+            request,
+            endpoint_variables,
+            request_variables,
+        } = req_with_vars;
+        Self::require_runtime_variables(&request, &cli_vars)?;
+        let context = Self::request_context(
+            file_context,
+            endpoint_variables,
+            request_variables,
+            cli_vars,
+        );
+        let search_paths = Self::build_search_paths(
+            &request,
+            &rq_file.path,
+            &rq_file.imported_files,
+            &self.env_file_path(source_path),
+        );
+        let resolved = self.resolve_request(request, &context, &search_paths, environment)?;
+        let (authorized, auth) = self.apply_auth(rq_file, resolved, &context, &search_paths)?;
+        let request = Self::apply_request_defaults(authorized)?;
+        let timeout = crate::http::request_timeout(&request)?;
+        Ok(PreparedRequest {
+            request,
+            timeout,
+            auth,
+            context,
+        })
+    }
+
+    fn require_runtime_variables(request: &Request, cli_vars: &[Variable]) -> Result<(), RqError> {
+        let mut seen = HashSet::new();
+        let missing: Vec<&str> = request
+            .required_variables
+            .iter()
+            .filter(|name| !cli_vars.iter().any(|v| &v.name == *name))
+            .map(String::as_str)
+            .filter(|name| seen.insert(*name))
+            .collect();
+        if missing.is_empty() {
+            return Ok(());
+        }
+        Err(RqError::Validation(format!(
+            "Required variable(s) not set: {}",
+            missing.join(", ")
+        )))
+    }
+
+    fn resolve_request(
+        &self,
+        mut request: Request,
+        context: &VariableContext,
+        search_paths: &[PathBuf],
+        environment: Option<&str>,
+    ) -> Result<Request, RqError> {
+        Self::reject_mistyped_slots(&request, context)?;
+        if let Some(header_var) = request.headers_var.clone() {
+            let headers = std::mem::take(&mut request.headers);
+            request.headers =
+                Self::apply_headers_var(&header_var, headers, context).map_err(|e| {
+                    let (line, col, path) = crate::syntax::resolve::find_variable_location(
+                        &*self.fs,
+                        search_paths,
+                        &header_var,
+                    );
+                    RqError::Syntax(crate::syntax::error::SyntaxError::with_file(
+                        e,
+                        line,
+                        col,
+                        0..0,
+                        path.display().to_string(),
+                    ))
+                })?;
+        }
+        Self::log_variable_sources(&request, context, environment);
+        Ok(crate::syntax::resolve::resolve_variables(
+            request,
+            context,
+            search_paths,
+            &*self.fs,
+        )?)
+    }
+
+    fn apply_auth(
+        &self,
+        rq_file: &RqFile,
+        mut request: Request,
+        context: &VariableContext,
+        search_paths: &[PathBuf],
+    ) -> Result<(Request, Option<PreparedAuth>), RqError> {
+        let Some(declared) = Self::auth_config_of(rq_file, &request)? else {
+            return Ok((request, None));
+        };
+        let config = crate::syntax::resolve::resolve_auth_provider(
+            declared.clone(),
+            context,
+            search_paths,
+            &*self.fs,
+        )?;
+        Logger::debug(&format!(
+            "* Applying auth '{}' ({})",
+            config.name,
+            config.auth_type.as_str()
+        ));
+        let (headers, applied) = crate::auth::get_provider(&config.auth_type).known_token(
+            &config,
+            context,
+            std::mem::take(&mut request.headers),
+        );
+        request.headers = headers;
+        Ok((
+            request,
+            Some(PreparedAuth {
+                config,
+                token_required: !applied,
+            }),
+        ))
+    }
+
+    async fn authorize(mut prepared: PreparedRequest) -> Result<PreparedRequest, RqError> {
+        let Some(auth) = prepared.auth.as_ref().filter(|auth| auth.token_required) else {
+            return Ok(prepared);
+        };
+        let request = &mut prepared.request;
+        let provider = crate::auth::get_provider(&auth.config.auth_type);
+        let (url, headers) = provider
+            .configure(
+                &auth.config,
+                &prepared.context,
+                request.url.clone(),
+                std::mem::take(&mut request.headers),
+            )
+            .await
+            .map_err(|e| {
+                RqError::Auth(format!("Configuration '{}' failed: {e}", auth.config.name))
+            })?;
+        request.url = url;
+        request.headers = headers;
+        Ok(prepared)
+    }
+
+    fn auth_name_of(request: &Request) -> Option<&str> {
+        request
+            .auth
+            .as_deref()
+            .filter(|name| !name.trim().is_empty())
+    }
+
+    fn auth_config_of<'a>(
+        rq_file: &'a RqFile,
+        request: &Request,
+    ) -> Result<Option<&'a AuthConfig>, RqError> {
+        let Some(auth_name) = Self::auth_name_of(request) else {
+            return Ok(None);
+        };
+        rq_file
+            .auth_providers
+            .get(auth_name)
+            .map(Some)
+            .ok_or_else(|| {
+                RqError::Validation(format!("Auth configuration '{auth_name}' not found"))
+            })
+    }
+
+    fn request_details(
+        request: Request,
+        auth_name: Option<String>,
+        auth_type: Option<String>,
+        file: String,
+        line: usize,
+        character: usize,
+    ) -> RequestDetails {
+        RequestDetails {
+            name: request.name,
+            auth_name,
+            auth_type,
+            url: request.url,
+            headers: request.headers,
+            method: request.method.as_str().to_string(),
+            body: request.body,
+            timeout: request.timeout,
+            required_variables: request.required_variables,
+            file,
+            line,
+            character,
+        }
+    }
+
+    fn require_environment(rq_file: &RqFile, environment: Option<&str>) -> Result<(), RqError> {
+        let Some(env_name) = environment else {
+            return Ok(());
+        };
+        let vars = rq_file
+            .environments
+            .get(env_name)
+            .ok_or_else(|| RqError::EnvironmentNotFound(env_name.to_string()))?;
+        Self::log_environment(env_name, &rq_file.path, vars);
+        Ok(())
+    }
+
+    fn file_context(
+        &self,
+        rq_file: &RqFile,
+        source_path: &Path,
+        environment: Option<&str>,
+    ) -> VariableContextBuilder {
+        let secrets = self.collect_secrets_for_env(source_path, environment);
+        VariableContext::for_file(rq_file, environment, secrets)
+    }
+
+    fn request_context(
+        file_context: &VariableContextBuilder,
+        endpoint_variables: Vec<Variable>,
+        request_variables: Vec<Variable>,
+        cli_variables: Vec<Variable>,
+    ) -> VariableContext {
+        file_context
+            .clone()
+            .endpoint_variables(endpoint_variables)
+            .request_variables(request_variables)
+            .cli_variables(cli_variables)
+            .build()
+    }
+
+    fn empty_variables<'a>(names: impl IntoIterator<Item = &'a String>) -> Vec<Variable> {
+        names
+            .into_iter()
+            .map(|name| Variable {
+                name: name.clone(),
+                value: VariableValue::String(String::new()),
+            })
+            .collect()
+    }
+
+    fn collect_secrets_for_env(&self, source_path: &Path, env: Option<&str>) -> Vec<Variable> {
+        self.secrets.collect(&self.context_dir(source_path), env)
+    }
+
+    fn context_dir(&self, source_path: &Path) -> PathBuf {
+        if self.fs.is_dir(source_path) {
+            return source_path.to_path_buf();
+        }
+        match source_path.parent() {
+            Some(parent) if !parent.as_os_str().is_empty() => parent.to_path_buf(),
+            _ => PathBuf::from("."),
+        }
+    }
+
+    fn env_file_path(&self, source_path: &Path) -> PathBuf {
+        self.context_dir(source_path).join(".env")
     }
 
     fn collect_paths(&self, source_path: &Path) -> Result<Vec<PathBuf>, RqError> {
@@ -1508,20 +1551,16 @@ impl RqClient {
     ) -> Vec<RqError> {
         let mut errors = Vec::new();
 
-        let env_vars = if let Some(name) = env_name {
-            rq_file.environments.get(name).cloned().unwrap_or_default()
-        } else {
-            Vec::new()
-        };
-
-        let secret_vars = self.collect_secrets_for_env(source_path, env_name);
+        let file_context = self.file_context(rq_file, source_path, env_name);
+        let base_context = file_context.clone().build();
+        let secret_vars = &base_context.secret_variables;
 
         let mut checked_names: std::collections::HashSet<String> = std::collections::HashSet::new();
 
-        let all_declared: Vec<_> = rq_file
+        let all_declared: Vec<_> = base_context
             .file_variables
             .iter()
-            .chain(env_vars.iter())
+            .chain(base_context.environment_variables.iter())
             .cloned()
             .collect();
         for v in &all_declared {
@@ -1534,7 +1573,7 @@ impl RqClient {
             std::collections::HashSet::new();
         for e in crate::syntax::resolve::collect_declared_variable_errors(
             &all_declared,
-            &secret_vars,
+            secret_vars,
             &declared_search_paths,
             &*self.fs,
         ) {
@@ -1574,32 +1613,20 @@ impl RqClient {
                 }
                 errors.push(RqError::Syntax(e));
             }
-            let required_placeholders: Vec<crate::syntax::variable_context::Variable> =
-                req_with_vars
-                    .request
-                    .required_variables
-                    .iter()
-                    .map(|name| crate::syntax::variable_context::Variable {
-                        name: name.clone(),
-                        value: crate::syntax::variable_context::VariableValue::String(
-                            String::new(),
-                        ),
-                    })
-                    .collect();
-            let context = crate::syntax::variable_context::VariableContext::builder()
-                .file_variables(rq_file.file_variables.clone())
-                .environment_variables(env_vars.clone())
-                .secret_variables(secret_vars.clone())
-                .endpoint_variables(req_with_vars.endpoint_variables.clone())
-                .request_variables(req_with_vars.request_variables.clone())
-                .cli_variables(required_placeholders)
-                .build();
+            let required_placeholders =
+                Self::empty_variables(&req_with_vars.request.required_variables);
+            let context = Self::request_context(
+                &file_context,
+                req_with_vars.endpoint_variables.clone(),
+                req_with_vars.request_variables.clone(),
+                required_placeholders,
+            );
 
             let search_paths = Self::build_search_paths(
                 &req_with_vars.request,
                 &rq_file.path,
                 &rq_file.imported_files,
-                source_path,
+                &self.env_file_path(source_path),
             );
 
             let owning_endpoint = req_with_vars
@@ -1629,17 +1656,9 @@ impl RqClient {
             }
         }
 
-        let base_context = crate::syntax::variable_context::VariableContext::builder()
-            .file_variables(rq_file.file_variables.clone())
-            .environment_variables(env_vars.clone())
-            .secret_variables(secret_vars.clone())
-            .build();
-
         for ep_def in rq_file.endpoints.values() {
-            let ep_context = crate::syntax::variable_context::VariableContext::builder()
-                .file_variables(rq_file.file_variables.clone())
-                .environment_variables(env_vars.clone())
-                .secret_variables(secret_vars.clone())
+            let ep_context = file_context
+                .clone()
                 .endpoint_variables(ep_def.variables.clone())
                 .build();
             let ep_type_errors = crate::syntax::resolve::collect_slot_type_errors(
@@ -1813,7 +1832,7 @@ impl RqClient {
         request: &crate::syntax::parse_result::Request,
         file_path: &Path,
         imported_files: &[PathBuf],
-        base_dir: &Path,
+        env_file: &Path,
     ) -> Vec<PathBuf> {
         let mut paths = Vec::new();
         if let Some(src) = &request.source_path {
@@ -1824,8 +1843,7 @@ impl RqClient {
         for rf in &request.related_files {
             paths.push(PathBuf::from(rf));
         }
-        let env_path = base_dir.join(".env");
-        paths.push(env_path);
+        paths.push(env_file.to_path_buf());
         paths
     }
 
@@ -2495,7 +2513,7 @@ mod prepare_request_tests {
     }
 
     fn content_type_of(request: Request) -> Option<String> {
-        RqClient::prepare_request(request)
+        RqClient::apply_request_defaults(request)
             .expect("prepare_request failed")
             .headers
             .into_iter()
@@ -2675,7 +2693,7 @@ mod navigation_tests {
 
 #[cfg(all(test, feature = "native"))]
 mod variable_tests {
-    use super::RqClient;
+    use super::{RequestTarget, RqClient};
     use std::path::Path;
 
     fn write(dir: &Path, file: &str, content: &str) {
@@ -2775,5 +2793,329 @@ mod variable_tests {
         );
         let target = variable_names(dir.path());
         assert!(target.contains(&"base_url".to_string()));
+    }
+
+    fn write_imported_target(dir: &Path) {
+        write(
+            dir,
+            "shared.rq",
+            "let host = \"http://localhost\";\nlet target = \"imported\";\n",
+        );
+    }
+
+    fn write_local_override(dir: &Path) {
+        write_imported_target(dir);
+        write(
+            dir,
+            "main.rq",
+            "import \"shared\";\n\nlet target = \"local\";\nlet path = \"/{{target}}\";\n\nrq probe(\"{{host}}/{{target}}\");\n",
+        );
+    }
+
+    #[test]
+    fn request_details_use_the_local_override_of_an_imported_variable() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write_local_override(dir.path());
+        let target = RqClient::default()
+            .get_request_details(
+                RequestTarget::new(&dir.path().join("main.rq"), "probe"),
+                None,
+                true,
+                false,
+                &[],
+            )
+            .expect("get_request_details failed");
+        assert_eq!(target.url, "http://localhost/local");
+    }
+
+    #[test]
+    fn request_details_use_an_import_declared_after_the_local_variable() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write_imported_target(dir.path());
+        write(
+            dir.path(),
+            "main.rq",
+            "let target = \"local\";\n\nimport \"shared\";\n\nrq probe(\"{{host}}/{{target}}\");\n",
+        );
+        let target = RqClient::default()
+            .get_request_details(
+                RequestTarget::new(&dir.path().join("main.rq"), "probe"),
+                None,
+                true,
+                false,
+                &[],
+            )
+            .expect("get_request_details failed");
+        assert_eq!(target.url, "http://localhost/imported");
+    }
+
+    #[test]
+    fn variable_lookup_returns_the_local_override_of_an_imported_variable() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write_local_override(dir.path());
+        let main = dir.path().join("main.rq");
+        let target = RqClient::default()
+            .get_variable(dir.path(), "target", None, true, Some(&main))
+            .expect("get_variable failed");
+        assert_eq!(target.value, "local");
+    }
+
+    #[test]
+    fn variable_lookup_points_at_the_local_override_of_an_imported_variable() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write_local_override(dir.path());
+        let main = dir.path().join("main.rq");
+        let target = RqClient::default()
+            .get_variable(dir.path(), "target", None, false, Some(&main))
+            .expect("get_variable failed");
+        assert_eq!((target.file.ends_with("main.rq"), target.line), (true, 2));
+    }
+
+    #[test]
+    fn variable_interpolation_uses_the_local_override_of_an_imported_variable() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write_local_override(dir.path());
+        let main = dir.path().join("main.rq");
+        let target = RqClient::default()
+            .get_variable(dir.path(), "path", None, true, Some(&main))
+            .expect("get_variable failed");
+        assert_eq!(target.value, "/local");
+    }
+
+    #[test]
+    fn auth_details_use_the_local_override_of_an_imported_variable() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write(dir.path(), "shared.rq", "let token = \"imported\";\n");
+        write(
+            dir.path(),
+            "main.rq",
+            "import \"shared\";\n\nlet token = \"local\";\n\nauth probe_auth(auth_type.bearer) {\n    token: \"{{token}}\",\n}\n",
+        );
+        let (_, _, fields, _, _, _) = RqClient::default()
+            .get_auth_details(dir.path(), "probe_auth", None, true)
+            .expect("get_auth_details failed");
+        assert_eq!(fields.get("token").map(String::as_str), Some("local"));
+    }
+}
+
+#[cfg(all(test, feature = "native"))]
+mod prepare_tests {
+    use super::{native, RequestTarget, RqClient};
+    use crate::error::RqError;
+    use crate::http::{HttpClient, HttpResponse};
+    use crate::syntax::Request;
+    use std::collections::HashMap;
+    use std::future::Future;
+    use std::path::Path;
+    use std::pin::Pin;
+    use std::sync::{Arc, Mutex};
+    use std::time::Duration;
+
+    #[derive(Default)]
+    struct CapturingHttp {
+        sent: Mutex<Vec<(Request, Option<Duration>)>>,
+    }
+
+    impl HttpClient for CapturingHttp {
+        fn execute<'a>(
+            &'a self,
+            request: &'a Request,
+            timeout: Option<Duration>,
+        ) -> Pin<Box<dyn Future<Output = Result<HttpResponse, RqError>> + Send + 'a>> {
+            self.sent
+                .lock()
+                .expect("lock")
+                .push((request.clone(), timeout));
+            Box::pin(async {
+                Ok(HttpResponse {
+                    status: 200,
+                    headers: HashMap::new(),
+                    body: String::new(),
+                })
+            })
+        }
+    }
+
+    fn write(dir: &Path, file: &str, content: &str) {
+        std::fs::write(dir.join(file), content).expect("write fixture");
+    }
+
+    fn prepare(source: &Path, name: &str, variables: &[&str]) -> crate::client::PreparedRequest {
+        let variables: Vec<String> = variables.iter().map(|v| v.to_string()).collect();
+        RqClient::default()
+            .prepare_request(RequestTarget::new(source, name), None, &variables)
+            .expect("prepare_request failed")
+    }
+
+    fn authorization(request: &Request) -> Option<&str> {
+        request
+            .headers
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case("authorization"))
+            .map(|(_, v)| v.as_str())
+    }
+
+    #[tokio::test]
+    async fn run_sends_exactly_the_prepared_request() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write(
+            dir.path(),
+            "shared.rq",
+            "let host = \"http://localhost\";\nlet target = \"imported\";\n",
+        );
+        write(
+            dir.path(),
+            "main.rq",
+            "import \"shared\";\n\nlet target = \"local\";\n\nauth token_auth(auth_type.bearer) {\n    token: \"{{target}}-token\",\n}\n\n[auth(\"token_auth\")]\n[timeout(5)]\nep api(\"{{host}}/{{target}}\", $[\"X-Scope\": \"{{target}}\"]) {\n    rq create(\"/items\", body: ${\"name\": \"{{target}}\"});\n}\n",
+        );
+        let main = dir.path().join("main.rq");
+        let capture = Arc::new(CapturingHttp::default());
+        let client = RqClient::new(
+            Arc::new(native::NativeFs),
+            Arc::new(native::NativeSecretProvider),
+            capture.clone(),
+        );
+        client
+            .run(&main, Some("api/create"), None, &[])
+            .await
+            .expect("run failed");
+        let prepared = prepare(&main, "api/create", &[]);
+        let target = capture.sent.lock().expect("lock").clone();
+        assert_eq!(target, vec![(prepared.request, prepared.timeout)]);
+    }
+
+    #[test]
+    fn prepared_request_applies_the_bearer_token_of_its_auth() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write(
+            dir.path(),
+            "main.rq",
+            "let token = \"abc\";\n\nauth token_auth(auth_type.bearer) {\n    token: \"{{token}}\",\n}\n\n[auth(\"token_auth\")]\nrq probe(\"http://localhost/probe\");\n",
+        );
+        let target = prepare(&dir.path().join("main.rq"), "probe", &[]);
+        assert_eq!(authorization(&target.request), Some("Bearer abc"));
+    }
+
+    #[test]
+    fn prepared_request_applies_a_runtime_auth_token_to_an_oauth2_auth() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write(
+            dir.path(),
+            "main.rq",
+            "auth login(auth_type.oauth2_authorization_code) {\n    client_id: \"app\",\n    authorization_url: \"http://localhost/authorize\",\n    token_url: \"http://localhost/token\",\n}\n\n[auth(\"login\")]\nrq probe(\"http://localhost/probe\");\n",
+        );
+        let target = prepare(&dir.path().join("main.rq"), "probe", &["auth_token=xyz"]);
+        assert_eq!(
+            (
+                authorization(&target.request),
+                target.auth.map(|auth| auth.token_required)
+            ),
+            (Some("Bearer xyz"), Some(false))
+        );
+    }
+
+    #[test]
+    fn prepared_request_without_a_known_token_asks_for_one() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write(
+            dir.path(),
+            "main.rq",
+            "auth service(auth_type.oauth2_client_credentials) {\n    client_id: \"app\",\n    client_secret: \"secret\",\n    token_url: \"http://localhost/token\",\n}\n\n[auth(\"service\")]\nrq probe(\"http://localhost/probe\");\n",
+        );
+        let target = prepare(&dir.path().join("main.rq"), "probe", &[]);
+        assert_eq!(
+            (
+                authorization(&target.request),
+                target.auth.map(|auth| auth.token_required)
+            ),
+            (None, Some(true))
+        );
+    }
+
+    #[test]
+    fn prepared_auth_fields_resolve_with_runtime_variables() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write(
+            dir.path(),
+            "main.rq",
+            "auth service(auth_type.oauth2_client_credentials) {\n    client_id: \"{{client}}\",\n    client_secret: \"secret\",\n    token_url: \"http://localhost/token\",\n}\n\n[auth(\"service\")]\nrq probe(\"http://localhost/probe\");\n",
+        );
+        let target = prepare(
+            &dir.path().join("main.rq"),
+            "probe",
+            &["client=runtime-app"],
+        );
+        let client_id = target
+            .auth
+            .and_then(|auth| auth.config.fields.get("client_id").map(|t| t.value.clone()));
+        assert_eq!(client_id.as_deref(), Some("runtime-app"));
+    }
+
+    #[test]
+    fn prepared_request_uses_the_auth_declared_in_its_own_file() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::create_dir(dir.path().join("a")).expect("mkdir");
+        std::fs::create_dir(dir.path().join("b")).expect("mkdir");
+        let auth_file = |token: &str| {
+            format!("auth shared_auth(auth_type.bearer) {{\n    token: \"{token}\",\n}}\n\n[auth(\"shared_auth\")]\nrq probe(\"http://localhost/probe\");\n")
+        };
+        write(&dir.path().join("a"), "main.rq", &auth_file("from-a"));
+        write(&dir.path().join("b"), "main.rq", &auth_file("from-b"));
+        let target = prepare(&dir.path().join("b").join("main.rq"), "probe", &[]);
+        assert_eq!(authorization(&target.request), Some("Bearer from-b"));
+    }
+
+    #[test]
+    fn prepared_request_reads_secrets_from_the_context_not_the_request_file() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::create_dir(dir.path().join("sub")).expect("mkdir");
+        write(dir.path(), ".env", "PROBE_SECRET=from-context\n");
+        write(&dir.path().join("sub"), ".env", "PROBE_SECRET=from-sub\n");
+        write(
+            &dir.path().join("sub"),
+            "main.rq",
+            "rq probe(\"http://localhost/{{probe_secret}}\");\n",
+        );
+        let request_file = dir.path().join("sub").join("main.rq");
+        let target = RqClient::default()
+            .prepare_request(
+                RequestTarget::new(dir.path(), "probe").in_file(Some(&request_file)),
+                None,
+                &[],
+            )
+            .expect("prepare_request failed");
+        assert_eq!(target.request.url, "http://localhost/from-context");
+    }
+
+    #[test]
+    fn scope_file_selects_the_request_among_files_with_the_same_name() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write(dir.path(), "a.rq", "rq probe(\"http://localhost/a\");\n");
+        write(dir.path(), "b.rq", "rq probe(\"http://localhost/b\");\n");
+        let request_file = dir.path().join("b.rq");
+        let target = RqClient::default()
+            .prepare_request(
+                RequestTarget::new(dir.path(), "probe").in_file(Some(&request_file)),
+                None,
+                &[],
+            )
+            .expect("prepare_request failed");
+        assert_eq!(target.request.url, "http://localhost/b");
+    }
+
+    #[test]
+    fn prepared_request_rejects_a_missing_required_variable() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write(
+            dir.path(),
+            "main.rq",
+            "[required(item_id)]\nrq probe(\"http://localhost/{{item_id}}\");\n",
+        );
+        let target = RqClient::default().prepare_request(
+            RequestTarget::new(&dir.path().join("main.rq"), "probe"),
+            None,
+            &[],
+        );
+        assert!(target.is_err_and(|e| e.to_string().contains("Required variable(s) not set")));
     }
 }

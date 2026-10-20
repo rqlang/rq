@@ -5,7 +5,7 @@ use crate::commands::validators;
 use crate::core::error::RqError;
 use crate::core::formatter::{pretty_body, render, to_json, OutputFormat, TextBlock};
 use clap::{Args, Subcommand};
-use rq_lib::client::models::RequestDetails;
+use rq_lib::client::models::{RequestDetails, RequestTarget};
 use rq_lib::lint::LintScope;
 use rq_lib::{RequestExecutionResult, RqClient};
 use serde::Serialize;
@@ -299,8 +299,7 @@ pub fn execute_show(args: &ShowArgs) -> Result<(), Box<dyn std::error::Error>> {
 
     let details = RqClient::default()
         .get_request_details(
-            source_path,
-            &name,
+            RequestTarget::new(source_path, &name),
             args.env_args.environment.as_deref(),
             !args.no_var_interpolation,
             false,

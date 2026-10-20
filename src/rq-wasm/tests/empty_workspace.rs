@@ -1,3 +1,4 @@
+use rq_lib::client::models::RequestTarget;
 use rq_lib::RqClient;
 use rq_wasm::bindings;
 use rq_wasm::{WasmFs, WasmHttpClient, WasmSecretProvider};
@@ -120,8 +121,7 @@ fn list_requests_still_fails_for_a_missing_subdirectory_of_the_workspace() {
 #[test]
 fn get_request_details_still_fails_for_a_request_that_does_not_exist() {
     let target = client_rooted_at(&[], WORKSPACE).get_request_details(
-        workspace(),
-        "greet",
+        RequestTarget::new(workspace(), "greet"),
         None,
         false,
         false,

@@ -11,6 +11,7 @@ const RUNNING_CONTEXT_KEY = 'rq.requestRunning';
 interface RequestExecutionContext {
     requestName: string;
     sourceDirectory: string | undefined;
+    sourceFile: string | undefined;
     environment: string | undefined;
     variables: Record<string, string> | undefined;
 }
@@ -63,16 +64,16 @@ export class RequestRunner {
         this.beginExecution(requestName, requestItem);
         try {
             const sourceDirectory = this.getSourceDirectory();
+            const sourceFile = requestItem.request.file;
             const environment = provider.getSelectedEnvironment();
 
             this.logger.log(`Selected environment: ${environment || '(none)'}`);
 
-            const variables = await this.handleOAuth2(requestName, sourceDirectory, environment) || {};
-            this.throwIfCancelled();
-            await this.collectRequiredVariables(requestName, sourceDirectory, environment, variables);
+            const variables: Record<string, string> = {};
+            await this.collectRequiredVariables(requestName, sourceDirectory, sourceFile, environment, variables);
             this.throwIfCancelled();
 
-            await this.executeRequestLogic(requestName, sourceDirectory, environment, Object.keys(variables).length > 0 ? variables : undefined);
+            await this.executeRequestLogic(requestName, sourceDirectory, sourceFile, environment, Object.keys(variables).length > 0 ? variables : undefined);
 
         } catch (error) {
             await this.handleError(error);
@@ -96,16 +97,16 @@ export class RequestRunner {
         this.beginExecution(requestName, requestItem);
         try {
             const sourceDirectory = this.getSourceDirectory();
+            const sourceFile = requestItem.request.file;
             const environment = provider.getSelectedEnvironment();
 
-            const variables = await this.handleOAuth2(requestName, sourceDirectory, environment) || {};
-            this.throwIfCancelled();
+            const variables: Record<string, string> = {};
             await this.collectUserVariables(variables);
             this.throwIfCancelled();
-            await this.collectRequiredVariables(requestName, sourceDirectory, environment, variables);
+            await this.collectRequiredVariables(requestName, sourceDirectory, sourceFile, environment, variables);
             this.throwIfCancelled();
 
-            await this.executeRequestLogic(requestName, sourceDirectory, environment, Object.keys(variables).length > 0 ? variables : undefined);
+            await this.executeRequestLogic(requestName, sourceDirectory, sourceFile, environment, Object.keys(variables).length > 0 ? variables : undefined);
 
         } catch (error) {
             await this.handleError(error);
@@ -171,38 +172,16 @@ export class RequestRunner {
         this.resultsPanel?.webview.postMessage({ command: 'executionState', running });
     }
 
-    private async handleOAuth2(
-        requestName: string,
-        sourceDirectory: string | undefined,
-        environment: string | undefined
-    ): Promise<Record<string, string> | undefined> {
-        let requestDetails: rqClient.RequestShowOutput;
-        try {
-            requestDetails = await rqClient.showRequest(requestName, sourceDirectory, environment, true, true);
-        } catch (error) {
-            this.logger.debug(`Could not fetch request details for auth check: ${error instanceof Error ? error.message : String(error)}`);
-            return undefined;
+    private async acquireInteractiveToken(auth: rqClient.PreparedAuth): Promise<string> {
+        if (auth.auth_type !== 'oauth2_authorization_code' && auth.auth_type !== 'oauth2_implicit') {
+            throw new Error(`Auth configuration '${auth.name}' has unsupported type '${auth.auth_type}'`);
         }
-
-        this.logger.debug(`Auth for '${requestName}': ${JSON.stringify(requestDetails.auth ?? null)}`);
-
-        if (!requestDetails.auth || (requestDetails.auth.type !== 'oauth2_authorization_code' && requestDetails.auth.type !== 'oauth2_implicit')) {
-            return undefined;
-        }
-
-        this.logger.debug(`Detected OAuth2 auth: ${requestDetails.auth.name} (${requestDetails.auth.type})`);
-
-        const authConfig = await rqClient.showAuthConfig(
-            requestDetails.auth.name,
-            sourceDirectory,
-            environment
-        );
-
+        this.logger.debug(`Detected OAuth2 auth: ${auth.name} (${auth.auth_type})`);
         this.logger.log(`Performing OAuth2 flow...`);
         try {
-            const accessToken = await performOAuth2Flow(authConfig, this.context, this.outputChannel);
+            const accessToken = await performOAuth2Flow(auth, this.context, this.outputChannel);
             this.logger.log(`OAuth2 token obtained, injecting as auth_token variable`);
-            return { auth_token: accessToken };
+            return accessToken;
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
             if (errorMessage.startsWith('Authentication cancelled')) {
@@ -215,12 +194,13 @@ export class RequestRunner {
     private async collectRequiredVariables(
         requestName: string,
         sourceDirectory: string | undefined,
+        sourceFile: string | undefined,
         environment: string | undefined,
         variables: Record<string, string>
     ) {
         let requestDetails: rqClient.RequestShowOutput;
         try {
-            requestDetails = await rqClient.showRequest(requestName, sourceDirectory, environment, false);
+            requestDetails = await rqClient.showRequest(requestName, sourceDirectory, environment, false, false, sourceFile);
         } catch {
             return;
         }
@@ -283,10 +263,11 @@ export class RequestRunner {
     private async executeRequestLogic(
         requestName: string,
         sourceDirectory: string | undefined,
+        sourceFile: string | undefined,
         environment: string | undefined,
         variables: Record<string, string> | undefined
     ) {
-        this.lastExecutionContext = { requestName, sourceDirectory, environment, variables };
+        this.lastExecutionContext = { requestName, sourceDirectory, sourceFile, environment, variables };
 
         await vscode.window.withProgress({
             location: vscode.ProgressLocation.Notification,
@@ -298,9 +279,11 @@ export class RequestRunner {
                 const result = await rqClient.executeRequest({
                     requestName,
                     sourceDirectory,
+                    sourceFile,
                     environment,
                     variables,
-                    cancellation: this.activeExecution?.cancellationSource.token
+                    cancellation: this.activeExecution?.cancellationSource.token,
+                    acquireToken: (auth) => this.acquireInteractiveToken(auth)
                 });
 
                 if (result.results.length > 0) {
@@ -417,10 +400,10 @@ export class RequestRunner {
             return;
         }
 
-        const { requestName, sourceDirectory, environment, variables } = this.lastExecutionContext;
+        const { requestName, sourceDirectory, sourceFile, environment, variables } = this.lastExecutionContext;
         this.beginExecution(requestName, this.lastRequestItem);
         try {
-            await this.executeRequestLogic(requestName, sourceDirectory, environment, variables);
+            await this.executeRequestLogic(requestName, sourceDirectory, sourceFile, environment, variables);
         } catch (error) {
             await this.handleError(error);
         } finally {
@@ -468,7 +451,9 @@ export class RequestRunner {
                 requestName,
                 this.lastExecutionContext?.sourceDirectory,
                 this.lastExecutionContext?.environment,
-                true
+                true,
+                false,
+                this.lastExecutionContext?.sourceFile
             );
         } catch {
             // best-effort: show error panel without request details

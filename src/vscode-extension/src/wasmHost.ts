@@ -19,7 +19,7 @@ type WasmMethod =
     | 'list_variable_refs'
     | 'list_endpoint_refs'
     | 'version'
-    | 'run_request'
+    | 'prepare_request'
     | 'set_debug_logging';
 
 interface PendingCall {

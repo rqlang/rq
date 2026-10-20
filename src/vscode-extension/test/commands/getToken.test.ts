@@ -3,39 +3,10 @@ import { registerGetTokenCommand } from '../../src/commands/getToken';
 import * as cliService from '../../src/rqClient';
 import { FetchMock } from '../fetch-mock';
 import { authUriHandler } from '../../src/auth/authUriHandler';
+import { mockQuickPick } from '../quickPick-mock';
 
 // Mock CLI service but NOT auth module
 jest.mock('../../src/rqClient');
-
-type FakeQuickPick = {
-    items: { label: string }[];
-    activeItems: { label: string }[];
-    selectedItems: { label: string }[];
-};
-
-function mockEnvironmentPick(choice: string | undefined): FakeQuickPick {
-    const acceptListeners: (() => void)[] = [];
-    const hideListeners: (() => void)[] = [];
-    const quickPick = {
-        items: [] as { label: string }[],
-        activeItems: [] as { label: string }[],
-        selectedItems: [] as { label: string }[],
-        onDidAccept: (listener: () => void) => { acceptListeners.push(listener); return { dispose: jest.fn() }; },
-        onDidHide: (listener: () => void) => { hideListeners.push(listener); return { dispose: jest.fn() }; },
-        hide: () => hideListeners.forEach(listener => listener()),
-        dispose: jest.fn(),
-        show: () => {
-            if (choice === undefined) {
-                quickPick.hide();
-                return;
-            }
-            quickPick.selectedItems = quickPick.items.filter(item => item.label === choice);
-            acceptListeners.forEach(listener => listener());
-        }
-    };
-    (vscode.window.createQuickPick as jest.Mock).mockReturnValueOnce(quickPick);
-    return quickPick;
-}
 
 describe('getToken Command (Integration)', () => {
     let context: vscode.ExtensionContext;
@@ -47,6 +18,12 @@ describe('getToken Command (Integration)', () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
+        (vscode.window.createQuickPick as jest.Mock).mockReset();
+        (vscode.window.showQuickPick as jest.Mock).mockReset();
+        (vscode.window.showInformationMessage as jest.Mock).mockReset();
+        (cliService.listEnvironments as jest.Mock).mockReset();
+        (cliService.listAuthConfigs as jest.Mock).mockReset();
+        (cliService.showAuthConfig as jest.Mock).mockReset();
         mockSecrets = new Map();
         fetchMock = new FetchMock();
         currentEnvironment = undefined;
@@ -111,7 +88,7 @@ describe('getToken Command (Integration)', () => {
         });
 
         // 2. Setup User Interactions
-        mockEnvironmentPick('dev');
+        mockQuickPick({ accept: 'dev' });
         (vscode.window.showQuickPick as jest.Mock)
             .mockResolvedValueOnce('auth1'); // Select auth config
         
@@ -203,7 +180,7 @@ describe('getToken Command (Integration)', () => {
         });
 
         // 3. Setup User Interactions
-        mockEnvironmentPick('dev');
+        mockQuickPick({ accept: 'dev' });
         (vscode.window.showQuickPick as jest.Mock)
             .mockResolvedValueOnce('auth1');
         
@@ -224,7 +201,7 @@ describe('getToken Command (Integration)', () => {
     test('preselects the environment selected in the explorer', async () => {
         currentEnvironment = 'prod';
         (cliService.listEnvironments as jest.Mock).mockResolvedValue(['dev', 'prod']);
-        const target = mockEnvironmentPick(undefined);
+        const target = mockQuickPick('cancel');
 
         await commandCallback();
 
@@ -233,20 +210,26 @@ describe('getToken Command (Integration)', () => {
 
     test('preselects no environment when none is selected in the explorer', async () => {
         (cliService.listEnvironments as jest.Mock).mockResolvedValue(['dev', 'prod']);
-        const target = mockEnvironmentPick(undefined);
+        const target = mockQuickPick('cancel');
 
         await commandCallback();
 
-        expect(target.activeItems.map(item => item.label)).toEqual(['(No environment)']);
+        expect(target.activeItems.map(item => item.label)).toEqual(['None']);
     });
 
-    test('stops when the environment pick is cancelled', async () => {
-        (cliService.listEnvironments as jest.Mock).mockResolvedValue(['dev']);
-        mockEnvironmentPick(undefined);
+    test('uses the preselected environment when accepted without changing it', async () => {
+        currentEnvironment = 'prod';
+        (cliService.listEnvironments as jest.Mock).mockResolvedValue(['dev', 'prod']);
+        (cliService.listAuthConfigs as jest.Mock).mockResolvedValue([
+            { name: 'auth1', auth_type: 'oauth2_authorization_code' }
+        ]);
+        (cliService.showAuthConfig as jest.Mock).mockRejectedValue(new Error('stop'));
+        mockQuickPick('acceptActive');
+        (vscode.window.showQuickPick as jest.Mock).mockResolvedValueOnce('auth1');
 
         await commandCallback();
 
-        expect(cliService.listAuthConfigs).not.toHaveBeenCalled();
+        expect(cliService.showAuthConfig).toHaveBeenCalledWith('auth1', undefined, 'prod');
     });
 
     test('uses the environment accepted in the pick', async () => {
@@ -256,11 +239,46 @@ describe('getToken Command (Integration)', () => {
             { name: 'auth1', auth_type: 'oauth2_authorization_code' }
         ]);
         (cliService.showAuthConfig as jest.Mock).mockRejectedValue(new Error('stop'));
-        mockEnvironmentPick('dev');
+        mockQuickPick({ accept: 'dev' });
         (vscode.window.showQuickPick as jest.Mock).mockResolvedValueOnce('auth1');
 
         await commandCallback();
 
         expect(cliService.showAuthConfig).toHaveBeenCalledWith('auth1', undefined, 'dev');
+    });
+
+    test('uses no environment when None is accepted', async () => {
+        currentEnvironment = 'prod';
+        (cliService.listEnvironments as jest.Mock).mockResolvedValue(['dev', 'prod']);
+        (cliService.listAuthConfigs as jest.Mock).mockResolvedValue([
+            { name: 'auth1', auth_type: 'oauth2_authorization_code' }
+        ]);
+        (cliService.showAuthConfig as jest.Mock).mockRejectedValue(new Error('stop'));
+        mockQuickPick({ accept: 'None' });
+        (vscode.window.showQuickPick as jest.Mock).mockResolvedValueOnce('auth1');
+
+        await commandCallback();
+
+        expect(cliService.showAuthConfig).toHaveBeenCalledWith('auth1', undefined, undefined);
+    });
+
+    test('warns when the explorer environment no longer exists', async () => {
+        currentEnvironment = 'staging';
+        (cliService.listEnvironments as jest.Mock).mockResolvedValue(['dev', 'prod']);
+        const target = mockQuickPick('cancel');
+
+        await commandCallback();
+
+        expect(target.activeItems).toEqual([]);
+        expect(target.placeholder).toBe("Environment 'staging' no longer exists, select another one");
+    });
+
+    test('stops when the environment pick is cancelled', async () => {
+        (cliService.listEnvironments as jest.Mock).mockResolvedValue(['dev']);
+        mockQuickPick('cancel');
+
+        await commandCallback();
+
+        expect(cliService.listAuthConfigs).not.toHaveBeenCalled();
     });
 });

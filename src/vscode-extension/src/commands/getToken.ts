@@ -1,10 +1,8 @@
 import * as vscode from 'vscode';
 import * as rqClient from '../rqClient';
 import { performOAuth2Flow } from '../auth';
-
-const NO_ENVIRONMENT = '(No environment)';
-
-export type EnvironmentProvider = { getSelectedEnvironment(): string | undefined };
+import { EnvironmentProvider } from '../language/completionContext';
+import { pickEnvironment } from '../vscodeUtils';
 
 export function registerGetTokenCommand(
     context: vscode.ExtensionContext,
@@ -15,29 +13,28 @@ export function registerGetTokenCommand(
         try {
             console.log('Getting auth token from CLI...');
             
-            // Get the current workspace folder
             const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
             const sourceDirectory = workspaceFolder?.uri.fsPath;
             
-            // Step 1: Get environments
             console.log('Fetching environments...');
             const environments = await rqClient.listEnvironments(sourceDirectory);
             
             let selectedEnvironment: string | undefined;
             
             if (environments.length > 0) {
-                // Show environment selection (optional)
-                const envChoice = await pickEnvironment(environments, environmentProvider.getSelectedEnvironment());
+                const choice = await pickEnvironment(
+                    environments,
+                    environmentProvider.getSelectedEnvironment(),
+                    'Choose Environment'
+                );
                 
-                if (envChoice === undefined) {
-                    // User cancelled
+                if (!choice) {
                     return;
                 }
                 
-                selectedEnvironment = envChoice === NO_ENVIRONMENT ? undefined : envChoice;
+                selectedEnvironment = choice.environment;
             }
             
-            // Step 2: Get auth configurations
             console.log('Fetching auth configurations...');
             const authConfigs = await rqClient.listAuthConfigs(sourceDirectory);
             
@@ -46,7 +43,6 @@ export function registerGetTokenCommand(
                 return;
             }
             
-            // Step 3: Filter for supported OAuth2 configurations
             const oauthConfigs = authConfigs
                 .filter(config => 
                     config.auth_type === 'oauth2_authorization_code' || 
@@ -65,11 +61,9 @@ export function registerGetTokenCommand(
             });
             
             if (!selectedAuthName) {
-                // User cancelled
                 return;
             }
             
-            // Step 4: Get auth details
             console.log(`Fetching auth config: ${selectedAuthName}`);
             const authConfig = await rqClient.showAuthConfig(
                 selectedAuthName,
@@ -77,7 +71,6 @@ export function registerGetTokenCommand(
                 selectedEnvironment
             );
             
-            // Step 5: Perform OAuth2 flow
             console.log(`Starting OAuth2 flow for auth type: ${authConfig.auth_type}`);
 
             let accessToken: string;
@@ -115,24 +108,4 @@ export function registerGetTokenCommand(
         }
     });
     context.subscriptions.push(command);
-}
-
-function pickEnvironment(environments: string[], currentEnvironment: string | undefined): Promise<string | undefined> {
-    const quickPick = vscode.window.createQuickPick();
-    quickPick.title = 'Choose Environment';
-    quickPick.placeholder = 'Select an environment (optional)';
-    quickPick.items = [NO_ENVIRONMENT, ...environments].map(label => ({ label }));
-    quickPick.activeItems = quickPick.items.filter(item => item.label === (currentEnvironment ?? NO_ENVIRONMENT));
-
-    return new Promise(resolve => {
-        quickPick.onDidAccept(() => {
-            resolve(quickPick.selectedItems[0]?.label);
-            quickPick.hide();
-        });
-        quickPick.onDidHide(() => {
-            resolve(undefined);
-            quickPick.dispose();
-        });
-        quickPick.show();
-    });
 }

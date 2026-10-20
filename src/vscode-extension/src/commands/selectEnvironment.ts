@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as rqClient from '../rqClient';
 import { RequestExplorerProvider } from '../requestExplorer';
+import { pickEnvironment } from '../vscodeUtils';
 
 export function registerSelectEnvironmentCommand(context: vscode.ExtensionContext, provider: RequestExplorerProvider) {
     const command = vscode.commands.registerCommand('rq.selectEnvironment', async () => {
@@ -16,30 +17,17 @@ export function registerSelectEnvironmentCommand(context: vscode.ExtensionContex
                 provider.setTreeLoading(false);
             }
 
-            // Create quick pick items with "None" as the first option
-            const items: vscode.QuickPickItem[] = [
-                { label: 'None', description: 'No environment selected' }
-            ];
+            const choice = await pickEnvironment(
+                environments,
+                provider.getSelectedEnvironment(),
+                'RQ Environment Selection'
+            );
 
-            // Add environments from CLI
-            for (const env of environments) {
-                items.push({ label: env });
-            }
+            if (choice) {
+                provider.setSelectedEnvironment(choice.environment);
 
-            // Show quick pick
-            const selected = await vscode.window.showQuickPick(items, {
-                placeHolder: 'Select an environment',
-                title: 'RQ Environment Selection'
-            });
-
-            if (selected) {
-                // Set environment in provider (undefined if "None" selected)
-                const environment = selected.label === 'None' ? undefined : selected.label;
-                provider.setSelectedEnvironment(environment);
-
-                // Show confirmation
-                if (environment) {
-                    vscode.window.showInformationMessage(`Environment set to: ${environment}`);
+                if (choice.environment) {
+                    vscode.window.showInformationMessage(`Environment set to: ${choice.environment}`);
                 } else {
                     vscode.window.showInformationMessage('No environment selected');
                 }

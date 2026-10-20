@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { registerSelectEnvironmentCommand } from '../../src/commands/selectEnvironment';
 import { RequestExplorerProvider } from '../../src/requestExplorer';
 import * as cliService from '../../src/rqClient';
+import { mockQuickPick } from '../quickPick-mock';
 
 // Mock dependencies
 jest.mock('../../src/requestExplorer');
@@ -14,6 +15,8 @@ describe('selectEnvironment Command', () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
+        (vscode.window.createQuickPick as jest.Mock).mockReset();
+        (cliService.listEnvironments as jest.Mock).mockReset();
 
         // Mock context
         context = {
@@ -23,6 +26,7 @@ describe('selectEnvironment Command', () => {
         // Mock provider
         provider = new RequestExplorerProvider('root');
         provider.setSelectedEnvironment = jest.fn();
+        provider.getSelectedEnvironment = jest.fn().mockReturnValue(undefined);
 
         // Mock cliService defaults
 
@@ -45,19 +49,19 @@ describe('selectEnvironment Command', () => {
 
     test('selects an environment', async () => {
         (cliService.listEnvironments as jest.Mock).mockResolvedValue(['dev', 'prod']);
-        (vscode.window.showQuickPick as jest.Mock).mockResolvedValue({ label: 'dev' });
+        mockQuickPick({ accept: 'dev' });
 
         await commandCallback();
 
         expect(cliService.listEnvironments).toHaveBeenCalled();
-        expect(vscode.window.showQuickPick).toHaveBeenCalled();
+        expect(vscode.window.createQuickPick).toHaveBeenCalled();
         expect(provider.setSelectedEnvironment).toHaveBeenCalledWith('dev');
         expect(vscode.window.showInformationMessage).toHaveBeenCalledWith('Environment set to: dev');
     });
 
     test('selects "None" environment', async () => {
         (cliService.listEnvironments as jest.Mock).mockResolvedValue(['dev']);
-        (vscode.window.showQuickPick as jest.Mock).mockResolvedValue({ label: 'None' });
+        mockQuickPick({ accept: 'None' });
 
         await commandCallback();
 
@@ -67,11 +71,31 @@ describe('selectEnvironment Command', () => {
 
     test('cancels selection', async () => {
         (cliService.listEnvironments as jest.Mock).mockResolvedValue(['dev']);
-        (vscode.window.showQuickPick as jest.Mock).mockResolvedValue(undefined);
+        mockQuickPick('cancel');
 
         await commandCallback();
 
         expect(provider.setSelectedEnvironment).not.toHaveBeenCalled();
+    });
+
+    test('preselects the current environment', async () => {
+        (provider.getSelectedEnvironment as jest.Mock).mockReturnValue('prod');
+        (cliService.listEnvironments as jest.Mock).mockResolvedValue(['dev', 'prod']);
+        const target = mockQuickPick('cancel');
+
+        await commandCallback();
+
+        expect(target.activeItems.map(item => item.label)).toEqual(['prod']);
+    });
+
+    test('keeps an environment named None distinct from no environment', async () => {
+        (cliService.listEnvironments as jest.Mock).mockResolvedValue(['None']);
+        const target = mockQuickPick('cancel');
+        (provider.getSelectedEnvironment as jest.Mock).mockReturnValue('None');
+
+        await commandCallback();
+
+        expect(target.items.indexOf(target.activeItems[0])).toBe(1);
     });
 
     test('handles error', async () => {

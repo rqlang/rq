@@ -273,6 +273,26 @@ describe('getToken Command (Integration)', () => {
         expect(target.placeholder).toBe("Environment 'staging' no longer exists, select another one");
     });
 
+    test('warns when the explorer environment no longer exists and no environments remain', async () => {
+        currentEnvironment = 'staging';
+        (cliService.listEnvironments as jest.Mock).mockResolvedValue([]);
+        const target = mockQuickPick('cancel');
+
+        await commandCallback();
+
+        expect(target.placeholder).toBe("Environment 'staging' no longer exists, select another one");
+        expect(cliService.listAuthConfigs).not.toHaveBeenCalled();
+    });
+
+    test('skips the environment pick when there are no environments and none is selected', async () => {
+        (cliService.listEnvironments as jest.Mock).mockResolvedValue([]);
+        (cliService.listAuthConfigs as jest.Mock).mockResolvedValue([]);
+
+        await commandCallback();
+
+        expect(vscode.window.createQuickPick).not.toHaveBeenCalled();
+    });
+
     test('stops when the environment pick is cancelled', async () => {
         (cliService.listEnvironments as jest.Mock).mockResolvedValue(['dev']);
         mockQuickPick('cancel');

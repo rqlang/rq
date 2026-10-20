@@ -19,14 +19,11 @@ export function registerGetTokenCommand(
             console.log('Fetching environments...');
             const environments = await rqClient.listEnvironments(sourceDirectory);
             
+            const currentEnvironment = environmentProvider.getSelectedEnvironment();
             let selectedEnvironment: string | undefined;
             
-            if (environments.length > 0) {
-                const choice = await pickEnvironment(
-                    environments,
-                    environmentProvider.getSelectedEnvironment(),
-                    'Choose Environment'
-                );
+            if (environments.length > 0 || currentEnvironment !== undefined) {
+                const choice = await pickEnvironment(environments, currentEnvironment, 'Choose Environment');
                 
                 if (!choice) {
                     return;

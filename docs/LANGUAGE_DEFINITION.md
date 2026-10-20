@@ -551,7 +551,7 @@ ep items("http://localhost:8080/items") {
 }
 ```
 
-Tools that follow references honour this scope: renaming `resource_id` inside `get` changes only `get`, and renaming the `let` changes the `let` and `list` but neither request that declares its own. Names written outside the request — including its endpoint's `url`, `headers` and `qs` — are not part of that scope.
+Tools that follow references honour this scope: renaming `resource_id` inside `get` changes only `get`, and renaming the `let` changes the `let` and `list` but neither request that declares its own. Names written outside the request are not part of that scope, with one exception: the runtime value also reaches the enclosing endpoint's `url`, `headers`, `qs` and attributes, which every request of the endpoint shares. Finding references from inside the request lists those uses too, and renaming from there is refused, because the new name could not reach the endpoint without changing its other requests.
 
 The exact enforcement behaviour differs by tool:
 

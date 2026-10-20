@@ -129,21 +129,25 @@ export const renameProvider = vscode.languages.registerRenameProvider('rq', {
             return edit;
         }
 
+        let refs: rqClient.SymbolReference[];
         try {
-            const refs = await rqClient.varRefs(symbol.name, document, position, sourceDirectory);
-            if (refs.length === 0) { return undefined; }
-            for (const r of refs) {
-                edit.replace(
-                    r.uri,
-                    new vscode.Range(
-                        new vscode.Position(r.line, r.character),
-                        new vscode.Position(r.line, r.character + symbol.name.length)
-                    ),
-                    newName
-                );
-            }
+            refs = await rqClient.varRefs(symbol.name, document, position, sourceDirectory);
         } catch {
             return undefined;
+        }
+        if (refs.length === 0) { return undefined; }
+        if (refs.some(r => r.shared)) {
+            throw new Error(`Cannot rename '${symbol.name}' only in this request: its endpoint also uses it, and renaming it there would change the other requests too.`);
+        }
+        for (const r of refs) {
+            edit.replace(
+                r.uri,
+                new vscode.Range(
+                    new vscode.Position(r.line, r.character),
+                    new vscode.Position(r.line, r.character + symbol.name.length)
+                ),
+                newName
+            );
         }
         return edit;
     }

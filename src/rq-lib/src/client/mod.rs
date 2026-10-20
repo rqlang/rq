@@ -2,6 +2,7 @@ pub mod models;
 #[cfg(feature = "native")]
 use crate::native;
 
+use crate::client::models::ReferenceLocation;
 use crate::client::models::{
     PreparedAuth, PreparedRequest, RequestDetails, RequestExecutionResult, RequestInfo,
     RequestTarget, VariableEntry,
@@ -12,7 +13,7 @@ use crate::lint::{lint_rq_file, LintDiagnostic, LintScope, WorkspaceCollector, W
 use crate::logger::Logger;
 use crate::syntax::auth::Config as AuthConfig;
 use crate::syntax::parse_result::{AuthLocation, RequestWithVariables};
-use crate::syntax::resolve::SourcePosition;
+use crate::syntax::resolve::{find_request_scoped_references, SourcePosition};
 use crate::syntax::variable_context::{VariableContext, VariableContextBuilder};
 use crate::syntax::{Fs, Request, RqFile, SecretProvider, Variable, VariableValue};
 
@@ -642,10 +643,7 @@ impl RqClient {
         name: &str,
         scope_file: Option<&Path>,
         position: Option<(usize, usize)>,
-    ) -> Result<Vec<crate::client::models::ReferenceLocation>, RqError> {
-        let paths = self.reference_paths(source_path, scope_file, |closure| {
-            self.variable_definition_file(closure, name)
-        })?;
+    ) -> Result<Vec<ReferenceLocation>, RqError> {
         let at = scope_file
             .zip(position)
             .map(|(file, (line, character))| SourcePosition {
@@ -653,22 +651,25 @@ impl RqClient {
                 line,
                 character,
             });
-        let refs = crate::syntax::resolve::find_all_variable_references(
-            &*self.fs,
-            &paths,
-            name,
-            at.as_ref(),
-        );
-        Ok(refs
-            .into_iter()
-            .map(
-                |(line, character, path)| crate::client::models::ReferenceLocation {
-                    file: crate::paths::clean_path(&path),
-                    line,
-                    character,
-                },
-            )
-            .collect())
+        if let Some(at) = at {
+            if let Some(scoped) = find_request_scoped_references(&*self.fs, &at, name) {
+                let file = crate::paths::clean_path(at.file);
+                return Ok(scoped
+                    .into_iter()
+                    .map(|reference| ReferenceLocation {
+                        file: file.clone(),
+                        line: reference.line,
+                        character: reference.character,
+                        shared: reference.shared,
+                    })
+                    .collect());
+            }
+        }
+        let paths = self.reference_paths(source_path, scope_file, |closure| {
+            self.variable_definition_file(closure, name)
+        })?;
+        let refs = crate::syntax::resolve::find_all_variable_references(&*self.fs, &paths, name);
+        Ok(Self::reference_locations(refs))
     }
 
     pub fn list_endpoint_references(
@@ -676,21 +677,12 @@ impl RqClient {
         source_path: &Path,
         name: &str,
         scope_file: Option<&Path>,
-    ) -> Result<Vec<crate::client::models::ReferenceLocation>, RqError> {
+    ) -> Result<Vec<ReferenceLocation>, RqError> {
         let paths = self.reference_paths(source_path, scope_file, |closure| {
             self.endpoint_definition_file(closure, name)
         })?;
         let refs = crate::syntax::resolve::find_all_endpoint_references(&*self.fs, &paths, name);
-        Ok(refs
-            .into_iter()
-            .map(
-                |(line, character, path)| crate::client::models::ReferenceLocation {
-                    file: crate::paths::clean_path(&path),
-                    line,
-                    character,
-                },
-            )
-            .collect())
+        Ok(Self::reference_locations(refs))
     }
 
     pub fn check_path(&self, path: &Path, env_name: Option<&str>) -> Result<Vec<RqError>, RqError> {
@@ -2044,6 +2036,17 @@ impl RqClient {
         }
     }
 
+    fn reference_locations(refs: Vec<(usize, usize, PathBuf)>) -> Vec<ReferenceLocation> {
+        refs.into_iter()
+            .map(|(line, character, path)| ReferenceLocation {
+                file: crate::paths::clean_path(&path),
+                line,
+                character,
+                shared: false,
+            })
+            .collect()
+    }
+
     fn reference_paths(
         &self,
         source_path: &Path,
@@ -2734,6 +2737,43 @@ mod navigation_tests {
         let content = "[required(resource_id)]\nrq get(resource_id";
         let target = variable_refs_at(content, "resource_id", Some((1, 8)));
         assert_eq!(target, vec![(0, 10), (1, 7)]);
+    }
+
+    #[test]
+    fn unclosed_request_does_not_swallow_the_next_one() {
+        let content = "[required(id)]\nrq get(id\n\n[required(id)]\nrq other(\"{{id}}\");\n";
+        let target = variable_refs_at(content, "id", Some((1, 8)));
+        assert_eq!(target, vec![(0, 10), (1, 7)]);
+    }
+
+    #[test]
+    fn required_variable_in_an_untokenizable_file_has_no_references() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let file = dir.path().join("test.rq");
+        std::fs::write(&file, "[required(id)]\nrq get(id, body: \"{{id}}\n").expect("test.rq");
+        std::fs::write(dir.path().join("other.rq"), "let id = \"1\";\n").expect("other.rq");
+        let target = RqClient::default()
+            .list_variable_references(dir.path(), "id", Some(&file), Some((1, 8)))
+            .expect("list_variable_references failed");
+        assert!(target.is_empty());
+    }
+
+    #[test]
+    fn endpoint_header_use_of_a_required_variable_is_shared() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let file = dir.path().join("test.rq");
+        std::fs::write(
+            &file,
+            "ep items(\"http://x/{{id}}\") {\n    [required(id)]\n    rq get(id);\n}\n",
+        )
+        .expect("test.rq");
+        let target: Vec<(usize, usize, bool)> = RqClient::default()
+            .list_variable_references(dir.path(), "id", Some(&file), Some((2, 12)))
+            .expect("list_variable_references failed")
+            .iter()
+            .map(|r| (r.line, r.character, r.shared))
+            .collect();
+        assert_eq!(target, vec![(0, 21, true), (1, 14, false), (2, 11, false)]);
     }
 
     #[test]

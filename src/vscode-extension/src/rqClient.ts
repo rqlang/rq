@@ -44,12 +44,14 @@ interface ReferenceLocation {
     file: string;
     line: number;
     character: number;
+    shared?: boolean;
 }
 
 export interface SymbolReference {
     uri: vscode.Uri;
     line: number;
     character: number;
+    shared: boolean;
 }
 
 export interface AuthConfig {
@@ -294,25 +296,30 @@ export async function epRefs(name: string, document: vscode.TextDocument, source
 async function symbolRefs(binding: 'list_variable_refs' | 'list_endpoint_refs', name: string, document: vscode.TextDocument, sourceDirectory: string | undefined, extraArgs: unknown[]): Promise<SymbolReference[]> {
     const source = resolveSource(sourceDirectory);
     const scopeFile = documentDraftPath(document, source);
-    const filesJson = await buildFilesMap(source, openDrafts(document, source));
-    const result = await wasmCall(binding, [filesJson, await buildSecretsMap(source), source, name, scopeFile, ...extraArgs]);
+    const [filesJson, secretsJson] = await Promise.all([buildFilesMap(source, openDrafts(document, source)), buildSecretsMap(source)]);
+    const result = await wasmCall(binding, [filesJson, secretsJson, source, name, scopeFile, ...extraArgs]);
     const raw = JSON.parse(result) as ReferenceLocation[];
     return raw.map(r => ({
-        uri: draftKey(r.file) === scopeFile ? document.uri : vscode.Uri.file(normalizePath(r.file)),
+        uri: forwardSlashes(r.file) === scopeFile ? document.uri : vscode.Uri.file(normalizePath(r.file)),
         line: r.line,
         character: r.character,
+        shared: r.shared ?? false,
     }));
 }
 
 function documentDraftPath(document: vscode.TextDocument, source: string): string {
-    return draftKey(document.isUntitled ? path.join(source, document.uri.path) : document.uri.fsPath);
+    return forwardSlashes(document.isUntitled ? path.join(source, document.uri.path) : document.uri.fsPath);
+}
+
+function forwardSlashes(filePath: string): string {
+    return filePath.replace(/\\/g, '/');
 }
 
 function openDrafts(document: vscode.TextDocument, source: string): DraftFile[] {
     const dirty = vscode.workspace.textDocuments
         .filter(doc => doc !== document && doc.languageId === 'rq' && doc.isDirty && !doc.isUntitled)
         .filter(doc => normalizePath(doc.uri.fsPath).startsWith(normalizePath(source)))
-        .map(doc => ({ path: draftKey(doc.uri.fsPath), source: doc.getText() }));
+        .map(doc => ({ path: forwardSlashes(doc.uri.fsPath), source: doc.getText() }));
     return [{ path: documentDraftPath(document, source), source: document.getText() }, ...dirty];
 }
 

@@ -83,6 +83,8 @@ pub struct ReferenceLocation {
     pub file: String,
     pub line: usize,
     pub character: usize,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub shared: bool,
 }
 
 #[derive(Debug, Clone)]

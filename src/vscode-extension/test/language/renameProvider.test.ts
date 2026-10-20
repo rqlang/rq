@@ -89,6 +89,22 @@ describe('prepareRename', () => {
 });
 
 describe('variable rename', () => {
+    test('refuses to rename a required variable that its endpoint also uses', async () => {
+        const doc = makeDocument(['    rq get(id);']);
+        const position = new vscode.Position(0, 12);
+
+        (doc.getWordRangeAtPosition as jest.Mock).mockReturnValue(
+            new vscode.Range(new vscode.Position(0, 11), new vscode.Position(0, 13))
+        );
+        (doc.getText as jest.Mock).mockReturnValue('id');
+        (cliService.varRefs as jest.Mock).mockResolvedValue([
+            { uri: { fsPath: '/test/file.rq' }, line: 0, character: 11, shared: false },
+            { uri: { fsPath: '/test/file.rq' }, line: 0, character: 20, shared: true }
+        ]);
+
+        await expect(provideRenameEdits(doc, position, 'item_id')).rejects.toThrow("Cannot rename 'id' only in this request");
+    });
+
     test('calls varRefs and returns WorkspaceEdit with edits for each ref', async () => {
         const doc = makeDocument(['rq get("{{base_url}}/v1");']);
         const position = new vscode.Position(0, 10);

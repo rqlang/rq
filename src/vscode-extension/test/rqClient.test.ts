@@ -506,6 +506,27 @@ describe('varRefs', () => {
         expect(call.slice(4)).toEqual(['/tmp/project/foo.rq', 4, 12]);
     });
 
+    test('keeps the Windows drive letter as VS Code reports it', async () => {
+        const doc = makeDocument({ fsPath: 'c:\\ws\\foo.rq' }, 'rq get(id);');
+        mockListVariableRefs.mockReturnValue('[]');
+
+        await varRefs('id', doc, new vscode.Position(0, 8), 'c:\\ws');
+
+        expect(mockListVariableRefs.mock.calls[0][4]).toBe('c:/ws/foo.rq');
+    });
+
+    test('flags references that the endpoint shares with other requests', async () => {
+        const uri = { fsPath: '/tmp/project/foo.rq' };
+        const doc = makeDocument(uri, 'rq get(id);');
+        mockListVariableRefs.mockReturnValue(JSON.stringify([
+            { file: '/tmp/project/foo.rq', line: 0, character: 20, shared: true },
+        ]));
+
+        const target = await varRefs('id', doc, new vscode.Position(0, 8), '/tmp/project');
+
+        expect(target).toEqual([{ uri, line: 0, character: 20, shared: true }]);
+    });
+
     test('maps references in an untitled document back to that document', async () => {
         const uri = { fsPath: 'Untitled-1', path: 'Untitled-1', scheme: 'untitled' };
         const doc = makeDocument(uri, 'rq get(resource_id);', true);
@@ -515,6 +536,6 @@ describe('varRefs', () => {
 
         const target = await varRefs('resource_id', doc, new vscode.Position(0, 8), '/tmp/project');
 
-        expect(target).toEqual([{ uri, line: 0, character: 7 }]);
+        expect(target).toEqual([{ uri, line: 0, character: 7, shared: false }]);
     });
 });

@@ -52,7 +52,7 @@ describe('when no environment is selected', () => {
 
         expect(result).toBeInstanceOf(vscode.Location);
         expect((result as vscode.Location).uri).toBe(doc.uri);
-        expect((result as vscode.Location).range.start).toEqual(new vscode.Position(2, 0));
+        expect((result as vscode.Location).range.start).toEqual(new vscode.Position(2, 4));
         expect(cliService.showVariable).not.toHaveBeenCalled();
     });
 
@@ -222,7 +222,7 @@ describe('required attribute declarations', () => {
 
         const result = await provideDefinition(doc, position);
 
-        expect((result as vscode.Location).range.start).toEqual(new vscode.Position(0, 0));
+        expect((result as vscode.Location).range.start).toEqual(new vscode.Position(0, 10));
         expect(cliService.showVariable).not.toHaveBeenCalled();
     });
 
@@ -249,6 +249,19 @@ describe('required attribute declarations', () => {
 
         expect(cliService.showVariable).not.toHaveBeenCalled();
         expect((result as vscode.Location).uri).toBe(doc.uri);
-        expect((result as vscode.Location).range.start).toEqual(new vscode.Position(1, 0));
+        expect((result as vscode.Location).range.start).toEqual(new vscode.Position(1, 14));
+    });
+
+    test('points at the variable name inside a spaced required attribute', async () => {
+        const lines = ['  [ required( resource_id ) ]', '  rq get(resource_id);'];
+        const doc = makeDocument(lines, { fsPath: '/workspace/foo.rq' });
+        const position = new vscode.Position(1, lines[1].indexOf('resource_id'));
+
+        (doc.getWordRangeAtPosition as jest.Mock).mockReturnValue({ start: position, end: position });
+        (doc.getText as jest.Mock).mockReturnValue('resource_id');
+
+        const result = await provideDefinition(doc, position);
+
+        expect((result as vscode.Location).range.start).toEqual(new vscode.Position(0, lines[0].indexOf('resource_id')));
     });
 });

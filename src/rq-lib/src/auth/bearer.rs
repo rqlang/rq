@@ -1,7 +1,7 @@
 use super::auth_provider::{AuthFuture, AuthProvider};
 use crate::syntax::auth::Config;
 use crate::syntax::error::AuthError;
-use crate::syntax::variable_context::{Variable, VariableValue};
+use crate::syntax::variable_context::{Variable, VariableContext, VariableValue};
 
 const TOKEN_FIELD: &str = "token";
 
@@ -64,6 +64,15 @@ impl Default for BearerProvider {
 impl AuthProvider for BearerProvider {
     fn auth_type(&self) -> &str {
         "bearer"
+    }
+
+    fn known_token(
+        &self,
+        auth_config: &Config,
+        _context: &VariableContext,
+        headers: Vec<(String, String)>,
+    ) -> (Vec<(String, String)>, bool) {
+        Self::apply_configured_token(auth_config, headers)
     }
 
     fn configure<'a>(
@@ -164,7 +173,7 @@ mod tests {
             line: 0,
             character: 0,
         };
-        let (_, applied) = BearerProvider::apply_configured_token(&config, Vec::new());
-        assert!(!applied);
+        let (_, target) = BearerProvider::apply_configured_token(&config, Vec::new());
+        assert!(!target);
     }
 }

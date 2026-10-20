@@ -1,3 +1,4 @@
+use super::bearer::BearerProvider;
 use crate::syntax::auth::Config;
 use crate::syntax::variable_context::VariableContext;
 use std::future::Future;
@@ -17,6 +18,15 @@ pub type AuthFuture<'a> =
 pub trait AuthProvider: Send + Sync {
     #[allow(dead_code)]
     fn auth_type(&self) -> &str;
+
+    fn known_token(
+        &self,
+        _auth_config: &Config,
+        context: &VariableContext,
+        headers: Vec<(String, String)>,
+    ) -> (Vec<(String, String)>, bool) {
+        BearerProvider::apply_from_variables(&context.all_variables(), headers)
+    }
 
     fn configure<'a>(
         &'a self,

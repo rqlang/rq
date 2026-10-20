@@ -6,10 +6,12 @@
 
 - Fixed *Run Request* sending a different request than `rq request run` for the same `.rq` file. The extension now runs every request through the same preparation as the CLI and only performs the network call itself, so these divergences are gone:
   - A `let` that overrides an imported variable was ignored and the imported value was sent; the same happened in *Show Request* and in variable hovers.
-  - A request imported by several files could be resolved with another file's variables. It is now resolved in the file that declares it, while the `.env` keeps coming from the opened folder.
+  - A request imported by several files could be resolved with another file's variables. It is now resolved in the file it is listed under in the request explorer, as `rq request run -s <that file>` does, while the `.env` keeps coming from the opened folder.
   - Auth fields were resolved without the request's variables (`[required]` prompts, *Run Request with Variables*, endpoint scope), and an auth name declared in two folders could resolve to the other folder's provider.
   - A string body that looked like JSON, such as `io.read_file("item.json")`, was sent with `Content-Type: application/json`; it is now sent without one, as the CLI does. Use `io.read_json` for a JSON body.
+  - A header repeated in a request was sent only once.
 - Fixed a runtime `auth_token` losing to an `auth_token` defined with `let` in the file.
+- Fixed a `timeout` too large to represent crashing `rq request run` and the extension. It is now reported as `Timeout value '…' is too large`, and a timeout longer than about 24.8 days no longer fires immediately in the extension.
 
 ## [0.8.1]
 

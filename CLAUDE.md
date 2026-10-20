@@ -50,7 +50,7 @@ The VSCode extension talks to `rq-wasm` in-process (worker), not a CLI subproces
   - `functions/` — built-ins, grouped by category (`datetime/`, `io/`, `random/`, `sys/`)
   - `secrets.rs`, `fs.rs` — syntax-side hooks into platform traits
 - `client/` — request execution (`mod.rs`, `models.rs`). `RqClient::prepare_request` turns a request into exactly what is sent (resolution, auth, default headers, timeout) and is the only place that does; `run` is `prepare` + token acquisition + `HttpClient::execute`
-- `auth/` — runtime auth providers: `bearer.rs`, `oauth2_*.rs`, `auth_provider.rs`; `apply_known_token` applies a token that needs no network call, providers' `configure` obtains the rest
+- `auth/` — runtime auth providers: `bearer.rs`, `oauth2_*.rs`, `auth_provider.rs`. Each `AuthProvider` has `known_token` (apply a token that needs no network call; defaults to the `auth_token` variable) and `configure` (obtain one that is not known yet)
 - `native/` — native (non-WASM) impls of `fs`, `http`, `secrets`
 - `http.rs` (`HttpClient` trait, `request_timeout`), `paths.rs`, `error.rs`, `logger.rs`, `version.rs`, `lib.rs`
 
@@ -82,7 +82,7 @@ The VSCode extension talks to `rq-wasm` in-process (worker), not a CLI subproces
 | Variable lookup or interpolation for a new command or binding | Start from `RqClient::file_context` (backed by `VariableContext::for_file`) and add the endpoint, request and CLI scopes; extend `for_file` if it lacks something, never assemble variables in the caller |
 | New semantic check / diagnostic | `rq-lib/src/syntax/analysis.rs` |
 | New built-in function | `rq-lib/src/syntax/functions/<category>/` + register in `functions/mod.rs` |
-| New auth provider | Field validation in `syntax/auth/` (no execution there), runtime in `auth/`, plus its case in `auth::apply_known_token` |
+| New auth provider | Field validation in `syntax/auth/` (no execution there), runtime `AuthProvider` in `auth/` (`known_token` + `configure`) registered in `auth::get_provider` |
 | Anything that changes what a request sends (URL, headers, body, auth, timeout) | `RqClient::prepare` in `rq-lib/src/client/mod.rs`; never in `rqClient.ts` |
 | New CLI command | `cli/src/commands/<name>.rs` + dispatch in `main.rs` |
 | New JS-callable API | `rq-wasm/src/bindings.rs` + matching method in `vscode-extension/src/rqClient.ts` |

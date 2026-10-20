@@ -1,5 +1,6 @@
 use super::auth_provider::{AuthFuture, AuthProvider};
 use super::bearer::BearerProvider;
+use crate::syntax::auth::Config;
 use crate::syntax::error::AuthError;
 use std::collections::HashMap;
 
@@ -29,10 +30,7 @@ impl OAuth2ClientCredentialsProvider {
         Self
     }
 
-    fn required_field<'a>(
-        auth_config: &'a crate::syntax::auth::Config,
-        field: &str,
-    ) -> Result<&'a String, AuthError> {
+    fn required_field<'a>(auth_config: &'a Config, field: &str) -> Result<&'a String, AuthError> {
         auth_config
             .fields
             .get(field)
@@ -60,17 +58,11 @@ impl AuthProvider for OAuth2ClientCredentialsProvider {
     fn configure<'a>(
         &'a self,
         auth_config: &'a crate::syntax::auth::Config,
-        context: &'a crate::syntax::variable_context::VariableContext,
+        _context: &'a crate::syntax::variable_context::VariableContext,
         url: String,
-        headers: Vec<(String, String)>,
+        mut headers: Vec<(String, String)>,
     ) -> AuthFuture<'a> {
         Box::pin(async move {
-            let variables = context.all_variables();
-            let (mut headers, applied) = BearerProvider::apply_from_variables(&variables, headers);
-            if applied {
-                return Ok((url, headers));
-            }
-
             let client_id = Self::required_field(auth_config, CLIENT_ID_FIELD)?;
             let token_url = Self::required_field(auth_config, TOKEN_URL_FIELD)?;
             let scope = auth_config.fields.get(SCOPE_FIELD).map(|t| &t.value);
@@ -289,10 +281,7 @@ impl AuthProvider for OAuth2ClientCredentialsProvider {
                 token_response["expires_in"]
             ));
 
-            headers.push((
-                reqwest::header::AUTHORIZATION.as_str().to_string(),
-                format!("Bearer {access_token}"),
-            ));
+            BearerProvider::add_bearer_header(&mut headers, access_token);
 
             Ok((url, headers))
         })

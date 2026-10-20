@@ -1,5 +1,4 @@
 use super::auth_provider::{AuthFuture, AuthProvider};
-use super::bearer::BearerProvider;
 use crate::syntax::error::AuthError;
 
 pub struct OAuth2ImplicitProvider;
@@ -24,23 +23,11 @@ impl AuthProvider for OAuth2ImplicitProvider {
     fn configure<'a>(
         &'a self,
         auth_config: &'a crate::syntax::auth::Config,
-        context: &'a crate::syntax::variable_context::VariableContext,
-        url: String,
-        headers: Vec<(String, String)>,
+        _context: &'a crate::syntax::variable_context::VariableContext,
+        _url: String,
+        _headers: Vec<(String, String)>,
     ) -> AuthFuture<'a> {
         Box::pin(async move {
-            let variables = context.all_variables();
-            let (modified_headers, applied) =
-                BearerProvider::apply_from_variables(&variables, headers);
-
-            if applied {
-                crate::logger::Logger::debug(&format!(
-                    "* Using an existing token for OAuth2 Implicit auth '{}'",
-                    auth_config.name
-                ));
-                return Ok((url, modified_headers));
-            }
-
             Err(AuthError::new(format!(
                 "OAuth2 Implicit auth '{}' requires interactive authentication. This feature is not yet implemented.",
                 auth_config.name

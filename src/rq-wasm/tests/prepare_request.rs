@@ -46,7 +46,8 @@ fn prepare() -> PreparedRequest {
 
 #[test]
 fn prepared_url_uses_the_local_override_and_the_parent_import() {
-    assert_eq!(prepare().request.url, "http://example.test/local");
+    let target = prepare();
+    assert_eq!(target.request.url, "http://example.test/local");
 }
 
 #[test]

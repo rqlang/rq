@@ -1,5 +1,5 @@
-use crate::syntax::auth::{AuthConfig, AuthFuture};
-use crate::syntax::error::{AuthError, SyntaxError};
+use crate::syntax::auth::AuthConfig;
+use crate::syntax::error::SyntaxError;
 use crate::syntax::token::Token;
 use std::collections::HashMap;
 
@@ -80,30 +80,6 @@ impl AuthConfig for OAuth2ImplicitConfig {
         }
 
         Ok(())
-    }
-
-    fn configure<'a>(
-        &'a self,
-        auth_config: &'a crate::syntax::auth::Config,
-        context: &'a crate::syntax::variable_context::VariableContext,
-        url: String,
-        headers: Vec<(String, String)>,
-    ) -> AuthFuture<'a> {
-        Box::pin(async move {
-            let variables = context.all_variables();
-            let (modified_headers, applied) =
-                crate::syntax::auth::BearerAuthConfig::apply_from_variables(&variables, headers);
-
-            if applied {
-                return Ok((url, modified_headers));
-            }
-
-            Err(AuthError::new(format!(
-                "OAuth2 Implicit auth '{}' requires interactive authentication. This feature is not yet implemented.",
-                auth_config.name
-            ))
-            .into())
-        })
     }
 }
 

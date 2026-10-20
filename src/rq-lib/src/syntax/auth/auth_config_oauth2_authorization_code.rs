@@ -1,5 +1,5 @@
-use crate::syntax::auth::{AuthConfig, AuthFuture};
-use crate::syntax::error::{AuthError, SyntaxError};
+use crate::syntax::auth::AuthConfig;
+use crate::syntax::error::SyntaxError;
 use crate::syntax::token::Token;
 use std::collections::HashMap;
 
@@ -137,30 +137,6 @@ impl AuthConfig for OAuth2AuthorizationCodeConfig {
         }
 
         Ok(())
-    }
-
-    fn configure<'a>(
-        &'a self,
-        auth_config: &'a crate::syntax::auth::Config,
-        context: &'a crate::syntax::variable_context::VariableContext,
-        url: String,
-        headers: Vec<(String, String)>,
-    ) -> AuthFuture<'a> {
-        Box::pin(async move {
-            let variables = context.all_variables();
-            let (modified_headers, applied) =
-                crate::syntax::auth::BearerAuthConfig::apply_from_variables(&variables, headers);
-
-            if applied {
-                return Ok((url, modified_headers));
-            }
-
-            Err(AuthError::new(format!(
-                "OAuth2 Authorization Code auth '{}' requires interactive authentication. This feature is not yet implemented.",
-                auth_config.name
-            ))
-            .into())
-        })
     }
 }
 
@@ -400,94 +376,6 @@ mod tests {
             .unwrap_err()
             .message
             .contains("unexpected field 'unexpected'"));
-    }
-
-    #[tokio::test]
-    async fn test_oauth2_configure_fallback_to_bearer_with_auth_token() {
-        use crate::syntax::variable_context::{Variable, VariableValue};
-
-        let provider = OAuth2AuthorizationCodeConfig::new();
-
-        let auth_config = crate::syntax::auth::Config {
-            name: "test_oauth".to_string(),
-            auth_type: crate::syntax::auth::AuthType::OAuth2AuthorizationCode,
-            fields: HashMap::new(),
-            file_path: std::path::PathBuf::new(),
-            line: 0,
-            character: 0,
-        };
-
-        let context = crate::syntax::variable_context::VariableContext {
-            file_variables: vec![Variable {
-                name: "auth_token".to_string(),
-                value: VariableValue::String("fallback-bearer-token".to_string()),
-            }],
-            environment_variables: vec![],
-            secret_variables: vec![],
-            endpoint_variables: vec![],
-            request_variables: vec![],
-            cli_variables: vec![],
-        };
-
-        let url = "https://api.example.com/data".to_string();
-        let headers = vec![("Content-Type".to_string(), "application/json".to_string())];
-
-        let result = provider
-            .configure(&auth_config, &context, url.clone(), headers)
-            .await;
-
-        assert!(result.is_ok());
-        let (returned_url, returned_headers) = result.unwrap();
-        assert_eq!(returned_url, url);
-        assert_eq!(returned_headers.len(), 2);
-        assert_eq!(
-            returned_headers[1],
-            (
-                "authorization".to_string(),
-                "Bearer fallback-bearer-token".to_string()
-            )
-        );
-    }
-
-    #[tokio::test]
-    async fn test_oauth2_configure_no_fallback_returns_error() {
-        use crate::syntax::variable_context::{Variable, VariableValue};
-
-        let config = OAuth2AuthorizationCodeConfig::new();
-
-        let variables = vec![Variable {
-            name: "other_var".to_string(),
-            value: VariableValue::String("other-value".to_string()),
-        }];
-
-        let auth_config = crate::syntax::auth::Config {
-            name: "test_oauth".to_string(),
-            auth_type: crate::syntax::auth::AuthType::OAuth2AuthorizationCode,
-            fields: HashMap::new(),
-            file_path: std::path::PathBuf::new(),
-            line: 0,
-            character: 0,
-        };
-
-        let context = crate::syntax::variable_context::VariableContext {
-            file_variables: variables,
-            environment_variables: vec![],
-            secret_variables: vec![],
-            endpoint_variables: vec![],
-            request_variables: vec![],
-            cli_variables: vec![],
-        };
-
-        let url = "https://api.example.com/data".to_string();
-        let headers = vec![("Content-Type".to_string(), "application/json".to_string())];
-
-        let result = config.configure(&auth_config, &context, url, headers).await;
-
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("requires interactive authentication"));
     }
 
     #[test]

@@ -1,7 +1,6 @@
-use crate::syntax::auth::{AuthConfig, AuthFuture};
+use crate::syntax::auth::AuthConfig;
 use crate::syntax::error::SyntaxError;
 use crate::syntax::token::Token;
-use crate::syntax::variable_context::Variable;
 use std::collections::HashMap;
 
 const TOKEN_FIELD: &str = "token";
@@ -11,33 +10,6 @@ pub struct BearerAuthConfig;
 impl BearerAuthConfig {
     pub fn new() -> Self {
         BearerAuthConfig
-    }
-
-    pub fn apply_from_variables(
-        variables: &[Variable],
-        mut headers: Vec<(String, String)>,
-    ) -> (Vec<(String, String)>, bool) {
-        if let Some(token) = Self::find_auth_token(variables) {
-            Self::add_bearer_header(&mut headers, &token);
-            (headers, true)
-        } else {
-            (headers, false)
-        }
-    }
-
-    fn find_auth_token(variables: &[Variable]) -> Option<String> {
-        for var in variables {
-            if var.name.eq_ignore_ascii_case("auth_token") {
-                if let crate::syntax::variable_context::VariableValue::String(token) = &var.value {
-                    return Some(token.clone());
-                }
-            }
-        }
-        None
-    }
-
-    fn add_bearer_header(headers: &mut Vec<(String, String)>, token: &str) {
-        headers.push(("authorization".to_string(), format!("Bearer {token}")));
     }
 }
 
@@ -65,20 +37,6 @@ impl AuthConfig for BearerAuthConfig {
         }
 
         Ok(())
-    }
-
-    fn configure<'a>(
-        &'a self,
-        auth_config: &'a crate::syntax::auth::Config,
-        _context: &'a crate::syntax::variable_context::VariableContext,
-        url: String,
-        mut headers: Vec<(String, String)>,
-    ) -> AuthFuture<'a> {
-        Box::pin(async move {
-            let token = &auth_config.fields[TOKEN_FIELD].value;
-            Self::add_bearer_header(&mut headers, token);
-            Ok((url, headers))
-        })
     }
 }
 
@@ -160,84 +118,5 @@ mod tests {
 
         let result = config.validate("test_auth", &fields);
         assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_apply_from_variables_with_auth_token() {
-        use crate::syntax::variable_context::{Variable, VariableValue};
-
-        let variables = vec![
-            Variable {
-                name: "auth_token".to_string(),
-                value: VariableValue::String("test-token-123".to_string()),
-            },
-            Variable {
-                name: "other_var".to_string(),
-                value: VariableValue::String("other-value".to_string()),
-            },
-        ];
-
-        let headers = vec![("Content-Type".to_string(), "application/json".to_string())];
-
-        let (result, applied) = BearerAuthConfig::apply_from_variables(&variables, headers);
-
-        assert!(applied);
-        assert_eq!(result.len(), 2);
-        assert_eq!(
-            result[0],
-            ("Content-Type".to_string(), "application/json".to_string())
-        );
-        assert_eq!(
-            result[1],
-            (
-                "authorization".to_string(),
-                "Bearer test-token-123".to_string()
-            )
-        );
-    }
-
-    #[test]
-    fn test_apply_from_variables_without_auth_token() {
-        use crate::syntax::variable_context::{Variable, VariableValue};
-
-        let variables = vec![Variable {
-            name: "other_var".to_string(),
-            value: VariableValue::String("other-value".to_string()),
-        }];
-
-        let headers = vec![("Content-Type".to_string(), "application/json".to_string())];
-
-        let (result, applied) = BearerAuthConfig::apply_from_variables(&variables, headers);
-
-        assert!(!applied);
-        assert_eq!(result.len(), 1);
-        assert_eq!(
-            result[0],
-            ("Content-Type".to_string(), "application/json".to_string())
-        );
-    }
-
-    #[test]
-    fn test_apply_from_variables_empty_headers() {
-        use crate::syntax::variable_context::{Variable, VariableValue};
-
-        let variables = vec![Variable {
-            name: "auth_token".to_string(),
-            value: VariableValue::String("my-bearer-token".to_string()),
-        }];
-
-        let headers = vec![];
-
-        let (result, applied) = BearerAuthConfig::apply_from_variables(&variables, headers);
-
-        assert!(applied);
-        assert_eq!(result.len(), 1);
-        assert_eq!(
-            result[0],
-            (
-                "authorization".to_string(),
-                "Bearer my-bearer-token".to_string()
-            )
-        );
     }
 }

@@ -5,7 +5,6 @@ mod auth_config_oauth2_client_credentials;
 mod auth_config_oauth2_implicit;
 
 pub use auth_config::AuthConfig;
-pub use auth_config::AuthFuture;
 pub use auth_config_bearer::BearerAuthConfig;
 pub use auth_config_oauth2_authorization_code::OAuth2AuthorizationCodeConfig;
 pub use auth_config_oauth2_client_credentials::OAuth2ClientCredentialsConfig;

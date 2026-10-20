@@ -7,7 +7,8 @@ use crate::error::RqError;
 use crate::http::HttpClient;
 use crate::lint::{lint_rq_file, LintDiagnostic, LintScope, WorkspaceCollector, WorkspaceFile};
 use crate::logger::Logger;
-use crate::syntax::parse_result::AuthLocation;
+use crate::syntax::parse_result::{AuthLocation, RequestWithVariables};
+use crate::syntax::variable_context::{VariableContext, VariableContextBuilder};
 use crate::syntax::{Fs, Request, RqFile, SecretProvider, Variable, VariableValue};
 
 use std::collections::{HashMap, HashSet};
@@ -58,25 +59,16 @@ impl RqClient {
 
         let mut all_results = Vec::new();
 
-        for rq_file in rq_files {
-            let filtered_requests = Self::filter_requests(rq_file.requests, request_name);
+        for mut rq_file in rq_files {
+            let filtered_requests =
+                Self::filter_requests(std::mem::take(&mut rq_file.requests), request_name);
 
             if filtered_requests.is_empty() {
                 continue;
             }
 
-            let env_vars = if let Some(env_name) = environment {
-                if let Some(vars) = rq_file.environments.get(env_name) {
-                    Self::log_environment(env_name, &rq_file.path, vars);
-                    vars.clone()
-                } else {
-                    return Err(RqError::EnvironmentNotFound(env_name.to_string()));
-                }
-            } else {
-                Vec::new()
-            };
-
-            let secret_vars = self.collect_secrets_for_env(source_path, environment);
+            Self::require_environment(&rq_file, environment)?;
+            let file_context = self.file_context(&rq_file, source_path, environment);
             let cli_vars = Self::parse_cli_variables(variables)?;
 
             Logger::debug(&format!(
@@ -88,14 +80,8 @@ impl RqClient {
             let mut results = Vec::new();
 
             for req_with_vars in filtered_requests {
-                let context = crate::syntax::variable_context::VariableContext::builder()
-                    .file_variables(rq_file.file_variables.clone())
-                    .environment_variables(env_vars.clone())
-                    .secret_variables(secret_vars.clone())
-                    .endpoint_variables(req_with_vars.endpoint_variables)
-                    .request_variables(req_with_vars.request_variables)
-                    .cli_variables(cli_vars.clone())
-                    .build();
+                let context =
+                    Self::request_context(&file_context, &req_with_vars, cli_vars.clone());
 
                 let mut working = req_with_vars.request;
 
@@ -312,6 +298,9 @@ impl RqClient {
 
         let request_file = crate::paths::clean_path(&rq_file.path);
 
+        Self::require_environment(&rq_file, environment)?;
+        let file_context = self.file_context(&rq_file, source_path, environment);
+
         let req_with_vars = rq_file
             .requests
             .into_iter()
@@ -321,97 +310,26 @@ impl RqClient {
         let request_line = req_with_vars.request.line;
         let request_character = req_with_vars.request.character;
 
-        let mut loaded_variables = rq_file.file_variables.clone();
-        let mut loaded_auth_providers = rq_file.auth_providers.clone();
-        let mut processed_files = std::collections::HashSet::new();
-        processed_files.insert(rq_file.path.clone());
-
-        let mut files_to_process = rq_file.imported_files.clone();
-
-        while let Some(file_path) = files_to_process.pop() {
-            if processed_files.contains(&file_path) {
-                continue;
-            }
-            processed_files.insert(file_path.clone());
-
-            if self.fs.exists(&file_path) {
-                if let Ok(content) = self.fs.read(&file_path) {
-                    if let Ok(tokens) = crate::syntax::tokenize(&content) {
-                        if let Ok(result) = crate::syntax::analysis::analyze(
-                            &tokens,
-                            file_path.clone(),
-                            &content,
-                            &*self.fs,
-                        ) {
-                            loaded_variables.extend(result.file_variables);
-                            for (k, v) in result.auth_providers {
-                                loaded_auth_providers.insert(k, v);
-                            }
-                            for import in result.imported_files {
-                                if !processed_files.contains(&import) {
-                                    files_to_process.push(import);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        let env_vars = if let Some(env_name) = environment {
-            if let Some(vars) = rq_file.environments.get(env_name) {
-                Self::log_environment(env_name, &rq_file.path, vars);
-                vars.clone()
-            } else {
-                return Err(RqError::EnvironmentNotFound(env_name.to_string()));
-            }
-        } else {
-            Vec::new()
-        };
-
-        let secret_vars = self.collect_secrets_for_env(source_path, environment);
-        let mut cli_vars = Self::parse_cli_variables(variables)?;
-
-        let endpoint_variables = req_with_vars.endpoint_variables;
-        let request_variables = req_with_vars.request_variables;
+        let cli_vars = Self::parse_cli_variables(variables)?;
+        let mut context = Self::request_context(&file_context, &req_with_vars, cli_vars);
         let mut working = req_with_vars.request;
 
         if interpolate_variables && skip_required_variables {
-            let defined: std::collections::HashSet<String> = loaded_variables
-                .iter()
-                .chain(env_vars.iter())
-                .chain(secret_vars.iter())
-                .chain(endpoint_variables.iter())
-                .chain(request_variables.iter())
-                .chain(cli_vars.iter())
-                .map(|v| v.name.clone())
-                .collect();
-            for name in &working.required_variables {
-                if !defined.contains(name) {
-                    cli_vars.push(crate::syntax::variable_context::Variable {
-                        name: name.clone(),
-                        value: crate::syntax::variable_context::VariableValue::String(
-                            String::new(),
-                        ),
-                    });
-                }
-            }
+            let defined = context.as_map();
+            let placeholders = Self::empty_variables(
+                working
+                    .required_variables
+                    .iter()
+                    .filter(|name| !defined.contains_key(name.as_str())),
+            );
+            context.cli_variables.extend(placeholders);
         }
-
-        let context = crate::syntax::variable_context::VariableContext::builder()
-            .file_variables(loaded_variables)
-            .environment_variables(env_vars)
-            .secret_variables(secret_vars)
-            .endpoint_variables(endpoint_variables)
-            .request_variables(request_variables)
-            .cli_variables(cli_vars)
-            .build();
 
         if !interpolate_variables {
             let (auth_name, auth_type) = if let Some(auth_name) = working.auth.as_deref() {
                 if auth_name.trim().is_empty() {
                     (None, None)
-                } else if let Some(auth_provider) = loaded_auth_providers.get(auth_name) {
+                } else if let Some(auth_provider) = rq_file.auth_providers.get(auth_name) {
                     (
                         Some(auth_name.to_string()),
                         Some(auth_provider.auth_type.as_str().to_string()),
@@ -466,7 +384,7 @@ impl RqClient {
             if auth_name.trim().is_empty() {
                 (None, None)
             } else {
-                let auth_provider = loaded_auth_providers.get(auth_name).ok_or_else(|| {
+                let auth_provider = rq_file.auth_providers.get(auth_name).ok_or_else(|| {
                     RqError::Validation(format!("Auth configuration '{auth_name}' not found"))
                 })?;
                 (
@@ -573,31 +491,18 @@ impl RqClient {
             ));
         }
 
-        let content = self.fs.read(&file_path).map_err(RqError::Generic)?;
-        let tokens =
-            crate::syntax::tokenize(&content).map_err(|e| RqError::Generic(e.to_string()))?;
-        let parse_result =
-            crate::syntax::analysis::analyze(&tokens, file_path.clone(), &content, &*self.fs)
-                .map_err(|e| RqError::Generic(e.to_string()))?;
-        let imported_files = parse_result.imported_files.clone();
-        let all_variables = crate::syntax::collect_all_variables(
-            &parse_result,
-            environment,
-            &*self.secrets,
-            source_path,
-        )
-        .map_err(|e| RqError::Generic(e.to_string()))?;
+        let rq_file = self.load_rq_file(&file_path)?;
+        Self::require_environment(&rq_file, environment)?;
+        let context = self
+            .file_context(&rq_file, source_path, environment)
+            .build();
 
         let mut source_files = vec![file_path.clone()];
-        source_files.extend(imported_files);
+        source_files.extend(rq_file.imported_files.iter().cloned());
         let env_path = source_path.join(".env");
         if self.fs.exists(&env_path) {
             source_files.push(env_path);
         }
-
-        let context = crate::syntax::variable_context::VariableContext::builder()
-            .file_variables(all_variables)
-            .build();
 
         let config = crate::syntax::resolve::resolve_auth_provider(
             auth_provider,
@@ -889,55 +794,29 @@ impl RqClient {
             ));
         }
 
-        let paths = self.resolution_paths(source_path, scope_file)?;
-        let entry = self
-            .collect_variable_entries(&paths, environment)
-            .into_iter()
-            .find(|e| e.name == name)
-            .ok_or_else(|| RqError::Validation(format!("Variable '{name}' not found")))?;
+        let (context_file, entry) =
+            self.find_variable_entry(source_path, scope_file, name, environment)?;
 
         if !interpolate_variables {
             return Ok(entry);
         }
 
-        let mut all_vars: Vec<crate::syntax::Variable> = Vec::new();
-        let mut target_raw: Option<VariableValue> = None;
-
-        for path in &paths {
-            if let Ok(rq_file) = self.load_rq_file(path) {
-                for var in &rq_file.file_variables {
-                    if target_raw.is_none() && var.name == name {
-                        target_raw = Some(var.value.clone());
-                    }
-                    all_vars.push(var.clone());
-                }
-                if let Some(env_name) = environment {
-                    if let Some(env_vars) = rq_file.environments.get(env_name) {
-                        for var in env_vars {
-                            if var.name == name {
-                                target_raw = Some(var.value.clone());
-                            }
-                            all_vars.push(var.clone());
-                        }
-                    }
-                }
-            }
-        }
-
-        let secret_vars = self.collect_secrets_for_env(source_path, environment);
-
-        let context = crate::syntax::variable_context::VariableContext::builder()
-            .file_variables(all_vars)
-            .secret_variables(secret_vars)
+        let Some(rq_file) = self.load_rq_file_lenient(&context_file) else {
+            return Ok(entry);
+        };
+        let context = self
+            .file_context(&rq_file, source_path, environment)
             .build();
 
-        let raw_value = match target_raw {
-            Some(VariableValue::String(s)) => s,
+        let raw_value = match context.declared_value(name) {
+            Some(VariableValue::String(s)) => s.clone(),
             Some(VariableValue::Reference(r)) => format!("{{{{{r}}}}}"),
             _ => return Ok(entry),
         };
 
-        let mut source_files = paths;
+        let mut source_files: Vec<PathBuf> = std::iter::once(rq_file.path.clone())
+            .chain(rq_file.imported_files.iter().cloned())
+            .collect();
         let env_path = source_path.join(".env");
         if self.fs.exists(&env_path) {
             source_files.push(env_path);
@@ -1367,6 +1246,74 @@ impl RqClient {
         Ok(request)
     }
 
+    fn find_variable_entry(
+        &self,
+        source_path: &Path,
+        scope_file: Option<&Path>,
+        name: &str,
+        environment: Option<&str>,
+    ) -> Result<(PathBuf, crate::client::models::VariableEntry), RqError> {
+        let candidates = match scope_file {
+            Some(file) if self.fs.is_file(file) => vec![file.to_path_buf()],
+            _ if self.fs.is_file(source_path) => vec![source_path.to_path_buf()],
+            _ => self.collect_paths(source_path)?,
+        };
+        candidates
+            .into_iter()
+            .find_map(|path| {
+                self.collect_variable_entries(std::slice::from_ref(&path), environment)
+                    .into_iter()
+                    .find(|e| e.name == name)
+                    .map(|entry| (path, entry))
+            })
+            .ok_or_else(|| RqError::Validation(format!("Variable '{name}' not found")))
+    }
+
+    fn require_environment(rq_file: &RqFile, environment: Option<&str>) -> Result<(), RqError> {
+        let Some(env_name) = environment else {
+            return Ok(());
+        };
+        let vars = rq_file
+            .environments
+            .get(env_name)
+            .ok_or_else(|| RqError::EnvironmentNotFound(env_name.to_string()))?;
+        Self::log_environment(env_name, &rq_file.path, vars);
+        Ok(())
+    }
+
+    fn file_context(
+        &self,
+        rq_file: &RqFile,
+        source_path: &Path,
+        environment: Option<&str>,
+    ) -> VariableContextBuilder {
+        let secrets = self.collect_secrets_for_env(source_path, environment);
+        VariableContext::for_file(rq_file, environment, secrets)
+    }
+
+    fn request_context(
+        file_context: &VariableContextBuilder,
+        request: &RequestWithVariables,
+        cli_variables: Vec<Variable>,
+    ) -> VariableContext {
+        file_context
+            .clone()
+            .endpoint_variables(request.endpoint_variables.clone())
+            .request_variables(request.request_variables.clone())
+            .cli_variables(cli_variables)
+            .build()
+    }
+
+    fn empty_variables<'a>(names: impl IntoIterator<Item = &'a String>) -> Vec<Variable> {
+        names
+            .into_iter()
+            .map(|name| Variable {
+                name: name.clone(),
+                value: VariableValue::String(String::new()),
+            })
+            .collect()
+    }
+
     fn collect_secrets_for_env(&self, source_path: &Path, env: Option<&str>) -> Vec<Variable> {
         let dir = if self.fs.is_dir(source_path) {
             source_path.to_path_buf()
@@ -1508,20 +1455,16 @@ impl RqClient {
     ) -> Vec<RqError> {
         let mut errors = Vec::new();
 
-        let env_vars = if let Some(name) = env_name {
-            rq_file.environments.get(name).cloned().unwrap_or_default()
-        } else {
-            Vec::new()
-        };
-
-        let secret_vars = self.collect_secrets_for_env(source_path, env_name);
+        let file_context = self.file_context(rq_file, source_path, env_name);
+        let base_context = file_context.clone().build();
+        let secret_vars = &base_context.secret_variables;
 
         let mut checked_names: std::collections::HashSet<String> = std::collections::HashSet::new();
 
-        let all_declared: Vec<_> = rq_file
+        let all_declared: Vec<_> = base_context
             .file_variables
             .iter()
-            .chain(env_vars.iter())
+            .chain(base_context.environment_variables.iter())
             .cloned()
             .collect();
         for v in &all_declared {
@@ -1534,7 +1477,7 @@ impl RqClient {
             std::collections::HashSet::new();
         for e in crate::syntax::resolve::collect_declared_variable_errors(
             &all_declared,
-            &secret_vars,
+            secret_vars,
             &declared_search_paths,
             &*self.fs,
         ) {
@@ -1574,26 +1517,10 @@ impl RqClient {
                 }
                 errors.push(RqError::Syntax(e));
             }
-            let required_placeholders: Vec<crate::syntax::variable_context::Variable> =
-                req_with_vars
-                    .request
-                    .required_variables
-                    .iter()
-                    .map(|name| crate::syntax::variable_context::Variable {
-                        name: name.clone(),
-                        value: crate::syntax::variable_context::VariableValue::String(
-                            String::new(),
-                        ),
-                    })
-                    .collect();
-            let context = crate::syntax::variable_context::VariableContext::builder()
-                .file_variables(rq_file.file_variables.clone())
-                .environment_variables(env_vars.clone())
-                .secret_variables(secret_vars.clone())
-                .endpoint_variables(req_with_vars.endpoint_variables.clone())
-                .request_variables(req_with_vars.request_variables.clone())
-                .cli_variables(required_placeholders)
-                .build();
+            let required_placeholders =
+                Self::empty_variables(&req_with_vars.request.required_variables);
+            let context =
+                Self::request_context(&file_context, req_with_vars, required_placeholders);
 
             let search_paths = Self::build_search_paths(
                 &req_with_vars.request,
@@ -1629,17 +1556,9 @@ impl RqClient {
             }
         }
 
-        let base_context = crate::syntax::variable_context::VariableContext::builder()
-            .file_variables(rq_file.file_variables.clone())
-            .environment_variables(env_vars.clone())
-            .secret_variables(secret_vars.clone())
-            .build();
-
         for ep_def in rq_file.endpoints.values() {
-            let ep_context = crate::syntax::variable_context::VariableContext::builder()
-                .file_variables(rq_file.file_variables.clone())
-                .environment_variables(env_vars.clone())
-                .secret_variables(secret_vars.clone())
+            let ep_context = file_context
+                .clone()
                 .endpoint_variables(ep_def.variables.clone())
                 .build();
             let ep_type_errors = crate::syntax::resolve::collect_slot_type_errors(
@@ -2775,5 +2694,95 @@ mod variable_tests {
         );
         let target = variable_names(dir.path());
         assert!(target.contains(&"base_url".to_string()));
+    }
+
+    fn write_imported_target(dir: &Path) {
+        write(
+            dir,
+            "shared.rq",
+            "let host = \"http://localhost\";\nlet target = \"imported\";\n",
+        );
+    }
+
+    fn write_local_override(dir: &Path) {
+        write_imported_target(dir);
+        write(
+            dir,
+            "main.rq",
+            "import \"shared\";\n\nlet target = \"local\";\nlet path = \"/{{target}}\";\n\nrq probe(\"{{host}}/{{target}}\");\n",
+        );
+    }
+
+    #[test]
+    fn request_details_use_the_local_override_of_an_imported_variable() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write_local_override(dir.path());
+        let target = RqClient::default()
+            .get_request_details(&dir.path().join("main.rq"), "probe", None, true, false, &[])
+            .expect("get_request_details failed");
+        assert_eq!(target.url, "http://localhost/local");
+    }
+
+    #[test]
+    fn request_details_use_an_import_declared_after_the_local_variable() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write_imported_target(dir.path());
+        write(
+            dir.path(),
+            "main.rq",
+            "let target = \"local\";\n\nimport \"shared\";\n\nrq probe(\"{{host}}/{{target}}\");\n",
+        );
+        let target = RqClient::default()
+            .get_request_details(&dir.path().join("main.rq"), "probe", None, true, false, &[])
+            .expect("get_request_details failed");
+        assert_eq!(target.url, "http://localhost/imported");
+    }
+
+    #[test]
+    fn variable_lookup_returns_the_local_override_of_an_imported_variable() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write_local_override(dir.path());
+        let main = dir.path().join("main.rq");
+        let target = RqClient::default()
+            .get_variable(dir.path(), "target", None, true, Some(&main))
+            .expect("get_variable failed");
+        assert_eq!(target.value, "local");
+    }
+
+    #[test]
+    fn variable_lookup_points_at_the_local_override_of_an_imported_variable() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write_local_override(dir.path());
+        let main = dir.path().join("main.rq");
+        let target = RqClient::default()
+            .get_variable(dir.path(), "target", None, false, Some(&main))
+            .expect("get_variable failed");
+        assert_eq!((target.file.ends_with("main.rq"), target.line), (true, 2));
+    }
+
+    #[test]
+    fn variable_interpolation_uses_the_local_override_of_an_imported_variable() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write_local_override(dir.path());
+        let main = dir.path().join("main.rq");
+        let target = RqClient::default()
+            .get_variable(dir.path(), "path", None, true, Some(&main))
+            .expect("get_variable failed");
+        assert_eq!(target.value, "/local");
+    }
+
+    #[test]
+    fn auth_details_use_the_local_override_of_an_imported_variable() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write(dir.path(), "shared.rq", "let token = \"imported\";\n");
+        write(
+            dir.path(),
+            "main.rq",
+            "import \"shared\";\n\nlet token = \"local\";\n\nauth probe_auth(auth_type.bearer) {\n    token: \"{{token}}\",\n}\n",
+        );
+        let (_, _, fields, _, _, _) = RqClient::default()
+            .get_auth_details(dir.path(), "probe_auth", None, true)
+            .expect("get_auth_details failed");
+        assert_eq!(fields.get("token").map(String::as_str), Some("local"));
     }
 }

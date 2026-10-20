@@ -1,0 +1,5 @@
+let target = "local";
+
+import "shared";
+
+rq late_probe("{{host}}/{{target}}");

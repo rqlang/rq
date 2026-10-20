@@ -45,7 +45,7 @@ The VSCode extension talks to `rq-wasm` in-process (worker), not a CLI subproces
   - `rq_file.rs` — top-level parsed-file model
   - `resolve.rs` — cross-file symbol/reference resolution
   - `analysis.rs` — semantic validation (powers `check`)
-  - `variable_context.rs` — variable precedence/scoping
+  - `variable_context.rs` — variable precedence/scoping; `VariableContext::for_file` is the single place that turns a parsed `RqFile` (imports already merged), its environment and secrets into a `VariableContext`
   - `auth/` — auth config AST (bearer, oauth2 variants)
   - `functions/` — built-ins, grouped by category (`datetime/`, `io/`, `random/`, `sys/`)
   - `secrets.rs`, `fs.rs` — syntax-side hooks into platform traits
@@ -79,6 +79,7 @@ The VSCode extension talks to `rq-wasm` in-process (worker), not a CLI subproces
 | Change | Where |
 |---|---|
 | New syntax / keyword | `rq-lib/src/syntax/keywords.rs` + matching `parsers/*.rs` + AST node |
+| Variable lookup or interpolation for a new command or binding | Start from `RqClient::file_context` (backed by `VariableContext::for_file`) and add the endpoint, request and CLI scopes; extend `for_file` if it lacks something, never assemble variables in the caller |
 | New semantic check / diagnostic | `rq-lib/src/syntax/analysis.rs` |
 | New built-in function | `rq-lib/src/syntax/functions/<category>/` + register in `functions/mod.rs` |
 | New auth provider | AST in `syntax/auth/`, runtime in `auth/` |
@@ -291,7 +292,8 @@ Check these whenever a change touches the language, and state which ones you ver
 - **CLI ↔ extension parity** — a language-level feature is reachable from both surfaces: `rq-wasm/src/bindings.rs` plus the matching `rqClient.ts` method, not only the CLI.
 - **No panics on user input** — no `.unwrap()`, `.expect()`, `panic!`, slicing or indexing on any path reachable from a `.rq` file, a CLI argument or an HTTP response.
 - **Format-independent output** — every CLI command prints the same content whatever `-f/--format` says: `text` and `json` only change the representation, never which fields, sections or items appear, nor their defaults. A flag that filters the output (such as `-p/--print`) applies to every format alike.
-- **Variable precedence** — `variable_context.rs` resolution order stays unchanged unless the change is explicitly about precedence, and then it comes with a test per level.
+- **Variable precedence** — `variable_context.rs` resolution order stays unchanged unless the change is explicitly about precedence, and then it comes with a test per level. From lowest to highest: `let` → environment → secrets → endpoint → request → CLI `-v`. Imports are a textual merge (rqlang reference, Imports): the imported `let`s take the position of the `import` statement and the last definition wins, so a `let` after the `import` overrides the imported one and a `let` before it is overridden.
+- **Single variable resolution path** — every surface that resolves a variable (`request run`, `request show`, variable show, auth details, `check`, and each `rq-wasm` binding) builds its context from the parsed `RqFile` through `RqClient::file_context`. No function in `client/`, `rq-wasm` or the extension collects files, imports, environments or secrets into a `VariableContext` by hand, and none re-walks imports to gather variables: the parser has already merged them. A change to resolution comes with a test that compares two surfaces, such as `run` against `get_request_details`, on the same input.
 
 ## What NOT to Do
 

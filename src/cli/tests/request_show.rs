@@ -643,3 +643,27 @@ fn test_request_show_not_found_reports_typed_name() -> Result<(), Box<dyn std::e
 
     Ok(())
 }
+
+#[test]
+fn test_request_show_uses_local_override_of_imported_variable(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let output = rq_cmd()
+        .args([
+            "request",
+            "show",
+            "-s",
+            "tests/request/run/input/import_override/main__req_probe__.rq",
+            "-n",
+            "probe",
+            "-f",
+            "json",
+        ])
+        .output()?;
+
+    let json: Value = serde_json::from_slice(&output.stdout)?;
+    if !output.status.success() || json["url"] != "http://localhost:8080/local" {
+        return Err(format!("Unexpected result: {json}").into());
+    }
+
+    Ok(())
+}

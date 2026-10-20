@@ -1,38 +1,9 @@
-use crate::syntax::parse_result::ParseResult;
 use crate::syntax::variable_context::{Variable, VariableValue};
 use std::collections::HashMap;
 use std::path::Path;
 
 pub trait SecretProvider: Send + Sync {
     fn collect(&self, dir: &Path, selected_env: Option<&str>) -> Vec<Variable>;
-}
-
-pub fn collect_all_variables(
-    parse_result: &ParseResult,
-    environment_name: Option<&str>,
-    secret_provider: &dyn SecretProvider,
-    source_path: &Path,
-) -> Result<Vec<Variable>, Box<dyn std::error::Error>> {
-    let mut all_variables = parse_result.file_variables.clone();
-
-    if let Some(env_name) = environment_name {
-        if let Some(env_vars) = parse_result.environments.get(env_name) {
-            all_variables.extend(env_vars.clone());
-        } else {
-            return Err(format!("Environment '{env_name}' not found").into());
-        }
-    }
-
-    let dir = if source_path.is_dir() {
-        source_path.to_path_buf()
-    } else if let Some(parent) = source_path.parent() {
-        parent.to_path_buf()
-    } else {
-        return Ok(all_variables);
-    };
-
-    all_variables.extend(secret_provider.collect(&dir, environment_name));
-    Ok(all_variables)
 }
 
 pub fn parse_env_file(content: &str, selected_env: Option<&str>) -> Vec<Variable> {

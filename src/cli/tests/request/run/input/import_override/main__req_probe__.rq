@@ -1,0 +1,5 @@
+import "shared";
+
+let target = "local";
+
+rq probe("{{host}}/{{target}}");

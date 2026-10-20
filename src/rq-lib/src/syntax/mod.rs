@@ -19,8 +19,6 @@ pub mod variable_context;
 pub use fs::Fs;
 pub use parse_result::Request;
 pub use rq_file::RqFile;
-pub use secrets::{
-    collect_all_variables, collect_secrets, parse_env_file, parse_os_vars, SecretProvider,
-};
+pub use secrets::{collect_secrets, parse_env_file, parse_os_vars, SecretProvider};
 pub use tokenizer::tokenize;
 pub use variable_context::{Variable, VariableValue};

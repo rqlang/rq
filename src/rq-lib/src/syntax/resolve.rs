@@ -3,8 +3,8 @@ use super::{
     fs::Fs,
     functions::{self, traits::FunctionContext},
     keywords::{
-        KW_EP, KW_RQ, PUNC_DOLLAR, PUNC_LBRACE, PUNC_LBRACKET, PUNC_LPAREN, PUNC_RBRACE,
-        PUNC_RBRACKET, PUNC_RPAREN, PUNC_SEMI,
+        KW_AUTH, KW_ENV, KW_EP, KW_RQ, OP_LT, PUNC_DOLLAR, PUNC_LBRACE, PUNC_LBRACKET, PUNC_LPAREN,
+        PUNC_RBRACE, PUNC_RBRACKET, PUNC_RPAREN, PUNC_SEMI,
     },
     parse_result::{EndpointDefinition, Request},
     parsers::utils::parse_system_function,
@@ -369,7 +369,10 @@ fn var_ref_offsets(tokens: &[Token], var_name: &str) -> Vec<usize> {
         if token.token_type == TokenType::Comment {
             continue;
         }
-        if token.token_type == TokenType::Identifier && token.value == var_name {
+        if token.token_type == TokenType::Identifier
+            && token.value == var_name
+            && !is_declaration_name(tokens, i)
+        {
             let mut is_key = false;
             for next in tokens.iter().skip(i + 1) {
                 match next.token_type {
@@ -530,6 +533,22 @@ fn previous_significant(tokens: &[Token], before: usize) -> Option<usize> {
     (0..before)
         .rev()
         .find(|&index| tokens.get(index).is_some_and(|token| !is_trivia(token)))
+}
+
+fn is_declaration_name(tokens: &[Token], index: usize) -> bool {
+    let Some(previous) = previous_significant(tokens, index) else {
+        return false;
+    };
+    match tokens.get(previous) {
+        Some(token) if token.token_type == TokenType::Keyword => {
+            [KW_EP, KW_RQ, KW_ENV, KW_AUTH].contains(&token.value.as_str())
+        }
+        Some(token) if token.value == OP_LT => previous_significant(tokens, previous)
+            .and_then(|name| previous_significant(tokens, name))
+            .and_then(|keyword| tokens.get(keyword))
+            .is_some_and(|token| token.token_type == TokenType::Keyword && token.value == KW_EP),
+        _ => false,
+    }
 }
 
 fn is_punctuation(tokens: &[Token], index: usize, value: &str) -> bool {

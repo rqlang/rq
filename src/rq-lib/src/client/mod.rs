@@ -2777,6 +2777,36 @@ mod navigation_tests {
     }
 
     #[test]
+    fn endpoint_name_is_not_a_variable_reference() {
+        let target = variable_refs_at(
+            "ep id(\"http://x\") {\n    [required(id)]\n    rq get(id);\n}\n",
+            "id",
+            Some((2, 12)),
+        );
+        assert_eq!(target, vec![(1, 14), (2, 11)]);
+    }
+
+    #[test]
+    fn request_name_is_not_a_variable_reference() {
+        let target = variable_refs_at(
+            "ep items(\"http://x\") {\n    [required(id)]\n    rq id(id);\n}\n",
+            "id",
+            Some((2, 10)),
+        );
+        assert_eq!(target, vec![(1, 14), (2, 10)]);
+    }
+
+    #[test]
+    fn endpoint_template_parent_is_not_a_variable_reference() {
+        let target = variable_refs_at(
+            "ep id(\"http://x\");\nep items<id>(\"/items\") {\n    [required(id)]\n    rq get(id);\n}\n",
+            "id",
+            Some((3, 12)),
+        );
+        assert_eq!(target, vec![(2, 14), (3, 11)]);
+    }
+
+    #[test]
     fn endpoint_references_include_the_definition_and_its_children() {
         let dir = tempfile::tempdir().expect("tempdir");
         std::fs::write(

@@ -77,3 +77,37 @@ pub struct ReferenceLocation {
     pub line: usize,
     pub character: usize,
 }
+
+#[derive(Debug, Clone)]
+pub struct PreparedRequest {
+    pub request: crate::syntax::Request,
+    pub auth: Option<PreparedAuth>,
+    pub(crate) context: crate::syntax::variable_context::VariableContext,
+}
+
+#[derive(Debug, Clone)]
+pub struct PreparedAuth {
+    pub config: crate::syntax::auth::Config,
+    pub token_required: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct RequestTarget<'a> {
+    pub source: &'a std::path::Path,
+    pub scope_file: Option<&'a std::path::Path>,
+    pub name: &'a str,
+}
+
+impl<'a> RequestTarget<'a> {
+    pub fn new(source: &'a std::path::Path, name: &'a str) -> Self {
+        Self {
+            source,
+            scope_file: None,
+            name,
+        }
+    }
+
+    pub fn in_file(self, scope_file: Option<&'a std::path::Path>) -> Self {
+        Self { scope_file, ..self }
+    }
+}

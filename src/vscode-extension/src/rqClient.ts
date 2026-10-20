@@ -109,12 +109,18 @@ export interface CancellationSignal {
     onCancellationRequested(listener: () => void): { dispose(): void };
 }
 
+export interface PreparedAuth extends AuthShowOutput {
+    token_required: boolean;
+}
+
 export interface ExecuteRequestOptions {
     requestName: string;
     sourceDirectory?: string;
+    sourceFile?: string;
     environment?: string;
     variables?: Record<string, string>;
     cancellation?: CancellationSignal;
+    acquireToken?: (auth: PreparedAuth) => Promise<string>;
 }
 
 export interface RequestExecutionResult {
@@ -154,6 +160,19 @@ function resolveSource(sourceDir?: string): string {
     return raw.replace(/\\/g, '/');
 }
 
+async function buildRequestScope(sourceDirectory?: string): Promise<[string, string, string]> {
+    const source = resolveSource(sourceDirectory);
+    const [filesJson, secretsJson] = await Promise.all([buildFilesMap(source), buildSecretsMap(source)]);
+    return [filesJson, secretsJson, source];
+}
+
+function toVariablesJson(variables?: Record<string, string>): string | undefined {
+    if (!variables || Object.keys(variables).length === 0) {
+        return undefined;
+    }
+    return JSON.stringify(Object.entries(variables).map(([k, v]) => `${k}=${v}`));
+}
+
 function resolveScopeFile(scopeFile?: string): string | undefined {
     return scopeFile ? scopeFile.replace(/\\/g, '/') : undefined;
 }
@@ -184,6 +203,16 @@ interface RequestShowRaw {
     file: string;
     line: number;
     character: number;
+}
+
+interface PreparedRequestRaw {
+    name: string;
+    method: string;
+    url: string;
+    headers: [string, string][];
+    body?: string | null;
+    timeout_ms?: number | null;
+    auth?: PreparedAuth | null;
 }
 
 interface EnvironmentEntry {
@@ -289,9 +318,9 @@ export async function listRequests(sourceDirectory?: string): Promise<ListReques
     return { requests, errors: (parsed.parse_errors ?? []).map(e => e.message) };
 }
 
-export async function showRequest(requestName: string, sourceDirectory?: string, environment?: string, interpolate = false, skipRequiredVariables = false): Promise<RequestShowOutput> {
-    const source = resolveSource(sourceDirectory);
-    const result = await wasmCall('get_request_details', [await buildFilesMap(source), await buildSecretsMap(source), source, requestName, environment, interpolate, skipRequiredVariables]);
+export async function showRequest(requestName: string, sourceDirectory?: string, environment?: string, interpolate = false, skipRequiredVariables = false, sourceFile?: string): Promise<RequestShowOutput> {
+    const [filesJson, secretsJson, source] = await buildRequestScope(sourceDirectory);
+    const result = await wasmCall('get_request_details', [filesJson, secretsJson, source, requestName, environment, interpolate, skipRequiredVariables, undefined, resolveScopeFile(sourceFile)]);
     const raw = JSON.parse(result) as RequestShowRaw;
     return {
         name: raw.Request,
@@ -392,77 +421,31 @@ export async function setDebugLogging(enabled: boolean): Promise<void> {
 
 export async function executeRequest(options: ExecuteRequestOptions): Promise<ExecuteRequestResult> {
     throwIfCancelled(options.cancellation);
-    const source = resolveSource(options.sourceDirectory);
-    const [filesJson, secretsJson] = await Promise.all([buildFilesMap(source), buildSecretsMap(source)]);
+    const [filesJson, secretsJson, source] = await buildRequestScope(options.sourceDirectory);
+    const scopeFile = resolveScopeFile(options.sourceFile);
+    const prepare = async (variables?: Record<string, string>): Promise<PreparedRequestRaw> => JSON.parse(
+        await wasmCall('prepare_request', [filesJson, secretsJson, source, options.requestName, options.environment, toVariablesJson(variables), scopeFile])
+    ) as PreparedRequestRaw;
 
-    const variablesList = options.variables
-        ? Object.entries(options.variables).map(([k, v]) => `${k}=${v}`)
-        : undefined;
-    const detailsRaw = await wasmCall('get_request_details', [
-        filesJson, secretsJson, source,
-        options.requestName, options.environment, true, false,
-        variablesList ? JSON.stringify(variablesList) : undefined,
-    ]);
+    let prepared = await prepare(options.variables);
     throwIfCancelled(options.cancellation);
-    const raw = JSON.parse(detailsRaw) as RequestShowRaw;
-
-    const url = raw.URL;
-    const method = raw.Method;
-    const body = raw.Body;
-    const headers: Record<string, string> = { ...raw.Headers };
-    const timeoutMs = (() => {
-        if (!raw.Timeout) { return undefined; }
-        const secs = Number(raw.Timeout);
-        if (!Number.isFinite(secs) || secs < 0) {
-            throw new Error(`Timeout value '${raw.Timeout}' must be a non-negative finite number`);
-        }
-        return secs * 1000;
-    })();
-
-    const existingHeaders = new Set(Object.keys(headers).map(k => k.toLowerCase()));
-
-    if (!existingHeaders.has('user-agent')) {
-        const version = await wasmCall('version', []);
-        headers['user-agent'] = `rq/${version}`;
+    if (prepared.auth?.token_required) {
+        const token = await acquireToken(prepared.auth, options);
+        throwIfCancelled(options.cancellation);
+        prepared = await prepare({ ...options.variables, auth_token: token });
     }
 
-    if (body && !existingHeaders.has('content-type') && isJsonBody(body)) {
-        headers['content-type'] = 'application/json';
-    }
-
-    if (raw.Auth) {
-        const { name: authName, type: authType } = raw.Auth;
-        if (authType === 'oauth2_authorization_code' || authType === 'oauth2_implicit') {
-            const token = options.variables?.['auth_token'];
-            if (token) {
-                headers['authorization'] = `Bearer ${token}`;
-            }
-        } else if (authType === 'bearer') {
-            const authDetails = await showAuthConfig(authName, options.sourceDirectory, options.environment);
-            const token = authDetails.fields['token'];
-            if (token) {
-                headers['authorization'] = `Bearer ${token}`;
-            }
-        } else if (authType === 'oauth2_client_credentials') {
-            const authDetails = await showAuthConfig(authName, options.sourceDirectory, options.environment);
-            const token = await fetchClientCredentialsToken(authDetails.fields, path.dirname(authDetails.file));
-            headers['authorization'] = `Bearer ${token}`;
-        } else {
-            throw new Error(`Auth configuration '${authName}' has unsupported type '${authType}'`);
-        }
-    }
-
-    throwIfCancelled(options.cancellation);
-
+    const headers: Record<string, string> = Object.fromEntries(prepared.headers);
+    const body = prepared.body ?? undefined;
     const startTime = Date.now();
-    const response = await nodeHttpRequest(url, method, headers, body, timeoutMs, options.cancellation);
+    const response = await nodeHttpRequest(prepared.url, prepared.method, headers, body, prepared.timeout_ms ?? undefined, options.cancellation);
     const elapsed = Date.now() - startTime;
 
     return {
         results: [{
-            request_name: options.requestName,
-            method,
-            url,
+            request_name: prepared.name,
+            method: prepared.method,
+            url: prepared.url,
             status: response.status,
             elapsed_ms: elapsed,
             request_headers: headers,
@@ -471,6 +454,16 @@ export async function executeRequest(options: ExecuteRequestOptions): Promise<Ex
             body: response.body,
         }],
     };
+}
+
+async function acquireToken(auth: PreparedAuth, options: ExecuteRequestOptions): Promise<string> {
+    if (auth.auth_type === 'oauth2_client_credentials') {
+        return fetchClientCredentialsToken(auth.fields, path.dirname(auth.file));
+    }
+    if (options.acquireToken) {
+        return options.acquireToken({ ...auth, environment: options.environment });
+    }
+    throw new Error(`Auth configuration '${auth.name}' (${auth.auth_type}) requires a token that could not be obtained`);
 }
 
 interface NodeHttpResponse {
@@ -595,11 +588,6 @@ async function fetchClientCredentialsToken(fields: Record<string, string>, authF
         throw new Error(`Token response missing access_token: ${response.body}`);
     }
     return data.access_token;
-}
-
-function isJsonBody(body: string): boolean {
-    const t = body.trim();
-    return (t.startsWith('{') && t.endsWith('}')) || (t.startsWith('[') && t.endsWith(']'));
 }
 
 export function base64url(buf: Buffer): string {

@@ -49,10 +49,10 @@ The VSCode extension talks to `rq-wasm` in-process (worker), not a CLI subproces
   - `auth/` — auth config AST (bearer, oauth2 variants)
   - `functions/` — built-ins, grouped by category (`datetime/`, `io/`, `random/`, `sys/`)
   - `secrets.rs`, `fs.rs` — syntax-side hooks into platform traits
-- `client/` — HTTP execution (`mod.rs`, `models.rs`)
-- `auth/` — runtime auth providers: `bearer.rs`, `oauth2_*.rs`, `auth_provider.rs`
+- `client/` — request execution (`mod.rs`, `models.rs`). `RqClient::prepare_request` turns a request into exactly what is sent (resolution, auth, default headers, timeout) and is the only place that does; `run` is `prepare` + token acquisition + `HttpClient::execute`
+- `auth/` — runtime auth providers: `bearer.rs`, `oauth2_*.rs`, `auth_provider.rs`; `apply_known_token` applies a token that needs no network call, providers' `configure` obtains the rest
 - `native/` — native (non-WASM) impls of `fs`, `http`, `secrets`
-- `http.rs`, `paths.rs`, `error.rs`, `logger.rs`, `version.rs`, `lib.rs`
+- `http.rs` (`HttpClient` trait, `request_timeout`), `paths.rs`, `error.rs`, `logger.rs`, `version.rs`, `lib.rs`
 
 **CLI — `src/cli/src/`**
 - `main.rs` — entry point, arg dispatch
@@ -82,7 +82,8 @@ The VSCode extension talks to `rq-wasm` in-process (worker), not a CLI subproces
 | Variable lookup or interpolation for a new command or binding | Start from `RqClient::file_context` (backed by `VariableContext::for_file`) and add the endpoint, request and CLI scopes; extend `for_file` if it lacks something, never assemble variables in the caller |
 | New semantic check / diagnostic | `rq-lib/src/syntax/analysis.rs` |
 | New built-in function | `rq-lib/src/syntax/functions/<category>/` + register in `functions/mod.rs` |
-| New auth provider | AST in `syntax/auth/`, runtime in `auth/` |
+| New auth provider | Field validation in `syntax/auth/` (no execution there), runtime in `auth/`, plus its case in `auth::apply_known_token` |
+| Anything that changes what a request sends (URL, headers, body, auth, timeout) | `RqClient::prepare` in `rq-lib/src/client/mod.rs`; never in `rqClient.ts` |
 | New CLI command | `cli/src/commands/<name>.rs` + dispatch in `main.rs` |
 | New JS-callable API | `rq-wasm/src/bindings.rs` + matching method in `vscode-extension/src/rqClient.ts` |
 | New VSCode command | `vscode-extension/src/commands/<name>.ts` + register in `extension.ts` + `package.json` |
@@ -292,6 +293,7 @@ Check these whenever a change touches the language, and state which ones you ver
 - **CLI ↔ extension parity** — a language-level feature is reachable from both surfaces: `rq-wasm/src/bindings.rs` plus the matching `rqClient.ts` method, not only the CLI.
 - **No panics on user input** — no `.unwrap()`, `.expect()`, `panic!`, slicing or indexing on any path reachable from a `.rq` file, a CLI argument or an HTTP response.
 - **Format-independent output** — every CLI command prints the same content whatever `-f/--format` says: `text` and `json` only change the representation, never which fields, sections or items appear, nor their defaults. A flag that filters the output (such as `-p/--print`) applies to every format alike.
+- **Single execution pipeline** — the CLI and the extension send the same request for the same file: both go through `RqClient::prepare_request` (the extension via the `prepare_request` binding). Its `RequestTarget` keeps the two roles apart: `source` is the context the user chose — `-s/--source` in the CLI, the opened folder in the extension — and is where the `.env` comes from; `scope_file` only picks which file the request is loaded from. Never derive the `.env` from the request's file. The extension only does transport and token acquisition (interactive OAuth2, client credentials with a certificate); it never adds headers, parses timeouts or resolves auth fields itself, and feeds an acquired token back as `auth_token` so `rq-lib` applies it. `run_sends_exactly_the_prepared_request` guards the CLI side.
 - **Variable precedence** — `variable_context.rs` resolution order stays unchanged unless the change is explicitly about precedence, and then it comes with a test per level. From lowest to highest: `let` → environment → secrets → endpoint → request → CLI `-v`. Imports are a textual merge (rqlang reference, Imports): the imported `let`s take the position of the `import` statement and the last definition wins, so a `let` after the `import` overrides the imported one and a `let` before it is overridden.
 - **Single variable resolution path** — every surface that resolves a variable (`request run`, `request show`, variable show, auth details, `check`, and each `rq-wasm` binding) builds its context from the parsed `RqFile` through `RqClient::file_context`. No function in `client/`, `rq-wasm` or the extension collects files, imports, environments or secrets into a `VariableContext` by hand, and none re-walks imports to gather variables: the parser has already merged them. A change to resolution comes with a test that compares two surfaces, such as `run` against `get_request_details`, on the same input.
 

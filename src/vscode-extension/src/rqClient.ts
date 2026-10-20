@@ -40,8 +40,14 @@ export interface VariableShowOutput {
     source: string;
 }
 
-export interface ReferenceLocation {
+interface ReferenceLocation {
     file: string;
+    line: number;
+    character: number;
+}
+
+export interface SymbolReference {
+    uri: vscode.Uri;
     line: number;
     character: number;
 }
@@ -277,18 +283,37 @@ export async function listVariables(sourceFile?: string, environment?: string, r
     return raw.map(v => ({ ...v, file: normalizePath(v.file) }));
 }
 
-export async function varRefs(name: string, sourceDirectory?: string, scopeFile?: string): Promise<ReferenceLocation[]> {
-    const source = resolveSource(sourceDirectory);
-    const result = await wasmCall('list_variable_refs', [await buildFilesMap(source), await buildSecretsMap(source), source, name, resolveScopeFile(scopeFile)]);
-    const raw = JSON.parse(result) as ReferenceLocation[];
-    return raw.map(r => ({ ...r, file: normalizePath(r.file) }));
+export async function varRefs(name: string, document: vscode.TextDocument, position: vscode.Position, sourceDirectory?: string): Promise<SymbolReference[]> {
+    return symbolRefs('list_variable_refs', name, document, sourceDirectory, [position.line, position.character]);
 }
 
-export async function epRefs(name: string, sourceDirectory?: string, scopeFile?: string): Promise<ReferenceLocation[]> {
+export async function epRefs(name: string, document: vscode.TextDocument, sourceDirectory?: string): Promise<SymbolReference[]> {
+    return symbolRefs('list_endpoint_refs', name, document, sourceDirectory, []);
+}
+
+async function symbolRefs(binding: 'list_variable_refs' | 'list_endpoint_refs', name: string, document: vscode.TextDocument, sourceDirectory: string | undefined, extraArgs: unknown[]): Promise<SymbolReference[]> {
     const source = resolveSource(sourceDirectory);
-    const result = await wasmCall('list_endpoint_refs', [await buildFilesMap(source), await buildSecretsMap(source), source, name, resolveScopeFile(scopeFile)]);
+    const scopeFile = documentDraftPath(document, source);
+    const filesJson = await buildFilesMap(source, openDrafts(document, source));
+    const result = await wasmCall(binding, [filesJson, await buildSecretsMap(source), source, name, scopeFile, ...extraArgs]);
     const raw = JSON.parse(result) as ReferenceLocation[];
-    return raw.map(r => ({ ...r, file: normalizePath(r.file) }));
+    return raw.map(r => ({
+        uri: draftKey(r.file) === scopeFile ? document.uri : vscode.Uri.file(normalizePath(r.file)),
+        line: r.line,
+        character: r.character,
+    }));
+}
+
+function documentDraftPath(document: vscode.TextDocument, source: string): string {
+    return draftKey(document.isUntitled ? path.join(source, document.uri.path) : document.uri.fsPath);
+}
+
+function openDrafts(document: vscode.TextDocument, source: string): DraftFile[] {
+    const dirty = vscode.workspace.textDocuments
+        .filter(doc => doc !== document && doc.languageId === 'rq' && doc.isDirty && !doc.isUntitled)
+        .filter(doc => normalizePath(doc.uri.fsPath).startsWith(normalizePath(source)))
+        .map(doc => ({ path: draftKey(doc.uri.fsPath), source: doc.getText() }));
+    return [{ path: documentDraftPath(document, source), source: document.getText() }, ...dirty];
 }
 
 export async function showAuthConfig(name: string, sourceDirectory?: string, environment?: string): Promise<AuthShowOutput> {

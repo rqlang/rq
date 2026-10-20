@@ -3,10 +3,12 @@ import * as fs from 'fs';
 
 const mockPrepareRequest = jest.fn();
 const mockSetDebugLogging = jest.fn();
+const mockListVariableRefs = jest.fn();
 
 jest.mock('../src/wasm/rq_wasm', () => ({
     prepare_request: mockPrepareRequest,
     set_debug_logging: mockSetDebugLogging,
+    list_variable_refs: mockListVariableRefs,
 }), { virtual: true });
 
 const mockBuildFilesMap = jest.fn(async () => '{}');
@@ -21,7 +23,8 @@ jest.mock('../src/utils', () => ({
 jest.mock('fs');
 jest.mock('https');
 
-import { executeRequest, setDebugLogging } from '../src/rqClient';
+import * as vscode from 'vscode';
+import { executeRequest, setDebugLogging, varRefs } from '../src/rqClient';
 
 const BASE_PREPARED = {
     name: 'test-req',
@@ -456,5 +459,62 @@ describe('setDebugLogging', () => {
         await setDebugLogging(true);
 
         expect(mockSetDebugLogging).toHaveBeenCalledWith(true);
+    });
+});
+
+describe('varRefs', () => {
+    function makeDocument(uri: any, text: string, isUntitled = false) {
+        return { uri, isUntitled, languageId: 'rq', isDirty: true, getText: () => text } as any;
+    }
+
+    afterEach(() => {
+        (vscode.workspace as any).textDocuments = [];
+    });
+
+    test('resolves references against the unsaved text of the document', async () => {
+        const doc = makeDocument({ fsPath: '/tmp/project/foo.rq' }, 'rq get(resource_id);');
+        mockListVariableRefs.mockReturnValue('[]');
+
+        await varRefs('resource_id', doc, new vscode.Position(0, 8), '/tmp/project');
+
+        expect(mockBuildFilesMap).toHaveBeenCalledWith('/tmp/project', [
+            { path: '/tmp/project/foo.rq', source: 'rq get(resource_id);' },
+        ]);
+    });
+
+    test('includes other unsaved documents of the folder', async () => {
+        const doc = makeDocument({ fsPath: '/tmp/project/foo.rq' }, 'rq get(base);');
+        const other = makeDocument({ fsPath: '/tmp/project/shared.rq' }, 'let base = "x";');
+        (vscode.workspace as any).textDocuments = [doc, other];
+        mockListVariableRefs.mockReturnValue('[]');
+
+        await varRefs('base', doc, new vscode.Position(0, 8), '/tmp/project');
+
+        expect(mockBuildFilesMap).toHaveBeenCalledWith('/tmp/project', [
+            { path: '/tmp/project/foo.rq', source: 'rq get(base);' },
+            { path: '/tmp/project/shared.rq', source: 'let base = "x";' },
+        ]);
+    });
+
+    test('passes the cursor position so a required variable stays in its request', async () => {
+        const doc = makeDocument({ fsPath: '/tmp/project/foo.rq' }, 'rq get(resource_id);');
+        mockListVariableRefs.mockReturnValue('[]');
+
+        await varRefs('resource_id', doc, new vscode.Position(4, 12), '/tmp/project');
+
+        const call = mockListVariableRefs.mock.calls[0];
+        expect(call.slice(4)).toEqual(['/tmp/project/foo.rq', 4, 12]);
+    });
+
+    test('maps references in an untitled document back to that document', async () => {
+        const uri = { fsPath: 'Untitled-1', path: 'Untitled-1', scheme: 'untitled' };
+        const doc = makeDocument(uri, 'rq get(resource_id);', true);
+        mockListVariableRefs.mockReturnValue(JSON.stringify([
+            { file: '/tmp/project/Untitled-1', line: 0, character: 7 },
+        ]));
+
+        const target = await varRefs('resource_id', doc, new vscode.Position(0, 8), '/tmp/project');
+
+        expect(target).toEqual([{ uri, line: 0, character: 7 }]);
     });
 });

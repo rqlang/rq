@@ -2,7 +2,15 @@ import * as vscode from 'vscode';
 import * as rqClient from '../rqClient';
 import { performOAuth2Flow } from '../auth';
 
-export function registerGetTokenCommand(context: vscode.ExtensionContext, outputChannel: vscode.OutputChannel) {
+const NO_ENVIRONMENT = '(No environment)';
+
+export type EnvironmentProvider = { getSelectedEnvironment(): string | undefined };
+
+export function registerGetTokenCommand(
+    context: vscode.ExtensionContext,
+    outputChannel: vscode.OutputChannel,
+    environmentProvider: EnvironmentProvider
+) {
     const command = vscode.commands.registerCommand('rq.getToken', async () => {
         try {
             console.log('Getting auth token from CLI...');
@@ -19,20 +27,14 @@ export function registerGetTokenCommand(context: vscode.ExtensionContext, output
             
             if (environments.length > 0) {
                 // Show environment selection (optional)
-                const envChoice = await vscode.window.showQuickPick(
-                    ['(No environment)', ...environments],
-                    {
-                        placeHolder: 'Select an environment (optional)',
-                        title: 'Choose Environment'
-                    }
-                );
+                const envChoice = await pickEnvironment(environments, environmentProvider.getSelectedEnvironment());
                 
                 if (envChoice === undefined) {
                     // User cancelled
                     return;
                 }
                 
-                selectedEnvironment = envChoice === '(No environment)' ? undefined : envChoice;
+                selectedEnvironment = envChoice === NO_ENVIRONMENT ? undefined : envChoice;
             }
             
             // Step 2: Get auth configurations
@@ -113,4 +115,24 @@ export function registerGetTokenCommand(context: vscode.ExtensionContext, output
         }
     });
     context.subscriptions.push(command);
+}
+
+function pickEnvironment(environments: string[], currentEnvironment: string | undefined): Promise<string | undefined> {
+    const quickPick = vscode.window.createQuickPick();
+    quickPick.title = 'Choose Environment';
+    quickPick.placeholder = 'Select an environment (optional)';
+    quickPick.items = [NO_ENVIRONMENT, ...environments].map(label => ({ label }));
+    quickPick.activeItems = quickPick.items.filter(item => item.label === (currentEnvironment ?? NO_ENVIRONMENT));
+
+    return new Promise(resolve => {
+        quickPick.onDidAccept(() => {
+            resolve(quickPick.selectedItems[0]?.label);
+            quickPick.hide();
+        });
+        quickPick.onDidHide(() => {
+            resolve(undefined);
+            quickPick.dispose();
+        });
+        quickPick.show();
+    });
 }

@@ -231,6 +231,10 @@ describe('insideUnclosedAttribute', () => {
     test('returns true inside an unfinished ui.color attribute', () => {
         expect(insideUnclosedAttribute('[ui.color(\n    ')).toBe(true);
     });
+
+    test('does not treat the dot in ui.color as a wildcard', () => {
+        expect(insideUnclosedAttribute('[uixcolor(\n    ')).toBe(false);
+    });
 });
 
 describe('insideUiColorAttributeValue', () => {

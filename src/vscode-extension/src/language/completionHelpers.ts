@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { assignArguments, IDENTIFIER_PATTERN } from './definitions';
+import { assignArguments, escapeRegex, IDENTIFIER_PATTERN } from './definitions';
 
 export const COMMON_HEADERS = [
     'Accept', 'Accept-Encoding', 'Accept-Language', 'Authorization',
@@ -202,7 +202,7 @@ function openAttributeBracketIndex(text: string): number {
 export function insideUnclosedAttribute(text: string): boolean {
     const index = openAttributeBracketIndex(text);
     if (index === -1) { return false; }
-    const names = ATTRIBUTE_NAMES.map(name => name.replace('.', '\\.')).join('|');
+    const names = ATTRIBUTE_NAMES.map(escapeRegex).join('|');
     return new RegExp(`^\\s*(${names})\\b`).test(text.slice(index + 1));
 }
 

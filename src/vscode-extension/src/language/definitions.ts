@@ -292,7 +292,7 @@ export function parseVariables(document: vscode.TextDocument): Variable[] {
     return variables;
 }
 
-function escapeRegex(s: string): string {
+export function escapeRegex(s: string): string {
     return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 

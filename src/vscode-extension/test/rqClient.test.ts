@@ -4,11 +4,15 @@ import * as fs from 'fs';
 const mockPrepareRequest = jest.fn();
 const mockSetDebugLogging = jest.fn();
 const mockListVariableRefs = jest.fn();
+const mockListEnvironments = jest.fn();
+const mockListAuth = jest.fn();
 
 jest.mock('../src/wasm/rq_wasm', () => ({
     prepare_request: mockPrepareRequest,
     set_debug_logging: mockSetDebugLogging,
     list_variable_refs: mockListVariableRefs,
+    list_environments: mockListEnvironments,
+    list_auth: mockListAuth,
 }), { virtual: true });
 
 const mockBuildFilesMap = jest.fn(async () => '{}');
@@ -24,7 +28,7 @@ jest.mock('fs');
 jest.mock('https');
 
 import * as vscode from 'vscode';
-import { executeRequest, setDebugLogging, varRefs } from '../src/rqClient';
+import { executeRequest, listAuthConfigsWithErrors, listEnvironments, listEnvironmentsWithErrors, setDebugLogging, varRefs } from '../src/rqClient';
 
 const BASE_PREPARED = {
     name: 'test-req',
@@ -537,5 +541,44 @@ describe('varRefs', () => {
         const target = await varRefs('resource_id', doc, new vscode.Position(0, 8), '/tmp/project');
 
         expect(target).toEqual([{ uri, line: 0, character: 7, shared: false }]);
+    });
+});
+
+describe('listEnvironmentsWithErrors', () => {
+    test('returns the environment names and the files that failed to parse', async () => {
+        mockListEnvironments.mockReturnValue(JSON.stringify({
+            environments: [{ name: 'local', file: '/tmp/project/env.rq', line: 0, character: 0 }],
+            parse_errors: [{ severity: 'error', message: 'Unexpected end of file', line: 2, column: 0, file: '/tmp/project/broken.rq' }],
+        }));
+
+        const target = await listEnvironmentsWithErrors('/tmp/project');
+
+        expect(target).toEqual({ environments: ['local'], errors: ['Unexpected end of file'] });
+    });
+});
+
+describe('listEnvironments', () => {
+    test('returns only the environment names', async () => {
+        mockListEnvironments.mockReturnValue(JSON.stringify({
+            environments: [{ name: 'local', file: '/tmp/project/env.rq', line: 0, character: 0 }],
+            parse_errors: [{ severity: 'error', message: 'Unexpected end of file', line: 2, column: 0, file: '/tmp/project/broken.rq' }],
+        }));
+
+        const target = await listEnvironments('/tmp/project');
+
+        expect(target).toEqual(['local']);
+    });
+});
+
+describe('listAuthConfigsWithErrors', () => {
+    test('returns the auth configs and the files that failed to parse', async () => {
+        mockListAuth.mockReturnValue(JSON.stringify({
+            auth: [{ name: 'token', auth_type: 'bearer' }],
+            parse_errors: [{ severity: 'error', message: 'Unexpected end of file', line: 2, column: 0, file: '/tmp/project/broken.rq' }],
+        }));
+
+        const target = await listAuthConfigsWithErrors('/tmp/project');
+
+        expect(target).toEqual({ authConfigs: [{ name: 'token', auth_type: 'bearer' }], errors: ['Unexpected end of file'] });
     });
 });

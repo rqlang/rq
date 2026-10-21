@@ -82,6 +82,18 @@ struct ListRequestsResult {
 }
 
 #[derive(Serialize)]
+struct ListAuthResult {
+    auth: Vec<AuthListEntry>,
+    parse_errors: Vec<ParseDiagnostic>,
+}
+
+#[derive(Serialize)]
+struct ListEnvironmentsResult {
+    environments: Vec<EnvironmentEntry>,
+    parse_errors: Vec<ParseDiagnostic>,
+}
+
+#[derive(Serialize)]
 struct RequestDetailsJson {
     #[serde(rename = "Request")]
     name: String,
@@ -163,12 +175,16 @@ pub fn list_requests(
     .map_err(rq_err)?;
     let result = ListRequestsResult {
         requests,
-        parse_errors: parse_errors
-            .into_iter()
-            .map(|e| parse_diagnostic(e, source))
-            .collect(),
+        parse_errors: parse_diagnostics(parse_errors, source),
     };
     serde_json::to_string(&result).map_err(|e| JsError::new(&e.to_string()))
+}
+
+fn parse_diagnostics(errors: Vec<RqError>, source: &str) -> Vec<ParseDiagnostic> {
+    errors
+        .into_iter()
+        .map(|e| parse_diagnostic(e, source))
+        .collect()
 }
 
 fn parse_diagnostic(error: RqError, source: &str) -> ParseDiagnostic {
@@ -192,14 +208,18 @@ fn parse_diagnostic(error: RqError, source: &str) -> ParseDiagnostic {
 
 #[wasm_bindgen]
 pub fn list_auth(files_json: &str, secrets_json: &str, source: &str) -> Result<String, JsError> {
-    let entries: Vec<AuthListEntry> = make_client(
+    let (auth, parse_errors) = make_client(
         parse_files(files_json)?,
         parse_secrets(secrets_json),
         source,
     )
     .list_auth(Path::new(source))
     .map_err(rq_err)?;
-    serde_json::to_string(&entries).map_err(|e| JsError::new(&e.to_string()))
+    let result = ListAuthResult {
+        auth,
+        parse_errors: parse_diagnostics(parse_errors, source),
+    };
+    serde_json::to_string(&result).map_err(|e| JsError::new(&e.to_string()))
 }
 
 #[wasm_bindgen]
@@ -208,14 +228,18 @@ pub fn list_environments(
     secrets_json: &str,
     source: &str,
 ) -> Result<String, JsError> {
-    let entries: Vec<EnvironmentEntry> = make_client(
+    let (environments, parse_errors) = make_client(
         parse_files(files_json)?,
         parse_secrets(secrets_json),
         source,
     )
     .list_environments_with_locations(Path::new(source))
     .map_err(rq_err)?;
-    serde_json::to_string(&entries).map_err(|e| JsError::new(&e.to_string()))
+    let result = ListEnvironmentsResult {
+        environments,
+        parse_errors: parse_diagnostics(parse_errors, source),
+    };
+    serde_json::to_string(&result).map_err(|e| JsError::new(&e.to_string()))
 }
 
 #[wasm_bindgen]

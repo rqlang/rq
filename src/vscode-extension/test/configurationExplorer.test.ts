@@ -52,7 +52,7 @@ describe('ConfigurationExplorerProvider', () => {
     });
 
     test('getChildren(section-environments) returns loading item synchronously then real items after load', async () => {
-        (rqClient.listEnvironments as jest.Mock).mockResolvedValue(['local', 'prod']);
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['local', 'prod'], errors: [] });
 
         const root = await target.getChildren() as ConfigurationTreeItem[];
         const section = root.find(c => c.kind === 'section-environments')!;
@@ -75,10 +75,10 @@ describe('ConfigurationExplorerProvider', () => {
     });
 
     test('getChildren(section-auth) returns auth config items', async () => {
-        (rqClient.listAuthConfigs as jest.Mock).mockResolvedValue([
+        (rqClient.listAuthConfigsWithErrors as jest.Mock).mockResolvedValue({ authConfigs: [
             { name: 'my-token', auth_type: 'Bearer' },
             { name: 'api-key', auth_type: 'ApiKey' }
-        ]);
+        ], errors: [] });
 
         const children = await getSectionChildren(target, 'section-auth');
 
@@ -94,7 +94,7 @@ describe('ConfigurationExplorerProvider', () => {
     });
 
     test('getChildren(section-environments) handles CLI error gracefully', async () => {
-        (rqClient.listEnvironments as jest.Mock).mockRejectedValue(new Error('CLI Error'));
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockRejectedValue(new Error('CLI Error'));
 
         const children = await getSectionChildren(target, 'section-environments');
 
@@ -103,7 +103,7 @@ describe('ConfigurationExplorerProvider', () => {
     });
 
     test('getChildren(section-auth) handles CLI error gracefully', async () => {
-        (rqClient.listAuthConfigs as jest.Mock).mockRejectedValue(new Error('CLI Error'));
+        (rqClient.listAuthConfigsWithErrors as jest.Mock).mockRejectedValue(new Error('CLI Error'));
 
         const children = await getSectionChildren(target, 'section-auth');
 
@@ -112,17 +112,17 @@ describe('ConfigurationExplorerProvider', () => {
     });
 
     test('cached environments are returned on subsequent expand without re-fetching', async () => {
-        (rqClient.listEnvironments as jest.Mock).mockResolvedValue(['local']);
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['local'], errors: [] });
 
         await getSectionChildren(target, 'section-environments');
         const second = await getSectionChildren(target, 'section-environments');
 
         expect(second.length).toBe(1);
-        expect(rqClient.listEnvironments).toHaveBeenCalledTimes(1);
+        expect(rqClient.listEnvironmentsWithErrors).toHaveBeenCalledTimes(1);
     });
 
     test('refresh() reloads a loaded section without showing the loading item', async () => {
-        (rqClient.listEnvironments as jest.Mock).mockResolvedValue(['local']);
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['local'], errors: [] });
         await getSectionChildren(target, 'section-environments');
         const section = (await target.getChildren()).find(c => c.kind === 'section-environments')!;
 
@@ -130,16 +130,16 @@ describe('ConfigurationExplorerProvider', () => {
         const during = await target.getChildren(section);
 
         expect(during.map(i => i.label)).toEqual(['local']);
-        expect(rqClient.listEnvironments).toHaveBeenCalledTimes(2);
+        expect(rqClient.listEnvironmentsWithErrors).toHaveBeenCalledTimes(2);
     });
 
     test('refresh() does not load a section that was never expanded', async () => {
-        (rqClient.listEnvironments as jest.Mock).mockResolvedValue(['local']);
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['local'], errors: [] });
         await getSectionChildren(target, 'section-environments');
 
         target.refresh();
 
-        expect(rqClient.listAuthConfigs).not.toHaveBeenCalled();
+        expect(rqClient.listAuthConfigsWithErrors).not.toHaveBeenCalled();
     });
 
     test('builds sections with the stored expansion state', async () => {
@@ -154,7 +154,7 @@ describe('ConfigurationExplorerProvider', () => {
     });
 
     test('assigns stable ids to sections and their items', async () => {
-        (rqClient.listAuthConfigs as jest.Mock).mockResolvedValue([{ name: 'my-token', auth_type: 'Bearer' }]);
+        (rqClient.listAuthConfigsWithErrors as jest.Mock).mockResolvedValue({ authConfigs: [{ name: 'my-token', auth_type: 'Bearer' }], errors: [] });
 
         const [item] = await getSectionChildren(target, 'section-auth');
 
@@ -163,7 +163,7 @@ describe('ConfigurationExplorerProvider', () => {
     });
 
     test('findItem() finds a loaded environment', async () => {
-        (rqClient.listEnvironments as jest.Mock).mockResolvedValue(['local']);
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['local'], errors: [] });
         const [local] = await getSectionChildren(target, 'section-environments');
 
         expect(target.findItem('environment:local')).toBe(local);
@@ -204,7 +204,7 @@ describe('ConfigurationExplorerProvider', () => {
     });
 
     test('isLoaded() is true only for items of a loaded section', async () => {
-        (rqClient.listEnvironments as jest.Mock).mockResolvedValue(['local']);
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['local'], errors: [] });
         await getSectionChildren(target, 'section-environments');
 
         expect(target.isLoaded('environment:gone')).toBe(true);
@@ -212,7 +212,7 @@ describe('ConfigurationExplorerProvider', () => {
     });
 
     test('isLoaded() is false for items of a section that failed to load', async () => {
-        (rqClient.listEnvironments as jest.Mock).mockRejectedValue(new Error('CLI Error'));
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockRejectedValue(new Error('CLI Error'));
         await getSectionChildren(target, 'section-environments');
 
         expect(target.isLoaded('environment:local')).toBe(false);
@@ -223,14 +223,14 @@ describe('ConfigurationExplorerProvider', () => {
 
         target.refreshInBackground();
 
-        expect(rqClient.listEnvironments).not.toHaveBeenCalled();
-        expect(rqClient.listAuthConfigs).not.toHaveBeenCalled();
+        expect(rqClient.listEnvironmentsWithErrors).not.toHaveBeenCalled();
+        expect(rqClient.listAuthConfigsWithErrors).not.toHaveBeenCalled();
     });
 
     test('refreshInBackground() does not show an error when the reload fails', async () => {
-        (rqClient.listEnvironments as jest.Mock).mockResolvedValue(['local']);
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['local'], errors: [] });
         await getSectionChildren(target, 'section-environments');
-        (rqClient.listEnvironments as jest.Mock).mockRejectedValue(new Error('CLI Error'));
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockRejectedValue(new Error('CLI Error'));
 
         target.refreshInBackground();
         await new Promise(r => setImmediate(r));
@@ -239,9 +239,9 @@ describe('ConfigurationExplorerProvider', () => {
     });
 
     test('refresh() shows an error when the reload fails', async () => {
-        (rqClient.listEnvironments as jest.Mock).mockResolvedValue(['local']);
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['local'], errors: [] });
         await getSectionChildren(target, 'section-environments');
-        (rqClient.listEnvironments as jest.Mock).mockRejectedValue(new Error('CLI Error'));
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockRejectedValue(new Error('CLI Error'));
 
         target.refresh();
         await new Promise(r => setImmediate(r));
@@ -250,7 +250,7 @@ describe('ConfigurationExplorerProvider', () => {
     });
 
     test('refresh() shows the loading icon on a section while reloading it', async () => {
-        (rqClient.listEnvironments as jest.Mock).mockResolvedValue(['local']);
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['local'], errors: [] });
         await getSectionChildren(target, 'section-environments');
         const section = target.findItem('section-environments')!;
 
@@ -267,7 +267,7 @@ describe('ConfigurationExplorerProvider', () => {
         await new Promise(r => setTimeout(r, 0));
 
         expect(loadSpy).toHaveBeenCalledTimes(1);
-        expect(rqClient.listEnvironments).not.toHaveBeenCalled();
+        expect(rqClient.listEnvironmentsWithErrors).not.toHaveBeenCalled();
     });
 
     test('returns the same section items on every root read', async () => {
@@ -287,5 +287,12 @@ describe('ConfigurationExplorerProvider', () => {
         const [environments] = await target.getChildren();
 
         expect(environments.collapsibleState).toBe(vscode.TreeItemCollapsibleState.Expanded);
+    });
+
+    test('isLoaded() is false for items of a section listed with parse errors', async () => {
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['local'], errors: ['Failed to parse env.rq'] });
+        await getSectionChildren(target, 'section-environments');
+
+        expect(target.isLoaded('environment:dev')).toBe(false);
     });
 });

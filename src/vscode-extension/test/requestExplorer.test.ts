@@ -352,7 +352,7 @@ describe('RequestExplorerProvider', () => {
         state.setEnvironment('dev');
         target = new RequestExplorerProvider('/root', state);
         (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: [] });
-        (rqClient.listEnvironments as jest.Mock).mockResolvedValue([]);
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: [], errors: [] });
 
         await getRequestItems(target);
         const envItem = (target.getChildren() as RequestTreeItem[])[0];
@@ -367,7 +367,7 @@ describe('RequestExplorerProvider', () => {
         state.setEnvironment('dev');
         target = new RequestExplorerProvider('/root', state);
         (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: [] });
-        (rqClient.listEnvironments as jest.Mock).mockResolvedValue(['dev']);
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['dev'], errors: [] });
 
         await getRequestItems(target);
         const envItem = (target.getChildren() as RequestTreeItem[])[0];
@@ -381,7 +381,7 @@ describe('RequestExplorerProvider', () => {
         state.setEnvironment('dev');
         target = new RequestExplorerProvider('/root', state);
         (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: [] });
-        (rqClient.listEnvironments as jest.Mock).mockRejectedValue(new Error('parse error'));
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockRejectedValue(new Error('parse error'));
 
         await getRequestItems(target);
         const envItem = (target.getChildren() as RequestTreeItem[])[0];
@@ -394,7 +394,7 @@ describe('RequestExplorerProvider', () => {
         state.setEnvironment('dev');
         target = new RequestExplorerProvider('/root', state);
         (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: [] });
-        (rqClient.listEnvironments as jest.Mock).mockResolvedValue(['prod']);
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['prod'], errors: [] });
         await getRequestItems(target);
 
         target.setSelectedEnvironment('prod');
@@ -465,7 +465,7 @@ describe('RequestExplorerProvider', () => {
         const state = createExplorerState();
         state.setEnvironment('dev');
         target = new RequestExplorerProvider('/root', state);
-        (rqClient.listEnvironments as jest.Mock).mockResolvedValue(['prod']);
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['prod'], errors: [] });
         (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: [] });
         const envItem = (target.getChildren() as RequestTreeItem[])[0];
 
@@ -479,7 +479,7 @@ describe('RequestExplorerProvider', () => {
         const state = createExplorerState();
         state.setEnvironment('dev');
         target = new RequestExplorerProvider('/root', state);
-        (rqClient.listEnvironments as jest.Mock).mockResolvedValue(['dev']);
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['dev'], errors: [] });
 
         await target.warnIfEnvironmentMissing();
 
@@ -491,12 +491,36 @@ describe('RequestExplorerProvider', () => {
         state.setEnvironment('dev');
         target = new RequestExplorerProvider('/root', state);
         (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: [] });
-        (rqClient.listEnvironments as jest.Mock).mockResolvedValue([]);
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: [], errors: [] });
         await getRequestItems(target);
 
         target.setSelectedEnvironment('dev');
         const envItem = (target.getChildren() as RequestTreeItem[])[0];
 
         expect(envItem.description).toBe('dev');
+    });
+
+    test('does not mark the environment as missing while some files fail to parse', async () => {
+        const state = createExplorerState();
+        state.setEnvironment('dev');
+        target = new RequestExplorerProvider('/root', state);
+        (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: [] });
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: [], errors: ['Failed to parse env.rq'] });
+
+        await getRequestItems(target);
+        const envItem = (target.getChildren() as RequestTreeItem[])[0];
+
+        expect(envItem.description).toBe('dev');
+    });
+
+    test('warnIfEnvironmentMissing() does not warn while some files fail to parse', async () => {
+        const state = createExplorerState();
+        state.setEnvironment('dev');
+        target = new RequestExplorerProvider('/root', state);
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: [], errors: ['Failed to parse env.rq'] });
+
+        await target.warnIfEnvironmentMissing();
+
+        expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
     });
 });

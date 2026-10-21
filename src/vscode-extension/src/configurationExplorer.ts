@@ -20,7 +20,7 @@ interface SectionDefinition {
     entryIcon: string;
     artifactType: 'env' | 'auth';
     errorLabel: string;
-    list: (workspaceRoot: string | undefined) => Promise<SectionEntry[]>;
+    list: (workspaceRoot: string | undefined) => Promise<{ entries: SectionEntry[]; errors: string[] }>;
 }
 
 const SECTIONS: SectionDefinition[] = [
@@ -31,7 +31,10 @@ const SECTIONS: SectionDefinition[] = [
         entryIcon: 'server-environment',
         artifactType: 'env',
         errorLabel: 'environments',
-        list: async root => (await rqClient.listEnvironments(root)).map(name => ({ name, tooltip: name })),
+        list: async root => {
+            const { environments, errors } = await rqClient.listEnvironmentsWithErrors(root);
+            return { entries: environments.map(name => ({ name, tooltip: name })), errors };
+        },
     },
     {
         kind: 'section-auth',
@@ -40,11 +43,11 @@ const SECTIONS: SectionDefinition[] = [
         entryIcon: 'key',
         artifactType: 'auth',
         errorLabel: 'auth configs',
-        list: async root => (await rqClient.listAuthConfigs(root)).map(e => ({
-            name: e.name,
-            description: e.auth_type,
-            tooltip: `${e.name} (${e.auth_type})`,
-        })),
+        list: async root => {
+            const { authConfigs, errors } = await rqClient.listAuthConfigsWithErrors(root);
+            const entries = authConfigs.map(e => ({ name: e.name, description: e.auth_type, tooltip: `${e.name} (${e.auth_type})` }));
+            return { entries, errors };
+        },
     },
 ];
 
@@ -56,7 +59,7 @@ export class ConfigurationExplorerProvider implements RestorableTreeDataProvider
     private readonly originalIcons = new WeakMap<ConfigurationTreeItem, vscode.TreeItem['iconPath']>();
     private readonly sectionItems = new Map<SectionKind, ConfigurationTreeItem>();
     private readonly cachedChildren = new Map<SectionKind, ConfigurationTreeItem[]>();
-    private readonly failedSections = new Set<SectionKind>();
+    private readonly incompleteSections = new Set<SectionKind>();
     private readonly loadingSections = new Set<SectionKind>();
     private readonly reloadPending = new Set<SectionKind>();
     private readonly notifyPending = new Set<SectionKind>();
@@ -94,7 +97,7 @@ export class ConfigurationExplorerProvider implements RestorableTreeDataProvider
         if (!section) {
             return true;
         }
-        return this.cachedChildren.has(section.kind) && !this.failedSections.has(section.kind);
+        return this.cachedChildren.has(section.kind) && !this.incompleteSections.has(section.kind);
     }
 
     getParent(element: ConfigurationTreeItem): ConfigurationTreeItem | undefined {
@@ -163,12 +166,12 @@ export class ConfigurationExplorerProvider implements RestorableTreeDataProvider
         this.loadingSections.add(section.kind);
         do {
             this.reloadPending.delete(section.kind);
-            const items = await this.loadSectionItems(section, notifyErrors);
-            this.cachedChildren.set(section.kind, items ?? []);
-            if (items) {
-                this.failedSections.delete(section.kind);
+            const { items, complete } = await this.loadSectionItems(section, notifyErrors);
+            this.cachedChildren.set(section.kind, items);
+            if (complete) {
+                this.incompleteSections.delete(section.kind);
             } else {
-                this.failedSections.add(section.kind);
+                this.incompleteSections.add(section.kind);
             }
             notifyErrors = this.notifyPending.delete(section.kind);
         } while (this.reloadPending.has(section.kind));
@@ -178,11 +181,11 @@ export class ConfigurationExplorerProvider implements RestorableTreeDataProvider
         this._onDidLoad.fire();
     }
 
-    private async loadSectionItems(section: SectionDefinition, notifyErrors: boolean): Promise<ConfigurationTreeItem[] | undefined> {
+    private async loadSectionItems(section: SectionDefinition, notifyErrors: boolean): Promise<{ items: ConfigurationTreeItem[]; complete: boolean }> {
         try {
-            const entries = await section.list(this.workspaceRoot);
+            const { entries, errors } = await section.list(this.workspaceRoot);
             const ids = new TreeItemIds();
-            return entries.map(entry => {
+            const items = entries.map(entry => {
                 const item = new ConfigurationTreeItem(entry.name, section.entryKind, vscode.TreeItemCollapsibleState.None, section.kind);
                 item.id = ids.next(`${section.entryKind}:${entry.name}`);
                 item.iconPath = new vscode.ThemeIcon(section.entryIcon);
@@ -191,11 +194,12 @@ export class ConfigurationExplorerProvider implements RestorableTreeDataProvider
                 item.command = { command: 'rq.openConfigurationFile', title: 'Open File', arguments: [section.artifactType, entry.name, item] };
                 return item;
             });
+            return { items, complete: errors.length === 0 };
         } catch (error) {
             if (notifyErrors) {
                 vscode.window.showErrorMessage(`Failed to load ${section.errorLabel}: ${error instanceof Error ? error.message : 'Unknown error'}`);
             }
-            return undefined;
+            return { items: [], complete: false };
         }
     }
 }

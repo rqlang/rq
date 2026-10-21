@@ -78,7 +78,7 @@ pub struct ShowArgs {
 
 pub fn execute_list(args: &ListArgs) -> Result<(), Box<dyn std::error::Error>> {
     let source_path = Path::new(&args.source.source);
-    let auth_list = RqClient::default().list_auth(source_path)?;
+    let (auth_list, _) = RqClient::default().list_auth(source_path)?;
     let names = auth_list.into_iter().map(|auth| auth.name).collect();
     print!(
         "{}",

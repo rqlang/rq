@@ -59,10 +59,11 @@ fn list_endpoints_in_empty_workspace_returns_no_endpoints() {
 
 #[test]
 fn list_environments_in_empty_workspace_returns_no_environments() {
-    let target = empty_workspace_client()
+    let (target, parse_errors) = empty_workspace_client()
         .list_environments_with_locations(workspace())
         .expect("listing an empty workspace directory should not fail");
     assert!(target.is_empty());
+    assert!(parse_errors.is_empty());
 }
 
 #[test]
@@ -75,10 +76,11 @@ fn list_variables_in_empty_workspace_returns_no_variables() {
 
 #[test]
 fn list_auth_in_empty_workspace_returns_no_auth_configs() {
-    let target = empty_workspace_client()
+    let (target, parse_errors) = empty_workspace_client()
         .list_auth(workspace())
         .expect("listing an empty workspace directory should not fail");
     assert!(target.is_empty());
+    assert!(parse_errors.is_empty());
 }
 
 #[test]

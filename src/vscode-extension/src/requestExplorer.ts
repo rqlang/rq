@@ -205,8 +205,8 @@ export class RequestExplorerProvider implements RestorableTreeDataProvider<Reque
             return undefined;
         }
         try {
-            const environments = await rqClient.listEnvironments(this.workspaceRoot);
-            return environments.includes(environment) ? undefined : environment;
+            const { environments, errors } = await rqClient.listEnvironmentsWithErrors(this.workspaceRoot);
+            return errors.length > 0 || environments.includes(environment) ? undefined : environment;
         } catch {
             return undefined;
         }

@@ -91,6 +91,16 @@ export interface ListRequestsResult {
     errors?: string[];
 }
 
+export interface ListEnvironmentsResult {
+    environments: string[];
+    errors: string[];
+}
+
+export interface ListAuthConfigsResult {
+    authConfigs: AuthListEntry[];
+    errors: string[];
+}
+
 export interface RequestShowOutput {
     name: string;
     method: string;
@@ -235,17 +245,32 @@ interface EnvironmentEntry {
 // ---------------------------------------------------------------------------
 
 export async function listEnvironments(sourceDirectory?: string): Promise<string[]> {
+    return (await listEnvironmentsWithErrors(sourceDirectory)).environments;
+}
+
+export async function listEnvironmentsWithErrors(sourceDirectory?: string): Promise<ListEnvironmentsResult> {
     const source = resolveSource(sourceDirectory);
     const result = await wasmCall('list_environments', [await buildFilesMap(source), await buildSecretsMap(source), source]);
-    const entries = JSON.parse(result) as EnvironmentEntry[];
-    return entries.map(e => e.name);
+    const parsed = JSON.parse(result) as { environments: EnvironmentEntry[]; parse_errors?: { message: string }[] };
+    return {
+        environments: parsed.environments.map(e => e.name),
+        errors: (parsed.parse_errors ?? []).map(e => e.message),
+    };
 }
 
 export async function listAuthConfigs(sourceDirectory?: string, rootDirectory?: string): Promise<AuthListEntry[]> {
+    return (await listAuthConfigsWithErrors(sourceDirectory, rootDirectory)).authConfigs;
+}
+
+export async function listAuthConfigsWithErrors(sourceDirectory?: string, rootDirectory?: string): Promise<ListAuthConfigsResult> {
     const source = resolveSource(sourceDirectory);
     const root = resolveSource(rootDirectory ?? sourceDirectory);
     const result = await wasmCall('list_auth', [await buildFilesMap(root), await buildSecretsMap(root), source]);
-    return JSON.parse(result) as AuthListEntry[];
+    const parsed = JSON.parse(result) as { auth: AuthListEntry[]; parse_errors?: { message: string }[] };
+    return {
+        authConfigs: parsed.auth,
+        errors: (parsed.parse_errors ?? []).map(e => e.message),
+    };
 }
 
 export async function showEnvironment(name: string, sourceDirectory?: string): Promise<EnvironmentShowOutput> {

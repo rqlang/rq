@@ -164,13 +164,25 @@ fn expect_attribute_name(r: &mut TokenReader, expected: &str) -> Result<Range<us
 
 fn expect_punctuation(r: &mut TokenReader, value: &str) -> Result<(), SyntaxError> {
     r.skip_ignorable();
-    expect(
+    expect_at_token(
         r,
         |t| t.token_type == TokenType::Punctuation && t.value == value,
         format!("Expected '{value}'"),
     )?;
     r.advance();
     Ok(())
+}
+
+fn expect_at_token(
+    r: &TokenReader,
+    pred: impl Fn(&Token) -> bool,
+    message: String,
+) -> Result<Token, SyntaxError> {
+    match r.cur() {
+        Some(t) if pred(t) => Ok(t.clone()),
+        Some(t) => Err(r.create_error(message, t.span.clone())),
+        None => Err(r.create_error(message, r.source.len()..r.source.len())),
+    }
 }
 
 fn is_name_token(t: &Token) -> bool {
@@ -475,7 +487,7 @@ impl AttributeParser for UiColorAttributeParser {
 
 fn parse_ui_color(r: &mut TokenReader) -> Result<UiColor, SyntaxError> {
     r.skip_ignorable();
-    let color_tok = expect(
+    let color_tok = expect_at_token(
         r,
         |t| t.token_type == TokenType::Identifier,
         format!("Expected color name, one of: {}", UiColor::names()),

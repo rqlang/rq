@@ -1,0 +1,5 @@
+[ui.color(
+    "red")]
+env production {
+    host: "x",
+}

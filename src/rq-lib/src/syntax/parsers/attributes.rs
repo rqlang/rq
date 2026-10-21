@@ -125,10 +125,15 @@ fn peek_attribute_name(r: &TokenReader) -> Option<(String, Range<usize>)> {
         }
         offset += 1;
     }
+    dotted_name_at(r, offset).map(|(name, span, _)| (name, span))
+}
+
+fn dotted_name_at(r: &TokenReader, offset: usize) -> Option<(String, Range<usize>, usize)> {
     let first = r.peek(offset).filter(|t| is_name_token(t))?;
     let mut name = first.value.clone();
     let mut span = first.span.clone();
-    while let (Some(dot), Some(part)) = (r.peek(offset + 1), r.peek(offset + 2)) {
+    let mut consumed = 1;
+    while let (Some(dot), Some(part)) = (r.peek(offset + consumed), r.peek(offset + consumed + 1)) {
         if dot.token_type != TokenType::Punctuation || dot.value != PUNC_DOT || !is_name_token(part)
         {
             break;
@@ -136,9 +141,36 @@ fn peek_attribute_name(r: &TokenReader) -> Option<(String, Range<usize>)> {
         name.push_str(PUNC_DOT);
         name.push_str(&part.value);
         span.end = part.span.end;
-        offset += 2;
+        consumed += 2;
     }
-    Some((name, span))
+    Some((name, span, consumed))
+}
+
+fn expect_attribute_name(r: &mut TokenReader, expected: &str) -> Result<Range<usize>, SyntaxError> {
+    let error_span = match r.cur() {
+        Some(t) => t.span.clone(),
+        None => r.source.len()..r.source.len(),
+    };
+    match dotted_name_at(r, 0) {
+        Some((name, span, consumed)) if name == expected => {
+            for _ in 0..consumed {
+                r.advance();
+            }
+            Ok(span)
+        }
+        _ => Err(r.create_error(format!("Expected '{expected}'"), error_span)),
+    }
+}
+
+fn expect_punctuation(r: &mut TokenReader, value: &str) -> Result<(), SyntaxError> {
+    r.skip_ignorable();
+    expect(
+        r,
+        |t| t.token_type == TokenType::Punctuation && t.value == value,
+        format!("Expected '{value}'"),
+    )?;
+    r.advance();
+    Ok(())
 }
 
 fn is_name_token(t: &Token) -> bool {
@@ -431,71 +463,36 @@ impl AttributeParser for UiColorAttributeParser {
             r.create_error("Unexpected EOF".into(), r.source.len()..r.source.len())
         })?;
         r.advance();
-
         r.skip_ignorable();
-        expect(
-            r,
-            |t| t.token_type == TokenType::Identifier && t.value == "ui",
-            format!("Expected '{ATTR_UI_COLOR}'"),
-        )?;
-        r.advance();
-        expect(
-            r,
-            |t| t.token_type == TokenType::Punctuation && t.value == PUNC_DOT,
-            format!("Expected '{ATTR_UI_COLOR}'"),
-        )?;
-        r.advance();
-        expect(
-            r,
-            |t| t.token_type == TokenType::Identifier && t.value == "color",
-            format!("Expected '{ATTR_UI_COLOR}'"),
-        )?;
-        r.advance();
-
-        r.skip_ignorable();
-        expect(
-            r,
-            |t| t.token_type == TokenType::Punctuation && t.value == PUNC_LPAREN,
-            "Expected '('",
-        )?;
-        r.advance();
-
-        r.skip_ignorable();
-        let color_tok = expect(
-            r,
-            |t| t.token_type == TokenType::Identifier,
-            format!("Expected color name, one of: {}", UiColor::names()),
-        )?;
-        let color = UiColor::from_name(&color_tok.value).ok_or_else(|| {
-            r.create_error(
-                format!(
-                    "Unknown color '{}'; expected one of: {}",
-                    color_tok.value,
-                    UiColor::names()
-                ),
-                color_tok.span.clone(),
-            )
-        })?;
-        r.advance();
-
-        r.skip_ignorable();
-        expect(
-            r,
-            |t| t.token_type == TokenType::Punctuation && t.value == PUNC_RPAREN,
-            "Expected ')'",
-        )?;
-        r.advance();
-
-        r.skip_ignorable();
-        expect(
-            r,
-            |t| t.token_type == TokenType::Punctuation && t.value == PUNC_RBRACKET,
-            "Expected ']'",
-        )?;
-        r.advance();
+        expect_attribute_name(r, ATTR_UI_COLOR)?;
+        expect_punctuation(r, PUNC_LPAREN)?;
+        let color = parse_ui_color(r)?;
+        expect_punctuation(r, PUNC_RPAREN)?;
+        expect_punctuation(r, PUNC_RBRACKET)?;
 
         ctx.set_color(color)
             .map_err(|msg| r.create_error_with_file(msg, start_token.span.clone()))?;
         Ok(())
     }
+}
+
+fn parse_ui_color(r: &mut TokenReader) -> Result<UiColor, SyntaxError> {
+    r.skip_ignorable();
+    let color_tok = expect(
+        r,
+        |t| t.token_type == TokenType::Identifier,
+        format!("Expected color name, one of: {}", UiColor::names()),
+    )?;
+    let color = UiColor::from_name(&color_tok.value).ok_or_else(|| {
+        r.create_error(
+            format!(
+                "Unknown color '{}'; expected one of: {}",
+                color_tok.value,
+                UiColor::names()
+            ),
+            color_tok.span.clone(),
+        )
+    })?;
+    r.advance();
+    Ok(color)
 }

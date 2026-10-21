@@ -23,6 +23,8 @@ import { registerGetTokenCommand } from './commands/getToken';
 import { registerClearOAuthCacheCommand } from './commands/clearOAuthCache';
 import { registerAuthUriHandler } from './auth/authUriHandler';
 import { registerMcpServer } from './mcpServer';
+import { ExplorerState, trackExplorerState } from './explorerState';
+import { registerRqFileWatcher } from './rqFileWatcher';
 
 export function activate(context: vscode.ExtensionContext) {
     console.log('RQ Language Extension is now active');
@@ -41,7 +43,8 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(diagnosticCollection);
 
     const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-    const requestExplorerProvider = new RequestExplorerProvider(workspaceRoot);
+    const requestExplorerState = new ExplorerState(context.workspaceState, 'rq.requestExplorer');
+    const requestExplorerProvider = new RequestExplorerProvider(workspaceRoot, requestExplorerState);
 
     const diagnosticsProvider = new DiagnosticsProvider(diagnosticCollection, requestExplorerProvider);
     context.subscriptions.push({ dispose: () => diagnosticsProvider.dispose() });
@@ -49,27 +52,19 @@ export function activate(context: vscode.ExtensionContext) {
         treeDataProvider: requestExplorerProvider,
         showCollapseAll: true
     });
-    context.subscriptions.push(requestExplorerView);
+    context.subscriptions.push(requestExplorerView, ...trackExplorerState(requestExplorerView, requestExplorerProvider, requestExplorerState));
 
-    let requestExplorerFirstShow = true;
-    requestExplorerView.onDidChangeVisibility(({ visible }) => {
-        if (!visible) { return; }
-        if (requestExplorerFirstShow) { requestExplorerFirstShow = false; return; }
-        setTimeout(() => requestExplorerProvider.refresh(), 0);
-    });
-
-    const configurationExplorerProvider = new ConfigurationExplorerProvider(workspaceRoot);
+    const configurationExplorerState = new ExplorerState(context.workspaceState, 'rq.configurationExplorer');
+    const configurationExplorerProvider = new ConfigurationExplorerProvider(workspaceRoot, configurationExplorerState);
     const configurationExplorerView = vscode.window.createTreeView('rqConfigurationExplorer', {
         treeDataProvider: configurationExplorerProvider,
         showCollapseAll: true
     });
-    context.subscriptions.push(configurationExplorerView);
+    context.subscriptions.push(configurationExplorerView, ...trackExplorerState(configurationExplorerView, configurationExplorerProvider, configurationExplorerState));
 
-    let configurationExplorerFirstShow = true;
-    configurationExplorerView.onDidChangeVisibility(({ visible }) => {
-        if (!visible) { return; }
-        if (configurationExplorerFirstShow) { configurationExplorerFirstShow = false; return; }
-        setTimeout(() => configurationExplorerProvider.refresh(), 0);
+    registerRqFileWatcher(context, () => {
+        requestExplorerProvider.refresh();
+        configurationExplorerProvider.refresh();
     });
 
     requestExplorerProvider.refresh();

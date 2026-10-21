@@ -112,6 +112,9 @@ export const workspace = {
     findFiles: jest.fn().mockResolvedValue([]),
     getWorkspaceFolder: jest.fn(),
     onDidChangeWorkspaceFolders: jest.fn().mockReturnValue({ dispose: () => {} }),
+    onDidDeleteFiles: jest.fn().mockReturnValue({ dispose: () => {} }),
+    onDidRenameFiles: jest.fn().mockReturnValue({ dispose: () => {} }),
+    createFileSystemWatcher: jest.fn(),
     onDidChangeConfiguration: jest.fn().mockReturnValue({ dispose: () => {} })
 };
 

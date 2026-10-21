@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { ConfigurationExplorerProvider, ConfigurationTreeItem } from '../src/configurationExplorer';
 import * as rqClient from '../src/rqClient';
+import { createExplorerState } from './memento-mock';
 
 jest.mock('../src/rqClient');
 
@@ -20,7 +21,7 @@ describe('ConfigurationExplorerProvider', () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
-        target = new ConfigurationExplorerProvider('/root');
+        target = new ConfigurationExplorerProvider('/root', createExplorerState());
     });
 
     test('refresh() triggers onDidChangeTreeData event', () => {
@@ -36,7 +37,7 @@ describe('ConfigurationExplorerProvider', () => {
     });
 
     test('getChildren() returns empty array if no workspace root', async () => {
-        const noRootProvider = new ConfigurationExplorerProvider(undefined);
+        const noRootProvider = new ConfigurationExplorerProvider(undefined, createExplorerState());
         const children = await noRootProvider.getChildren();
         expect(children).toEqual([]);
     });
@@ -120,14 +121,52 @@ describe('ConfigurationExplorerProvider', () => {
         expect(rqClient.listEnvironments).toHaveBeenCalledTimes(1);
     });
 
-    test('refresh() clears cached sections', async () => {
+    test('refresh() reloads a loaded section without showing the loading item', async () => {
         (rqClient.listEnvironments as jest.Mock).mockResolvedValue(['local']);
-
         await getSectionChildren(target, 'section-environments');
+        const section = (await target.getChildren()).find(c => c.kind === 'section-environments')!;
+
         target.refresh();
+        const during = await target.getChildren(section);
+
+        expect(during.map(i => i.label)).toEqual(['local']);
+        expect(rqClient.listEnvironments).toHaveBeenCalledTimes(2);
+    });
+
+    test('refresh() does not load a section that was never expanded', async () => {
+        (rqClient.listEnvironments as jest.Mock).mockResolvedValue(['local']);
         await getSectionChildren(target, 'section-environments');
 
-        expect(rqClient.listEnvironments).toHaveBeenCalledTimes(2);
+        target.refresh();
+
+        expect(rqClient.listAuthConfigs).not.toHaveBeenCalled();
+    });
+
+    test('builds sections with the stored expansion state', async () => {
+        const state = createExplorerState();
+        state.setExpanded('section-auth', true);
+        target = new ConfigurationExplorerProvider('/root', state);
+
+        const [environments, auth] = await target.getChildren();
+
+        expect(environments.collapsibleState).toBe(vscode.TreeItemCollapsibleState.Collapsed);
+        expect(auth.collapsibleState).toBe(vscode.TreeItemCollapsibleState.Expanded);
+    });
+
+    test('assigns stable ids to sections and their items', async () => {
+        (rqClient.listAuthConfigs as jest.Mock).mockResolvedValue([{ name: 'my-token', auth_type: 'Bearer' }]);
+
+        const [item] = await getSectionChildren(target, 'section-auth');
+
+        expect(item.id).toBe('auth-config:my-token');
+        expect(target.getParent(item)?.id).toBe('section-auth');
+    });
+
+    test('findItem() finds a loaded environment', async () => {
+        (rqClient.listEnvironments as jest.Mock).mockResolvedValue(['local']);
+        const [local] = await getSectionChildren(target, 'section-environments');
+
+        expect(target.findItem('environment:local')).toBe(local);
     });
 
     test('setItemLoading(true) saves original icon and sets spinner', () => {
@@ -162,5 +201,13 @@ describe('ConfigurationExplorerProvider', () => {
         target.setItemLoading(item, false);
         expect(eventSpy).toHaveBeenCalledWith(item);
         expect(eventSpy).toHaveBeenCalledTimes(2);
+    });
+
+    test('isLoaded() is true only for items of a loaded section', async () => {
+        (rqClient.listEnvironments as jest.Mock).mockResolvedValue(['local']);
+        await getSectionChildren(target, 'section-environments');
+
+        expect(target.isLoaded('environment:gone')).toBe(true);
+        expect(target.isLoaded('auth-config:my-token')).toBe(false);
     });
 });

@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { registerRefreshRequestsCommand } from '../../src/commands/refreshRequests';
 import { RequestExplorerProvider } from '../../src/requestExplorer';
+import { createExplorerState } from '../memento-mock';
 import * as cliService from '../../src/rqClient';
 
 // Mock dependencies
@@ -20,7 +21,7 @@ describe('refreshRequests Command', () => {
         } as unknown as vscode.ExtensionContext;
 
         // Mock provider
-        provider = new RequestExplorerProvider('root');
+        provider = new RequestExplorerProvider('root', createExplorerState());
         provider.refresh = jest.fn();
 
         // Mock cliService

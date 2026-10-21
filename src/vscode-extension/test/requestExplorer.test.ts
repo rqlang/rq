@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { RequestExplorerProvider, RequestTreeItem } from '../src/requestExplorer';
 import * as rqClient from '../src/rqClient';
+import { FakeMemento, createExplorerState } from './memento-mock';
 
 jest.mock('../src/rqClient');
 
@@ -16,7 +17,7 @@ describe('RequestExplorerProvider', () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
-        target = new RequestExplorerProvider('/root');
+        target = new RequestExplorerProvider('/root', createExplorerState());
     });
 
     test('refresh() triggers onDidChangeTreeData event', () => {
@@ -62,7 +63,7 @@ describe('RequestExplorerProvider', () => {
     });
 
     test('getChildren() returns empty array and shows message if no workspace root', async () => {
-        const noRootProvider = new RequestExplorerProvider(undefined);
+        const noRootProvider = new RequestExplorerProvider(undefined, createExplorerState());
         const children = await noRootProvider.getChildren();
         expect(children).toEqual([]);
         expect(vscode.window.showInformationMessage).toHaveBeenCalledWith('No workspace folder open');
@@ -242,5 +243,163 @@ describe('RequestExplorerProvider', () => {
         const endpointItem = items.find(c => c.label === 'api');
         expect(endpointItem).toBeDefined();
         expect(endpointItem?.command).toBeUndefined();
+    });
+
+    test('restores the selected environment from the stored state', () => {
+        const memento = new FakeMemento();
+        new RequestExplorerProvider('/root', createExplorerState(memento)).setSelectedEnvironment('prod');
+
+        const restored = new RequestExplorerProvider('/root', createExplorerState(memento));
+
+        expect(restored.getSelectedEnvironment()).toBe('prod');
+    });
+
+    test('assigns stable ids to folders, endpoints and requests', async () => {
+        (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: [
+            { name: 'api/get', endpoint: 'api', file: '/root/users/api.rq' }
+        ] });
+
+        const [folder] = await getRequestItems(target);
+        const endpoint = folder.children![0];
+
+        expect(folder.id).toBe('folder:users');
+        expect(endpoint.id).toBe('endpoint:users#api');
+        expect(endpoint.children![0].id).toBe('request:/root/users/api.rq#api/get');
+    });
+
+    test('makes duplicated request ids unique', async () => {
+        (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: [
+            { name: 'get', endpoint: null, file: '/root/a.rq' },
+            { name: 'get', endpoint: null, file: '/root/a.rq' }
+        ] });
+
+        const items = await getRequestItems(target);
+
+        expect(items.map(i => i.id)).toEqual(['request:/root/a.rq#get', 'request:/root/a.rq#get~2']);
+    });
+
+    test('builds items with the stored expansion state', async () => {
+        const state = createExplorerState();
+        state.setExpanded('folder:users', true);
+        state.setExpanded('endpoint:users#api', false);
+        target = new RequestExplorerProvider('/root', state);
+        (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: [
+            { name: 'api/get', endpoint: 'api', file: '/root/users/api.rq' }
+        ] });
+
+        const [folder] = await getRequestItems(target);
+
+        expect(folder.collapsibleState).toBe(vscode.TreeItemCollapsibleState.Expanded);
+        expect(folder.children![0].collapsibleState).toBe(vscode.TreeItemCollapsibleState.Collapsed);
+    });
+
+    test('refresh() after a load keeps the current items until the reload completes', async () => {
+        (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: [{ name: 'req1', endpoint: null, file: '/root/req1.rq' }] });
+        await getRequestItems(target);
+
+        target.refresh();
+        const during = target.getChildren() as RequestTreeItem[];
+
+        expect(during.map(i => i.label)).toEqual(['Environment', 'req1']);
+        expect(rqClient.listRequests).toHaveBeenCalledTimes(2);
+    });
+
+    test('refresh() during a load reloads once more when it finishes', async () => {
+        (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: [] });
+        target.getChildren();
+
+        target.refresh();
+        await new Promise(r => setImmediate(r));
+
+        expect(rqClient.listRequests).toHaveBeenCalledTimes(2);
+    });
+
+    test('fires onDidLoad once the requests are loaded', async () => {
+        (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: [] });
+        const loadSpy = jest.fn();
+        target.onDidLoad(loadSpy);
+
+        await getRequestItems(target);
+
+        expect(loadSpy).toHaveBeenCalledTimes(1);
+    });
+
+    test('findItem() finds a nested request and getParent() walks up to the root', async () => {
+        (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: [
+            { name: 'api/get', endpoint: 'api', file: '/root/users/api.rq' }
+        ] });
+        const [folder] = await getRequestItems(target);
+
+        const request = target.findItem('request:/root/users/api.rq#api/get')!;
+        const endpoint = target.getParent(request)!;
+
+        expect(endpoint.id).toBe('endpoint:users#api');
+        expect(target.getParent(endpoint)).toBe(folder);
+        expect(target.getParent(folder)).toBeUndefined();
+    });
+
+    test('isLoaded() becomes true once the requests are loaded', async () => {
+        (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: [] });
+        expect(target.isLoaded()).toBe(false);
+
+        await getRequestItems(target);
+
+        expect(target.isLoaded()).toBe(true);
+    });
+
+    test('marks a restored environment that no longer exists', async () => {
+        const state = createExplorerState();
+        state.setEnvironment('dev');
+        target = new RequestExplorerProvider('/root', state);
+        (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: [] });
+        (rqClient.listEnvironments as jest.Mock).mockResolvedValue([]);
+
+        await getRequestItems(target);
+        const envItem = (target.getChildren() as RequestTreeItem[])[0];
+
+        expect(target.getSelectedEnvironment()).toBe('dev');
+        expect(envItem.description).toBe('dev (not found)');
+        expect(envItem.iconPath).toEqual(new vscode.ThemeIcon('warning'));
+    });
+
+    test('does not mark a restored environment that still exists', async () => {
+        const state = createExplorerState();
+        state.setEnvironment('dev');
+        target = new RequestExplorerProvider('/root', state);
+        (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: [] });
+        (rqClient.listEnvironments as jest.Mock).mockResolvedValue(['dev']);
+
+        await getRequestItems(target);
+        const envItem = (target.getChildren() as RequestTreeItem[])[0];
+
+        expect(envItem.description).toBe('dev');
+        expect(envItem.iconPath).toEqual(new vscode.ThemeIcon('server-environment'));
+    });
+
+    test('does not mark the environment when the environments cannot be listed', async () => {
+        const state = createExplorerState();
+        state.setEnvironment('dev');
+        target = new RequestExplorerProvider('/root', state);
+        (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: [] });
+        (rqClient.listEnvironments as jest.Mock).mockRejectedValue(new Error('parse error'));
+
+        await getRequestItems(target);
+        const envItem = (target.getChildren() as RequestTreeItem[])[0];
+
+        expect(envItem.description).toBe('dev');
+    });
+
+    test('clears the missing mark when another environment is selected', async () => {
+        const state = createExplorerState();
+        state.setEnvironment('dev');
+        target = new RequestExplorerProvider('/root', state);
+        (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: [] });
+        (rqClient.listEnvironments as jest.Mock).mockResolvedValue(['prod']);
+        await getRequestItems(target);
+
+        target.setSelectedEnvironment('prod');
+        const envItem = (target.getChildren() as RequestTreeItem[])[0];
+
+        expect(envItem.description).toBe('prod');
     });
 });

@@ -1,24 +1,41 @@
 import * as vscode from 'vscode';
 import * as rqClient from './rqClient';
 import { applyTreeItemLoading } from './vscodeUtils';
+import { ExplorerState, RestorableTreeDataProvider, TreeItemIds } from './explorerState';
 
-type ItemKind = 'section-environments' | 'section-auth' | 'environment' | 'auth-config' | 'loading';
+type SectionKind = 'section-environments' | 'section-auth';
+type ItemKind = SectionKind | 'environment' | 'auth-config' | 'loading';
 
-export class ConfigurationExplorerProvider implements vscode.TreeDataProvider<ConfigurationTreeItem> {
+const SECTIONS: { kind: SectionKind; label: string; itemKind: ItemKind }[] = [
+    { kind: 'section-environments', label: 'Environments', itemKind: 'environment' },
+    { kind: 'section-auth', label: 'Auth', itemKind: 'auth-config' },
+];
+
+export class ConfigurationExplorerProvider implements RestorableTreeDataProvider<ConfigurationTreeItem> {
     private _onDidChangeTreeData = new vscode.EventEmitter<ConfigurationTreeItem | undefined | null | void>();
     readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
+    private _onDidLoad = new vscode.EventEmitter<void>();
+    readonly onDidLoad = this._onDidLoad.event;
     private readonly originalIcons = new WeakMap<ConfigurationTreeItem, vscode.TreeItem['iconPath']>();
-    private cachedEnvironments: ConfigurationTreeItem[] | null = null;
-    private cachedAuthConfigs: ConfigurationTreeItem[] | null = null;
-    private loadingEnvironments = false;
-    private loadingAuthConfigs = false;
+    private readonly sectionItems = new Map<SectionKind, ConfigurationTreeItem>();
+    private readonly cachedChildren = new Map<SectionKind, ConfigurationTreeItem[]>();
+    private readonly loadingSections = new Set<SectionKind>();
+    private readonly reloadPending = new Set<SectionKind>();
 
-    constructor(private workspaceRoot: string | undefined) {}
+    constructor(private workspaceRoot: string | undefined, private readonly state: ExplorerState) {}
 
     refresh(): void {
-        this.cachedEnvironments = null;
-        this.cachedAuthConfigs = null;
-        this._onDidChangeTreeData.fire();
+        if (this.cachedChildren.size === 0 && this.loadingSections.size === 0) {
+            this._onDidChangeTreeData.fire();
+            return;
+        }
+        for (const { kind } of SECTIONS) {
+            if (this.loadingSections.has(kind)) {
+                this.reloadPending.add(kind);
+            } else if (this.cachedChildren.has(kind)) {
+                void this.loadSection(kind);
+            }
+        }
     }
 
     setItemLoading(item: ConfigurationTreeItem, loading: boolean): void {
@@ -29,64 +46,77 @@ export class ConfigurationExplorerProvider implements vscode.TreeDataProvider<Co
         return element;
     }
 
+    findItem(id: string): ConfigurationTreeItem | undefined {
+        const sections = [...this.sectionItems.values()];
+        const children = [...this.cachedChildren.values()].flat();
+        return [...sections, ...children].find(item => item.id === id);
+    }
+
+    isLoaded(id: string): boolean {
+        const section = SECTIONS.find(({ itemKind }) => id.startsWith(`${itemKind}:`));
+        return section ? this.cachedChildren.has(section.kind) : true;
+    }
+
+    getParent(element: ConfigurationTreeItem): ConfigurationTreeItem | undefined {
+        return element.section ? this.sectionItems.get(element.section) : undefined;
+    }
+
     async getChildren(element?: ConfigurationTreeItem): Promise<ConfigurationTreeItem[]> {
         if (!this.workspaceRoot) {
             return [];
         }
 
         if (!element) {
-            return [
-                new ConfigurationTreeItem('Environments', 'section-environments', vscode.TreeItemCollapsibleState.Collapsed),
-                new ConfigurationTreeItem('Auth', 'section-auth', vscode.TreeItemCollapsibleState.Collapsed),
-            ];
+            return SECTIONS.map(({ kind, label }) => this.makeSectionItem(kind, label));
         }
 
-        if (element.kind === 'section-environments') {
-            if (this.cachedEnvironments !== null) {
-                return this.cachedEnvironments;
+        if (element.kind === 'section-environments' || element.kind === 'section-auth') {
+            const cached = this.cachedChildren.get(element.kind);
+            if (cached) {
+                return cached;
             }
-            this.startLoadingEnvironments(element);
-            return [this.makeLoadingItem()];
-        }
-
-        if (element.kind === 'section-auth') {
-            if (this.cachedAuthConfigs !== null) {
-                return this.cachedAuthConfigs;
+            if (!this.loadingSections.has(element.kind)) {
+                void this.loadSection(element.kind);
             }
-            this.startLoadingAuthConfigs(element);
-            return [this.makeLoadingItem()];
+            return [this.makeLoadingItem(element.kind)];
         }
 
         return [];
     }
 
-    private makeLoadingItem(): ConfigurationTreeItem {
-        const item = new ConfigurationTreeItem('Loading…', 'loading', vscode.TreeItemCollapsibleState.None);
+    private makeSectionItem(kind: SectionKind, label: string): ConfigurationTreeItem {
+        const item = new ConfigurationTreeItem(label, kind, this.state.collapsibleState(kind, vscode.TreeItemCollapsibleState.Collapsed));
+        item.id = kind;
+        this.sectionItems.set(kind, item);
+        return item;
+    }
+
+    private makeLoadingItem(section: SectionKind): ConfigurationTreeItem {
+        const item = new ConfigurationTreeItem('Loading…', 'loading', vscode.TreeItemCollapsibleState.None, section);
+        item.id = `loading:${section}`;
         item.iconPath = new vscode.ThemeIcon('sync~spin');
         return item;
     }
 
-    private async startLoadingEnvironments(parent: ConfigurationTreeItem): Promise<void> {
-        if (this.loadingEnvironments) { return; }
-        this.loadingEnvironments = true;
-        this.cachedEnvironments = await this.loadEnvironments();
-        this.loadingEnvironments = false;
-        this._onDidChangeTreeData.fire(parent);
-    }
-
-    private async startLoadingAuthConfigs(parent: ConfigurationTreeItem): Promise<void> {
-        if (this.loadingAuthConfigs) { return; }
-        this.loadingAuthConfigs = true;
-        this.cachedAuthConfigs = await this.loadAuthConfigs();
-        this.loadingAuthConfigs = false;
-        this._onDidChangeTreeData.fire(parent);
+    private async loadSection(kind: SectionKind): Promise<void> {
+        this.loadingSections.add(kind);
+        do {
+            this.reloadPending.delete(kind);
+            const items = kind === 'section-environments' ? await this.loadEnvironments() : await this.loadAuthConfigs();
+            this.cachedChildren.set(kind, items);
+        } while (this.reloadPending.has(kind));
+        this.loadingSections.delete(kind);
+        this._onDidChangeTreeData.fire(this.sectionItems.get(kind));
+        this._onDidLoad.fire();
     }
 
     private async loadEnvironments(): Promise<ConfigurationTreeItem[]> {
         try {
             const names = await rqClient.listEnvironments(this.workspaceRoot);
+            const ids = new TreeItemIds();
             return names.map(name => {
-                const item = new ConfigurationTreeItem(name, 'environment', vscode.TreeItemCollapsibleState.None);
+                const item = new ConfigurationTreeItem(name, 'environment', vscode.TreeItemCollapsibleState.None, 'section-environments');
+                item.id = ids.next(`environment:${name}`);
                 item.iconPath = new vscode.ThemeIcon('server-environment');
                 item.tooltip = name;
                 item.command = { command: 'rq.openConfigurationFile', title: 'Open File', arguments: ['env', name, item] };
@@ -101,8 +131,10 @@ export class ConfigurationExplorerProvider implements vscode.TreeDataProvider<Co
     private async loadAuthConfigs(): Promise<ConfigurationTreeItem[]> {
         try {
             const entries = await rqClient.listAuthConfigs(this.workspaceRoot);
+            const ids = new TreeItemIds();
             return entries.map(e => {
-                const item = new ConfigurationTreeItem(e.name, 'auth-config', vscode.TreeItemCollapsibleState.None);
+                const item = new ConfigurationTreeItem(e.name, 'auth-config', vscode.TreeItemCollapsibleState.None, 'section-auth');
+                item.id = ids.next(`auth-config:${e.name}`);
                 item.iconPath = new vscode.ThemeIcon('key');
                 item.description = e.auth_type;
                 item.tooltip = `${e.name} (${e.auth_type})`;
@@ -121,6 +153,7 @@ export class ConfigurationTreeItem extends vscode.TreeItem {
         public readonly label: string,
         public readonly kind: ItemKind,
         public readonly collapsibleState: vscode.TreeItemCollapsibleState,
+        public readonly section?: SectionKind,
     ) {
         super(label, collapsibleState);
         this.contextValue = kind;

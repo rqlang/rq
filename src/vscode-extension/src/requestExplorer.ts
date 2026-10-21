@@ -3,6 +3,7 @@ import * as rqClient from './rqClient';
 import * as path from 'path';
 import { normalizePath } from './utils';
 import { applyTreeItemLoading } from './vscodeUtils';
+import { ExplorerState, RestorableTreeDataProvider, TreeItemIds } from './explorerState';
 
 export interface RequestInfo {
     name: string;
@@ -18,18 +19,24 @@ export interface RequestInfo {
 /**
  * Tree data provider for RQ requests explorer
  */
-export class RequestExplorerProvider implements vscode.TreeDataProvider<RequestTreeItem> {
+export class RequestExplorerProvider implements RestorableTreeDataProvider<RequestTreeItem> {
     private _onDidChangeTreeData: vscode.EventEmitter<RequestTreeItem | undefined | null | void> = new vscode.EventEmitter<RequestTreeItem | undefined | null | void>();
     readonly onDidChangeTreeData: vscode.Event<RequestTreeItem | undefined | null | void> = this._onDidChangeTreeData.event;
     private _onDidChangeEnvironment: vscode.EventEmitter<string | undefined> = new vscode.EventEmitter<string | undefined>();
     readonly onDidChangeEnvironment: vscode.Event<string | undefined> = this._onDidChangeEnvironment.event;
+    private _onDidLoad = new vscode.EventEmitter<void>();
+    readonly onDidLoad: vscode.Event<void> = this._onDidLoad.event;
     private selectedEnvironment: string | undefined;
+    private missingEnvironment: string | undefined;
     private envItem: RequestTreeItem | undefined;
     private readonly originalIcons = new WeakMap<RequestTreeItem, vscode.TreeItem['iconPath']>();
     private cachedRootItems: RequestTreeItem[] | null = null;
     private loadingRootItems = false;
+    private reloadPending = false;
 
-    constructor(private workspaceRoot: string | undefined) {}
+    constructor(private workspaceRoot: string | undefined, private readonly state: ExplorerState) {
+        this.selectedEnvironment = state.environment;
+    }
 
     setTreeLoading(loading: boolean): void {
         if (!this.envItem) { return; }
@@ -37,8 +44,7 @@ export class RequestExplorerProvider implements vscode.TreeDataProvider<RequestT
             this.envItem.iconPath = new vscode.ThemeIcon('sync~spin');
             this.envItem.description = 'Loading\u2026';
         } else {
-            this.envItem.iconPath = new vscode.ThemeIcon(this.selectedEnvironment ? 'server-environment' : 'circle-slash');
-            this.envItem.description = this.selectedEnvironment || 'None';
+            this.describeEnvironment(this.envItem);
         }
         this._onDidChangeTreeData.fire(this.envItem);
     }
@@ -58,20 +64,36 @@ export class RequestExplorerProvider implements vscode.TreeDataProvider<RequestT
 
     setSelectedEnvironment(environment: string | undefined): void {
         this.selectedEnvironment = environment;
+        this.state.setEnvironment(environment);
         this._onDidChangeEnvironment.fire(environment);
         if (this.envItem) {
-            this.envItem.iconPath = new vscode.ThemeIcon(environment ? 'server-environment' : 'circle-slash');
-            this.envItem.description = environment || 'None';
-            this.envItem.tooltip = environment
-                ? `Current environment: ${environment}\n\nClick the environment icon in the toolbar to change.`
-                : 'No environment selected.\n\nClick the environment icon in the toolbar to select one.';
+            this.describeEnvironment(this.envItem);
             this._onDidChangeTreeData.fire(this.envItem);
         }
     }
 
     refresh(): void {
-        this.cachedRootItems = null;
-        this._onDidChangeTreeData.fire();
+        if (this.loadingRootItems) {
+            this.reloadPending = true;
+            return;
+        }
+        if (this.cachedRootItems === null) {
+            this._onDidChangeTreeData.fire();
+            return;
+        }
+        void this.loadRootItems();
+    }
+
+    findItem(id: string): RequestTreeItem | undefined {
+        return findItemById(this.cachedRootItems ?? [], id);
+    }
+
+    isLoaded(): boolean {
+        return this.cachedRootItems !== null;
+    }
+
+    getParent(element: RequestTreeItem): RequestTreeItem | undefined {
+        return element.parent;
     }
 
     getTreeItem(element: RequestTreeItem): vscode.TreeItem {
@@ -89,7 +111,9 @@ export class RequestExplorerProvider implements vscode.TreeDataProvider<RequestT
             if (this.cachedRootItems !== null) {
                 return [envItem, ...this.cachedRootItems];
             }
-            this.startLoadingRootItems();
+            if (!this.loadingRootItems) {
+                void this.loadRootItems();
+            }
             return [envItem, this.makeLoadingItem()];
         }
 
@@ -98,30 +122,60 @@ export class RequestExplorerProvider implements vscode.TreeDataProvider<RequestT
 
     private buildEnvInfoItem(): RequestTreeItem {
         const item = new RequestTreeItem('Environment', null, vscode.TreeItemCollapsibleState.None);
+        item.id = 'environment';
         item.contextValue = 'environment-info';
-        item.iconPath = new vscode.ThemeIcon(this.selectedEnvironment ? 'server-environment' : 'circle-slash');
-        item.description = this.selectedEnvironment || 'None';
-        item.tooltip = this.selectedEnvironment
-            ? `Current environment: ${this.selectedEnvironment}\n\nClick the environment icon in the toolbar to change.`
-            : 'No environment selected.\n\nClick the environment icon in the toolbar to select one.';
+        this.describeEnvironment(item);
         this.envItem = item;
         return item;
     }
 
+    private describeEnvironment(item: RequestTreeItem): void {
+        const environment = this.selectedEnvironment;
+        if (environment && environment === this.missingEnvironment) {
+            item.iconPath = new vscode.ThemeIcon('warning');
+            item.description = `${environment} (not found)`;
+            item.tooltip = `Environment '${environment}' no longer exists.\n\nClick the environment icon in the toolbar to select another one.`;
+            return;
+        }
+        item.iconPath = new vscode.ThemeIcon(environment ? 'server-environment' : 'circle-slash');
+        item.description = environment || 'None';
+        item.tooltip = environment
+            ? `Current environment: ${environment}\n\nClick the environment icon in the toolbar to change.`
+            : 'No environment selected.\n\nClick the environment icon in the toolbar to select one.';
+    }
+
     private makeLoadingItem(): RequestTreeItem {
         const item = new RequestTreeItem('Loading…', null, vscode.TreeItemCollapsibleState.None);
+        item.id = 'loading';
         item.contextValue = 'loading';
         item.iconPath = new vscode.ThemeIcon('sync~spin');
         return item;
     }
 
-    private async startLoadingRootItems(): Promise<void> {
-        if (this.loadingRootItems) { return; }
+    private async loadRootItems(): Promise<void> {
         this.loadingRootItems = true;
-        const items = await this.getRootItems();
+        do {
+            this.reloadPending = false;
+            const [items, missingEnvironment] = await Promise.all([this.getRootItems(), this.findMissingEnvironment()]);
+            this.cachedRootItems = items;
+            this.missingEnvironment = missingEnvironment;
+        } while (this.reloadPending);
         this.loadingRootItems = false;
-        this.cachedRootItems = items;
         this._onDidChangeTreeData.fire();
+        this._onDidLoad.fire();
+    }
+
+    private async findMissingEnvironment(): Promise<string | undefined> {
+        const environment = this.selectedEnvironment;
+        if (!environment) {
+            return undefined;
+        }
+        try {
+            const environments = await rqClient.listEnvironments(this.workspaceRoot);
+            return environments.includes(environment) ? undefined : environment;
+        } catch {
+            return undefined;
+        }
     }
 
     private async getRootItems(): Promise<RequestTreeItem[]> {
@@ -135,6 +189,7 @@ export class RequestExplorerProvider implements vscode.TreeDataProvider<RequestT
                     null,
                     vscode.TreeItemCollapsibleState.None
                 );
+                errorItem.id = 'parse-errors';
                 errorItem.contextValue = 'error';
                 errorItem.iconPath = new vscode.ThemeIcon('error');
                 errorItem.tooltip = result.errors.join('\n');
@@ -152,6 +207,7 @@ export class RequestExplorerProvider implements vscode.TreeDataProvider<RequestT
                 null,
                 vscode.TreeItemCollapsibleState.None
             );
+            errorItem.id = 'load-error';
             errorItem.contextValue = 'error';
             errorItem.iconPath = new vscode.ThemeIcon('error');
             errorItem.tooltip = errorMessage;
@@ -167,6 +223,7 @@ export class RequestExplorerProvider implements vscode.TreeDataProvider<RequestT
 
         // Normalize workspace root to handle drive letter casing issues on Windows
         const normalizedRoot = normalizePath(this.workspaceRoot);
+        const ids = new TreeItemIds();
 
         // Build folder hierarchy
         interface FolderNode {
@@ -232,17 +289,20 @@ export class RequestExplorerProvider implements vscode.TreeDataProvider<RequestT
                 const folderChildren = convertNodeToItems(subNode, false);
                 
                 // Then add requests in this subfolder grouped by endpoint
-                const requestsByEndpoint = this.groupRequestsByEndpointInFolder(subNode.requests);
+                const folderPath = path.relative(normalizedRoot, subNode.fullPath);
+                const requestsByEndpoint = this.groupRequestsByEndpointInFolder(subNode.requests, folderPath, ids);
                 
                 // Combine: subfolders first, then endpoints
                 const allChildren = [...folderChildren, ...requestsByEndpoint];
 
+                const folderId = ids.next(`folder:${folderPath}`);
                 const folderItem = new RequestTreeItem(
                     folderName,
                     null,
-                    vscode.TreeItemCollapsibleState.Collapsed,
+                    this.state.collapsibleState(folderId, vscode.TreeItemCollapsibleState.Collapsed),
                     allChildren
                 );
+                folderItem.id = folderId;
                 folderItem.contextValue = 'folder';
                 folderItem.iconPath = new vscode.ThemeIcon('folder');
                 folderItem.tooltip = `Folder: ${folderName}`;
@@ -252,7 +312,7 @@ export class RequestExplorerProvider implements vscode.TreeDataProvider<RequestT
 
             // If this is root, add root-level requests grouped by endpoint
             if (isRoot) {
-                const requestsByEndpoint = this.groupRequestsByEndpointInFolder(node.requests);
+                const requestsByEndpoint = this.groupRequestsByEndpointInFolder(node.requests, '', ids);
                 items.push(...requestsByEndpoint);
             }
 
@@ -262,7 +322,7 @@ export class RequestExplorerProvider implements vscode.TreeDataProvider<RequestT
         return convertNodeToItems(rootNode, true);
     }
 
-    private groupRequestsByEndpointInFolder(requests: RequestInfo[]): RequestTreeItem[] {
+    private groupRequestsByEndpointInFolder(requests: RequestInfo[], folderPath: string, ids: TreeItemIds): RequestTreeItem[] {
         const grouped = new Map<string, RequestInfo[]>();
         const topLevel: RequestInfo[] = [];
 
@@ -288,19 +348,17 @@ export class RequestExplorerProvider implements vscode.TreeDataProvider<RequestT
                     ? req.name.substring(endpointName.length + 1)
                     : req.name;
                 
-                return new RequestTreeItem(
-                    displayName,
-                    req,
-                    vscode.TreeItemCollapsibleState.None
-                );
+                return this.makeRequestItem(displayName, req, ids);
             });
 
+            const endpointId = ids.next(`endpoint:${folderPath}#${endpointName}`);
             const endpointItem = new RequestTreeItem(
                 endpointName,
                 null,
-                vscode.TreeItemCollapsibleState.Expanded,
+                this.state.collapsibleState(endpointId, vscode.TreeItemCollapsibleState.Expanded),
                 children
             );
+            endpointItem.id = endpointId;
             endpointItem.iconPath = new vscode.ThemeIcon('globe');
             const epRef = endpointRequests[0];
             if (epRef.endpoint_file) {
@@ -315,21 +373,35 @@ export class RequestExplorerProvider implements vscode.TreeDataProvider<RequestT
 
         // Add top-level requests (without endpoint) at same level as endpoint nodes
         for (const request of topLevel) {
-            items.push(new RequestTreeItem(
-                request.name,
-                request,
-                vscode.TreeItemCollapsibleState.None
-            ));
+            items.push(this.makeRequestItem(request.name, request, ids));
         }
 
         return items;
     }
+
+    private makeRequestItem(label: string, request: RequestInfo, ids: TreeItemIds): RequestTreeItem {
+        const item = new RequestTreeItem(label, request, vscode.TreeItemCollapsibleState.None);
+        item.id = ids.next(`request:${normalizePath(request.file)}#${request.name}`);
+        return item;
+    }
+}
+
+function findItemById(items: RequestTreeItem[], id: string): RequestTreeItem | undefined {
+    for (const item of items) {
+        const found = item.id === id ? item : findItemById(item.children ?? [], id);
+        if (found) {
+            return found;
+        }
+    }
+    return undefined;
 }
 
 /**
  * Tree item representing a request or endpoint group
  */
 export class RequestTreeItem extends vscode.TreeItem {
+    public parent: RequestTreeItem | undefined;
+
     constructor(
         public readonly label: string,
         public readonly request: RequestInfo | null,
@@ -337,6 +409,7 @@ export class RequestTreeItem extends vscode.TreeItem {
         public readonly children?: RequestTreeItem[]
     ) {
         super(label, collapsibleState);
+        children?.forEach(child => child.parent = this);
 
         if (request) {
             // This is a request item

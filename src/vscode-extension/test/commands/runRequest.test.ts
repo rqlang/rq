@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { RequestRunner } from '../../src/commands/runRequest';
 import { RequestExplorerProvider } from '../../src/requestExplorer';
+import { createExplorerState } from '../memento-mock';
 import * as cliService from '../../src/rqClient';
 import * as auth from '../../src/auth';
 import * as webviewGenerator from '../../src/ui/webviewGenerator';
@@ -45,7 +46,7 @@ describe('runRequest Commands', () => {
         } as unknown as vscode.ExtensionContext;
 
         // Mock provider
-        provider = new RequestExplorerProvider('root');
+        provider = new RequestExplorerProvider('root', createExplorerState());
         provider.getSelectedEnvironment = jest.fn().mockReturnValue('dev');
 
         // Mock output channel

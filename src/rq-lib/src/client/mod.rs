@@ -300,7 +300,7 @@ impl RqClient {
     pub fn list_auth(
         &self,
         source_path: &Path,
-    ) -> Result<Vec<crate::client::models::AuthListEntry>, RqError> {
+    ) -> Result<(Vec<crate::client::models::AuthListEntry>, Vec<RqError>), RqError> {
         self.log_source(source_path);
         if !self.fs.exists(source_path) {
             return Err(RqError::DirectoryNotFound(
@@ -309,14 +309,14 @@ impl RqClient {
         }
 
         let mut auth_map = HashMap::new();
-        if self.fs.is_file(source_path) {
+        let parse_errors = if self.fs.is_file(source_path) {
             self.collect_auth_entries_from_paths(
                 &self.collect_import_closure(source_path),
                 &mut auth_map,
-            );
+            )
         } else {
-            self.collect_auth_entries(source_path, &mut auth_map)?;
-        }
+            self.collect_auth_entries(source_path, &mut auth_map)?
+        };
 
         let mut auth_list: Vec<crate::client::models::AuthListEntry> = auth_map
             .into_iter()
@@ -326,7 +326,7 @@ impl RqClient {
             .collect();
         auth_list.sort();
 
-        Ok(auth_list)
+        Ok((auth_list, parse_errors))
     }
 
     pub fn get_auth_details(
@@ -448,7 +448,7 @@ impl RqClient {
     pub fn list_environments_with_locations(
         &self,
         source_path: &Path,
-    ) -> Result<Vec<crate::client::models::EnvironmentEntry>, RqError> {
+    ) -> Result<(Vec<crate::client::models::EnvironmentEntry>, Vec<RqError>), RqError> {
         if !self.fs.exists(source_path) {
             return Err(RqError::DirectoryNotFound(
                 source_path.display().to_string(),
@@ -467,23 +467,29 @@ impl RqClient {
             return Err(RqError::NotADirectory(source_path.display().to_string()));
         }
 
+        let mut parse_errors = Vec::new();
         for path in paths {
-            if let Ok(rq_file) = self.load_rq_file(&path) {
-                for (name, (file, line, character)) in &rq_file.environment_locations {
-                    if seen.insert(name.clone()) {
-                        entries.push(crate::client::models::EnvironmentEntry {
-                            name: name.clone(),
-                            file: crate::paths::clean_path_str(file).to_string(),
-                            line: *line,
-                            character: *character,
-                        });
-                    }
+            let rq_file = match self.load_rq_file(&path) {
+                Ok(rq_file) => rq_file,
+                Err(error) => {
+                    parse_errors.push(error);
+                    continue;
+                }
+            };
+            for (name, (file, line, character)) in &rq_file.environment_locations {
+                if seen.insert(name.clone()) {
+                    entries.push(crate::client::models::EnvironmentEntry {
+                        name: name.clone(),
+                        file: crate::paths::clean_path_str(file).to_string(),
+                        line: *line,
+                        character: *character,
+                    });
                 }
             }
         }
 
         entries.sort_by(|a, b| a.name.cmp(&b.name));
-        Ok(entries)
+        Ok((entries, parse_errors))
     }
 
     pub fn get_environment(
@@ -491,7 +497,7 @@ impl RqClient {
         source_path: &Path,
         name: &str,
     ) -> Result<crate::client::models::EnvironmentEntry, RqError> {
-        let entries = self.list_environments_with_locations(source_path)?;
+        let (entries, _) = self.list_environments_with_locations(source_path)?;
         entries
             .into_iter()
             .find(|e| e.name == name)
@@ -2137,20 +2143,27 @@ impl RqClient {
         &self,
         dir: &Path,
         auth_map: &mut HashMap<String, (String, String, usize, usize)>,
-    ) -> Result<(), RqError> {
+    ) -> Result<Vec<RqError>, RqError> {
         let mut paths = Vec::new();
         self.collect_rq_paths(dir, &mut paths)?;
-        self.collect_auth_entries_from_paths(&paths, auth_map);
-        Ok(())
+        Ok(self.collect_auth_entries_from_paths(&paths, auth_map))
     }
 
     fn collect_auth_entries_from_paths(
         &self,
         paths: &[PathBuf],
         auth_map: &mut HashMap<String, (String, String, usize, usize)>,
-    ) {
+    ) -> Vec<RqError> {
+        let mut parse_errors = Vec::new();
         for path in paths {
-            if let Some(rq_file) = self.load_rq_file_lenient(path) {
+            let rq_file = match self.load_rq_file(path) {
+                Ok(rq_file) => Some(rq_file),
+                Err(error) => {
+                    parse_errors.push(error);
+                    self.load_rq_file_lenient(path)
+                }
+            };
+            if let Some(rq_file) = rq_file {
                 for (auth_name, provider) in rq_file.auth_providers.iter() {
                     auth_map.insert(
                         auth_name.clone(),
@@ -2164,6 +2177,7 @@ impl RqClient {
                 }
             }
         }
+        parse_errors
     }
 
     fn find_auth_provider(
@@ -3254,5 +3268,80 @@ mod prepare_tests {
             &[],
         );
         assert!(target.is_err_and(|e| e.to_string().contains("Required variable(s) not set")));
+    }
+}
+
+#[cfg(all(test, feature = "native"))]
+mod listing_parse_error_tests {
+    use super::RqClient;
+
+    fn workspace_with_broken_file(valid: &str) -> tempfile::TempDir {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("valid.rq"), valid).expect("write");
+        std::fs::write(
+            dir.path().join("broken.rq"),
+            "env broken {\n    host: \"x\"\n",
+        )
+        .expect("write");
+        dir
+    }
+
+    #[test]
+    fn list_environments_with_locations_reports_files_it_could_not_parse() {
+        let dir = workspace_with_broken_file("env local {\n    host: \"localhost\"\n}\n");
+        let (target, parse_errors) = RqClient::default()
+            .list_environments_with_locations(dir.path())
+            .expect("list failed");
+        assert_eq!(
+            target.iter().map(|e| e.name.as_str()).collect::<Vec<_>>(),
+            ["local"]
+        );
+        assert_eq!(parse_errors.len(), 1);
+    }
+
+    #[test]
+    fn list_environments_with_locations_reports_no_errors_for_valid_files() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            dir.path().join("valid.rq"),
+            "env local {\n    host: \"localhost\"\n}\n",
+        )
+        .expect("write");
+        let (_, parse_errors) = RqClient::default()
+            .list_environments_with_locations(dir.path())
+            .expect("list failed");
+        assert!(parse_errors.is_empty());
+    }
+
+    #[test]
+    fn list_auth_reports_files_it_could_not_parse() {
+        let dir =
+            workspace_with_broken_file("auth token(auth_type.bearer) {\n    token: \"123\"\n}\n");
+        let (target, parse_errors) = RqClient::default()
+            .list_auth(dir.path())
+            .expect("list failed");
+        assert_eq!(
+            target.iter().map(|e| e.name.as_str()).collect::<Vec<_>>(),
+            ["token"]
+        );
+        assert_eq!(parse_errors.len(), 1);
+    }
+
+    #[test]
+    fn list_auth_keeps_auth_configs_recovered_from_a_broken_file() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            dir.path().join("broken.rq"),
+            "auth token(auth_type.bearer) {\n    token: \"123\"\n}\nrq broken(\n",
+        )
+        .expect("write");
+        let (target, parse_errors) = RqClient::default()
+            .list_auth(dir.path())
+            .expect("list failed");
+        assert_eq!(
+            target.iter().map(|e| e.name.as_str()).collect::<Vec<_>>(),
+            ["token"]
+        );
+        assert_eq!(parse_errors.len(), 1);
     }
 }

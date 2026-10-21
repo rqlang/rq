@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { ConfigurationExplorerProvider, ConfigurationTreeItem } from '../src/configurationExplorer';
 import * as rqClient from '../src/rqClient';
+import { createExplorerState } from './memento-mock';
 
 jest.mock('../src/rqClient');
 
@@ -20,7 +21,7 @@ describe('ConfigurationExplorerProvider', () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
-        target = new ConfigurationExplorerProvider('/root');
+        target = new ConfigurationExplorerProvider('/root', createExplorerState());
     });
 
     test('refresh() triggers onDidChangeTreeData event', () => {
@@ -36,7 +37,7 @@ describe('ConfigurationExplorerProvider', () => {
     });
 
     test('getChildren() returns empty array if no workspace root', async () => {
-        const noRootProvider = new ConfigurationExplorerProvider(undefined);
+        const noRootProvider = new ConfigurationExplorerProvider(undefined, createExplorerState());
         const children = await noRootProvider.getChildren();
         expect(children).toEqual([]);
     });
@@ -51,7 +52,7 @@ describe('ConfigurationExplorerProvider', () => {
     });
 
     test('getChildren(section-environments) returns loading item synchronously then real items after load', async () => {
-        (rqClient.listEnvironments as jest.Mock).mockResolvedValue(['local', 'prod']);
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['local', 'prod'], errors: [] });
 
         const root = await target.getChildren() as ConfigurationTreeItem[];
         const section = root.find(c => c.kind === 'section-environments')!;
@@ -74,10 +75,10 @@ describe('ConfigurationExplorerProvider', () => {
     });
 
     test('getChildren(section-auth) returns auth config items', async () => {
-        (rqClient.listAuthConfigs as jest.Mock).mockResolvedValue([
+        (rqClient.listAuthConfigsWithErrors as jest.Mock).mockResolvedValue({ authConfigs: [
             { name: 'my-token', auth_type: 'Bearer' },
             { name: 'api-key', auth_type: 'ApiKey' }
-        ]);
+        ], errors: [] });
 
         const children = await getSectionChildren(target, 'section-auth');
 
@@ -93,7 +94,7 @@ describe('ConfigurationExplorerProvider', () => {
     });
 
     test('getChildren(section-environments) handles CLI error gracefully', async () => {
-        (rqClient.listEnvironments as jest.Mock).mockRejectedValue(new Error('CLI Error'));
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockRejectedValue(new Error('CLI Error'));
 
         const children = await getSectionChildren(target, 'section-environments');
 
@@ -102,7 +103,7 @@ describe('ConfigurationExplorerProvider', () => {
     });
 
     test('getChildren(section-auth) handles CLI error gracefully', async () => {
-        (rqClient.listAuthConfigs as jest.Mock).mockRejectedValue(new Error('CLI Error'));
+        (rqClient.listAuthConfigsWithErrors as jest.Mock).mockRejectedValue(new Error('CLI Error'));
 
         const children = await getSectionChildren(target, 'section-auth');
 
@@ -111,23 +112,61 @@ describe('ConfigurationExplorerProvider', () => {
     });
 
     test('cached environments are returned on subsequent expand without re-fetching', async () => {
-        (rqClient.listEnvironments as jest.Mock).mockResolvedValue(['local']);
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['local'], errors: [] });
 
         await getSectionChildren(target, 'section-environments');
         const second = await getSectionChildren(target, 'section-environments');
 
         expect(second.length).toBe(1);
-        expect(rqClient.listEnvironments).toHaveBeenCalledTimes(1);
+        expect(rqClient.listEnvironmentsWithErrors).toHaveBeenCalledTimes(1);
     });
 
-    test('refresh() clears cached sections', async () => {
-        (rqClient.listEnvironments as jest.Mock).mockResolvedValue(['local']);
-
+    test('refresh() reloads a loaded section without showing the loading item', async () => {
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['local'], errors: [] });
         await getSectionChildren(target, 'section-environments');
+        const section = (await target.getChildren()).find(c => c.kind === 'section-environments')!;
+
         target.refresh();
+        const during = await target.getChildren(section);
+
+        expect(during.map(i => i.label)).toEqual(['local']);
+        expect(rqClient.listEnvironmentsWithErrors).toHaveBeenCalledTimes(2);
+    });
+
+    test('refresh() does not load a section that was never expanded', async () => {
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['local'], errors: [] });
         await getSectionChildren(target, 'section-environments');
 
-        expect(rqClient.listEnvironments).toHaveBeenCalledTimes(2);
+        target.refresh();
+
+        expect(rqClient.listAuthConfigsWithErrors).not.toHaveBeenCalled();
+    });
+
+    test('builds sections with the stored expansion state', async () => {
+        const state = createExplorerState();
+        state.setExpanded('section-auth', true);
+        target = new ConfigurationExplorerProvider('/root', state);
+
+        const [environments, auth] = await target.getChildren();
+
+        expect(environments.collapsibleState).toBe(vscode.TreeItemCollapsibleState.Collapsed);
+        expect(auth.collapsibleState).toBe(vscode.TreeItemCollapsibleState.Expanded);
+    });
+
+    test('assigns stable ids to sections and their items', async () => {
+        (rqClient.listAuthConfigsWithErrors as jest.Mock).mockResolvedValue({ authConfigs: [{ name: 'my-token', auth_type: 'Bearer' }], errors: [] });
+
+        const [item] = await getSectionChildren(target, 'section-auth');
+
+        expect(item.id).toBe('auth-config:my-token');
+        expect(target.getParent(item)?.id).toBe('section-auth');
+    });
+
+    test('findItem() finds a loaded environment', async () => {
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['local'], errors: [] });
+        const [local] = await getSectionChildren(target, 'section-environments');
+
+        expect(target.findItem('environment:local')).toBe(local);
     });
 
     test('setItemLoading(true) saves original icon and sets spinner', () => {
@@ -162,5 +201,98 @@ describe('ConfigurationExplorerProvider', () => {
         target.setItemLoading(item, false);
         expect(eventSpy).toHaveBeenCalledWith(item);
         expect(eventSpy).toHaveBeenCalledTimes(2);
+    });
+
+    test('isLoaded() is true only for items of a loaded section', async () => {
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['local'], errors: [] });
+        await getSectionChildren(target, 'section-environments');
+
+        expect(target.isLoaded('environment:gone')).toBe(true);
+        expect(target.isLoaded('auth-config:my-token')).toBe(false);
+    });
+
+    test('isLoaded() is false for items of a section that failed to load', async () => {
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockRejectedValue(new Error('CLI Error'));
+        await getSectionChildren(target, 'section-environments');
+
+        expect(target.isLoaded('environment:local')).toBe(false);
+    });
+
+    test('refreshInBackground() does not load a section that was never expanded', async () => {
+        await target.getChildren();
+
+        target.refreshInBackground();
+
+        expect(rqClient.listEnvironmentsWithErrors).not.toHaveBeenCalled();
+        expect(rqClient.listAuthConfigsWithErrors).not.toHaveBeenCalled();
+    });
+
+    test('refreshInBackground() does not show an error when the reload fails', async () => {
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['local'], errors: [] });
+        await getSectionChildren(target, 'section-environments');
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockRejectedValue(new Error('CLI Error'));
+
+        target.refreshInBackground();
+        await new Promise(r => setImmediate(r));
+
+        expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
+    });
+
+    test('refresh() shows an error when the reload fails', async () => {
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['local'], errors: [] });
+        await getSectionChildren(target, 'section-environments');
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockRejectedValue(new Error('CLI Error'));
+
+        target.refresh();
+        await new Promise(r => setImmediate(r));
+
+        expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(expect.stringContaining('Failed to load environments'));
+    });
+
+    test('refresh() shows the loading icon on a section while reloading it', async () => {
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['local'], errors: [] });
+        await getSectionChildren(target, 'section-environments');
+        const section = target.findItem('section-environments')!;
+
+        target.refresh();
+
+        expect(section.iconPath).toEqual(new vscode.ThemeIcon('sync~spin'));
+    });
+
+    test('fires onDidLoad once the root sections are available', async () => {
+        const loadSpy = jest.fn();
+        target.onDidLoad(loadSpy);
+
+        await target.getChildren();
+        await new Promise(r => setTimeout(r, 0));
+
+        expect(loadSpy).toHaveBeenCalledTimes(1);
+        expect(rqClient.listEnvironmentsWithErrors).not.toHaveBeenCalled();
+    });
+
+    test('returns the same section items on every root read', async () => {
+        const first = await target.getChildren();
+        const second = await target.getChildren();
+
+        expect(second[0]).toBe(first[0]);
+        expect(second[1]).toBe(first[1]);
+    });
+
+    test('updates a reused section item with the stored expansion state', async () => {
+        const state = createExplorerState();
+        target = new ConfigurationExplorerProvider('/root', state);
+        await target.getChildren();
+
+        state.setExpanded('section-environments', true);
+        const [environments] = await target.getChildren();
+
+        expect(environments.collapsibleState).toBe(vscode.TreeItemCollapsibleState.Expanded);
+    });
+
+    test('isLoaded() is false for items of a section listed with parse errors', async () => {
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['local'], errors: ['Failed to parse env.rq'] });
+        await getSectionChildren(target, 'section-environments');
+
+        expect(target.isLoaded('environment:dev')).toBe(false);
     });
 });

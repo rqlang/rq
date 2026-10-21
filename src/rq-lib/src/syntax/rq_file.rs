@@ -3,6 +3,7 @@ use super::{
     fs::Fs,
     parse_result::{EndpointDefinition, ParseResult, RequestWithVariables},
     token::Token,
+    ui_color::UiColor,
     variable_context::Variable,
 };
 use crate::syntax::auth::Config as AuthConfig;
@@ -14,6 +15,7 @@ pub struct RqFile {
     pub requests: Vec<RequestWithVariables>,
     pub environments: HashMap<String, Vec<Variable>>,
     pub environment_locations: HashMap<String, (String, usize, usize)>,
+    pub environment_colors: HashMap<String, UiColor>,
     pub auth_providers: HashMap<String, AuthConfig>,
     pub endpoints: HashMap<String, EndpointDefinition>,
     pub file_variables: Vec<Variable>,
@@ -62,6 +64,7 @@ impl RqFile {
                 requests: Vec::new(),
                 environments: HashMap::new(),
                 environment_locations: HashMap::new(),
+                environment_colors: HashMap::new(),
                 auth_providers: HashMap::new(),
                 endpoints: HashMap::new(),
                 file_variables: Vec::new(),
@@ -79,6 +82,7 @@ impl RqFile {
             requests: parse_result.requests,
             environments: parse_result.environments,
             environment_locations: parse_result.environment_locations,
+            environment_colors: parse_result.environment_colors,
             auth_providers: parse_result.auth_providers,
             endpoints: parse_result.endpoints,
             file_variables: parse_result.file_variables,

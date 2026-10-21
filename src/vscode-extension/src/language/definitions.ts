@@ -142,6 +142,10 @@ export interface AttributeDefinition {
     values?: string;
 }
 
+export const UI_COLORS = ['red', 'orange', 'yellow', 'green', 'blue', 'purple'] as const;
+
+export type UiColor = typeof UI_COLORS[number];
+
 export const ATTRIBUTE_DEFINITIONS: AttributeDefinition[] = [
     {
         name: 'method',
@@ -167,6 +171,13 @@ export const ATTRIBUTE_DEFINITIONS: AttributeDefinition[] = [
         signature: '[required(var_name)]',
         description: 'Declares a variable, scoped to this request, that must be supplied at runtime. May appear several times.',
         targets: 'rq'
+    },
+    {
+        name: 'ui.color',
+        signature: '[ui.color(color)]',
+        description: 'Marks an environment with a color so it stands out in the Requests view, for example to flag production.',
+        targets: 'env',
+        values: UI_COLORS.join(', ')
     }
 ];
 
@@ -281,7 +292,7 @@ export function parseVariables(document: vscode.TextDocument): Variable[] {
     return variables;
 }
 
-function escapeRegex(s: string): string {
+export function escapeRegex(s: string): string {
     return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 

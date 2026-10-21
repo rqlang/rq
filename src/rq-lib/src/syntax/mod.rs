@@ -14,6 +14,7 @@ pub mod secrets;
 pub mod token;
 pub mod tokenizer;
 pub mod types;
+pub mod ui_color;
 pub mod variable_context;
 
 pub use fs::Fs;

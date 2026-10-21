@@ -506,3 +506,75 @@ describe('attribute completion', () => {
         expect(auth.command?.command).toBe('editor.action.triggerSuggest');
     });
 });
+
+describe('ui.color attribute completion', () => {
+    test('suggests only ui.color when the attribute precedes an env', async () => {
+        const lines = ['[', 'env production {', '    host: "x",', '}'];
+        const doc = makeDocument(lines);
+        const position = new vscode.Position(0, 1);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items.map((i: any) => i.label)).toEqual(['ui.color']);
+    });
+
+    test('ui.color item uses a snippet with the palette choices', async () => {
+        const lines = ['[', 'env production {', '}'];
+        const doc = makeDocument(lines);
+        const position = new vscode.Position(0, 1);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect((items[0].insertText as any).value).toBe('ui.color(${1|red,orange,yellow,green,blue,purple|})');
+    });
+
+    test('suggests ui.color after the ui namespace is typed', async () => {
+        const lines = ['[ui.', 'env production {', '}'];
+        const doc = makeDocument(lines);
+        const position = new vscode.Position(0, 4);
+
+        const items = await provideCompletionItems(doc, position);
+
+        const item = items.find((i: any) => i.label === 'ui.color');
+        expect(item.range).toEqual(new vscode.Range(0, 1, 0, 4));
+    });
+
+    test('suggests only ui.color when a block comment separates the attribute from the env', async () => {
+        const lines = ['[', '/* production', '   handle with care */', 'env production {', '}'];
+        const doc = makeDocument(lines);
+        const position = new vscode.Position(0, 1);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items.map((i: any) => i.label)).toEqual(['ui.color']);
+    });
+
+    test('does not suggest ui.color when the attribute precedes a request', async () => {
+        const lines = ['[', 'rq get("http://localhost");'];
+        const doc = makeDocument(lines);
+        const position = new vscode.Position(0, 1);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items.find((i: any) => i.label === 'ui.color')).toBeUndefined();
+    });
+
+    test('does not suggest ui.color when no statement follows', async () => {
+        const doc = makeDocument(['[']);
+        const position = new vscode.Position(0, 1);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items.find((i: any) => i.label === 'ui.color')).toBeUndefined();
+    });
+
+    test('suggests the palette inside ui.color', async () => {
+        const lines = ['[ui.color()]', 'env production {', '}'];
+        const doc = makeDocument(lines);
+        const position = new vscode.Position(0, 10);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items.map((i: any) => i.label)).toEqual(['red', 'orange', 'yellow', 'green', 'blue', 'purple']);
+    });
+});

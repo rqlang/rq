@@ -1,0 +1,4 @@
+[method(POST)]
+env local {
+    base_url: "http://localhost:8080",
+}

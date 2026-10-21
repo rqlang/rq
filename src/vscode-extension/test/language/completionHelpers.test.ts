@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { insideJsonLiteral, insideUnclosedAttribute, insideMethodAttributeValue, getAuthAttributeContext, afterCommaTrigger, followsArgumentSeparator, claimedParams } from '../../src/language/completionHelpers';
+import { insideJsonLiteral, insideUnclosedAttribute, insideMethodAttributeValue, insideUiColorAttributeValue, attributeTarget, getAuthAttributeContext, afterCommaTrigger, followsArgumentSeparator, claimedParams } from '../../src/language/completionHelpers';
 
 describe('followsArgumentSeparator', () => {
     test('returns true when the previous line ends with a comma', () => {
@@ -226,6 +226,66 @@ describe('insideUnclosedAttribute', () => {
 
     test('returns false when the cursor is inside a line comment', () => {
         expect(insideUnclosedAttribute('[auth("x")]\n// note: don\'t')).toBe(false);
+    });
+
+    test('returns true inside an unfinished ui.color attribute', () => {
+        expect(insideUnclosedAttribute('[ui.color(\n    ')).toBe(true);
+    });
+
+    test('does not treat the dot in ui.color as a wildcard', () => {
+        expect(insideUnclosedAttribute('[uixcolor(\n    ')).toBe(false);
+    });
+});
+
+describe('insideUiColorAttributeValue', () => {
+    test('returns true right after the opening paren', () => {
+        expect(insideUiColorAttributeValue('[ui.color(')).toBe(true);
+    });
+
+    test('returns true while typing a color', () => {
+        expect(insideUiColorAttributeValue('[ui.color(re')).toBe(true);
+    });
+
+    test('returns false after the attribute is closed', () => {
+        expect(insideUiColorAttributeValue('[ui.color(red)]\n')).toBe(false);
+    });
+
+    test('returns false inside another attribute', () => {
+        expect(insideUiColorAttributeValue('[method(')).toBe(false);
+    });
+});
+
+describe('attributeTarget', () => {
+    test('returns env when an env declaration follows', () => {
+        expect(attributeTarget('env production {\n    host: "x",\n}')).toBe('env');
+    });
+
+    test('returns rq when a request follows', () => {
+        expect(attributeTarget('rq get("http://localhost");')).toBe('rq');
+    });
+
+    test('returns ep when an endpoint follows', () => {
+        expect(attributeTarget('ep users("http://localhost") {')).toBe('ep');
+    });
+
+    test('skips blank lines, comments and other attributes', () => {
+        expect(attributeTarget('\n// production\n[ui.color(red)]\nenv production {')).toBe('env');
+    });
+
+    test('skips a block comment before the statement', () => {
+        expect(attributeTarget('/* production */\nenv production {')).toBe('env');
+    });
+
+    test('skips a block comment that spans several lines', () => {
+        expect(attributeTarget('/*\n  production\n*/\nenv production {')).toBe('env');
+    });
+
+    test('returns undefined when no statement follows', () => {
+        expect(attributeTarget('')).toBeUndefined();
+    });
+
+    test('returns undefined when another statement follows', () => {
+        expect(attributeTarget('let env_name = "x";')).toBeUndefined();
     });
 });
 

@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { assignArguments } from './definitions';
+import { assignArguments, escapeRegex, IDENTIFIER_PATTERN } from './definitions';
 
 export const COMMON_HEADERS = [
     'Accept', 'Accept-Encoding', 'Accept-Language', 'Authorization',
@@ -120,7 +120,7 @@ export function insideOpenBlock(text: string, blockPattern: RegExp): boolean {
     return depth > 0;
 }
 
-export const ATTRIBUTE_NAMES = ['method', 'timeout', 'auth', 'required'];
+export const ATTRIBUTE_NAMES = ['method', 'timeout', 'auth', 'required', 'ui.color'];
 
 export const HTTP_METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'];
 
@@ -202,13 +202,32 @@ function openAttributeBracketIndex(text: string): number {
 export function insideUnclosedAttribute(text: string): boolean {
     const index = openAttributeBracketIndex(text);
     if (index === -1) { return false; }
-    return new RegExp(`^\\s*(${ATTRIBUTE_NAMES.join('|')})\\b`).test(text.slice(index + 1));
+    const names = ATTRIBUTE_NAMES.map(escapeRegex).join('|');
+    return new RegExp(`^\\s*(${names})\\b`).test(text.slice(index + 1));
 }
 
 export function insideMethodAttributeValue(text: string): boolean {
     const index = openAttributeBracketIndex(text);
     if (index === -1) { return false; }
     return /^\s*method\s*\(\s*[a-zA-Z]*$/.test(text.slice(index + 1));
+}
+
+export function insideUiColorAttributeValue(text: string): boolean {
+    const index = openAttributeBracketIndex(text);
+    if (index === -1) { return false; }
+    return /^\s*ui\.color\s*\(\s*[a-z]*$/.test(text.slice(index + 1));
+}
+
+export type AttributeTarget = 'rq' | 'ep' | 'env';
+
+export function attributeTarget(textAfterLine: string): AttributeTarget | undefined {
+    const statementPattern = new RegExp(`^(rq|ep|env)\\s+${IDENTIFIER_PATTERN}`);
+    for (const line of textAfterLine.replace(/\/\*[\s\S]*?\*\//g, '').split('\n')) {
+        const trimmed = line.trim();
+        if (trimmed === '' || trimmed.startsWith('//') || /^\[.*\]$/.test(trimmed)) { continue; }
+        return statementPattern.exec(trimmed)?.[1] as AttributeTarget | undefined;
+    }
+    return undefined;
 }
 
 export function getAuthAttributeContext(text: string): AuthAttributeContext | null {

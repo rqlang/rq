@@ -391,6 +391,30 @@
           ]
         },
         {
+          "name": "meta.attribute.ui-color.rq",
+          "begin": "\\b(ui\\.color)\\s*(\\()",
+          "beginCaptures": {
+            "1": {
+              "name": "entity.name.function.attribute.rq"
+            },
+            "2": {
+              "name": "punctuation.definition.arguments.rq"
+            }
+          },
+          "end": "\\)",
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.definition.arguments.rq"
+            }
+          },
+          "patterns": [
+            {
+              "name": "constant.language.color.rq",
+              "match": "\\b(red|orange|yellow|green|blue|purple)\\b"
+            }
+          ]
+        },
+        {
           "name": "meta.attribute.required.rq",
           "begin": "\\b(required)\\s*(\\()",
           "beginCaptures": {

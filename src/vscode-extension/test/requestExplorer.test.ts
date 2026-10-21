@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { RequestExplorerProvider, RequestTreeItem } from '../src/requestExplorer';
+import { RequestExplorerProvider, RequestTreeItem, environmentColorDecorationProvider } from '../src/requestExplorer';
 import * as rqClient from '../src/rqClient';
 import { FakeMemento, createExplorerState } from './memento-mock';
 
@@ -300,7 +300,7 @@ describe('RequestExplorerProvider', () => {
         target.refresh();
         const during = target.getChildren() as RequestTreeItem[];
 
-        expect(during.map(i => i.label)).toEqual(['Environment', 'req1']);
+        expect(during.map(i => i.label)).toEqual(['Environment: None', 'req1']);
         expect(rqClient.listRequests).toHaveBeenCalledTimes(2);
     });
 
@@ -352,13 +352,13 @@ describe('RequestExplorerProvider', () => {
         state.setEnvironment('dev');
         target = new RequestExplorerProvider('/root', state);
         (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: [] });
-        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: [], errors: [] });
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: [], colors: new Map(), errors: [] });
 
         await getRequestItems(target);
         const envItem = (target.getChildren() as RequestTreeItem[])[0];
 
         expect(target.getSelectedEnvironment()).toBe('dev');
-        expect(envItem.description).toBe('dev (not found)');
+        expect(envItem.label).toBe('Environment: dev (not found)');
         expect(envItem.iconPath).toEqual(new vscode.ThemeIcon('warning'));
     });
 
@@ -367,12 +367,12 @@ describe('RequestExplorerProvider', () => {
         state.setEnvironment('dev');
         target = new RequestExplorerProvider('/root', state);
         (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: [] });
-        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['dev'], errors: [] });
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['dev'], colors: new Map(), errors: [] });
 
         await getRequestItems(target);
         const envItem = (target.getChildren() as RequestTreeItem[])[0];
 
-        expect(envItem.description).toBe('dev');
+        expect(envItem.label).toBe('Environment: dev');
         expect(envItem.iconPath).toEqual(new vscode.ThemeIcon('server-environment'));
     });
 
@@ -386,7 +386,7 @@ describe('RequestExplorerProvider', () => {
         await getRequestItems(target);
         const envItem = (target.getChildren() as RequestTreeItem[])[0];
 
-        expect(envItem.description).toBe('dev');
+        expect(envItem.label).toBe('Environment: dev');
     });
 
     test('clears the missing mark when another environment is selected', async () => {
@@ -394,13 +394,132 @@ describe('RequestExplorerProvider', () => {
         state.setEnvironment('dev');
         target = new RequestExplorerProvider('/root', state);
         (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: [] });
-        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['prod'], errors: [] });
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['prod'], colors: new Map(), errors: [] });
         await getRequestItems(target);
 
         target.setSelectedEnvironment('prod');
         const envItem = (target.getChildren() as RequestTreeItem[])[0];
 
-        expect(envItem.description).toBe('prod');
+        expect(envItem.label).toBe('Environment: prod');
+    });
+
+    test('colors the environment row with the ui color of the selected environment', async () => {
+        const state = createExplorerState();
+        state.setEnvironment('production');
+        target = new RequestExplorerProvider('/root', state);
+        (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: [] });
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['production'], colors: new Map([['production', 'red']]), errors: [] });
+
+        await getRequestItems(target);
+        const envItem = (target.getChildren() as RequestTreeItem[])[0];
+
+        expect(envItem.resourceUri?.toString()).toBe('rq-environment:/production?red');
+    });
+
+    test('colors the environment icon with the ui color of the selected environment', async () => {
+        const state = createExplorerState();
+        state.setEnvironment('production');
+        target = new RequestExplorerProvider('/root', state);
+        (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: [] });
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['production'], colors: new Map([['production', 'red']]), errors: [] });
+
+        await getRequestItems(target);
+        const envItem = (target.getChildren() as RequestTreeItem[])[0];
+
+        expect(envItem.iconPath).toEqual(new vscode.ThemeIcon('server-environment', new vscode.ThemeColor('rq.environment.red')));
+    });
+
+    test('does not color the loading state of the environment row', async () => {
+        const state = createExplorerState();
+        state.setEnvironment('production');
+        target = new RequestExplorerProvider('/root', state);
+        (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: [] });
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['production'], colors: new Map([['production', 'red']]), errors: [] });
+        await getRequestItems(target);
+        const envItem = (target.getChildren() as RequestTreeItem[])[0];
+
+        target.refresh();
+
+        expect(envItem.resourceUri).toBeUndefined();
+    });
+
+    test('does not color an environment row marked as not found', async () => {
+        const state = createExplorerState();
+        state.setEnvironment('production');
+        target = new RequestExplorerProvider('/root', state);
+        (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: [] });
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['production'], colors: new Map([['production', 'red']]), errors: [] });
+        await getRequestItems(target);
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: [], colors: new Map(), errors: [] });
+        const envItem = (target.getChildren() as RequestTreeItem[])[0];
+
+        await target.warnIfEnvironmentMissing();
+
+        expect(envItem.label).toBe('Environment: production (not found)');
+        expect(envItem.resourceUri).toBeUndefined();
+    });
+
+    test('does not color an environment whose name matches an Object property', async () => {
+        const state = createExplorerState();
+        state.setEnvironment('constructor');
+        target = new RequestExplorerProvider('/root', state);
+        (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: [] });
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['constructor'], colors: new Map(), errors: [] });
+
+        await getRequestItems(target);
+        const envItem = (target.getChildren() as RequestTreeItem[])[0];
+
+        expect(envItem.resourceUri).toBeUndefined();
+        expect((envItem.iconPath as vscode.ThemeIcon).color).toBeUndefined();
+    });
+
+    test('does not color the environment row when the selected environment has no ui color', async () => {
+        const state = createExplorerState();
+        state.setEnvironment('local');
+        target = new RequestExplorerProvider('/root', state);
+        (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: [] });
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['local', 'production'], colors: new Map([['production', 'red']]), errors: [] });
+
+        await getRequestItems(target);
+        const envItem = (target.getChildren() as RequestTreeItem[])[0];
+
+        expect(envItem.resourceUri).toBeUndefined();
+        expect((envItem.iconPath as vscode.ThemeIcon).color).toBeUndefined();
+    });
+
+    test('colors the environment row when an environment with a ui color is selected', async () => {
+        (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: [] });
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['production'], colors: new Map([['production', 'red']]), errors: [] });
+        await getRequestItems(target);
+
+        target.setSelectedEnvironment('production');
+        const envItem = (target.getChildren() as RequestTreeItem[])[0];
+
+        expect(envItem.resourceUri?.toString()).toBe('rq-environment:/production?red');
+    });
+
+    test('removes the color when no environment is selected', async () => {
+        const state = createExplorerState();
+        state.setEnvironment('production');
+        target = new RequestExplorerProvider('/root', state);
+        (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: [] });
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['production'], colors: new Map([['production', 'red']]), errors: [] });
+        await getRequestItems(target);
+
+        target.setSelectedEnvironment(undefined);
+        const envItem = (target.getChildren() as RequestTreeItem[])[0];
+
+        expect(envItem.resourceUri).toBeUndefined();
+    });
+
+    test('shows the selected environment in the label of the environment row', async () => {
+        await target.getChildren();
+
+        target.setSelectedEnvironment('production');
+        const envItem = (target.getChildren() as RequestTreeItem[])[0];
+
+        expect(envItem.label).toBe('Environment: production');
+        expect(envItem.description).toBeUndefined();
     });
 
     test('isLoaded() stays false when some files fail to parse', async () => {
@@ -458,28 +577,34 @@ describe('RequestExplorerProvider', () => {
 
         target.refresh();
 
-        expect(envItem.description).toBe('Loading\u2026');
+        expect(envItem.label).toBe('Environment: Loading\u2026');
     });
 
     test('warnIfEnvironmentMissing() warns about and marks a restored environment that no longer exists', async () => {
         const state = createExplorerState();
         state.setEnvironment('dev');
         target = new RequestExplorerProvider('/root', state);
-        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['prod'], errors: [] });
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['prod'], colors: new Map(), errors: [] });
         (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: [] });
         const envItem = (target.getChildren() as RequestTreeItem[])[0];
 
         await target.warnIfEnvironmentMissing();
 
-        expect(envItem.description).toBe('dev (not found)');
+        expect(envItem.label).toBe('Environment: dev (not found)');
         expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(expect.stringContaining("Environment 'dev' no longer exists"));
+    });
+
+    test('warnIfEnvironmentMissing() does not list environments when none is selected', async () => {
+        await target.warnIfEnvironmentMissing();
+
+        expect(rqClient.listEnvironmentsWithErrors).not.toHaveBeenCalled();
     });
 
     test('warnIfEnvironmentMissing() does not warn when the environment exists', async () => {
         const state = createExplorerState();
         state.setEnvironment('dev');
         target = new RequestExplorerProvider('/root', state);
-        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['dev'], errors: [] });
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['dev'], colors: new Map(), errors: [] });
 
         await target.warnIfEnvironmentMissing();
 
@@ -491,13 +616,13 @@ describe('RequestExplorerProvider', () => {
         state.setEnvironment('dev');
         target = new RequestExplorerProvider('/root', state);
         (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: [] });
-        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: [], errors: [] });
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: [], colors: new Map(), errors: [] });
         await getRequestItems(target);
 
         target.setSelectedEnvironment('dev');
         const envItem = (target.getChildren() as RequestTreeItem[])[0];
 
-        expect(envItem.description).toBe('dev');
+        expect(envItem.label).toBe('Environment: dev');
     });
 
     test('does not mark the environment as missing while some files fail to parse', async () => {
@@ -505,19 +630,19 @@ describe('RequestExplorerProvider', () => {
         state.setEnvironment('dev');
         target = new RequestExplorerProvider('/root', state);
         (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: [] });
-        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: [], errors: ['Failed to parse env.rq'] });
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: [], colors: new Map(), errors: ['Failed to parse env.rq'] });
 
         await getRequestItems(target);
         const envItem = (target.getChildren() as RequestTreeItem[])[0];
 
-        expect(envItem.description).toBe('dev');
+        expect(envItem.label).toBe('Environment: dev');
     });
 
     test('warnIfEnvironmentMissing() does not warn while some files fail to parse', async () => {
         const state = createExplorerState();
         state.setEnvironment('dev');
         target = new RequestExplorerProvider('/root', state);
-        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: [], errors: ['Failed to parse env.rq'] });
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: [], colors: new Map(), errors: ['Failed to parse env.rq'] });
 
         await target.warnIfEnvironmentMissing();
 
@@ -538,5 +663,34 @@ describe('RequestExplorerProvider', () => {
         const [envItem] = target.getChildren() as RequestTreeItem[];
 
         expect(target.findItem('environment')).toBe(envItem);
+    });
+});
+
+describe('environmentColorDecorationProvider', () => {
+    test('decorates an environment uri with the theme color of its ui color', () => {
+        const target = environmentColorDecorationProvider.provideFileDecoration(
+            vscode.Uri.from({ scheme: 'rq-environment', path: '/production', query: 'red' }) as vscode.Uri,
+            undefined as unknown as vscode.CancellationToken
+        ) as vscode.FileDecoration;
+
+        expect(target.color).toEqual(new vscode.ThemeColor('rq.environment.red'));
+    });
+
+    test('ignores a color outside the palette', () => {
+        const target = environmentColorDecorationProvider.provideFileDecoration(
+            vscode.Uri.from({ scheme: 'rq-environment', path: '/production', query: 'pink' }) as vscode.Uri,
+            undefined as unknown as vscode.CancellationToken
+        );
+
+        expect(target).toBeUndefined();
+    });
+
+    test('ignores uris of other schemes', () => {
+        const target = environmentColorDecorationProvider.provideFileDecoration(
+            vscode.Uri.from({ scheme: 'file', path: '/root/api.rq', query: 'red' }) as vscode.Uri,
+            undefined as unknown as vscode.CancellationToken
+        );
+
+        expect(target).toBeUndefined();
     });
 });

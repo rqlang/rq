@@ -19,7 +19,15 @@ export class TreeItem {
 
 // Mock ThemeIcon
 export class ThemeIcon {
+    constructor(public id: string, public color?: ThemeColor) {}
+}
+
+export class ThemeColor {
     constructor(public id: string) {}
+}
+
+export class FileDecoration {
+    constructor(public badge?: string, public tooltip?: string, public color?: ThemeColor) {}
 }
 
 // Mock Enums
@@ -335,6 +343,15 @@ export enum ExtensionMode {
 // Mock other used types
 export const Uri = {
     file: (path: string) => ({ fsPath: path }),
+    from: (components: { scheme: string; path?: string; query?: string }) => ({
+        scheme: components.scheme,
+        authority: '',
+        path: components.path ?? '',
+        query: components.query ?? '',
+        fragment: '',
+        fsPath: components.path ?? '',
+        toString: () => `${components.scheme}:${components.path ?? ''}${components.query ? `?${components.query}` : ''}`
+    }),
     parse: (value: string) => {
         try {
             const url = new URL(value);

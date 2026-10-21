@@ -1,0 +1,10 @@
+{
+  "errors": [
+    {
+      "file": "{{*}}",
+      "line": 1,
+      "column": 2,
+      "message": "Attribute 'method' is not supported on env statements; use it on rq statements instead"
+    }
+  ]
+}

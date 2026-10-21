@@ -85,6 +85,10 @@ describe('formatRqDocument', () => {
             expect(fmt('[method(POST)]\n[auth("bearer")]\nrq create("url");')).toBe('[method(POST)]\n[auth("bearer")]\nrq create("url");\n');
         });
 
+        test('does not insert blank between ui.color attribute and env', () => {
+            expect(fmt('[ui.color(red)]\nenv production {\n    host: "x",\n}')).toBe('[ui.color(red)]\nenv production {\n    host: "x",\n}\n');
+        });
+
         test('does not insert blank between comment and following rq', () => {
             expect(fmt('// comment\nrq get("url");')).toBe('// comment\nrq get("url");\n');
         });

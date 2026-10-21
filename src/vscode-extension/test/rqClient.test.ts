@@ -547,13 +547,26 @@ describe('varRefs', () => {
 describe('listEnvironmentsWithErrors', () => {
     test('returns the environment names and the files that failed to parse', async () => {
         mockListEnvironments.mockReturnValue(JSON.stringify({
-            environments: [{ name: 'local', file: '/tmp/project/env.rq', line: 0, character: 0 }],
+            environments: [{ name: 'local', file: '/tmp/project/env.rq', line: 0, character: 0, color: null }],
             parse_errors: [{ severity: 'error', message: 'Unexpected end of file', line: 2, column: 0, file: '/tmp/project/broken.rq' }],
         }));
 
         const target = await listEnvironmentsWithErrors('/tmp/project');
 
-        expect(target).toEqual({ environments: ['local'], errors: ['Unexpected end of file'] });
+        expect(target).toEqual({ environments: ['local'], colors: new Map(), errors: ['Unexpected end of file'] });
+    });
+
+    test('returns the ui color of the environments that declare one', async () => {
+        mockListEnvironments.mockReturnValue(JSON.stringify({
+            environments: [
+                { name: 'local', file: '/tmp/project/env.rq', line: 0, character: 0, color: null },
+                { name: 'production', file: '/tmp/project/env.rq', line: 5, character: 4, color: 'red' },
+            ],
+        }));
+
+        const target = await listEnvironmentsWithErrors('/tmp/project');
+
+        expect(target.colors).toEqual(new Map([['production', 'red']]));
     });
 });
 

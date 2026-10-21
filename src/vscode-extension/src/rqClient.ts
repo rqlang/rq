@@ -7,6 +7,7 @@ import * as crypto from 'crypto';
 import * as forge from 'node-forge';
 import { normalizePath, buildFilesMap, buildSecretsMap, DraftFile, CANCELLED_MESSAGE } from './utils';
 import { wasmCall } from './wasmHost';
+import { UiColor } from './language/definitions';
 
 // ---------------------------------------------------------------------------
 // Shared types
@@ -93,6 +94,7 @@ export interface ListRequestsResult {
 
 export interface ListEnvironmentsResult {
     environments: string[];
+    colors: Map<string, UiColor>;
     errors: string[];
 }
 
@@ -238,6 +240,7 @@ interface EnvironmentEntry {
     file: string;
     line: number;
     character: number;
+    color: UiColor | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -254,6 +257,7 @@ export async function listEnvironmentsWithErrors(sourceDirectory?: string): Prom
     const parsed = JSON.parse(result) as { environments: EnvironmentEntry[]; parse_errors?: { message: string }[] };
     return {
         environments: parsed.environments.map(e => e.name),
+        colors: new Map(parsed.environments.flatMap(e => e.color ? [[e.name, e.color] as const] : [])),
         errors: (parsed.parse_errors ?? []).map(e => e.message),
     };
 }

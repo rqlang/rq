@@ -1,0 +1,2 @@
+[ui.color(red)]
+rq get("http://localhost:8080/users");

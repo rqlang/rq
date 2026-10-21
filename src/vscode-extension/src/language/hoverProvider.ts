@@ -72,7 +72,7 @@ export const hoverProvider = vscode.languages.registerHoverProvider('rq', {
         const lineText = document.lineAt(position.line).text;
         const col = position.character;
 
-        const attributeMatch = /^\s*\[\s*([a-zA-Z_]\w*)/.exec(lineText);
+        const attributeMatch = /^\s*\[\s*([a-zA-Z_]\w*(?:\.\w+)?)/.exec(lineText);
         if (attributeMatch) {
             const nameStart = lineText.indexOf(attributeMatch[1]);
             if (col >= nameStart && col <= nameStart + attributeMatch[1].length) {

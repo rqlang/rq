@@ -4,6 +4,26 @@ import * as path from 'path';
 import { normalizePath } from './utils';
 import { applyTreeItemLoading } from './vscodeUtils';
 import { ExplorerState, RestorableTreeDataProvider, TreeItemIds } from './explorerState';
+import { UI_COLORS, UiColor } from './language/definitions';
+
+export const ENVIRONMENT_COLOR_SCHEME = 'rq-environment';
+
+export const environmentColorDecorationProvider: vscode.FileDecorationProvider = {
+    provideFileDecoration(uri: vscode.Uri): vscode.FileDecoration | undefined {
+        if (uri.scheme !== ENVIRONMENT_COLOR_SCHEME || !UI_COLORS.includes(uri.query as UiColor)) {
+            return undefined;
+        }
+        return new vscode.FileDecoration(undefined, undefined, environmentThemeColor(uri.query as UiColor));
+    }
+};
+
+function environmentThemeColor(color: UiColor): vscode.ThemeColor {
+    return new vscode.ThemeColor(`rq.environment.${color}`);
+}
+
+function environmentLabel(value: string): string {
+    return `Environment: ${value}`;
+}
 
 export interface RequestInfo {
     name: string;
@@ -28,6 +48,7 @@ export class RequestExplorerProvider implements RestorableTreeDataProvider<Reque
     readonly onDidLoad: vscode.Event<void> = this._onDidLoad.event;
     private selectedEnvironment: string | undefined;
     private missingEnvironment: string | undefined;
+    private environmentColors = new Map<string, UiColor>();
     private envItem: RequestTreeItem | undefined;
     private readonly originalIcons = new WeakMap<RequestTreeItem, vscode.TreeItem['iconPath']>();
     private cachedRootItems: RequestTreeItem[] | null = null;
@@ -44,7 +65,8 @@ export class RequestExplorerProvider implements RestorableTreeDataProvider<Reque
         if (!this.envItem) { return; }
         if (loading) {
             this.envItem.iconPath = new vscode.ThemeIcon('sync~spin');
-            this.envItem.description = 'Loading\u2026';
+            this.envItem.label = environmentLabel('Loading\u2026');
+            this.envItem.resourceUri = undefined;
         } else {
             this.describeEnvironment(this.envItem);
         }
@@ -87,7 +109,11 @@ export class RequestExplorerProvider implements RestorableTreeDataProvider<Reque
     }
 
     async warnIfEnvironmentMissing(): Promise<void> {
-        const missingEnvironment = await this.findMissingEnvironment();
+        if (!this.selectedEnvironment) {
+            return;
+        }
+        const { missingEnvironment, colors } = await this.inspectEnvironments();
+        this.environmentColors = colors;
         if (!missingEnvironment || missingEnvironment !== this.selectedEnvironment) {
             return;
         }
@@ -155,7 +181,7 @@ export class RequestExplorerProvider implements RestorableTreeDataProvider<Reque
     }
 
     private buildEnvInfoItem(): RequestTreeItem {
-        const item = new RequestTreeItem('Environment', null, vscode.TreeItemCollapsibleState.None);
+        const item = new RequestTreeItem(environmentLabel('None'), null, vscode.TreeItemCollapsibleState.None);
         item.id = 'environment';
         item.contextValue = 'environment-info';
         this.describeEnvironment(item);
@@ -166,13 +192,20 @@ export class RequestExplorerProvider implements RestorableTreeDataProvider<Reque
     private describeEnvironment(item: RequestTreeItem): void {
         const environment = this.selectedEnvironment;
         if (environment && environment === this.missingEnvironment) {
+            item.resourceUri = undefined;
             item.iconPath = new vscode.ThemeIcon('warning');
-            item.description = `${environment} (not found)`;
+            item.label = environmentLabel(`${environment} (not found)`);
             item.tooltip = `Environment '${environment}' no longer exists.\n\nClick the environment icon in the toolbar to select another one.`;
             return;
         }
-        item.iconPath = new vscode.ThemeIcon(environment ? 'server-environment' : 'circle-slash');
-        item.description = environment || 'None';
+        const color = environment ? this.environmentColors.get(environment) : undefined;
+        item.resourceUri = environment && color
+            ? vscode.Uri.from({ scheme: ENVIRONMENT_COLOR_SCHEME, path: `/${environment}`, query: color })
+            : undefined;
+        item.iconPath = environment
+            ? new vscode.ThemeIcon('server-environment', color ? environmentThemeColor(color) : undefined)
+            : new vscode.ThemeIcon('circle-slash');
+        item.label = environmentLabel(environment || 'None');
         item.tooltip = environment
             ? `Current environment: ${environment}\n\nClick the environment icon in the toolbar to change.`
             : 'No environment selected.\n\nClick the environment icon in the toolbar to select one.';
@@ -190,10 +223,11 @@ export class RequestExplorerProvider implements RestorableTreeDataProvider<Reque
         this.loadingRootItems = true;
         do {
             this.reloadPending = false;
-            const [root, missingEnvironment] = await Promise.all([this.getRootItems(notifyErrors), this.findMissingEnvironment()]);
+            const [root, environments] = await Promise.all([this.getRootItems(notifyErrors), this.inspectEnvironments()]);
             this.cachedRootItems = root.items;
             this.rootItemsComplete = root.complete;
-            this.missingEnvironment = missingEnvironment;
+            this.missingEnvironment = environments.missingEnvironment;
+            this.environmentColors = environments.colors;
             notifyErrors = this.notifyPending;
             this.notifyPending = false;
         } while (this.reloadPending);
@@ -202,16 +236,14 @@ export class RequestExplorerProvider implements RestorableTreeDataProvider<Reque
         this._onDidLoad.fire();
     }
 
-    private async findMissingEnvironment(): Promise<string | undefined> {
+    private async inspectEnvironments(): Promise<{ missingEnvironment: string | undefined; colors: Map<string, UiColor> }> {
         const environment = this.selectedEnvironment;
-        if (!environment) {
-            return undefined;
-        }
         try {
-            const { environments, errors } = await rqClient.listEnvironmentsWithErrors(this.workspaceRoot);
-            return errors.length > 0 || environments.includes(environment) ? undefined : environment;
+            const { environments, colors, errors } = await rqClient.listEnvironmentsWithErrors(this.workspaceRoot);
+            const missing = environment !== undefined && errors.length === 0 && !environments.includes(environment);
+            return { missingEnvironment: missing ? environment : undefined, colors };
         } catch {
-            return undefined;
+            return { missingEnvironment: undefined, colors: this.environmentColors };
         }
     }
 
@@ -442,7 +474,7 @@ export class RequestTreeItem extends vscode.TreeItem {
     public parent: RequestTreeItem | undefined;
 
     constructor(
-        public readonly label: string,
+        public label: string,
         public readonly request: RequestInfo | null,
         public readonly collapsibleState: vscode.TreeItemCollapsibleState,
         public readonly children?: RequestTreeItem[]

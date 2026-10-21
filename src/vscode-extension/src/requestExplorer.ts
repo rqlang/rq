@@ -48,7 +48,7 @@ export class RequestExplorerProvider implements RestorableTreeDataProvider<Reque
     readonly onDidLoad: vscode.Event<void> = this._onDidLoad.event;
     private selectedEnvironment: string | undefined;
     private missingEnvironment: string | undefined;
-    private environmentColors: Record<string, UiColor> = {};
+    private environmentColors = new Map<string, UiColor>();
     private envItem: RequestTreeItem | undefined;
     private readonly originalIcons = new WeakMap<RequestTreeItem, vscode.TreeItem['iconPath']>();
     private cachedRootItems: RequestTreeItem[] | null = null;
@@ -198,7 +198,7 @@ export class RequestExplorerProvider implements RestorableTreeDataProvider<Reque
             item.tooltip = `Environment '${environment}' no longer exists.\n\nClick the environment icon in the toolbar to select another one.`;
             return;
         }
-        const color = environment ? this.environmentColors[environment] : undefined;
+        const color = environment ? this.environmentColors.get(environment) : undefined;
         item.resourceUri = environment && color
             ? vscode.Uri.from({ scheme: ENVIRONMENT_COLOR_SCHEME, path: `/${environment}`, query: color })
             : undefined;
@@ -236,7 +236,7 @@ export class RequestExplorerProvider implements RestorableTreeDataProvider<Reque
         this._onDidLoad.fire();
     }
 
-    private async inspectEnvironments(): Promise<{ missingEnvironment: string | undefined; colors: Record<string, UiColor> }> {
+    private async inspectEnvironments(): Promise<{ missingEnvironment: string | undefined; colors: Map<string, UiColor> }> {
         const environment = this.selectedEnvironment;
         try {
             const { environments, colors, errors } = await rqClient.listEnvironmentsWithErrors(this.workspaceRoot);

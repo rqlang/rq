@@ -352,7 +352,7 @@ describe('RequestExplorerProvider', () => {
         state.setEnvironment('dev');
         target = new RequestExplorerProvider('/root', state);
         (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: [] });
-        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: [], colors: {}, errors: [] });
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: [], colors: new Map(), errors: [] });
 
         await getRequestItems(target);
         const envItem = (target.getChildren() as RequestTreeItem[])[0];
@@ -367,7 +367,7 @@ describe('RequestExplorerProvider', () => {
         state.setEnvironment('dev');
         target = new RequestExplorerProvider('/root', state);
         (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: [] });
-        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['dev'], colors: {}, errors: [] });
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['dev'], colors: new Map(), errors: [] });
 
         await getRequestItems(target);
         const envItem = (target.getChildren() as RequestTreeItem[])[0];
@@ -394,7 +394,7 @@ describe('RequestExplorerProvider', () => {
         state.setEnvironment('dev');
         target = new RequestExplorerProvider('/root', state);
         (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: [] });
-        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['prod'], colors: {}, errors: [] });
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['prod'], colors: new Map(), errors: [] });
         await getRequestItems(target);
 
         target.setSelectedEnvironment('prod');
@@ -408,7 +408,7 @@ describe('RequestExplorerProvider', () => {
         state.setEnvironment('production');
         target = new RequestExplorerProvider('/root', state);
         (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: [] });
-        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['production'], colors: { production: 'red' }, errors: [] });
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['production'], colors: new Map([['production', 'red']]), errors: [] });
 
         await getRequestItems(target);
         const envItem = (target.getChildren() as RequestTreeItem[])[0];
@@ -421,7 +421,7 @@ describe('RequestExplorerProvider', () => {
         state.setEnvironment('production');
         target = new RequestExplorerProvider('/root', state);
         (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: [] });
-        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['production'], colors: { production: 'red' }, errors: [] });
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['production'], colors: new Map([['production', 'red']]), errors: [] });
 
         await getRequestItems(target);
         const envItem = (target.getChildren() as RequestTreeItem[])[0];
@@ -434,7 +434,7 @@ describe('RequestExplorerProvider', () => {
         state.setEnvironment('production');
         target = new RequestExplorerProvider('/root', state);
         (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: [] });
-        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['production'], colors: { production: 'red' }, errors: [] });
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['production'], colors: new Map([['production', 'red']]), errors: [] });
         await getRequestItems(target);
         const envItem = (target.getChildren() as RequestTreeItem[])[0];
 
@@ -448,9 +448,9 @@ describe('RequestExplorerProvider', () => {
         state.setEnvironment('production');
         target = new RequestExplorerProvider('/root', state);
         (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: [] });
-        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['production'], colors: { production: 'red' }, errors: [] });
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['production'], colors: new Map([['production', 'red']]), errors: [] });
         await getRequestItems(target);
-        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: [], colors: {}, errors: [] });
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: [], colors: new Map(), errors: [] });
         const envItem = (target.getChildren() as RequestTreeItem[])[0];
 
         await target.warnIfEnvironmentMissing();
@@ -459,12 +459,26 @@ describe('RequestExplorerProvider', () => {
         expect(envItem.resourceUri).toBeUndefined();
     });
 
+    test('does not color an environment whose name matches an Object property', async () => {
+        const state = createExplorerState();
+        state.setEnvironment('constructor');
+        target = new RequestExplorerProvider('/root', state);
+        (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: [] });
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['constructor'], colors: new Map(), errors: [] });
+
+        await getRequestItems(target);
+        const envItem = (target.getChildren() as RequestTreeItem[])[0];
+
+        expect(envItem.resourceUri).toBeUndefined();
+        expect((envItem.iconPath as vscode.ThemeIcon).color).toBeUndefined();
+    });
+
     test('does not color the environment row when the selected environment has no ui color', async () => {
         const state = createExplorerState();
         state.setEnvironment('local');
         target = new RequestExplorerProvider('/root', state);
         (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: [] });
-        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['local', 'production'], colors: { production: 'red' }, errors: [] });
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['local', 'production'], colors: new Map([['production', 'red']]), errors: [] });
 
         await getRequestItems(target);
         const envItem = (target.getChildren() as RequestTreeItem[])[0];
@@ -475,7 +489,7 @@ describe('RequestExplorerProvider', () => {
 
     test('colors the environment row when an environment with a ui color is selected', async () => {
         (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: [] });
-        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['production'], colors: { production: 'red' }, errors: [] });
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['production'], colors: new Map([['production', 'red']]), errors: [] });
         await getRequestItems(target);
 
         target.setSelectedEnvironment('production');
@@ -489,7 +503,7 @@ describe('RequestExplorerProvider', () => {
         state.setEnvironment('production');
         target = new RequestExplorerProvider('/root', state);
         (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: [] });
-        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['production'], colors: { production: 'red' }, errors: [] });
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['production'], colors: new Map([['production', 'red']]), errors: [] });
         await getRequestItems(target);
 
         target.setSelectedEnvironment(undefined);
@@ -570,7 +584,7 @@ describe('RequestExplorerProvider', () => {
         const state = createExplorerState();
         state.setEnvironment('dev');
         target = new RequestExplorerProvider('/root', state);
-        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['prod'], colors: {}, errors: [] });
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['prod'], colors: new Map(), errors: [] });
         (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: [] });
         const envItem = (target.getChildren() as RequestTreeItem[])[0];
 
@@ -590,7 +604,7 @@ describe('RequestExplorerProvider', () => {
         const state = createExplorerState();
         state.setEnvironment('dev');
         target = new RequestExplorerProvider('/root', state);
-        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['dev'], colors: {}, errors: [] });
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: ['dev'], colors: new Map(), errors: [] });
 
         await target.warnIfEnvironmentMissing();
 
@@ -602,7 +616,7 @@ describe('RequestExplorerProvider', () => {
         state.setEnvironment('dev');
         target = new RequestExplorerProvider('/root', state);
         (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: [] });
-        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: [], colors: {}, errors: [] });
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: [], colors: new Map(), errors: [] });
         await getRequestItems(target);
 
         target.setSelectedEnvironment('dev');
@@ -616,7 +630,7 @@ describe('RequestExplorerProvider', () => {
         state.setEnvironment('dev');
         target = new RequestExplorerProvider('/root', state);
         (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: [] });
-        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: [], colors: {}, errors: ['Failed to parse env.rq'] });
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: [], colors: new Map(), errors: ['Failed to parse env.rq'] });
 
         await getRequestItems(target);
         const envItem = (target.getChildren() as RequestTreeItem[])[0];
@@ -628,7 +642,7 @@ describe('RequestExplorerProvider', () => {
         const state = createExplorerState();
         state.setEnvironment('dev');
         target = new RequestExplorerProvider('/root', state);
-        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: [], colors: {}, errors: ['Failed to parse env.rq'] });
+        (rqClient.listEnvironmentsWithErrors as jest.Mock).mockResolvedValue({ environments: [], colors: new Map(), errors: ['Failed to parse env.rq'] });
 
         await target.warnIfEnvironmentMissing();
 

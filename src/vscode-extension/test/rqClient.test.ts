@@ -553,7 +553,7 @@ describe('listEnvironmentsWithErrors', () => {
 
         const target = await listEnvironmentsWithErrors('/tmp/project');
 
-        expect(target).toEqual({ environments: ['local'], colors: {}, errors: ['Unexpected end of file'] });
+        expect(target).toEqual({ environments: ['local'], colors: new Map(), errors: ['Unexpected end of file'] });
     });
 
     test('returns the ui color of the environments that declare one', async () => {
@@ -566,7 +566,7 @@ describe('listEnvironmentsWithErrors', () => {
 
         const target = await listEnvironmentsWithErrors('/tmp/project');
 
-        expect(target.colors).toEqual({ production: 'red' });
+        expect(target.colors).toEqual(new Map([['production', 'red']]));
     });
 });
 

@@ -94,7 +94,7 @@ export interface ListRequestsResult {
 
 export interface ListEnvironmentsResult {
     environments: string[];
-    colors: Record<string, UiColor>;
+    colors: Map<string, UiColor>;
     errors: string[];
 }
 
@@ -257,7 +257,7 @@ export async function listEnvironmentsWithErrors(sourceDirectory?: string): Prom
     const parsed = JSON.parse(result) as { environments: EnvironmentEntry[]; parse_errors?: { message: string }[] };
     return {
         environments: parsed.environments.map(e => e.name),
-        colors: Object.fromEntries(parsed.environments.flatMap(e => e.color ? [[e.name, e.color]] : [])),
+        colors: new Map(parsed.environments.flatMap(e => e.color ? [[e.name, e.color] as const] : [])),
         errors: (parsed.parse_errors ?? []).map(e => e.message),
     };
 }

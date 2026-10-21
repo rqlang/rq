@@ -459,19 +459,16 @@ impl AttributeParser for UiColorAttributeParser {
     }
 
     fn parse(&self, r: &mut TokenReader, ctx: &mut AttributeContext) -> Result<(), SyntaxError> {
-        let start_token = r.cur().cloned().ok_or_else(|| {
-            r.create_error("Unexpected EOF".into(), r.source.len()..r.source.len())
-        })?;
         r.advance();
         r.skip_ignorable();
-        expect_attribute_name(r, ATTR_UI_COLOR)?;
+        let name_span = expect_attribute_name(r, ATTR_UI_COLOR)?;
         expect_punctuation(r, PUNC_LPAREN)?;
         let color = parse_ui_color(r)?;
         expect_punctuation(r, PUNC_RPAREN)?;
         expect_punctuation(r, PUNC_RBRACKET)?;
 
         ctx.set_color(color)
-            .map_err(|msg| r.create_error_with_file(msg, start_token.span.clone()))?;
+            .map_err(|msg| r.create_error_with_file(msg, name_span))?;
         Ok(())
     }
 }

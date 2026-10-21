@@ -52,7 +52,13 @@ export function activate(context: vscode.ExtensionContext) {
         treeDataProvider: requestExplorerProvider,
         showCollapseAll: true
     });
-    context.subscriptions.push(requestExplorerView, ...trackExplorerState(requestExplorerView, requestExplorerProvider, requestExplorerState));
+    context.subscriptions.push(
+        requestExplorerView,
+        ...trackExplorerState(requestExplorerView, requestExplorerProvider, requestExplorerState),
+        requestExplorerView.onDidChangeVisibility(({ visible }) => {
+            if (visible) { requestExplorerProvider.refreshInBackground(); }
+        })
+    );
 
     const configurationExplorerState = new ExplorerState(context.workspaceState, 'rq.configurationExplorer');
     const configurationExplorerProvider = new ConfigurationExplorerProvider(workspaceRoot, configurationExplorerState);
@@ -60,15 +66,22 @@ export function activate(context: vscode.ExtensionContext) {
         treeDataProvider: configurationExplorerProvider,
         showCollapseAll: true
     });
-    context.subscriptions.push(configurationExplorerView, ...trackExplorerState(configurationExplorerView, configurationExplorerProvider, configurationExplorerState));
+    context.subscriptions.push(
+        configurationExplorerView,
+        ...trackExplorerState(configurationExplorerView, configurationExplorerProvider, configurationExplorerState),
+        configurationExplorerView.onDidChangeVisibility(({ visible }) => {
+            if (visible) { configurationExplorerProvider.refreshInBackground(); }
+        })
+    );
 
     registerRqFileWatcher(context, () => {
-        requestExplorerProvider.refresh();
-        configurationExplorerProvider.refresh();
+        requestExplorerProvider.refreshInBackground();
+        configurationExplorerProvider.refreshInBackground();
     });
 
     requestExplorerProvider.refresh();
     configurationExplorerProvider.refresh();
+    void requestExplorerProvider.warnIfEnvironmentMissing();
     diagnosticsProvider.validateAllFolders();
 
     // Register commands

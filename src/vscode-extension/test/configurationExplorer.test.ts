@@ -210,4 +210,52 @@ describe('ConfigurationExplorerProvider', () => {
         expect(target.isLoaded('environment:gone')).toBe(true);
         expect(target.isLoaded('auth-config:my-token')).toBe(false);
     });
+
+    test('isLoaded() is false for items of a section that failed to load', async () => {
+        (rqClient.listEnvironments as jest.Mock).mockRejectedValue(new Error('CLI Error'));
+        await getSectionChildren(target, 'section-environments');
+
+        expect(target.isLoaded('environment:local')).toBe(false);
+    });
+
+    test('refreshInBackground() does not load a section that was never expanded', async () => {
+        await target.getChildren();
+
+        target.refreshInBackground();
+
+        expect(rqClient.listEnvironments).not.toHaveBeenCalled();
+        expect(rqClient.listAuthConfigs).not.toHaveBeenCalled();
+    });
+
+    test('refreshInBackground() does not show an error when the reload fails', async () => {
+        (rqClient.listEnvironments as jest.Mock).mockResolvedValue(['local']);
+        await getSectionChildren(target, 'section-environments');
+        (rqClient.listEnvironments as jest.Mock).mockRejectedValue(new Error('CLI Error'));
+
+        target.refreshInBackground();
+        await new Promise(r => setImmediate(r));
+
+        expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
+    });
+
+    test('refresh() shows an error when the reload fails', async () => {
+        (rqClient.listEnvironments as jest.Mock).mockResolvedValue(['local']);
+        await getSectionChildren(target, 'section-environments');
+        (rqClient.listEnvironments as jest.Mock).mockRejectedValue(new Error('CLI Error'));
+
+        target.refresh();
+        await new Promise(r => setImmediate(r));
+
+        expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(expect.stringContaining('Failed to load environments'));
+    });
+
+    test('refresh() shows the loading icon on a section while reloading it', async () => {
+        (rqClient.listEnvironments as jest.Mock).mockResolvedValue(['local']);
+        await getSectionChildren(target, 'section-environments');
+        const section = target.findItem('section-environments')!;
+
+        target.refresh();
+
+        expect(section.iconPath).toEqual(new vscode.ThemeIcon('sync~spin'));
+    });
 });

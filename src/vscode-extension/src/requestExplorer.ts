@@ -31,8 +31,10 @@ export class RequestExplorerProvider implements RestorableTreeDataProvider<Reque
     private envItem: RequestTreeItem | undefined;
     private readonly originalIcons = new WeakMap<RequestTreeItem, vscode.TreeItem['iconPath']>();
     private cachedRootItems: RequestTreeItem[] | null = null;
+    private rootItemsComplete = false;
     private loadingRootItems = false;
     private reloadPending = false;
+    private notifyPending = false;
 
     constructor(private workspaceRoot: string | undefined, private readonly state: ExplorerState) {
         this.selectedEnvironment = state.environment;
@@ -64,6 +66,7 @@ export class RequestExplorerProvider implements RestorableTreeDataProvider<Reque
 
     setSelectedEnvironment(environment: string | undefined): void {
         this.selectedEnvironment = environment;
+        this.missingEnvironment = undefined;
         this.state.setEnvironment(environment);
         this._onDidChangeEnvironment.fire(environment);
         if (this.envItem) {
@@ -73,15 +76,27 @@ export class RequestExplorerProvider implements RestorableTreeDataProvider<Reque
     }
 
     refresh(): void {
-        if (this.loadingRootItems) {
-            this.reloadPending = true;
-            return;
-        }
+        this.reload(true);
+    }
+
+    refreshInBackground(): void {
         if (this.cachedRootItems === null) {
-            this._onDidChangeTreeData.fire();
             return;
         }
-        void this.loadRootItems();
+        this.reload(false);
+    }
+
+    async warnIfEnvironmentMissing(): Promise<void> {
+        const missingEnvironment = await this.findMissingEnvironment();
+        if (!missingEnvironment || missingEnvironment !== this.selectedEnvironment) {
+            return;
+        }
+        this.missingEnvironment = missingEnvironment;
+        if (this.envItem) {
+            this.describeEnvironment(this.envItem);
+            this._onDidChangeTreeData.fire(this.envItem);
+        }
+        vscode.window.showWarningMessage(`Environment '${missingEnvironment}' no longer exists. Select another one in the Requests view.`);
     }
 
     findItem(id: string): RequestTreeItem | undefined {
@@ -89,7 +104,7 @@ export class RequestExplorerProvider implements RestorableTreeDataProvider<Reque
     }
 
     isLoaded(): boolean {
-        return this.cachedRootItems !== null;
+        return this.rootItemsComplete;
     }
 
     getParent(element: RequestTreeItem): RequestTreeItem | undefined {
@@ -112,12 +127,28 @@ export class RequestExplorerProvider implements RestorableTreeDataProvider<Reque
                 return [envItem, ...this.cachedRootItems];
             }
             if (!this.loadingRootItems) {
-                void this.loadRootItems();
+                void this.loadRootItems(true);
             }
             return [envItem, this.makeLoadingItem()];
         }
 
         return element.children || [];
+    }
+
+    private reload(notifyErrors: boolean): void {
+        if (this.loadingRootItems) {
+            this.reloadPending = true;
+            this.notifyPending ||= notifyErrors;
+            return;
+        }
+        if (this.cachedRootItems === null) {
+            this._onDidChangeTreeData.fire();
+            return;
+        }
+        if (notifyErrors) {
+            this.setTreeLoading(true);
+        }
+        void this.loadRootItems(notifyErrors);
     }
 
     private buildEnvInfoItem(): RequestTreeItem {
@@ -152,13 +183,16 @@ export class RequestExplorerProvider implements RestorableTreeDataProvider<Reque
         return item;
     }
 
-    private async loadRootItems(): Promise<void> {
+    private async loadRootItems(notifyErrors: boolean): Promise<void> {
         this.loadingRootItems = true;
         do {
             this.reloadPending = false;
-            const [items, missingEnvironment] = await Promise.all([this.getRootItems(), this.findMissingEnvironment()]);
-            this.cachedRootItems = items;
+            const [root, missingEnvironment] = await Promise.all([this.getRootItems(notifyErrors), this.findMissingEnvironment()]);
+            this.cachedRootItems = root.items;
+            this.rootItemsComplete = root.complete;
             this.missingEnvironment = missingEnvironment;
+            notifyErrors = this.notifyPending;
+            this.notifyPending = false;
         } while (this.reloadPending);
         this.loadingRootItems = false;
         this._onDidChangeTreeData.fire();
@@ -178,7 +212,7 @@ export class RequestExplorerProvider implements RestorableTreeDataProvider<Reque
         }
     }
 
-    private async getRootItems(): Promise<RequestTreeItem[]> {
+    private async getRootItems(notifyErrors: boolean): Promise<{ items: RequestTreeItem[]; complete: boolean }> {
         try {
             const result = await rqClient.listRequests(this.workspaceRoot);
             const requestItems = this.groupRequestsByFolder(result.requests);
@@ -194,13 +228,15 @@ export class RequestExplorerProvider implements RestorableTreeDataProvider<Reque
                 errorItem.iconPath = new vscode.ThemeIcon('error');
                 errorItem.tooltip = result.errors.join('\n');
                 errorItem.description = 'Check Output panel';
-                return [errorItem, ...requestItems];
+                return { items: [errorItem, ...requestItems], complete: false };
             }
 
-            return requestItems;
+            return { items: requestItems, complete: true };
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-            vscode.window.showErrorMessage(`Failed to list requests: ${errorMessage}`);
+            if (notifyErrors) {
+                vscode.window.showErrorMessage(`Failed to list requests: ${errorMessage}`);
+            }
 
             const errorItem = new RequestTreeItem(
                 'Error loading requests',
@@ -212,7 +248,7 @@ export class RequestExplorerProvider implements RestorableTreeDataProvider<Reque
             errorItem.iconPath = new vscode.ThemeIcon('error');
             errorItem.tooltip = errorMessage;
             errorItem.description = 'Check Output panel for details';
-            return [errorItem];
+            return { items: [errorItem], complete: false };
         }
     }
 

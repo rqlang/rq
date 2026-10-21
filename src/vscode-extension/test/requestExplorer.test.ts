@@ -402,4 +402,101 @@ describe('RequestExplorerProvider', () => {
 
         expect(envItem.description).toBe('prod');
     });
+
+    test('isLoaded() stays false when some files fail to parse', async () => {
+        (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: [], errors: ['Failed to parse a.rq'] });
+
+        await getRequestItems(target);
+
+        expect(target.isLoaded()).toBe(false);
+    });
+
+    test('isLoaded() stays false when the requests cannot be listed', async () => {
+        (rqClient.listRequests as jest.Mock).mockRejectedValue(new Error('CLI Error'));
+
+        await getRequestItems(target);
+
+        expect(target.isLoaded()).toBe(false);
+    });
+
+    test('refreshInBackground() does nothing before the first load', () => {
+        const eventSpy = jest.fn();
+        target.onDidChangeTreeData(eventSpy);
+
+        target.refreshInBackground();
+
+        expect(eventSpy).not.toHaveBeenCalled();
+        expect(rqClient.listRequests).not.toHaveBeenCalled();
+    });
+
+    test('refreshInBackground() does not show an error when the reload fails', async () => {
+        (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: [] });
+        await getRequestItems(target);
+        (rqClient.listRequests as jest.Mock).mockRejectedValue(new Error('CLI Error'));
+
+        target.refreshInBackground();
+        await new Promise(r => setImmediate(r));
+
+        expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
+    });
+
+    test('refresh() shows an error when the reload fails', async () => {
+        (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: [] });
+        await getRequestItems(target);
+        (rqClient.listRequests as jest.Mock).mockRejectedValue(new Error('CLI Error'));
+
+        target.refresh();
+        await new Promise(r => setImmediate(r));
+
+        expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(expect.stringContaining('Failed to list requests'));
+    });
+
+    test('refresh() shows the loading state in the environment row while reloading', async () => {
+        (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: [] });
+        await getRequestItems(target);
+        const envItem = (target.getChildren() as RequestTreeItem[])[0];
+
+        target.refresh();
+
+        expect(envItem.description).toBe('Loading\u2026');
+    });
+
+    test('warnIfEnvironmentMissing() warns about and marks a restored environment that no longer exists', async () => {
+        const state = createExplorerState();
+        state.setEnvironment('dev');
+        target = new RequestExplorerProvider('/root', state);
+        (rqClient.listEnvironments as jest.Mock).mockResolvedValue(['prod']);
+        (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: [] });
+        const envItem = (target.getChildren() as RequestTreeItem[])[0];
+
+        await target.warnIfEnvironmentMissing();
+
+        expect(envItem.description).toBe('dev (not found)');
+        expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(expect.stringContaining("Environment 'dev' no longer exists"));
+    });
+
+    test('warnIfEnvironmentMissing() does not warn when the environment exists', async () => {
+        const state = createExplorerState();
+        state.setEnvironment('dev');
+        target = new RequestExplorerProvider('/root', state);
+        (rqClient.listEnvironments as jest.Mock).mockResolvedValue(['dev']);
+
+        await target.warnIfEnvironmentMissing();
+
+        expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
+    });
+
+    test('selecting the missing environment again clears its missing mark', async () => {
+        const state = createExplorerState();
+        state.setEnvironment('dev');
+        target = new RequestExplorerProvider('/root', state);
+        (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: [] });
+        (rqClient.listEnvironments as jest.Mock).mockResolvedValue([]);
+        await getRequestItems(target);
+
+        target.setSelectedEnvironment('dev');
+        const envItem = (target.getChildren() as RequestTreeItem[])[0];
+
+        expect(envItem.description).toBe('dev');
+    });
 });

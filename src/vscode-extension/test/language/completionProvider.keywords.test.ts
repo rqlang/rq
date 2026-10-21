@@ -539,6 +539,16 @@ describe('ui.color attribute completion', () => {
         expect(item.range).toEqual(new vscode.Range(0, 1, 0, 4));
     });
 
+    test('suggests only ui.color when a block comment separates the attribute from the env', async () => {
+        const lines = ['[', '/* production', '   handle with care */', 'env production {', '}'];
+        const doc = makeDocument(lines);
+        const position = new vscode.Position(0, 1);
+
+        const items = await provideCompletionItems(doc, position);
+
+        expect(items.map((i: any) => i.label)).toEqual(['ui.color']);
+    });
+
     test('does not suggest ui.color when the attribute precedes a request', async () => {
         const lines = ['[', 'rq get("http://localhost");'];
         const doc = makeDocument(lines);

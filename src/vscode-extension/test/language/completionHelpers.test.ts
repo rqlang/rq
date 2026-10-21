@@ -272,6 +272,14 @@ describe('attributeTarget', () => {
         expect(attributeTarget('\n// production\n[ui.color(red)]\nenv production {')).toBe('env');
     });
 
+    test('skips a block comment before the statement', () => {
+        expect(attributeTarget('/* production */\nenv production {')).toBe('env');
+    });
+
+    test('skips a block comment that spans several lines', () => {
+        expect(attributeTarget('/*\n  production\n*/\nenv production {')).toBe('env');
+    });
+
     test('returns undefined when no statement follows', () => {
         expect(attributeTarget('')).toBeUndefined();
     });

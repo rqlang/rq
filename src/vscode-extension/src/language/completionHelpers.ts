@@ -222,7 +222,7 @@ export type AttributeTarget = 'rq' | 'ep' | 'env';
 
 export function attributeTarget(textAfterLine: string): AttributeTarget | undefined {
     const statementPattern = new RegExp(`^(rq|ep|env)\\s+${IDENTIFIER_PATTERN}`);
-    for (const line of textAfterLine.split('\n')) {
+    for (const line of textAfterLine.replace(/\/\*[\s\S]*?\*\//g, '').split('\n')) {
         const trimmed = line.trim();
         if (trimmed === '' || trimmed.startsWith('//') || /^\[.*\]$/.test(trimmed)) { continue; }
         return statementPattern.exec(trimmed)?.[1] as AttributeTarget | undefined;

@@ -34,6 +34,19 @@ Key capabilities:
 	- The selected environment applies to all requests executed from the explorer and is resolved using the same rules described in [Environments](./LANGUAGE_DEFINITION.md#environments).
 	- If a variable is only defined within a specific environment block, the language server will report it as an error until that environment is selected. This is expected — switch to the right environment and the error will clear.
 
+#### Environment color
+
+An environment marked with `[ui.color(...)]` (see [Marking an environment with a color](LANGUAGE_DEFINITION.md#marking-an-environment-with-a-color)) is painted with that color, both its name and its icon, in the **Environment** row of the Request Explorer while it is selected, so an environment such as `production` is hard to miss:
+
+```
+[ui.color(red)]
+env production {
+  api_url: "https://api.com",
+}
+```
+
+Each palette color follows the active theme. To change the exact shade, override `rq.environment.red`, `rq.environment.orange`, `rq.environment.yellow`, `rq.environment.green`, `rq.environment.blue` or `rq.environment.purple` in `workbench.colorCustomizations`.
+
 2. **Executing requests**
 
 	- **Run**: Click the "Run" icon next to a request to execute it immediately with the currently selected environment.

@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { RequestExplorerProvider } from './requestExplorer';
+import { RequestExplorerProvider, environmentColorDecorationProvider } from './requestExplorer';
 import { ConfigurationExplorerProvider } from './configurationExplorer';
 import { initWasmHost, disposeWasmHost, onWasmLogs } from './wasmHost';
 import * as rqClient from './rqClient';
@@ -54,6 +54,7 @@ export function activate(context: vscode.ExtensionContext) {
     });
     context.subscriptions.push(
         requestExplorerView,
+        vscode.window.registerFileDecorationProvider(environmentColorDecorationProvider),
         ...trackExplorerState(requestExplorerView, requestExplorerProvider, requestExplorerState),
         requestExplorerView.onDidChangeVisibility(({ visible }) => {
             if (visible) { requestExplorerProvider.refreshInBackground(); }

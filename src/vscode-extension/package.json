@@ -173,6 +173,68 @@
         }
       ]
     },
+    "colors": [
+      {
+        "id": "rq.environment.red",
+        "description": "Color of an environment marked with [ui.color(red)] in the Requests view.",
+        "defaults": {
+          "dark": "charts.red",
+          "light": "charts.red",
+          "highContrast": "charts.red",
+          "highContrastLight": "charts.red"
+        }
+      },
+      {
+        "id": "rq.environment.orange",
+        "description": "Color of an environment marked with [ui.color(orange)] in the Requests view.",
+        "defaults": {
+          "dark": "charts.orange",
+          "light": "charts.orange",
+          "highContrast": "charts.orange",
+          "highContrastLight": "charts.orange"
+        }
+      },
+      {
+        "id": "rq.environment.yellow",
+        "description": "Color of an environment marked with [ui.color(yellow)] in the Requests view.",
+        "defaults": {
+          "dark": "charts.yellow",
+          "light": "charts.yellow",
+          "highContrast": "charts.yellow",
+          "highContrastLight": "charts.yellow"
+        }
+      },
+      {
+        "id": "rq.environment.green",
+        "description": "Color of an environment marked with [ui.color(green)] in the Requests view.",
+        "defaults": {
+          "dark": "charts.green",
+          "light": "charts.green",
+          "highContrast": "charts.green",
+          "highContrastLight": "charts.green"
+        }
+      },
+      {
+        "id": "rq.environment.blue",
+        "description": "Color of an environment marked with [ui.color(blue)] in the Requests view.",
+        "defaults": {
+          "dark": "charts.blue",
+          "light": "charts.blue",
+          "highContrast": "charts.blue",
+          "highContrastLight": "charts.blue"
+        }
+      },
+      {
+        "id": "rq.environment.purple",
+        "description": "Color of an environment marked with [ui.color(purple)] in the Requests view.",
+        "defaults": {
+          "dark": "charts.purple",
+          "light": "charts.purple",
+          "highContrast": "charts.purple",
+          "highContrastLight": "charts.purple"
+        }
+      }
+    ],
     "views": {
       "rq-explorer": [
         {

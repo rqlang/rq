@@ -107,7 +107,9 @@ export class ConfigurationExplorerProvider implements RestorableTreeDataProvider
         }
 
         if (!element) {
-            return SECTIONS.map(section => this.makeSectionItem(section));
+            const sections = SECTIONS.map(section => this.getSectionItem(section));
+            setTimeout(() => this._onDidLoad.fire(), 0);
+            return sections;
         }
 
         const section = SECTIONS.find(({ kind }) => kind === element.kind);
@@ -135,8 +137,13 @@ export class ConfigurationExplorerProvider implements RestorableTreeDataProvider
         }
     }
 
-    private makeSectionItem(section: SectionDefinition): ConfigurationTreeItem {
+    private getSectionItem(section: SectionDefinition): ConfigurationTreeItem {
         const collapsibleState = this.state.collapsibleState(section.kind, vscode.TreeItemCollapsibleState.Collapsed);
+        const existing = this.sectionItems.get(section.kind);
+        if (existing) {
+            existing.collapsibleState = collapsibleState;
+            return existing;
+        }
         const item = new ConfigurationTreeItem(section.label, section.kind, collapsibleState);
         item.id = section.kind;
         this.sectionItems.set(section.kind, item);
@@ -197,7 +204,7 @@ export class ConfigurationTreeItem extends vscode.TreeItem {
     constructor(
         public readonly label: string,
         public readonly kind: ItemKind,
-        public readonly collapsibleState: vscode.TreeItemCollapsibleState,
+        public collapsibleState: vscode.TreeItemCollapsibleState,
         public readonly section?: SectionKind,
     ) {
         super(label, collapsibleState);

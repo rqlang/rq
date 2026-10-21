@@ -258,4 +258,34 @@ describe('ConfigurationExplorerProvider', () => {
 
         expect(section.iconPath).toEqual(new vscode.ThemeIcon('sync~spin'));
     });
+
+    test('fires onDidLoad once the root sections are available', async () => {
+        const loadSpy = jest.fn();
+        target.onDidLoad(loadSpy);
+
+        await target.getChildren();
+        await new Promise(r => setTimeout(r, 0));
+
+        expect(loadSpy).toHaveBeenCalledTimes(1);
+        expect(rqClient.listEnvironments).not.toHaveBeenCalled();
+    });
+
+    test('returns the same section items on every root read', async () => {
+        const first = await target.getChildren();
+        const second = await target.getChildren();
+
+        expect(second[0]).toBe(first[0]);
+        expect(second[1]).toBe(first[1]);
+    });
+
+    test('updates a reused section item with the stored expansion state', async () => {
+        const state = createExplorerState();
+        target = new ConfigurationExplorerProvider('/root', state);
+        await target.getChildren();
+
+        state.setExpanded('section-environments', true);
+        const [environments] = await target.getChildren();
+
+        expect(environments.collapsibleState).toBe(vscode.TreeItemCollapsibleState.Expanded);
+    });
 });

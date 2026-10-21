@@ -373,6 +373,15 @@ describe('attribute hover', () => {
         expect((result!.contents as unknown as vscode.MarkdownString).value).toContain('**Applies to:** `rq, ep`');
     });
 
+    test('describes [ui.color] as valid on env with its palette', async () => {
+        const doc = makeDocument(['[ui.color(red)]', 'env production {', '}']);
+        const result = await provideHover(doc, pos(0, 5)) as vscode.Hover;
+        const value = (result!.contents as unknown as vscode.MarkdownString).value;
+        expect(value).toContain('**Attribute: `ui.color`**');
+        expect(value).toContain('**Applies to:** `env`');
+        expect(value).toContain('red, orange, yellow, green, blue, purple');
+    });
+
     test('ignores an unknown attribute name', async () => {
         const doc = makeDocument(['[unknown(1)]', 'rq x("/x");']);
         const result = await provideHover(doc, pos(0, 2));

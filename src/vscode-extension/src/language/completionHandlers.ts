@@ -14,7 +14,9 @@ import {
     getActiveAuthBlock,
     getAuthAttributeContext,
     insideMethodAttributeValue,
+    insideUiColorAttributeValue,
     insideUnclosedAttribute,
+    attributeTarget,
     AuthAttributeContext,
     claimedParams,
     filterRequiredVars,
@@ -30,6 +32,7 @@ import {
     parseVariables,
     declarationPattern,
     AUTH_PROPERTIES,
+    UI_COLORS,
 } from './definitions';
 
 export interface CompletionHandler {
@@ -412,8 +415,40 @@ export const methodValueHandler: CompletionHandler = {
     },
 };
 
+export const uiColorValueHandler: CompletionHandler = {
+    canHandle: ({ documentPrefix }) => insideUiColorAttributeValue(documentPrefix),
+    async provide() {
+        return UI_COLORS.map((color, index) => {
+            const item = new vscode.CompletionItem(color, vscode.CompletionItemKind.EnumMember);
+            item.detail = 'Environment color';
+            item.sortText = String(index);
+            return item;
+        });
+    },
+};
+
+function textAfterLine(ctx: CompletionContext): string {
+    const { document, position } = ctx;
+    const lastLine = Math.min(document.lineCount - 1, position.line + 50);
+    if (lastLine <= position.line) { return ''; }
+    return document.getText(new vscode.Range(
+        new vscode.Position(position.line + 1, 0),
+        new vscode.Position(lastLine, document.lineAt(lastLine).text.length)
+    ));
+}
+
+function uiColorAttributeItem(ctx: CompletionContext, bracketOffset: number): vscode.CompletionItem {
+    const item = new vscode.CompletionItem('ui.color', vscode.CompletionItemKind.Keyword);
+    item.detail = 'Environment color';
+    item.documentation = new vscode.MarkdownString('Marks the next `env` with a color shown in the Requests view.\n\n**Example:** `[ui.color(red)]`');
+    item.insertText = new vscode.SnippetString(`ui.color(\${1|${UI_COLORS.join(',')}|})`);
+    item.filterText = 'ui.color';
+    item.range = new vscode.Range(ctx.position.line, bracketOffset + 1, ctx.position.line, ctx.position.character);
+    return item;
+}
+
 export const attributeHandler: CompletionHandler = {
-    canHandle: ({ linePrefix }) => /^\s*\[(\w*)$/.test(linePrefix),
+    canHandle: ({ linePrefix }) => /^\s*\[([\w.]*)$/.test(linePrefix),
     async provide(ctx) {
         const { linePrefix, documentPrefix, position } = ctx;
         const bracketOffset = linePrefix.lastIndexOf('[');
@@ -423,6 +458,9 @@ export const attributeHandler: CompletionHandler = {
         ));
         if (insideArrayLiteral(blockTextBeforeBracket) || insideEnvOrAuthBlock(documentPrefix)) {
             return undefined;
+        }
+        if (attributeTarget(textAfterLine(ctx)) === 'env') {
+            return [uiColorAttributeItem(ctx, bracketOffset)];
         }
 
         const methodItem = new vscode.CompletionItem('method', vscode.CompletionItemKind.Keyword);
@@ -675,6 +713,7 @@ export const topLevelKeywordHandler: CompletionHandler = {
 export const ALL_HANDLERS: CompletionHandler[] = [
     authNameValueHandler,
     methodValueHandler,
+    uiColorValueHandler,
     epTemplateHandler,
     importHandler,
     dollarPrefixHandler,

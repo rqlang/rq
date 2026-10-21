@@ -66,6 +66,7 @@ export class RequestExplorerProvider implements RestorableTreeDataProvider<Reque
         if (loading) {
             this.envItem.iconPath = new vscode.ThemeIcon('sync~spin');
             this.envItem.label = environmentLabel('Loading\u2026');
+            this.envItem.resourceUri = undefined;
         } else {
             this.describeEnvironment(this.envItem);
         }
@@ -186,16 +187,17 @@ export class RequestExplorerProvider implements RestorableTreeDataProvider<Reque
 
     private describeEnvironment(item: RequestTreeItem): void {
         const environment = this.selectedEnvironment;
-        const color = environment ? this.environmentColors[environment] : undefined;
-        item.resourceUri = environment && color
-            ? vscode.Uri.from({ scheme: ENVIRONMENT_COLOR_SCHEME, path: `/${environment}`, query: color })
-            : undefined;
         if (environment && environment === this.missingEnvironment) {
+            item.resourceUri = undefined;
             item.iconPath = new vscode.ThemeIcon('warning');
             item.label = environmentLabel(`${environment} (not found)`);
             item.tooltip = `Environment '${environment}' no longer exists.\n\nClick the environment icon in the toolbar to select another one.`;
             return;
         }
+        const color = environment ? this.environmentColors[environment] : undefined;
+        item.resourceUri = environment && color
+            ? vscode.Uri.from({ scheme: ENVIRONMENT_COLOR_SCHEME, path: `/${environment}`, query: color })
+            : undefined;
         item.iconPath = environment
             ? new vscode.ThemeIcon('server-environment', color ? environmentThemeColor(color) : undefined)
             : new vscode.ThemeIcon('circle-slash');

@@ -3393,4 +3393,22 @@ mod environment_color_tests {
         let target = colors_of(dir.path(), "main.rq");
         assert_eq!(target, [("staging".to_string(), Some(UiColor::Orange))]);
     }
+
+    #[test]
+    fn list_environments_with_locations_drops_the_ui_color_when_an_import_redefines_the_environment_without_one(
+    ) {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            dir.path().join("shared.rq"),
+            "env production {\n    host: \"b\"\n}\n",
+        )
+        .expect("write");
+        std::fs::write(
+            dir.path().join("main.rq"),
+            "[ui.color(red)]\nenv production {\n    host: \"a\"\n}\n\nimport \"shared\";\n",
+        )
+        .expect("write");
+        let target = colors_of(dir.path(), "main.rq");
+        assert_eq!(target, [("production".to_string(), None)]);
+    }
 }

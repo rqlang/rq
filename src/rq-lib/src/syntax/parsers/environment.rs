@@ -1,5 +1,8 @@
+use super::attributes::{
+    parse_attributes, AttributeContext, AttributeParser, UiColorAttributeParser,
+};
 use super::parse_trait::Parse;
-use super::utils::unescape_string;
+use super::utils::{can_parse_attributed, unescape_string};
 use crate::syntax::fs::Fs;
 use crate::syntax::{
     error::SyntaxError,
@@ -7,6 +10,7 @@ use crate::syntax::{
     parse_result::ParseResult,
     reader::{expect, TokenReader},
     token::TokenType,
+    ui_color::UiColor,
     variable_context::{Variable, VariableValue},
 };
 
@@ -18,12 +22,13 @@ type EnvDefinition = (
     usize,
     usize,
     Vec<(String, usize, usize)>,
+    Option<UiColor>,
 );
 
 pub struct EnvironmentParser;
 impl Parse for EnvironmentParser {
     fn can_parse(&self, r: &TokenReader) -> bool {
-        r.is_keyword(KW_ENV)
+        can_parse_attributed(r, KW_ENV)
     }
     fn parse(
         &self,
@@ -31,7 +36,7 @@ impl Parse for EnvironmentParser {
         result: &mut ParseResult,
         _fs: &dyn Fs,
     ) -> Result<(), SyntaxError> {
-        let (env_name, vars, line, character, key_locs) =
+        let (env_name, vars, line, character, key_locs, color) =
             parse_environment_definition(r, &result.environments)?;
         let file = r.file_path.to_string_lossy().to_string();
         result
@@ -44,6 +49,9 @@ impl Parse for EnvironmentParser {
         for (key_name, key_line, key_char) in key_locs {
             env_var_map.insert(key_name, (file.clone(), key_line, key_char));
         }
+        if let Some(color) = color {
+            result.environment_colors.insert(env_name.clone(), color);
+        }
         result.environments.insert(env_name, vars);
         Ok(())
     }
@@ -53,6 +61,10 @@ pub(crate) fn parse_environment_definition(
     r: &mut TokenReader,
     existing_environments: &HashMap<String, Vec<Variable>>,
 ) -> Result<EnvDefinition, SyntaxError> {
+    let mut ctx = AttributeContext::default();
+    let parsers: Vec<&dyn AttributeParser> = vec![&UiColorAttributeParser];
+    parse_attributes(r, &parsers, KW_ENV, &mut ctx)?;
+
     expect(
         r,
         |t| t.token_type == TokenType::Keyword && t.value == KW_ENV,
@@ -144,5 +156,5 @@ pub(crate) fn parse_environment_definition(
             value: VariableValue::String(value),
         });
     }
-    Ok((env_name, vars, line, character, key_locs))
+    Ok((env_name, vars, line, character, key_locs, ctx.color))
 }

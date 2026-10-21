@@ -91,6 +91,9 @@ impl Parse for ImportParser {
         result
             .environment_locations
             .extend(imported_result.environment_locations);
+        result
+            .environment_colors
+            .extend(imported_result.environment_colors);
         result.auth_providers.extend(imported_result.auth_providers);
         result.endpoints.extend(imported_result.endpoints);
         result

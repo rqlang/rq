@@ -296,9 +296,9 @@ Arrays are not a type — `let a = ["x"];` is rejected at the declaration. `$[..
 
 ## 6. Attributes
 
-Annotations in square brackets placed immediately above an `rq` or `ep` statement.
+Annotations in square brackets placed immediately above an `rq`, `ep` or `env` statement.
 
-Supported: `method`, `timeout`, `auth`, `required`.
+Supported: `method`, `timeout`, `auth`, `required` (on `rq`/`ep`) and `ui.color` (on `env` only).
 
 ```rq
 [method(POST)]
@@ -341,16 +341,26 @@ Enforcement: CLI errors with a documented exit code; VS Code extension prompts t
 
 Scope: `required` declares the variable for that `rq` statement only (its attributes and arguments). A `let`, env entry or secret never satisfies it, so it shadows any outer variable of the same name inside that request; two requests declaring `[required(x)]` hold independent variables. Rename and find-references stay within the request. If the enclosing endpoint's `url`, `headers`, `qs` or attributes also use the name, find-references lists those shared uses and rename from inside the request is refused.
 
-### Attributes on `ep` vs `rq`
+### `ui.color(color)`
+Marks an `env` with a color from a fixed palette: `red`, `orange`, `yellow`, `green`, `blue`, `purple` (bare lowercase identifier, no quotes, no interpolation). It is UI metadata only: it defines no variable and does not change what any request sends. The VS Code extension paints the selected environment in the Requests view with it, typically to flag `production`. At most one per `env`.
+```rq
+[ui.color(red)]
+env production {
+  api_url: "https://api.com",
+}
+```
 
-| Attribute | `ep` | `rq` |
-| --- | --- | --- |
-| `timeout` | yes | yes |
-| `auth` | yes | yes |
-| `method` | **no** | yes |
-| `required` | **no** | yes |
+### Attributes on `ep`, `rq` and `env`
 
-Using `method` or `required` on an `ep` is a parse error.
+| Attribute | `ep` | `rq` | `env` |
+| --- | --- | --- | --- |
+| `timeout` | yes | yes | **no** |
+| `auth` | yes | yes | **no** |
+| `method` | **no** | yes | **no** |
+| `required` | **no** | yes | **no** |
+| `ui.color` | **no** | **no** | yes |
+
+Using an attribute where the table says **no** is a parse error.
 
 ## 7. Environments
 
@@ -373,6 +383,7 @@ rq test("{{base_url}}/test");
 ```
 
 - Multiple environments may coexist in one file.
+- An `env` may carry `[ui.color(...)]` to be highlighted in the VS Code extension (see §6).
 - `env`-block values override file-level `let` for the same name.
 - If a variable resolves only from an environment and none is active, execution errors out.
 

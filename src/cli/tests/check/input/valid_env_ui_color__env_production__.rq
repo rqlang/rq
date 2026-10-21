@@ -1,0 +1,6 @@
+[ui.color(red)]
+env production {
+    base_url: "https://api.example.com",
+}
+
+rq get("{{base_url}}/users");

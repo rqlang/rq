@@ -66,6 +66,7 @@ pub struct ParseResult {
     pub requests: Vec<RequestWithVariables>,
     pub environments: std::collections::HashMap<String, Vec<Variable>>,
     pub environment_locations: std::collections::HashMap<String, (String, usize, usize)>,
+    pub environment_colors: std::collections::HashMap<String, crate::syntax::ui_color::UiColor>,
     pub auth_providers: std::collections::HashMap<String, AuthConfig>,
     pub endpoints: std::collections::HashMap<String, EndpointDefinition>,
     pub file_variables: Vec<Variable>,

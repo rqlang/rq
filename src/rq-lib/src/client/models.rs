@@ -5,6 +5,7 @@ use std::time::Duration;
 use serde::Serialize;
 
 use crate::syntax::auth::Config;
+use crate::syntax::ui_color::UiColor;
 use crate::syntax::variable_context::VariableContext;
 use crate::syntax::Request;
 
@@ -45,6 +46,7 @@ pub struct EnvironmentEntry {
     pub file: String,
     pub line: usize,
     pub character: usize,
+    pub color: Option<UiColor>,
 }
 
 #[derive(Debug, Clone, Serialize)]

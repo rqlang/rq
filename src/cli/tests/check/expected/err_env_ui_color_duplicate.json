@@ -1,0 +1,10 @@
+{
+  "errors": [
+    {
+      "file": "{{*}}",
+      "line": 2,
+      "column": 1,
+      "message": "Duplicate attribute 'ui.color'"
+    }
+  ]
+}

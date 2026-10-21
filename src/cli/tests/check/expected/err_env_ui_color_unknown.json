@@ -1,0 +1,10 @@
+{
+  "errors": [
+    {
+      "file": "{{*}}",
+      "line": 2,
+      "column": 11,
+      "message": "Unknown color 'pink'; expected one of: red, orange, yellow, green, blue, purple"
+    }
+  ]
+}

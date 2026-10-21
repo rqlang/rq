@@ -1,12 +1,20 @@
+use std::ops::Range;
+
 use super::utils::unescape_string;
 use crate::syntax::{
     error::SyntaxError,
     http_method::HttpMethod,
-    keywords::{PUNC_DOLLAR, PUNC_LBRACKET, PUNC_LPAREN, PUNC_RBRACKET, PUNC_RPAREN},
+    keywords::{
+        KW_ENV, KW_RQ, PUNC_DOLLAR, PUNC_DOT, PUNC_LBRACKET, PUNC_LPAREN, PUNC_RBRACKET,
+        PUNC_RPAREN,
+    },
     parse_result::AuthLocation,
     reader::{expect, TokenReader},
-    token::TokenType,
+    token::{Token, TokenType},
+    ui_color::UiColor,
 };
+
+pub const ATTR_UI_COLOR: &str = "ui.color";
 
 pub struct RequiredVariable {
     pub name: String,
@@ -21,6 +29,7 @@ pub struct AttributeContext {
     pub auth_location: Option<AuthLocation>,
     pub timeout: Option<String>,
     pub required_variables: Vec<RequiredVariable>,
+    pub color: Option<UiColor>,
 }
 
 impl AttributeContext {
@@ -46,6 +55,13 @@ impl AttributeContext {
         self.timeout = Some(timeout);
         Ok(())
     }
+    pub fn set_color(&mut self, color: UiColor) -> Result<(), String> {
+        if self.color.is_some() {
+            return Err(format!("Duplicate attribute '{ATTR_UI_COLOR}'"));
+        }
+        self.color = Some(color);
+        Ok(())
+    }
     pub fn add_required_variable(&mut self, name: String, line: usize, character: usize) {
         self.required_variables.push(RequiredVariable {
             name,
@@ -60,58 +76,73 @@ pub trait AttributeParser {
     fn parse(&self, r: &mut TokenReader, ctx: &mut AttributeContext) -> Result<(), SyntaxError>;
 }
 
+const ATTRIBUTE_TARGETS: &[(&str, &str)] = &[
+    ("method", KW_RQ),
+    ("required", KW_RQ),
+    ("timeout", "rq or ep"),
+    ("auth", "rq or ep"),
+    (ATTR_UI_COLOR, KW_ENV),
+];
+
 pub fn parse_attributes(
     r: &mut TokenReader,
     parsers: &[&dyn AttributeParser],
-    unsupported: &[&str],
+    statement: &str,
     ctx: &mut AttributeContext,
 ) -> Result<(), SyntaxError> {
     loop {
         r.skip_ignorable();
-        if let Some(t) = r.cur() {
-            if t.token_type == TokenType::Punctuation && t.value == PUNC_LBRACKET {
-                let mut offset = 1;
-                let mut attr_name = None;
-                let mut attr_span = None;
-
-                while let Some(next) = r.peek(offset) {
-                    if matches!(
-                        next.token_type,
-                        TokenType::Whitespace | TokenType::Newline | TokenType::Comment
-                    ) {
-                        offset += 1;
-                        continue;
-                    }
-                    if next.token_type == TokenType::Identifier
-                        || next.token_type == TokenType::Keyword
-                    {
-                        attr_name = Some(next.value.clone());
-                        attr_span = Some(next.span.clone());
-                    }
-                    break;
-                }
-
-                if let Some(name) = attr_name {
-                    let span = attr_span.unwrap_or_else(|| t.span.clone());
-                    if let Some(parser) = parsers.iter().find(|p| p.name() == name) {
-                        parser.parse(r, ctx)?;
-                        continue;
-                    } else if unsupported.contains(&name.as_str()) {
-                        return Err(r.create_error(
-                            format!("Attribute '{name}' is not supported on ep statements; use it on rq statements instead"),
-                            span,
-                        ));
-                    } else {
-                        return Err(r.create_error(format!("Unknown attribute: '{name}'"), span));
-                    }
-                } else {
-                    break;
-                }
-            }
+        let Some(t) = r.cur() else { break };
+        if t.token_type != TokenType::Punctuation || t.value != PUNC_LBRACKET {
+            break;
         }
-        break;
+        let Some((name, span)) = peek_attribute_name(r) else {
+            break;
+        };
+        if let Some(parser) = parsers.iter().find(|p| p.name() == name) {
+            parser.parse(r, ctx)?;
+            continue;
+        }
+        let message = match ATTRIBUTE_TARGETS.iter().find(|(known, _)| *known == name) {
+            Some((_, targets)) => format!(
+                "Attribute '{name}' is not supported on {statement} statements; use it on {targets} statements instead"
+            ),
+            None => format!("Unknown attribute: '{name}'"),
+        };
+        return Err(r.create_error(message, span));
     }
     Ok(())
+}
+
+fn peek_attribute_name(r: &TokenReader) -> Option<(String, Range<usize>)> {
+    let mut offset = 1;
+    while let Some(next) = r.peek(offset) {
+        if !matches!(
+            next.token_type,
+            TokenType::Whitespace | TokenType::Newline | TokenType::Comment
+        ) {
+            break;
+        }
+        offset += 1;
+    }
+    let first = r.peek(offset).filter(|t| is_name_token(t))?;
+    let mut name = first.value.clone();
+    let mut span = first.span.clone();
+    while let (Some(dot), Some(part)) = (r.peek(offset + 1), r.peek(offset + 2)) {
+        if dot.token_type != TokenType::Punctuation || dot.value != PUNC_DOT || !is_name_token(part)
+        {
+            break;
+        }
+        name.push_str(PUNC_DOT);
+        name.push_str(&part.value);
+        span.end = part.span.end;
+        offset += 2;
+    }
+    Some((name, span))
+}
+
+fn is_name_token(t: &Token) -> bool {
+    t.token_type == TokenType::Identifier || t.token_type == TokenType::Keyword
 }
 
 pub struct MethodAttributeParser;
@@ -385,6 +416,86 @@ impl AttributeParser for RequiredAttributeParser {
         r.advance();
 
         ctx.add_required_variable(name_tok.value, line, character);
+        Ok(())
+    }
+}
+
+pub struct UiColorAttributeParser;
+impl AttributeParser for UiColorAttributeParser {
+    fn name(&self) -> &str {
+        ATTR_UI_COLOR
+    }
+
+    fn parse(&self, r: &mut TokenReader, ctx: &mut AttributeContext) -> Result<(), SyntaxError> {
+        let start_token = r.cur().cloned().ok_or_else(|| {
+            r.create_error("Unexpected EOF".into(), r.source.len()..r.source.len())
+        })?;
+        r.advance();
+
+        r.skip_ignorable();
+        expect(
+            r,
+            |t| t.token_type == TokenType::Identifier && t.value == "ui",
+            format!("Expected '{ATTR_UI_COLOR}'"),
+        )?;
+        r.advance();
+        expect(
+            r,
+            |t| t.token_type == TokenType::Punctuation && t.value == PUNC_DOT,
+            format!("Expected '{ATTR_UI_COLOR}'"),
+        )?;
+        r.advance();
+        expect(
+            r,
+            |t| t.token_type == TokenType::Identifier && t.value == "color",
+            format!("Expected '{ATTR_UI_COLOR}'"),
+        )?;
+        r.advance();
+
+        r.skip_ignorable();
+        expect(
+            r,
+            |t| t.token_type == TokenType::Punctuation && t.value == PUNC_LPAREN,
+            "Expected '('",
+        )?;
+        r.advance();
+
+        r.skip_ignorable();
+        let color_tok = expect(
+            r,
+            |t| t.token_type == TokenType::Identifier,
+            format!("Expected color name, one of: {}", UiColor::names()),
+        )?;
+        let color = UiColor::from_name(&color_tok.value).ok_or_else(|| {
+            r.create_error(
+                format!(
+                    "Unknown color '{}'; expected one of: {}",
+                    color_tok.value,
+                    UiColor::names()
+                ),
+                color_tok.span.clone(),
+            )
+        })?;
+        r.advance();
+
+        r.skip_ignorable();
+        expect(
+            r,
+            |t| t.token_type == TokenType::Punctuation && t.value == PUNC_RPAREN,
+            "Expected ')'",
+        )?;
+        r.advance();
+
+        r.skip_ignorable();
+        expect(
+            r,
+            |t| t.token_type == TokenType::Punctuation && t.value == PUNC_RBRACKET,
+            "Expected ']'",
+        )?;
+        r.advance();
+
+        ctx.set_color(color)
+            .map_err(|msg| r.create_error_with_file(msg, start_token.span.clone()))?;
         Ok(())
     }
 }

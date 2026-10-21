@@ -483,6 +483,7 @@ impl RqClient {
                         file: crate::paths::clean_path_str(file).to_string(),
                         line: *line,
                         character: *character,
+                        color: rq_file.environment_colors.get(name).copied(),
                     });
                 }
             }
@@ -3343,5 +3344,53 @@ mod listing_parse_error_tests {
             ["token"]
         );
         assert_eq!(parse_errors.len(), 1);
+    }
+}
+
+#[cfg(all(test, feature = "native"))]
+mod environment_color_tests {
+    use super::RqClient;
+    use crate::syntax::ui_color::UiColor;
+
+    fn colors_of(dir: &std::path::Path, source: &str) -> Vec<(String, Option<UiColor>)> {
+        let (entries, _) = RqClient::default()
+            .list_environments_with_locations(&dir.join(source))
+            .expect("list failed");
+        entries.into_iter().map(|e| (e.name, e.color)).collect()
+    }
+
+    #[test]
+    fn list_environments_with_locations_reports_the_ui_color() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            dir.path().join("envs.rq"),
+            "[ui.color(red)]\nenv production {\n    host: \"x\"\n}\n\nenv local {\n    host: \"y\"\n}\n",
+        )
+        .expect("write");
+        let target = colors_of(dir.path(), "envs.rq");
+        assert_eq!(
+            target,
+            [
+                ("local".to_string(), None),
+                ("production".to_string(), Some(UiColor::Red))
+            ]
+        );
+    }
+
+    #[test]
+    fn list_environments_with_locations_keeps_the_ui_color_of_imported_environments() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            dir.path().join("shared.rq"),
+            "[ui.color(orange)]\nenv staging {\n    host: \"x\"\n}\n",
+        )
+        .expect("write");
+        std::fs::write(
+            dir.path().join("main.rq"),
+            "import \"shared\";\n\nrq get(\"{{host}}\");\n",
+        )
+        .expect("write");
+        let target = colors_of(dir.path(), "main.rq");
+        assert_eq!(target, [("staging".to_string(), Some(UiColor::Orange))]);
     }
 }

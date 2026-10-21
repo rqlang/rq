@@ -461,7 +461,7 @@ Arrays are not a type: `let a = ["x"];` is rejected at the declaration. A list o
 
 ## Attributes
 
-Attributes are annotations written in square brackets that modify how a request behaves. They are placed immediately above an `rq` or `ep` statement:
+Attributes are annotations written in square brackets that modify how a request behaves. They are placed immediately above an `rq` or `ep` statement (and, for `ui.color`, above an `env` statement):
 
 ```
 [method(POST)]
@@ -480,6 +480,7 @@ The following attributes are currently supported:
 - `timeout`
 - `auth`
 - `required`
+- `ui.color` (only on `env`, see [Marking an environment with a color](#marking-an-environment-with-a-color))
 
 ### `method` attribute
 
@@ -601,6 +602,24 @@ rq test("{{api_url}}/test");
 The rq tools (CLI and VS Code extension) can list available environment names and let you choose which one to activate when running requests.
 
 **If no environment is provided and a variable can only be resolved from an environment, the system will return an error because the variable cannot be found.**
+
+### Marking an environment with a color
+
+The `ui.color` attribute marks an environment with a color, so that tools can make it stand out when it is selected. It is meant to flag environments that need extra care, such as `production`:
+
+```
+[ui.color(red)]
+env production {
+  api_url: "https://api.com",
+}
+```
+
+The value is one of a fixed palette, written as a bare lowercase identifier: `red`, `orange`, `yellow`, `green`, `blue` or `purple`. Strings, variables and interpolation are not accepted.
+
+- `ui.color` is valid only on `env` statements; using it on `rq` or `ep` is a parse error, and so is using `method`, `timeout`, `auth` or `required` on an `env`.
+- It may appear at most once per environment.
+- It is UI metadata only: it does not define a variable and never changes what a request sends.
+- The VS Code extension paints the selected environment in the Requests view with this color (see [Environment color](VSCODE_EXTENSION.md#environment-color)).
 
 ### How environments interact with variables
 
@@ -748,6 +767,7 @@ Not all attributes are valid on both `ep` and `rq` statements. The table below s
 | `auth`    | yes  | yes  |
 | `method`  | no   | yes  |
 | `required`| no   | yes  |
+| `ui.color`| no   | no   |
 
 When an attribute is placed on an `ep` statement, it applies as a default to all `rq` requests inside that endpoint block. An `rq` statement can override or extend those defaults with its own attributes.
 

@@ -1,0 +1,10 @@
+{
+  "errors": [
+    {
+      "file": "{{*}}",
+      "line": 1,
+      "column": 2,
+      "message": "Attribute 'ui.color' is not supported on ep statements; use it on env statements instead"
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+// entorno de producción
+[ui.color(pink)]
+env production {
+    base_url: "https://api.example.com",
+}

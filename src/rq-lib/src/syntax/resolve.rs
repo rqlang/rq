@@ -3,11 +3,11 @@ use super::{
     fs::Fs,
     functions::{self, traits::FunctionContext},
     keywords::{
-        KW_AUTH, KW_ENV, KW_EP, KW_RQ, OP_LT, PUNC_DOLLAR, PUNC_LBRACE, PUNC_LBRACKET, PUNC_LPAREN,
-        PUNC_RBRACE, PUNC_RBRACKET, PUNC_RPAREN, PUNC_SEMI,
+        KW_AUTH, KW_ENV, KW_EP, KW_RQ, OP_LT, PUNC_DOLLAR, PUNC_DOT, PUNC_LBRACE, PUNC_LBRACKET,
+        PUNC_LPAREN, PUNC_RBRACE, PUNC_RBRACKET, PUNC_RPAREN, PUNC_SEMI,
     },
     parse_result::{EndpointDefinition, Request},
-    parsers::utils::parse_system_function,
+    parsers::{attributes::ATTR_UI_COLOR, utils::parse_system_function},
     reader::TokenReader,
     token::{Token, TokenType},
     tokenizer::tokenize,
@@ -372,6 +372,7 @@ fn var_ref_offsets(tokens: &[Token], var_name: &str) -> Vec<usize> {
         if token.token_type == TokenType::Identifier
             && token.value == var_name
             && !is_declaration_name(tokens, i)
+            && !is_in_ui_color_attribute(tokens, i)
         {
             let mut is_key = false;
             for next in tokens.iter().skip(i + 1) {
@@ -549,6 +550,40 @@ fn is_declaration_name(tokens: &[Token], index: usize) -> bool {
             .is_some_and(|token| token.token_type == TokenType::Keyword && token.value == KW_EP),
         _ => false,
     }
+}
+
+fn is_in_ui_color_attribute(tokens: &[Token], index: usize) -> bool {
+    let mut depth = 0usize;
+    for open in (0..index).rev() {
+        if is_punctuation(tokens, open, PUNC_RBRACKET) {
+            depth += 1;
+        } else if is_punctuation(tokens, open, PUNC_LBRACKET) {
+            if depth == 0 {
+                return attribute_name_tokens(tokens, open) == ATTR_UI_COLOR;
+            }
+            depth -= 1;
+        } else if depth == 0
+            && [PUNC_SEMI, PUNC_LBRACE, PUNC_RBRACE]
+                .iter()
+                .any(|stop| is_punctuation(tokens, open, stop))
+        {
+            return false;
+        }
+    }
+    false
+}
+
+fn attribute_name_tokens(tokens: &[Token], open: usize) -> String {
+    tokens
+        .iter()
+        .skip(open + 1)
+        .filter(|token| !is_trivia(token))
+        .take_while(|token| {
+            token.token_type == TokenType::Identifier
+                || (token.token_type == TokenType::Punctuation && token.value == PUNC_DOT)
+        })
+        .map(|token| token.value.as_str())
+        .collect()
 }
 
 fn is_punctuation(tokens: &[Token], index: usize, value: &str) -> bool {

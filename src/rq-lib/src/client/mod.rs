@@ -3411,4 +3411,27 @@ mod environment_color_tests {
         let target = colors_of(dir.path(), "main.rq");
         assert_eq!(target, [("production".to_string(), None)]);
     }
+
+    #[test]
+    fn list_variable_references_ignores_the_names_inside_a_ui_color_attribute() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let file = dir.path().join("envs.rq");
+        std::fs::write(
+            &file,
+            "let color = \"blue\";\nlet red = \"x\";\n\n[ui.color(red)]\nenv production {\n    host: \"{{color}}{{red}}\",\n}\n",
+        )
+        .expect("write");
+        let positions = |name: &str| {
+            RqClient::default()
+                .list_variable_references(&file, name, None, None)
+                .expect("refs")
+                .into_iter()
+                .map(|r| (r.line, r.character))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            (positions("color"), positions("red")),
+            (vec![(0, 4), (5, 13)], vec![(1, 4), (5, 22)])
+        );
+    }
 }

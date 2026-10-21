@@ -80,7 +80,7 @@ export class RequestExplorerProvider implements RestorableTreeDataProvider<Reque
     }
 
     refreshInBackground(): void {
-        if (this.cachedRootItems === null) {
+        if (this.cachedRootItems === null && !this.loadingRootItems) {
             return;
         }
         this.reload(false);
@@ -100,6 +100,9 @@ export class RequestExplorerProvider implements RestorableTreeDataProvider<Reque
     }
 
     findItem(id: string): RequestTreeItem | undefined {
+        if (this.envItem?.id === id) {
+            return this.envItem;
+        }
         return findItemById(this.cachedRootItems ?? [], id);
     }
 

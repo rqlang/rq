@@ -197,4 +197,50 @@ describe('trackExplorerState', () => {
         expect(state.selected).toBe('a');
         expect(view.reveal).toHaveBeenCalledTimes(1);
     });
+
+    test('keeps the stored selection when its item disappears in an incomplete load', () => {
+        const state = createExplorerState();
+        const item = makeItem('a');
+        const view = makeView();
+        const items: vscode.TreeItem[] = [item];
+        const { provider, fireLoad } = makeProvider(items, new Map(), false);
+        trackExplorerState(asTreeView(view), provider, state);
+        view.select.fire({ selection: [item] });
+
+        items.pop();
+        view.select.fire({ selection: [] });
+        items.push(item);
+        fireLoad();
+
+        expect(state.selected).toBe('a');
+        expect(view.reveal).toHaveBeenCalledWith(item, { select: true, focus: false });
+    });
+
+    test('forgets the stored selection when the user deselects an item that still exists', () => {
+        const state = createExplorerState();
+        const item = makeItem('a');
+        const view = makeView();
+        const { provider } = makeProvider([item], new Map(), false);
+        trackExplorerState(asTreeView(view), provider, state);
+        view.select.fire({ selection: [item] });
+
+        view.select.fire({ selection: [] });
+
+        expect(state.selected).toBeUndefined();
+    });
+
+    test('does not reveal the stored selection inside a parent the user collapsed after it was built', () => {
+        const state = createExplorerState();
+        state.setSelected('a');
+        const item = makeItem('a');
+        const parent = makeItem('p', vscode.TreeItemCollapsibleState.Expanded);
+        const view = makeView();
+        const { provider, fireLoad } = makeProvider([item, parent], new Map([[item, parent]]));
+        trackExplorerState(asTreeView(view), provider, state);
+
+        view.collapse.fire({ element: parent });
+        fireLoad();
+
+        expect(view.reveal).not.toHaveBeenCalled();
+    });
 });

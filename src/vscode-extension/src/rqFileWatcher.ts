@@ -16,17 +16,27 @@ export function registerRqFileWatcher(context: vscode.ExtensionContext, onChange
         watcher.onDidCreate(schedule),
         watcher.onDidChange(schedule),
         watcher.onDidDelete(schedule),
-        vscode.workspace.onDidDeleteFiles(({ files }) => {
-            if (files.some(mayContainRqFiles)) { schedule(); }
-        }),
-        vscode.workspace.onDidRenameFiles(({ files }) => {
-            if (files.some(({ oldUri, newUri }) => mayContainRqFiles(oldUri) || mayContainRqFiles(newUri))) { schedule(); }
+        vscode.workspace.onDidDeleteFiles(schedule),
+        vscode.workspace.onDidRenameFiles(async ({ files }) => {
+            for (const { oldUri, newUri } of files) {
+                if (isRqFile(oldUri) || isRqFile(newUri) || await mayBeDirectory(newUri)) {
+                    schedule();
+                    return;
+                }
+            }
         }),
         { dispose: () => clearTimeout(timer) }
     );
 }
 
-function mayContainRqFiles(uri: vscode.Uri): boolean {
-    const extension = path.extname(uri.fsPath);
-    return extension === '' || extension === '.rq';
+function isRqFile(uri: vscode.Uri): boolean {
+    return path.extname(uri.fsPath) === '.rq';
+}
+
+async function mayBeDirectory(uri: vscode.Uri): Promise<boolean> {
+    try {
+        return ((await vscode.workspace.fs.stat(uri)).type & vscode.FileType.Directory) !== 0;
+    } catch {
+        return true;
+    }
 }

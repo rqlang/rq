@@ -4,14 +4,14 @@ import { registerRqFileWatcher } from '../src/rqFileWatcher';
 describe('registerRqFileWatcher', () => {
     let context: vscode.ExtensionContext;
     let watcherEvents: Record<string, () => void>;
-    let workspaceEvents: Record<string, (event: unknown) => void>;
+    let workspaceEvents: Record<string, (event: unknown) => unknown>;
 
     beforeEach(() => {
         jest.useFakeTimers();
         context = { subscriptions: [] } as unknown as vscode.ExtensionContext;
         watcherEvents = {};
         workspaceEvents = {};
-        const capture = (events: Record<string, (event: unknown) => void>, name: string) => (listener: (event: unknown) => void) => {
+        const capture = (events: Record<string, (event: unknown) => unknown>, name: string) => (listener: (event: unknown) => unknown) => {
             events[name] = listener;
             return { dispose: jest.fn() };
         };
@@ -23,6 +23,7 @@ describe('registerRqFileWatcher', () => {
         });
         (vscode.workspace.onDidDeleteFiles as jest.Mock).mockImplementation(capture(workspaceEvents, 'delete'));
         (vscode.workspace.onDidRenameFiles as jest.Mock).mockImplementation(capture(workspaceEvents, 'rename'));
+        (vscode.workspace.fs.stat as jest.Mock).mockResolvedValue({ type: vscode.FileType.File });
     });
 
     afterEach(() => {
@@ -35,14 +36,14 @@ describe('registerRqFileWatcher', () => {
         expect(vscode.workspace.createFileSystemWatcher).toHaveBeenCalledWith('**/*.rq');
     });
 
-    test('notifies once for a burst of file events', () => {
+    test('notifies once for a burst of file events', async () => {
         const onChange = jest.fn();
         registerRqFileWatcher(context, onChange);
 
         watcherEvents.create();
         watcherEvents.change();
         watcherEvents.delete();
-        workspaceEvents.rename({ files: [{ oldUri: vscode.Uri.file('/root/a.rq'), newUri: vscode.Uri.file('/root/b.rq') }] });
+        await workspaceEvents.rename({ files: [{ oldUri: vscode.Uri.file('/root/a.rq'), newUri: vscode.Uri.file('/root/b.rq') }] });
         jest.runAllTimers();
 
         expect(onChange).toHaveBeenCalledTimes(1);
@@ -58,21 +59,43 @@ describe('registerRqFileWatcher', () => {
         expect(onChange).toHaveBeenCalledTimes(1);
     });
 
-    test('ignores deleting a file that is not an rq file', () => {
+    test('notifies when a folder with a dot in its name is deleted', () => {
         const onChange = jest.fn();
         registerRqFileWatcher(context, onChange);
 
-        workspaceEvents.delete({ files: [vscode.Uri.file('/root/logo.png')] });
+        workspaceEvents.delete({ files: [vscode.Uri.file('/root/api.v2')] });
         jest.runAllTimers();
 
-        expect(onChange).not.toHaveBeenCalled();
+        expect(onChange).toHaveBeenCalledTimes(1);
     });
 
-    test('ignores renaming a file that is not an rq file', () => {
+    test('notifies when a folder with a dot in its name is renamed', async () => {
+        (vscode.workspace.fs.stat as jest.Mock).mockResolvedValue({ type: vscode.FileType.Directory });
         const onChange = jest.fn();
         registerRqFileWatcher(context, onChange);
 
-        workspaceEvents.rename({ files: [{ oldUri: vscode.Uri.file('/root/a.png'), newUri: vscode.Uri.file('/root/b.png') }] });
+        await workspaceEvents.rename({ files: [{ oldUri: vscode.Uri.file('/root/api.v2'), newUri: vscode.Uri.file('/root/api.v3') }] });
+        jest.runAllTimers();
+
+        expect(onChange).toHaveBeenCalledTimes(1);
+    });
+
+    test('notifies when the renamed path cannot be inspected', async () => {
+        (vscode.workspace.fs.stat as jest.Mock).mockRejectedValue(new Error('ENOENT'));
+        const onChange = jest.fn();
+        registerRqFileWatcher(context, onChange);
+
+        await workspaceEvents.rename({ files: [{ oldUri: vscode.Uri.file('/root/a.png'), newUri: vscode.Uri.file('/root/b.png') }] });
+        jest.runAllTimers();
+
+        expect(onChange).toHaveBeenCalledTimes(1);
+    });
+
+    test('ignores renaming a file that is not an rq file', async () => {
+        const onChange = jest.fn();
+        registerRqFileWatcher(context, onChange);
+
+        await workspaceEvents.rename({ files: [{ oldUri: vscode.Uri.file('/root/a.png'), newUri: vscode.Uri.file('/root/b.png') }] });
         jest.runAllTimers();
 
         expect(onChange).not.toHaveBeenCalled();

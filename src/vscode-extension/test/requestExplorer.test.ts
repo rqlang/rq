@@ -523,4 +523,20 @@ describe('RequestExplorerProvider', () => {
 
         expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
     });
+
+    test('refreshInBackground() during the first load reloads once more when it finishes', async () => {
+        (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: [] });
+        target.getChildren();
+
+        target.refreshInBackground();
+        await new Promise(r => setImmediate(r));
+
+        expect(rqClient.listRequests).toHaveBeenCalledTimes(2);
+    });
+
+    test('findItem() finds the environment row', () => {
+        const [envItem] = target.getChildren() as RequestTreeItem[];
+
+        expect(target.findItem('environment')).toBe(envItem);
+    });
 });

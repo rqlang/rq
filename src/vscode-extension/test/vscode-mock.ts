@@ -115,6 +115,9 @@ export const workspace = {
     onDidDeleteFiles: jest.fn().mockReturnValue({ dispose: () => {} }),
     onDidRenameFiles: jest.fn().mockReturnValue({ dispose: () => {} }),
     createFileSystemWatcher: jest.fn(),
+    fs: {
+        stat: jest.fn()
+    },
     onDidChangeConfiguration: jest.fn().mockReturnValue({ dispose: () => {} })
 };
 
@@ -133,6 +136,13 @@ export class McpStdioServerDefinition {
 export const lm = {
     registerMcpServerDefinitionProvider: jest.fn().mockReturnValue({ dispose: () => {} })
 };
+
+export enum FileType {
+    Unknown = 0,
+    File = 1,
+    Directory = 2,
+    SymbolicLink = 64
+}
 
 // Mock ViewColumn
 export enum ViewColumn {

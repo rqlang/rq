@@ -81,6 +81,11 @@ export function trackExplorerState<T extends vscode.TreeItem>(
             if (element.id) { state.setExpanded(element.id, false); }
         }),
         view.onDidChangeSelection(({ selection }) => {
+            const previous = state.selected;
+            if (selection.length === 0 && previous && !provider.findItem(previous) && !provider.isLoaded(previous)) {
+                pendingSelection = previous;
+                return;
+            }
             pendingSelection = undefined;
             state.setSelected(selection[0]?.id);
         }),
@@ -95,16 +100,19 @@ export function trackExplorerState<T extends vscode.TreeItem>(
                 return;
             }
             pendingSelection = undefined;
-            if (!ancestorsExpanded(provider, item)) { return; }
+            if (!ancestorsExpanded(provider, state, item)) { return; }
             view.reveal(item, { select: true, focus: false })
                 .then(undefined, err => console.error('Failed to restore explorer selection', err));
         })
     ];
 }
 
-function ancestorsExpanded<T extends vscode.TreeItem>(provider: RestorableTreeDataProvider<T>, item: T): boolean {
+function ancestorsExpanded<T extends vscode.TreeItem>(provider: RestorableTreeDataProvider<T>, state: ExplorerState, item: T): boolean {
     for (let parent = provider.getParent(item); parent; parent = provider.getParent(parent)) {
-        if (parent.collapsibleState !== vscode.TreeItemCollapsibleState.Expanded) {
+        const collapsibleState = parent.id
+            ? state.collapsibleState(parent.id, parent.collapsibleState ?? vscode.TreeItemCollapsibleState.None)
+            : parent.collapsibleState;
+        if (collapsibleState !== vscode.TreeItemCollapsibleState.Expanded) {
             return false;
         }
     }

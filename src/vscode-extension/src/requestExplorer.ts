@@ -109,7 +109,11 @@ export class RequestExplorerProvider implements RestorableTreeDataProvider<Reque
     }
 
     async warnIfEnvironmentMissing(): Promise<void> {
-        const { missingEnvironment } = await this.inspectEnvironments();
+        if (!this.selectedEnvironment) {
+            return;
+        }
+        const { missingEnvironment, colors } = await this.inspectEnvironments();
+        this.environmentColors = colors;
         if (!missingEnvironment || missingEnvironment !== this.selectedEnvironment) {
             return;
         }

@@ -580,6 +580,12 @@ describe('RequestExplorerProvider', () => {
         expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(expect.stringContaining("Environment 'dev' no longer exists"));
     });
 
+    test('warnIfEnvironmentMissing() does not list environments when none is selected', async () => {
+        await target.warnIfEnvironmentMissing();
+
+        expect(rqClient.listEnvironmentsWithErrors).not.toHaveBeenCalled();
+    });
+
     test('warnIfEnvironmentMissing() does not warn when the environment exists', async () => {
         const state = createExplorerState();
         state.setEnvironment('dev');

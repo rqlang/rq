@@ -12,7 +12,7 @@ jest.mock('../../src/wasm/rq_wasm', () => ({
     list_requests: mockListRequests
 }), { virtual: true });
 
-import { Diagnostic, lintRq, validateRq, listRequests, draftPath, workspaceFor } from '../../src/mcp/tools';
+import { Diagnostic, lintRq, validateRq, listRequests, draftPath, workspaceFor, isUnscoped } from '../../src/mcp/tools';
 
 let workspace: string;
 
@@ -88,6 +88,52 @@ describe('workspaceFor', () => {
 
     it('keeps an absolute path that is itself a directory', async () => {
         await expect(workspaceFor(undefined, workspace)).resolves.toBe(workspace.replace(/\\/g, '/'));
+    });
+});
+
+describe('isUnscoped', () => {
+    it('flags the filesystem root', () => {
+        expect(isUnscoped(path.parse(workspace).root)).toBe(true);
+    });
+
+    it('flags the home directory', () => {
+        expect(isUnscoped(os.homedir())).toBe(true);
+    });
+
+    it('accepts a project folder', () => {
+        expect(isUnscoped(workspace)).toBe(false);
+    });
+});
+
+describe('tools run from the home directory', () => {
+    it('validate only the draft instead of reading every file under it', async () => {
+        mockCheck.mockReturnValue(JSON.stringify({ errors: [] }));
+        const cwd = jest.spyOn(process, 'cwd').mockReturnValue(os.homedir());
+
+        await validateRq({ source: 'rq ping("http://x");\n' });
+        cwd.mockRestore();
+
+        const files = JSON.parse(mockCheck.mock.calls[0][0]) as Record<string, string>;
+        expect(Object.keys(files)).toHaveLength(1);
+    });
+
+    it('lint only the draft instead of reading every file under it', async () => {
+        mockLint.mockReturnValue(JSON.stringify({ ok: true, diagnostics: [] }));
+        const cwd = jest.spyOn(process, 'cwd').mockReturnValue(os.homedir());
+
+        await lintRq({ source: 'rq ping("http://x");\n' });
+        cwd.mockRestore();
+
+        const files = JSON.parse(mockLint.mock.calls[0][0]) as Record<string, string>;
+        expect(Object.keys(files)).toHaveLength(1);
+    });
+
+    it('refuse to list requests without a project folder', async () => {
+        const cwd = jest.spyOn(process, 'cwd').mockReturnValue(os.homedir());
+
+        await expect(listRequests({})).rejects.toThrow('pass the project folder');
+        cwd.mockRestore();
+        expect(mockListRequests).not.toHaveBeenCalled();
     });
 });
 

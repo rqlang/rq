@@ -170,6 +170,11 @@ describe('list_requests', () => {
         assert.deepEqual(target.requests.map(r => r.name), ['greet']);
     });
 
+    it('refuses to scan the filesystem root', async () => {
+        const target = await client.callTool({ name: 'list_requests', arguments: { path: path.parse(process.cwd()).root } });
+        assert.equal(target.isError, true);
+    });
+
     it('reports a missing path as a tool error', async () => {
         const target = await client.callTool({ name: 'list_requests', arguments: { path: path.join(tempWorkspace(), 'missing') } });
         assert.equal(target.isError, true);

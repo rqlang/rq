@@ -105,7 +105,7 @@ fixtures/large
 - A path with a `/`, such as `fixtures/large`, skips only that directory, relative to the source.
 - `!name` reads a hidden directory that would otherwise be skipped.
 
-To keep a wrong source, such as your home directory, from hanging, rq stops after 50,000 files and directories and asks you to add the folders it should skip to `.rqignore`, or to point `--source` at the folder that holds your `.rq` files.
+To keep a wrong source, such as your home directory, from hanging, rq stops after 50,000 files and directories. The error names the largest folders it found so you can add them to `.rqignore`, or point `--source` at the folder that holds your `.rq` files.
 
 The VS Code extension and the MCP server read files the same way, with the `.rqignore` of the opened folder.
 

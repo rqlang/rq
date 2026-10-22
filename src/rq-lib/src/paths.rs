@@ -1,7 +1,7 @@
 use crate::error::RqError;
 use crate::logger::Logger;
 use crate::syntax::fs::Fs;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 pub fn clean_path_str(s: &str) -> &str {
@@ -33,11 +33,12 @@ fn walk_rq_files_up_to(fs: &dyn Fs, root: &Path, limit: usize) -> Result<Vec<Pat
         rules: SkipRules::load(fs, root),
         limit,
         walked: 0,
+        walked_by_folder: HashMap::new(),
         paths: Vec::new(),
         visited: HashSet::new(),
     };
     if fs.is_dir(root) {
-        walk.visit(root)?;
+        walk.visit(root, None)?;
     }
     Ok(walk.paths)
 }
@@ -111,12 +112,13 @@ struct RqFileWalk<'a> {
     rules: SkipRules,
     limit: usize,
     walked: usize,
+    walked_by_folder: HashMap<String, usize>,
     paths: Vec<PathBuf>,
     visited: HashSet<PathBuf>,
 }
 
 impl RqFileWalk<'_> {
-    fn visit(&mut self, dir: &Path) -> Result<(), RqError> {
+    fn visit(&mut self, dir: &Path, folder: Option<&str>) -> Result<(), RqError> {
         if !self.mark_visited(dir) {
             return Ok(());
         }
@@ -131,10 +133,7 @@ impl RqFileWalk<'_> {
                 return Ok(());
             }
         };
-        self.walked += entries.len();
-        if self.walked > self.limit {
-            return Err(self.too_many_files());
-        }
+        self.count(folder, entries.len())?;
         for path in entries {
             if self.fs.is_dir(&path) {
                 let (name, relative) = self.names_of(&path);
@@ -142,7 +141,7 @@ impl RqFileWalk<'_> {
                     Logger::debug(&format!("* Skipping directory {}", clean_path(&path)));
                     continue;
                 }
-                self.visit(&path)?;
+                self.visit(&path, Some(folder.unwrap_or(&name)))?;
             } else if path.extension().and_then(|s| s.to_str()) == Some("rq") {
                 self.paths.push(path);
             }
@@ -150,9 +149,32 @@ impl RqFileWalk<'_> {
         Ok(())
     }
 
+    fn count(&mut self, folder: Option<&str>, entries: usize) -> Result<(), RqError> {
+        self.walked += entries;
+        if let Some(folder) = folder {
+            *self.walked_by_folder.entry(folder.to_string()).or_default() += entries;
+        }
+        if self.walked > self.limit {
+            return Err(self.too_many_files());
+        }
+        Ok(())
+    }
+
     fn too_many_files(&self) -> RqError {
+        let mut largest: Vec<(&String, &usize)> = self.walked_by_folder.iter().collect();
+        largest.sort_by(|a, b| b.1.cmp(a.1).then(a.0.cmp(b.0)));
+        let folders: Vec<String> = largest
+            .iter()
+            .take(3)
+            .map(|(name, count)| format!("{name} ({count})"))
+            .collect();
+        let largest = if folders.is_empty() {
+            String::new()
+        } else {
+            format!(" Largest folders: {}.", folders.join(", "))
+        };
         RqError::Generic(format!(
-            "Too many files under {}: rq stops looking for .rq files after {} entries. Add the folders rq should skip to {}.",
+            "Too many files under {}: rq stops looking for .rq files after {} entries.{largest} Add the folders rq should skip to {}.",
             clean_path(self.root),
             self.limit,
             clean_path(&self.root.join(IGNORE_FILE))
@@ -314,11 +336,12 @@ mod tests {
     }
 
     #[test]
-    fn walk_error_points_at_the_ignore_file() {
-        let dir = workspace_with(&["a.rq", "b.txt", "api/c.rq"]);
-        let target = walk_rq_files_up_to(&NativeFs, dir.path(), 3)
+    fn walk_error_names_the_largest_folders_and_the_ignore_file() {
+        let dir = workspace_with(&["deps/1", "deps/2", "deps/3", "api/c.rq"]);
+        let target = walk_rq_files_up_to(&NativeFs, dir.path(), 4)
             .expect_err("over the limit")
             .to_string();
+        assert!(target.contains("Largest folders: deps (3)"), "{target}");
         assert!(target.contains(IGNORE_FILE), "{target}");
     }
 

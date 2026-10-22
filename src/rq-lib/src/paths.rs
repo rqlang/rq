@@ -83,14 +83,26 @@ impl SkipRules {
 
     fn parse(content: &str) -> Self {
         let mut rules = Self::default();
-        for line in content.lines() {
-            let entry = line.trim().trim_start_matches("./").trim_end_matches('/');
-            if entry.is_empty() || entry.starts_with('#') {
+        for line in content.lines().map(str::trim) {
+            if line.is_empty() || line.starts_with('#') {
                 continue;
             }
-            if let Some(included) = entry.strip_prefix('!') {
-                rules.included.insert(included.to_string());
-            } else if entry.contains('/') {
+            let (included, entry) = match line.strip_prefix('!') {
+                Some(rest) => (true, rest),
+                None => (false, line),
+            };
+            let anchored = entry.starts_with('/') || entry.starts_with("./");
+            let entry = entry
+                .trim_start_matches("**/")
+                .trim_start_matches("./")
+                .trim_start_matches('/')
+                .trim_end_matches('/');
+            if entry.is_empty() {
+                continue;
+            }
+            if included {
+                rules.included.insert(entry.to_string());
+            } else if anchored || entry.contains('/') {
                 rules.paths.insert(entry.to_string());
             } else {
                 rules.names.insert(entry.to_string());
@@ -278,6 +290,21 @@ mod tests {
     fn walk_skips_only_the_relative_path_the_ignore_file_lists() {
         let dir = workspace_ignoring("fixtures/big/\n", &["fixtures/big/a.rq", "big/b.rq"]);
         assert_eq!(walked_names(dir.path()), ["big/b.rq"]);
+    }
+
+    #[test]
+    fn walk_skips_only_the_root_directory_a_leading_slash_names() {
+        let dir = workspace_ignoring("/target\n", &["target/a.rq", "api/target/b.rq"]);
+        assert_eq!(walked_names(dir.path()), ["api/target/b.rq"]);
+    }
+
+    #[test]
+    fn walk_skips_a_double_star_name_at_any_depth() {
+        let dir = workspace_ignoring(
+            "**/node_modules/\n",
+            &["a.rq", "node_modules/b.rq", "web/node_modules/c.rq"],
+        );
+        assert_eq!(walked_names(dir.path()), ["a.rq"]);
     }
 
     #[test]

@@ -103,6 +103,7 @@ fixtures/large
 
 - A bare name, such as `node_modules`, skips every directory with that name at any depth.
 - A path with a `/`, such as `fixtures/large`, skips only that directory, relative to the source.
+- A leading `/`, as in `/target`, skips only the directory of that name at the root of the source. `**/name` is the same as `name`, so entries copied from a `.gitignore` keep their meaning.
 - `!name` reads a hidden directory that would otherwise be skipped.
 
 To keep a wrong source, such as your home directory, from hanging, rq stops after 50,000 files and directories. The error names the largest folders it found so you can add them to `.rqignore`, or point `--source` at the folder that holds your `.rq` files.

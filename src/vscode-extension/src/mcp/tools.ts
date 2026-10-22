@@ -1,3 +1,4 @@
+import * as fs from 'fs';
 import * as path from 'path';
 import { setWasmTransport, wasmCall } from '../wasmHost';
 import { buildFilesMap, buildSecretsMap, isDirectory, normalizePath } from '../utils';
@@ -64,8 +65,17 @@ export async function lintRq(args: { source: string; path?: string; workspace_pa
     return JSON.parse(await wasmCall('lint', [filesJson, args.source, draft])) as CheckResult;
 }
 
+async function requireExisting(target: string): Promise<void> {
+    try {
+        await fs.promises.stat(target);
+    } catch {
+        throw new Error(`Path not found: ${target}`);
+    }
+}
+
 export async function listRequests(args: { path?: string }): Promise<unknown> {
     const target = await workspaceFor(args.path);
+    await requireExisting(target);
     const filesJson = await buildFilesMap(target);
     const secretsJson = await buildSecretsMap(target);
     const raw = await wasmCall('list_requests', [filesJson, secretsJson, target]);

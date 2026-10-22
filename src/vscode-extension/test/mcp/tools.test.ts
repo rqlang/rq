@@ -165,4 +165,9 @@ describe('listRequests', () => {
 
         expect(target.parse_errors).toEqual([]);
     });
+
+    it('rejects a path that does not exist instead of listing nothing', async () => {
+        await expect(listRequests({ path: path.join(workspace, 'missing') })).rejects.toThrow('Path not found');
+        expect(mockListRequests).not.toHaveBeenCalled();
+    });
 });

@@ -17,18 +17,21 @@ interface RequestExecutionContext {
     variables: Record<string, string> | undefined;
 }
 
-interface ResultsData {
+interface RequestRun {
     executionContext: RequestExecutionContext;
     treeItem: RequestTreeItem | undefined;
+}
+
+interface ResultsData {
+    run: RequestRun;
     body: string | undefined;
 }
 
 type RequestResultsSession = ResultsSession<ResultsData>;
 
 interface ActiveExecution {
-    requestName: string;
+    run: RequestRun;
     cancellationSource: vscode.CancellationTokenSource;
-    treeItem: RequestTreeItem | undefined;
     session: RequestResultsSession;
 }
 
@@ -57,85 +60,79 @@ export class RequestRunner {
     }
 
     public async runRequest(requestItem: RequestTreeItem, provider: RequestExplorerProvider) {
-        if (!requestItem.request) {
-            vscode.window.showErrorMessage('Cannot run: No request information available');
-            return;
-        }
-        if (!this.ensureNoActiveExecution()) {
-            return;
-        }
-
-        this.logger = Logger.init(this.outputChannel);
-        this.provider = provider;
-        const requestName = requestItem.request.name;
-        const sourceFile = requestItem.request.file;
-        const session = this.resultsPanels.sessionFor(readResultsTabMode(), requestName, sourceFile);
-        this.beginExecution(requestName, requestItem, session);
-        try {
-            const sourceDirectory = this.getSourceDirectory();
-            const environment = provider.getSelectedEnvironment();
-
-            this.logger.log(`Selected environment: ${environment || '(none)'}`);
-
-            const variables: Record<string, string> = {};
-            await this.collectRequiredVariables(requestName, sourceDirectory, sourceFile, environment, variables);
-            this.throwIfCancelled();
-
-            await this.executeRequestLogic(session, {
-                requestName, sourceDirectory, sourceFile, environment,
-                variables: Object.keys(variables).length > 0 ? variables : undefined
-            });
-
-        } catch (error) {
-            await this.handleError(error);
-        } finally {
-            this.endExecution();
-        }
+        await this.runFromExplorer(requestItem, provider, false);
     }
 
     public async runRequestWithVariables(requestItem: RequestTreeItem, provider: RequestExplorerProvider) {
-        if (!requestItem.request) {
-            vscode.window.showErrorMessage('Cannot run: No request information available');
-            return;
-        }
-        if (!this.ensureNoActiveExecution()) {
-            return;
-        }
-
-        this.logger = Logger.init(this.outputChannel);
-        this.provider = provider;
-        const requestName = requestItem.request.name;
-        const sourceFile = requestItem.request.file;
-        const session = this.resultsPanels.sessionFor(readResultsTabMode(), requestName, sourceFile);
-        this.beginExecution(requestName, requestItem, session);
-        try {
-            const sourceDirectory = this.getSourceDirectory();
-            const environment = provider.getSelectedEnvironment();
-
-            const variables: Record<string, string> = {};
-            await this.collectUserVariables(variables);
-            this.throwIfCancelled();
-            await this.collectRequiredVariables(requestName, sourceDirectory, sourceFile, environment, variables);
-            this.throwIfCancelled();
-
-            await this.executeRequestLogic(session, {
-                requestName, sourceDirectory, sourceFile, environment,
-                variables: Object.keys(variables).length > 0 ? variables : undefined
-            });
-
-        } catch (error) {
-            await this.handleError(error);
-        } finally {
-            this.endExecution();
-        }
+        await this.runFromExplorer(requestItem, provider, true);
     }
 
     public cancelActiveExecution() {
         if (!this.activeExecution) {
             return;
         }
-        this.logger?.log(`Cancelling request: ${this.activeExecution.requestName}`);
+        this.logger?.log(`Cancelling request: ${this.activeExecution.run.executionContext.requestName}`);
         this.activeExecution.cancellationSource.cancel();
+    }
+
+    private async runFromExplorer(requestItem: RequestTreeItem, provider: RequestExplorerProvider, promptForVariables: boolean) {
+        if (!requestItem.request) {
+            vscode.window.showErrorMessage('Cannot run: No request information available');
+            return;
+        }
+        if (!this.ensureNoActiveExecution()) {
+            return;
+        }
+
+        this.provider = provider;
+        const { name: requestName, file: sourceFile } = requestItem.request;
+        const session = this.resultsPanels.sessionFor(readResultsTabMode(), requestName, sourceFile);
+        await this.execute(session, { requestName, sourceFile, variables: undefined }, requestItem, promptForVariables);
+    }
+
+    private async runAgain(session: RequestResultsSession) {
+        if (!session.data) {
+            return;
+        }
+        if (!this.ensureNoActiveExecution()) {
+            return;
+        }
+
+        const { executionContext, treeItem } = session.data.run;
+        await this.execute(session, executionContext, treeItem, false);
+    }
+
+    private async execute(
+        session: RequestResultsSession,
+        request: Pick<RequestExecutionContext, 'requestName' | 'sourceFile' | 'variables'>,
+        treeItem: RequestTreeItem | undefined,
+        promptForVariables: boolean
+    ) {
+        this.logger = Logger.init(this.outputChannel);
+        const executionContext: RequestExecutionContext = {
+            ...request,
+            sourceDirectory: this.getSourceDirectory(),
+            environment: this.provider?.getSelectedEnvironment()
+        };
+        const execution = this.beginExecution({ executionContext, treeItem }, session);
+        try {
+            this.logger.log(`Selected environment: ${executionContext.environment || '(none)'}`);
+
+            const variables: Record<string, string> = { ...request.variables };
+            if (promptForVariables) {
+                await this.collectUserVariables(variables);
+                this.throwIfCancelled();
+            }
+            await this.collectRequiredVariables(executionContext, variables);
+            this.throwIfCancelled();
+            executionContext.variables = Object.keys(variables).length > 0 ? variables : undefined;
+
+            await this.executeRequestLogic(execution);
+        } catch (error) {
+            await this.handleError(error);
+        } finally {
+            this.endExecution();
+        }
     }
 
     private getSourceDirectory(): string | undefined {
@@ -147,30 +144,31 @@ export class RequestRunner {
             return true;
         }
         vscode.window.showWarningMessage(
-            `Request '${this.activeExecution.requestName}' is already running. Cancel it before starting another one.`
+            `Request '${this.activeExecution.run.executionContext.requestName}' is already running. Cancel it before starting another one.`
         );
         return false;
     }
 
-    private beginExecution(requestName: string, treeItem: RequestTreeItem | undefined, session: RequestResultsSession) {
-        this.activeExecution = {
-            requestName,
+    private beginExecution(run: RequestRun, session: RequestResultsSession): ActiveExecution {
+        const execution: ActiveExecution = {
+            run,
             cancellationSource: new vscode.CancellationTokenSource(),
-            treeItem,
             session
         };
-        if (treeItem) {
-            this.provider?.setItemRunning(treeItem, true);
+        this.activeExecution = execution;
+        if (run.treeItem) {
+            this.provider?.setItemRunning(run.treeItem, true);
         }
         vscode.commands.executeCommand('setContext', RUNNING_CONTEXT_KEY, true);
         this.postExecutionState(session, true);
+        return execution;
     }
 
     private endExecution() {
         const execution = this.activeExecution;
         this.activeExecution = undefined;
-        if (execution?.treeItem) {
-            this.provider?.setItemRunning(execution.treeItem, false);
+        if (execution?.run.treeItem) {
+            this.provider?.setItemRunning(execution.run.treeItem, false);
         }
         execution?.cancellationSource.dispose();
         vscode.commands.executeCommand('setContext', RUNNING_CONTEXT_KEY, false);
@@ -208,13 +206,8 @@ export class RequestRunner {
         }
     }
 
-    private async collectRequiredVariables(
-        requestName: string,
-        sourceDirectory: string | undefined,
-        sourceFile: string | undefined,
-        environment: string | undefined,
-        variables: Record<string, string>
-    ) {
+    private async collectRequiredVariables(executionContext: RequestExecutionContext, variables: Record<string, string>) {
+        const { requestName, sourceDirectory, sourceFile, environment } = executionContext;
         let requestDetails: rqClient.RequestShowOutput;
         try {
             requestDetails = await rqClient.showRequest(requestName, sourceDirectory, environment, false, false, sourceFile);
@@ -277,9 +270,8 @@ export class RequestRunner {
         return null;
     }
 
-    private async executeRequestLogic(session: RequestResultsSession, executionContext: RequestExecutionContext) {
-        const { requestName, sourceDirectory, sourceFile, environment, variables } = executionContext;
-        session.data = { executionContext, treeItem: this.activeExecution?.treeItem, body: undefined };
+    private async executeRequestLogic(execution: ActiveExecution) {
+        const { requestName, sourceDirectory, sourceFile, environment, variables } = execution.run.executionContext;
 
         await vscode.window.withProgress({
             location: vscode.ProgressLocation.Notification,
@@ -294,14 +286,14 @@ export class RequestRunner {
                     sourceFile,
                     environment,
                     variables,
-                    cancellation: this.activeExecution?.cancellationSource.token,
+                    cancellation: execution.cancellationSource.token,
                     acquireToken: (auth) => this.acquireInteractiveToken(auth)
                 });
 
                 if (result.results.length > 0) {
-                    await this.handleSuccessfulExecution(session, requestName, variables, result);
+                    await this.handleSuccessfulExecution(execution, result);
                 } else {
-                    await this.handleFailedExecution(session, requestName, variables, result);
+                    await this.handleFailedExecution(execution, result);
                 }
             } finally {
                 subscription.dispose();
@@ -309,31 +301,22 @@ export class RequestRunner {
         });
     }
 
-    private async handleSuccessfulExecution(
-        session: RequestResultsSession,
-        requestName: string,
-        variables: Record<string, string> | undefined,
-        result: rqClient.ExecuteRequestResult
-    ) {
+    private async handleSuccessfulExecution(execution: ActiveExecution, result: rqClient.ExecuteRequestResult) {
+        const { requestName, variables } = execution.run.executionContext;
         this.logOutput(`Request: ${requestName}`, result.results[0], variables);
 
         if (result.stderr) {
             this.logger.log(`STDERR output:\n${result.stderr}`);
         }
 
+        const { session } = execution;
         const panel = this.resultsPanels.show(session, requestName);
-        if (session.data) {
-            session.data.body = result.results[0].body;
-        }
+        session.data = { run: execution.run, body: result.results[0].body };
         panel.webview.html = await getWebviewContent(this.context, result.results[0]);
     }
 
-    private async handleFailedExecution(
-        session: RequestResultsSession,
-        requestName: string,
-        variables: Record<string, string> | undefined,
-        result: rqClient.ExecuteRequestResult
-    ) {
+    private async handleFailedExecution(execution: ActiveExecution, result: rqClient.ExecuteRequestResult) {
+        const { requestName, variables } = execution.run.executionContext;
         const fullError = result.stderr
             ? this.cleanErrorMessage(result.stderr)
             : `No results returned for request: ${requestName}`;
@@ -346,14 +329,14 @@ export class RequestRunner {
         this.logger.log(fullError);
         this.logger.log(`${'='.repeat(80)}\n`);
 
-        await this.showErrorPanel(session, requestName, fullError);
+        await this.showErrorPanel(execution, fullError);
     }
 
     private handlePanelMessage(session: RequestResultsSession, message: ResultsMessage) {
         if (message.command === 'runAgain') {
             this.runAgain(session);
         }
-        if (message.command === 'cancel') {
+        if (message.command === 'cancel' && this.activeExecution?.session === session) {
             this.cancelActiveExecution();
         }
         if (message.command === 'copyBody' && session.data?.body !== undefined) {
@@ -386,25 +369,6 @@ export class RequestRunner {
         this.logger.log(`${'='.repeat(80)}\n`);
     }
 
-    private async runAgain(session: RequestResultsSession) {
-        if (!session.data) {
-            return;
-        }
-        if (!this.ensureNoActiveExecution()) {
-            return;
-        }
-
-        const { executionContext, treeItem } = session.data;
-        this.beginExecution(executionContext.requestName, treeItem, session);
-        try {
-            await this.executeRequestLogic(session, executionContext);
-        } catch (error) {
-            await this.handleError(error);
-        } finally {
-            this.endExecution();
-        }
-    }
-
     private async handleError(error: unknown) {
         let errorMessage: string;
         const asAggregate = error as { errors?: unknown[] };
@@ -427,25 +391,26 @@ export class RequestRunner {
             return;
         }
         this.logger.log(`\nERROR: ${errorMessage}\n`);
-        const execution = this.activeExecution;
-        if (execution) {
-            await this.showErrorPanel(execution.session, execution.requestName, errorMessage);
+        if (this.activeExecution) {
+            await this.showErrorPanel(this.activeExecution, errorMessage);
         }
     }
 
-    private async showErrorPanel(session: RequestResultsSession, requestName: string, errorMessage: string) {
+    private async showErrorPanel(execution: ActiveExecution, errorMessage: string) {
+        const { session, run } = execution;
+        const { requestName, sourceDirectory, sourceFile, environment } = run.executionContext;
         const panel = this.resultsPanels.show(session, requestName);
-        const executionContext = session.data?.executionContext;
+        session.data = { run, body: undefined };
 
         let requestDetails: rqClient.RequestShowOutput | undefined;
         try {
             requestDetails = await rqClient.showRequest(
                 requestName,
-                executionContext?.sourceDirectory,
-                executionContext?.environment,
+                sourceDirectory,
+                environment,
                 true,
                 false,
-                executionContext?.sourceFile
+                sourceFile
             );
         } catch {
             // best-effort: show error panel without request details

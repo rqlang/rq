@@ -4,7 +4,7 @@
 
 ### Features
 
-- Added the `rq.results.tabMode` setting to choose where request results open: one shared tab (`single`, the default and the previous behavior), one tab per request (`perRequest`), or a new tab for every run (`perExecution`). **Run again** and **Copy** in a results tab now act on that tab's own request and body.
+- Added the `rq.results.tabMode` setting to choose where request results open: one shared tab (`single`, the default and the previous behavior), one tab per request (`perRequest`), or a new tab for every run (`perExecution`). **Run again** and **Copy** in a results tab now act on that tab's own request and body, and **Run again** uses the environment selected in the explorer when it is clicked.
 
 ### Bug Fixes
 

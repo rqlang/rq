@@ -83,7 +83,7 @@ The `rq.results.tabMode` setting chooses which tab a result opens in:
 | `perRequest` | Each request gets its own tab, named `RQ: <request>`; running it again reuses that tab. Requests with the same name in different files get separate tabs. |
 | `perExecution` | Every run from the explorer opens a new tab, named `RQ: <request> (<time>)`, so earlier results stay open. |
 
-In every mode, **Run again** and **Copy** act on the request and body shown in the tab they are clicked in, and **Run again** refreshes that same tab. A change to the setting applies from the next run.
+In every mode, **Run again** and **Copy** act on the request and body shown in the tab they are clicked in, and **Run again** refreshes that same tab. **Run again** keeps the variables entered for that request but uses the environment selected in the explorer now, not the one of the original run. A change to the setting applies from the next run.
 
 ## IntelliSense & language features
 

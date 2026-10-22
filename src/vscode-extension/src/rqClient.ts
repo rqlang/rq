@@ -440,7 +440,7 @@ export async function lintSources(files: DraftFile[], workspaceDirectory?: strin
     const filesJson = await buildFilesMap(workspace, drafts);
 
     for (const draft of drafts) {
-        const raw = await wasmCall('lint', [filesJson, draft.source, draft.path]);
+        const raw = await wasmCall('lint', [filesJson, draft.source, draft.path, workspace]);
         results.set(draft.path, JSON.parse(raw) as LintResult);
     }
     return results;

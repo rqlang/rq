@@ -132,6 +132,16 @@ describe('tools run from the home directory', () => {
         expect(Object.keys(files)).toHaveLength(1);
     });
 
+    it('lint without a workspace so the linter does not walk it', async () => {
+        mockLint.mockReturnValue(JSON.stringify({ ok: true, diagnostics: [] }));
+        const cwd = jest.spyOn(process, 'cwd').mockReturnValue(os.homedir());
+
+        await lintRq({ source: 'rq ping("http://x");\n' });
+        cwd.mockRestore();
+
+        expect(mockLint.mock.calls[0][3]).toBeUndefined();
+    });
+
     it('refuse to list requests without a project folder', async () => {
         const cwd = jest.spyOn(process, 'cwd').mockReturnValue(os.homedir());
 
@@ -189,6 +199,14 @@ describe('lintRq', () => {
         expect(draft).toBe(`${workspace}/users.rq`);
         expect(files[draft]).toBe(source);
         expect(files[`${workspace}/widgets.rq`]).toContain('ep widgets');
+    });
+
+    it('passes the workspace so the linter reads the files around the draft', async () => {
+        mockLint.mockReturnValue(JSON.stringify({ ok: true, diagnostics: [] }));
+
+        await lintRq({ source: 'rq list("http://x");\n', path: 'users.rq', workspace_path: workspace });
+
+        expect(mockLint.mock.calls[0][3]).toBe(workspace.replace(/\\/g, '/'));
     });
 
     it('returns the linter result unchanged', async () => {

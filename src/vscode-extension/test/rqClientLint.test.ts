@@ -59,6 +59,14 @@ describe('rqClient.lintSources', () => {
         expect(files[`${workspace}/widgets.rq`]).toContain('ep widgets');
     });
 
+    it('passes the workspace so the linter reads the files around the drafts', async () => {
+        mockLint.mockReturnValue(JSON.stringify({ ok: true, diagnostics: [] }));
+
+        await lintSources([{ path: path.join(workspace, 'users.rq'), source: 'x' }], workspace);
+
+        expect(mockLint.mock.calls[0][3]).toBe(workspace.replace(/\\/g, '/'));
+    });
+
     it('keys the results by normalized path', async () => {
         mockLint.mockReturnValue(JSON.stringify({ ok: true, diagnostics: [] }));
 

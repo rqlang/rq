@@ -453,4 +453,276 @@ describe('runRequest Commands', () => {
             expect(provider.setItemRunning).toHaveBeenNthCalledWith(2, item, false);
         });
     });
+
+    describe('results tabs', () => {
+        let panels: any[];
+
+        function makeItem(name: string) {
+            return new RequestTreeItem(name, { name, endpoint: 'GET /', file: 'test.rq' }, 0);
+        }
+
+        function useTabMode(mode: string) {
+            (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({
+                get: jest.fn().mockReturnValue(mode)
+            });
+        }
+
+        function respondWith(body: string) {
+            (cliService.executeRequest as jest.Mock).mockResolvedValueOnce({
+                results: [{
+                    status: 200,
+                    body,
+                    elapsed_ms: 1,
+                    method: 'GET',
+                    url: 'http://localhost',
+                    response_headers: {},
+                    request_headers: {}
+                }],
+                stderr: ''
+            });
+        }
+
+        function messageHandler(panel: any): (message: any) => void {
+            return panel.webview.onDidReceiveMessage.mock.calls[0][0];
+        }
+
+        async function settle() {
+            for (let i = 0; i < 10; i++) {
+                await new Promise(resolve => setImmediate(resolve));
+            }
+        }
+
+        beforeEach(() => {
+            panels = [];
+            (vscode.window.createWebviewPanel as jest.Mock).mockImplementation((_viewType: string, title: string) => {
+                const panel = {
+                    webview: { html: '', onDidReceiveMessage: jest.fn(), postMessage: jest.fn() },
+                    reveal: jest.fn(),
+                    onDidDispose: jest.fn(),
+                    title
+                };
+                panels.push(panel);
+                return panel;
+            });
+            (cliService.showRequest as jest.Mock).mockResolvedValue({ name: 'req', requiredVariables: [] });
+        });
+
+        afterEach(() => {
+            (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({
+                get: jest.fn().mockReturnValue(false)
+            });
+        });
+
+        test('single mode shows every request in one tab', async () => {
+            useTabMode('single');
+            respondWith('{"a":1}');
+            respondWith('{"b":1}');
+
+            await requestRunner.runRequest(makeItem('a'), provider);
+            await requestRunner.runRequest(makeItem('b'), provider);
+
+            expect(panels).toHaveLength(1);
+            expect(panels[0].title).toBe('RQ: b');
+        });
+
+        test('perRequest mode opens one tab per request', async () => {
+            useTabMode('perRequest');
+            respondWith('{"a":1}');
+            respondWith('{"b":1}');
+            respondWith('{"a":2}');
+
+            await requestRunner.runRequest(makeItem('a'), provider);
+            await requestRunner.runRequest(makeItem('b'), provider);
+            await requestRunner.runRequest(makeItem('a'), provider);
+
+            expect(panels.map(panel => panel.title)).toEqual(['RQ: a', 'RQ: b']);
+        });
+
+        test('perExecution mode opens a tab per run', async () => {
+            useTabMode('perExecution');
+            respondWith('{"a":1}');
+            respondWith('{"a":2}');
+
+            await requestRunner.runRequest(makeItem('a'), provider);
+            await requestRunner.runRequest(makeItem('a'), provider);
+
+            expect(panels).toHaveLength(2);
+        });
+
+        test('run again repeats the request of the tab it is clicked in', async () => {
+            useTabMode('perRequest');
+            respondWith('{"a":1}');
+            respondWith('{"b":1}');
+            respondWith('{"a":2}');
+            await requestRunner.runRequest(makeItem('a'), provider);
+            await requestRunner.runRequest(makeItem('b'), provider);
+
+            messageHandler(panels[0])({ command: 'runAgain' });
+            await settle();
+
+            expect(cliService.executeRequest).toHaveBeenLastCalledWith(expect.objectContaining({ requestName: 'a' }));
+        });
+
+        test('run again in perExecution mode refreshes its own tab', async () => {
+            useTabMode('perExecution');
+            respondWith('{"a":1}');
+            respondWith('{"a":2}');
+            await requestRunner.runRequest(makeItem('a'), provider);
+
+            messageHandler(panels[0])({ command: 'runAgain' });
+            await settle();
+
+            expect(cliService.executeRequest).toHaveBeenCalledTimes(2);
+            expect(panels).toHaveLength(1);
+        });
+
+        test('copy body copies the body of the tab it is clicked in', async () => {
+            useTabMode('perRequest');
+            respondWith('{"a":1}');
+            respondWith('{"b":1}');
+            await requestRunner.runRequest(makeItem('a'), provider);
+            await requestRunner.runRequest(makeItem('b'), provider);
+
+            messageHandler(panels[0])({ command: 'copyBody' });
+
+            expect(vscode.env.clipboard.writeText).toHaveBeenCalledWith('{"a":1}');
+        });
+
+        test('execution state is posted only to the running tab', async () => {
+            useTabMode('perRequest');
+            respondWith('{"a":1}');
+            respondWith('{"b":1}');
+            respondWith('{"a":2}');
+            await requestRunner.runRequest(makeItem('a'), provider);
+            await requestRunner.runRequest(makeItem('b'), provider);
+            panels.forEach(panel => panel.webview.postMessage.mockClear());
+
+            await requestRunner.runRequest(makeItem('a'), provider);
+
+            expect(panels[0].webview.postMessage).toHaveBeenCalledWith({ command: 'executionState', running: true });
+            expect(panels[1].webview.postMessage).not.toHaveBeenCalled();
+        });
+
+        test('a cancelled run keeps the body of the result its tab shows', async () => {
+            useTabMode('perRequest');
+            respondWith('{"a":1}');
+            (cliService.executeRequest as jest.Mock).mockRejectedValueOnce(new Error('Cancelled by user'));
+            await requestRunner.runRequest(makeItem('a'), provider);
+            await requestRunner.runRequest(makeItem('a'), provider);
+
+            messageHandler(panels[0])({ command: 'copyBody' });
+
+            expect(vscode.env.clipboard.writeText).toHaveBeenCalledWith('{"a":1}');
+        });
+
+        test('run again after a cancelled run repeats the request its tab shows', async () => {
+            useTabMode('single');
+            respondWith('{"a":1}');
+            (cliService.executeRequest as jest.Mock).mockRejectedValueOnce(new Error('Cancelled by user'));
+            respondWith('{"a":2}');
+            await requestRunner.runRequest(makeItem('a'), provider);
+            await requestRunner.runRequest(makeItem('b'), provider);
+
+            messageHandler(panels[0])({ command: 'runAgain' });
+            await settle();
+
+            expect(cliService.executeRequest).toHaveBeenLastCalledWith(expect.objectContaining({ requestName: 'a' }));
+        });
+
+        test('copy body works while the same tab is running again', async () => {
+            useTabMode('perRequest');
+            respondWith('{"a":1}');
+            await requestRunner.runRequest(makeItem('a'), provider);
+            (cliService.executeRequest as jest.Mock).mockImplementationOnce(() => new Promise(() => {}));
+            void requestRunner.runRequest(makeItem('a'), provider);
+            await settle();
+
+            messageHandler(panels[0])({ command: 'copyBody' });
+
+            expect(vscode.env.clipboard.writeText).toHaveBeenCalledWith('{"a":1}');
+        });
+
+        test('copy body keeps the shown body while the next response is rendering', async () => {
+            useTabMode('perRequest');
+            respondWith('{"a":1}');
+            respondWith('{"a":2}');
+            await requestRunner.runRequest(makeItem('a'), provider);
+            (webviewGenerator.getWebviewContent as jest.Mock).mockImplementationOnce(() => new Promise(() => {}));
+            void requestRunner.runRequest(makeItem('a'), provider);
+            await settle();
+
+            messageHandler(panels[0])({ command: 'copyBody' });
+
+            expect(vscode.env.clipboard.writeText).toHaveBeenCalledWith('{"a":1}');
+        });
+
+        test('copy body keeps the shown body while an error is rendering', async () => {
+            useTabMode('perRequest');
+            respondWith('{"a":1}');
+            (cliService.executeRequest as jest.Mock).mockRejectedValueOnce(new Error('boom'));
+            await requestRunner.runRequest(makeItem('a'), provider);
+            (webviewGenerator.getErrorWebviewContent as jest.Mock).mockImplementationOnce(() => new Promise(() => {}));
+            void requestRunner.runRequest(makeItem('a'), provider);
+            await settle();
+
+            messageHandler(panels[0])({ command: 'copyBody' });
+
+            expect(vscode.env.clipboard.writeText).toHaveBeenCalledWith('{"a":1}');
+        });
+
+        test('cancel from another tab leaves the running request alone', async () => {
+            useTabMode('perRequest');
+            respondWith('{"a":1}');
+            await requestRunner.runRequest(makeItem('a'), provider);
+            (cliService.executeRequest as jest.Mock).mockImplementationOnce(() => new Promise(() => {}));
+            void requestRunner.runRequest(makeItem('b'), provider);
+            await settle();
+
+            messageHandler(panels[0])({ command: 'cancel' });
+
+            const { cancellation } = (cliService.executeRequest as jest.Mock).mock.calls[1][0];
+            expect(cancellation.isCancellationRequested).toBe(false);
+        });
+
+        test('cancel from the running tab cancels its request', async () => {
+            useTabMode('perRequest');
+            respondWith('{"a":1}');
+            await requestRunner.runRequest(makeItem('a'), provider);
+            (cliService.executeRequest as jest.Mock).mockImplementationOnce(() => new Promise(() => {}));
+            void requestRunner.runRequest(makeItem('a'), provider);
+            await settle();
+
+            messageHandler(panels[0])({ command: 'cancel' });
+
+            const { cancellation } = (cliService.executeRequest as jest.Mock).mock.calls[1][0];
+            expect(cancellation.isCancellationRequested).toBe(true);
+        });
+
+        test('run again uses the environment selected now', async () => {
+            useTabMode('perRequest');
+            respondWith('{"a":1}');
+            respondWith('{"a":2}');
+            requestRunner.registerCommands(provider);
+            await requestRunner.runRequest(makeItem('a'), provider);
+            (provider.getSelectedEnvironment as jest.Mock).mockReturnValue('prod');
+
+            messageHandler(panels[0])({ command: 'runAgain' });
+            await settle();
+
+            expect(cliService.executeRequest).toHaveBeenLastCalledWith(expect.objectContaining({ environment: 'prod' }));
+        });
+
+        test('an error is shown in the tab of the failing request', async () => {
+            useTabMode('perRequest');
+            respondWith('{"a":1}');
+            (cliService.executeRequest as jest.Mock).mockRejectedValueOnce(new Error('boom'));
+            await requestRunner.runRequest(makeItem('a'), provider);
+
+            await requestRunner.runRequest(makeItem('b'), provider);
+
+            expect(panels).toHaveLength(2);
+            expect(panels[1].title).toBe('RQ: b');
+            expect(panels[1].webview.html).toBe('<html>error</html>');
+        });
+    });
 });

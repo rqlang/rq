@@ -75,6 +75,16 @@ After a request runs, the extension opens a **response panel** showing the statu
 - Use the **Copy** button in the panel to copy the response body to the clipboard.
 - For execution errors (network failures, interpolation issues, auth problems), check the **RQ** output channel via **View → Output → RQ** for the full details.
 
+The `rq.results.tabMode` setting chooses which tab a result opens in:
+
+| Value | Behavior |
+|---|---|
+| `single` (default) | Every request reuses one results tab. |
+| `perRequest` | Each request gets its own tab, named `RQ: <request>`; running it again reuses that tab. Requests with the same name in different files get separate tabs. |
+| `perExecution` | Every run from the explorer opens a new tab, named `RQ: <request> (<time>)`, so earlier results stay open. |
+
+In every mode, **Run again** and **Copy** act on the request and body shown in the tab they are clicked in, and **Run again** refreshes that same tab. **Run again** keeps the variables entered for that request but uses the environment selected in the explorer now, not the one of the original run. A change to the setting applies from the next run.
+
 ## IntelliSense & language features
 
 The extension ships a built-in language server that analyzes your `.rq` files as you edit them. This means you get meaningful feedback and editor assistance without having to run a single request.

@@ -139,6 +139,14 @@ describe('tools run from the home directory', () => {
         cwd.mockRestore();
         expect(mockListRequests).not.toHaveBeenCalled();
     });
+
+    it('refuse to list a file that sits directly in the filesystem root', async () => {
+        const stat = jest.spyOn(fs.promises, 'stat').mockResolvedValue({ isDirectory: () => false } as fs.Stats);
+
+        await expect(listRequests({ path: path.join(path.parse(workspace).root, 'users.rq') })).rejects.toThrow('pass the project folder');
+        stat.mockRestore();
+        expect(mockListRequests).not.toHaveBeenCalled();
+    });
 });
 
 describe('validateRq for an unsaved draft', () => {

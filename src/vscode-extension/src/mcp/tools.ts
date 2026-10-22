@@ -111,8 +111,9 @@ export async function lintRq(args: { source: string; path?: string; workspace_pa
 
 export async function listRequests(args: { path?: string }): Promise<unknown> {
     const target = args.path ? posix(await existing(args.path)) : await workspaceFor();
-    if (isUnscoped(target)) {
-        throw new Error(`Refusing to scan every file under ${target}: pass the project folder as \`path\`.`);
+    const scanned = posix(await directoryContaining(target));
+    if (isUnscoped(scanned)) {
+        throw new Error(`Refusing to scan every file under ${scanned}: pass the project folder as \`path\`.`);
     }
     const filesJson = await buildFilesMap(target);
     const secretsJson = await buildSecretsMap(target);

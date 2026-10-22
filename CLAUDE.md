@@ -6,6 +6,8 @@
 
 **Core invariant**: syntax layer is strictly separate from execution layer. Parse once, reuse results. Never mix HTTP logic into parser code.
 
+**Shared code across channels**: the CLI, the VS Code extension and the MCP server must share as much code as possible. Architecture, design and implementation put behaviour in `rq-lib` (reached by the extension and the MCP server through `rq-wasm`) and keep each channel a thin adapter, so a fix lands once and is tested once. Never re-implement in one channel something another already does (file discovery, path resolution, skip lists, validation); move it into the shared layer instead.
+
 ---
 
 ## Repository Structure

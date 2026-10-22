@@ -19,12 +19,12 @@ pub fn clean_path(path: &Path) -> String {
     clean_path_str(&s).to_string()
 }
 
-const SKIPPED_DIRECTORIES: &[&str] = &["node_modules", ".git", "target"];
+const SKIPPED_DIRECTORIES: &[&str] = &["node_modules", "target", "dist", "out"];
 
 pub fn is_skipped_directory(path: &Path) -> bool {
     path.file_name()
         .and_then(|name| name.to_str())
-        .is_some_and(|name| SKIPPED_DIRECTORIES.contains(&name))
+        .is_some_and(|name| name.starts_with('.') || SKIPPED_DIRECTORIES.contains(&name))
 }
 
 pub fn walk_rq_files(fs: &dyn Fs, root: &Path) -> Result<Vec<PathBuf>, RqError> {
@@ -178,12 +178,28 @@ mod tests {
 
     #[test]
     fn skips_dependency_and_build_directories() {
-        for name in ["node_modules", ".git", "target"] {
+        for name in ["node_modules", "target", "dist", "out"] {
             assert!(
                 is_skipped_directory(Path::new("/workspace").join(name).as_path()),
                 "`{name}` must be skipped"
             );
         }
+    }
+
+    #[test]
+    fn skips_hidden_directories() {
+        for name in [".git", ".venv", ".cache"] {
+            assert!(
+                is_skipped_directory(Path::new("/workspace").join(name).as_path()),
+                "`{name}` must be skipped"
+            );
+        }
+    }
+
+    #[test]
+    fn walk_still_enters_a_hidden_root() {
+        let dir = workspace_with(&[".config/a.rq"]);
+        assert_eq!(walked_names(&dir.path().join(".config")), ["a.rq"]);
     }
 
     #[test]

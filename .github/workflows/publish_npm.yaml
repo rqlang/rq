@@ -95,7 +95,7 @@ jobs:
             '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"smoke","version":"0"}}}' \
             '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
             '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"validate_rq","arguments":{"source":"rq ping(\"http://localhost\");\n"}}}' \
-            | timeout 30 npx --no-install rq-mcp > replies.jsonl
+            | timeout 30 npx --no-install @rqlang/mcp > replies.jsonl
           cat replies.jsonl
           grep -F '\"ok\": true' replies.jsonl > /dev/null
 

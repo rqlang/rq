@@ -31,24 +31,38 @@ function posix(target: string): string {
 
 export function draftPath(workspacePath: string, filePath: string | undefined): string {
     const name = filePath ?? DRAFT_FILE_NAME;
-    return posix(path.isAbsolute(name) ? name : path.join(workspacePath, name));
+    if (!path.isAbsolute(name)) { return posix(path.join(workspacePath, name)); }
+    return posix(isInside(workspacePath, name) ? name : path.join(workspacePath, path.basename(name)));
 }
 
 export async function workspaceFor(workspacePath?: string, filePath?: string): Promise<string> {
-    if (workspacePath) { return posix(await existing(workspacePath)); }
+    if (workspacePath) { return posix(await directoryContaining(workspacePath)); }
     if (filePath && path.isAbsolute(filePath)) {
         return posix(await existing((await isDirectory(filePath)) ? filePath : path.dirname(filePath)));
     }
     return posix(process.cwd());
 }
 
-async function existing(target: string): Promise<string> {
+function isInside(directory: string, filePath: string): boolean {
+    const relative = path.relative(directory, filePath);
+    return relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative);
+}
+
+async function statOf(target: string): Promise<fs.Stats> {
     try {
-        await fs.promises.stat(target);
+        return await fs.promises.stat(target);
     } catch (err) {
         throw accessError(target, err);
     }
+}
+
+async function existing(target: string): Promise<string> {
+    await statOf(target);
     return target;
+}
+
+async function directoryContaining(target: string): Promise<string> {
+    return (await statOf(target)).isDirectory() ? target : path.dirname(target);
 }
 
 function accessError(target: string, err: unknown): Error {
@@ -82,7 +96,7 @@ export async function lintRq(args: { source: string; path?: string; workspace_pa
 }
 
 export async function listRequests(args: { path?: string }): Promise<unknown> {
-    const target = await workspaceFor(args.path);
+    const target = args.path ? posix(await existing(args.path)) : await workspaceFor();
     const filesJson = await buildFilesMap(target);
     const secretsJson = await buildSecretsMap(target);
     const raw = await wasmCall('list_requests', [filesJson, secretsJson, target]);

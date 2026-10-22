@@ -82,6 +82,19 @@ describe('validate_rq', () => {
         assert.deepEqual(target.diagnostics, []);
     });
 
+    it('resolves imports next to a workspace path that names a file', async () => {
+        const workspace = tempWorkspace({
+            'existing.rq': 'rq ping("http://localhost:8080/ping");\n',
+            'shared.rq': 'let base_url = "http://localhost:8080";\n'
+        });
+        const target = await callJson(client, 'validate_rq', {
+            source: 'import "shared";\n\nrq list("{{base_url}}/users");\n',
+            path: 'users.rq',
+            workspace_path: path.join(workspace, 'existing.rq')
+        });
+        assert.deepEqual(target.diagnostics, []);
+    });
+
     it('reports a missing workspace path as a tool error', async () => {
         const target = await client.callTool({
             name: 'validate_rq',

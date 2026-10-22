@@ -30,8 +30,16 @@ describe('draftPath', () => {
         expect(draftPath('/repo', 'users.rq')).toBe('/repo/users.rq');
     });
 
-    it('keeps an absolute path as given', () => {
-        expect(draftPath('/repo', '/elsewhere/users.rq')).toBe('/elsewhere/users.rq');
+    it('keeps an absolute path that is inside the workspace', () => {
+        expect(draftPath('/repo', '/repo/api/users.rq')).toBe('/repo/api/users.rq');
+    });
+
+    it('moves an absolute path from outside the workspace into it so imports resolve there', () => {
+        expect(draftPath('/repo', '/elsewhere/users.rq')).toBe('/repo/users.rq');
+    });
+
+    it('keeps the subdirectory of a relative path', () => {
+        expect(draftPath('/repo', 'api/users.rq')).toBe('/repo/api/users.rq');
     });
 
     it('falls back to draft.rq when no filename is supplied', () => {
@@ -42,6 +50,10 @@ describe('draftPath', () => {
 describe('workspaceFor', () => {
     it('prefers the explicit workspace path', async () => {
         await expect(workspaceFor(workspace, '/other/users.rq')).resolves.toBe(workspace.replace(/\\/g, '/'));
+    });
+
+    it('uses the directory of a workspace path that names a file', async () => {
+        await expect(workspaceFor(path.join(workspace, 'widgets.rq'))).resolves.toBe(workspace.replace(/\\/g, '/'));
     });
 
     it('rejects a workspace path that does not exist', async () => {

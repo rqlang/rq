@@ -87,6 +87,14 @@ Unless otherwise noted, most commands share these common flags:
 - `-s, --source <SOURCE>` – Path to a `.rq` file or directory (defaults to current directory).
 - `-f, --format <FORMAT>` – Output format: `text` or `json` (defaults to `text`, case-insensitive).
 
+### Which files rq reads
+
+When `--source` is a directory, rq looks for `.rq` files in it and in every subdirectory, except `node_modules`, `target`, `dist`, `out` and hidden directories (any name starting with `.`, such as `.git` or `.venv`). A hidden directory given as the source itself is still read. Other files are only read when a request asks for them, for example through `io.read_file`.
+
+To keep a wrong source, such as your home directory, from hanging, rq stops after 50,000 files and directories and fails with `Too many files under <path>`. Point `--source` at the folder that holds your `.rq` files instead.
+
+The VS Code extension and the MCP server read files the same way.
+
 ## Managing requests: `rq request`
 
 The `request` subcommand lets you list, inspect, and run requests defined in `.rq` files.

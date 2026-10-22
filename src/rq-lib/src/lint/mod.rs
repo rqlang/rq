@@ -1,3 +1,4 @@
+use crate::syntax::fs::Fs;
 use crate::syntax::parse_result::{EndpointDefinition, Request};
 use crate::syntax::rq_file::RqFile;
 use crate::syntax::token::TokenType;
@@ -73,19 +74,26 @@ pub trait LintRule: Send + Sync {
     fn check(&self, ctx: &LintContext, out: &mut Vec<LintDiagnostic>);
 }
 
-#[cfg(feature = "native")]
 pub fn lint(
     source: &str,
     path: Option<&str>,
     workspace_path: Option<&std::path::Path>,
 ) -> LintResult {
-    use crate::native::NativeFs;
+    lint_with_fs(&crate::native::NativeFs, source, path, workspace_path)
+}
+
+pub fn lint_with_fs(
+    fs: &dyn Fs,
+    source: &str,
+    path: Option<&str>,
+    workspace_path: Option<&std::path::Path>,
+) -> LintResult {
     let display_path = path.unwrap_or("<inline>");
     let source_path =
         crate::paths::resolve_under_workspace(std::path::Path::new(display_path), workspace_path);
-    let rq_file = RqFile::from_content_lenient(source_path.clone(), source, &NativeFs);
+    let rq_file = RqFile::from_content_lenient(source_path.clone(), source, fs);
     let (workspace_requests, workspace_endpoints) = workspace_path
-        .map(|w| collect_workspace(w, path.map(|_| source_path.as_path()), &rq_file))
+        .map(|w| collect_workspace(fs, w, path.map(|_| source_path.as_path()), &rq_file))
         .unwrap_or_default();
     lint_rq_file(
         &rq_file,
@@ -248,27 +256,25 @@ impl WorkspaceFile {
     }
 }
 
-#[cfg(feature = "native")]
 fn collect_workspace(
+    fs: &dyn Fs,
     workspace_path: &std::path::Path,
     draft_path: Option<&std::path::Path>,
     draft_rq_file: &RqFile,
 ) -> (Vec<Request>, Vec<EndpointSummary>) {
-    use crate::native::NativeFs;
-
     let mut collector = WorkspaceCollector::new(draft_rq_file);
-    let draft_canonical = draft_path.and_then(|p| std::fs::canonicalize(p).ok());
+    let draft_canonical = draft_path.and_then(|p| fs.canonicalize(p).ok());
 
-    for path in workspace_rq_files(workspace_path) {
+    for path in workspace_rq_files(fs, workspace_path) {
         if let Some(draft) = &draft_canonical {
-            if std::fs::canonicalize(&path).is_ok_and(|canon| &canon == draft) {
+            if fs.canonicalize(&path).is_ok_and(|canon| &canon == draft) {
                 continue;
             }
         }
-        let Ok(content) = std::fs::read_to_string(&path) else {
+        let Ok(content) = fs.read(&path) else {
             continue;
         };
-        collector.absorb(&path, &content, &NativeFs);
+        collector.absorb(&path, &content, fs);
     }
 
     collector.finish()
@@ -462,14 +468,11 @@ pub fn endpoint_extensions(source: &str) -> Vec<EndpointExtension> {
     found
 }
 
-#[cfg(feature = "native")]
-fn workspace_rq_files(workspace_path: &std::path::Path) -> Vec<std::path::PathBuf> {
-    use crate::native::NativeFs;
-
-    if workspace_path.is_file() {
+fn workspace_rq_files(fs: &dyn Fs, workspace_path: &std::path::Path) -> Vec<std::path::PathBuf> {
+    if fs.is_file(workspace_path) {
         return vec![workspace_path.to_path_buf()];
     }
-    crate::paths::walk_rq_files(&NativeFs, workspace_path).unwrap_or_default()
+    crate::paths::walk_rq_files(fs, workspace_path).unwrap_or_default()
 }
 
 fn known_rule_ids() -> Vec<&'static str> {

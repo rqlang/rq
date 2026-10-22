@@ -276,20 +276,20 @@ pub fn list_variables(
 }
 
 #[wasm_bindgen]
-pub fn lint(
-    files_json: &str,
-    source: &str,
-    path: &str,
-    workspace: Option<String>,
-) -> Result<String, JsError> {
+pub fn lint(files_json: &str, workspace: Option<String>) -> Result<String, JsError> {
     let files = parse_files(files_json)?;
+    let drafts: Vec<(&str, &str)> = files
+        .iter()
+        .map(|(path, source)| (path.as_str(), source.as_str()))
+        .collect();
     let workspace = workspace.as_deref().map(Path::new);
     let fs = match workspace {
-        Some(root) => WasmFs::with_root(files, root),
-        None => WasmFs::new(files),
+        Some(root) => WasmFs::with_root(files.clone(), root),
+        None => WasmFs::new(files.clone()),
     };
-    let result = rq_lib::lint::lint_with_fs(&fs, source, Some(path), workspace);
-    serde_json::to_string(&result).map_err(|e| JsError::new(&e.to_string()))
+    let results = rq_lib::lint::lint_drafts_with_fs(&fs, &drafts, workspace);
+    let by_path: HashMap<&str, _> = drafts.iter().map(|(path, _)| *path).zip(results).collect();
+    serde_json::to_string(&by_path).map_err(|e| JsError::new(&e.to_string()))
 }
 
 #[wasm_bindgen]

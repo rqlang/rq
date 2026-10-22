@@ -441,11 +441,9 @@ export async function lintSources(files: DraftFile[], workspaceDirectory?: strin
 
     const workspace = resolveSource(workspaceDirectory);
     const drafts = files.map(f => ({ path: draftKey(f.path), source: f.source }));
-    const filesJson = draftsJson(drafts);
-
+    const byPath = JSON.parse(await wasmCall('lint', [draftsJson(drafts), workspace])) as Record<string, LintResult>;
     for (const draft of drafts) {
-        const raw = await wasmCall('lint', [filesJson, draft.source, draft.path, workspace]);
-        results.set(draft.path, JSON.parse(raw) as LintResult);
+        results.set(draft.path, byPath[draft.path] ?? { ok: true, diagnostics: [] });
     }
     return results;
 }

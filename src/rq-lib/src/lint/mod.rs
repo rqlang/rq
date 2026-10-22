@@ -88,20 +88,24 @@ pub fn lint_with_fs(
     path: Option<&str>,
     workspace_path: Option<&std::path::Path>,
 ) -> LintResult {
-    let display_path = path.unwrap_or("<inline>");
-    let source_path =
-        crate::paths::resolve_under_workspace(std::path::Path::new(display_path), workspace_path);
-    let rq_file = RqFile::from_content_lenient(source_path.clone(), source, fs);
-    let (workspace_requests, workspace_endpoints) = workspace_path
-        .map(|w| collect_workspace(fs, w, path.map(|_| source_path.as_path()), &rq_file))
+    let workspace = workspace_path
+        .map(|w| read_workspace(fs, w))
         .unwrap_or_default();
-    lint_rq_file(
-        &rq_file,
-        source,
-        display_path,
-        &workspace_requests,
-        &workspace_endpoints,
-    )
+    lint_against(fs, source, path, workspace_path, &workspace)
+}
+
+pub fn lint_drafts_with_fs(
+    fs: &dyn Fs,
+    drafts: &[(&str, &str)],
+    workspace_path: Option<&std::path::Path>,
+) -> Vec<LintResult> {
+    let workspace = workspace_path
+        .map(|w| read_workspace(fs, w))
+        .unwrap_or_default();
+    drafts
+        .iter()
+        .map(|(path, source)| lint_against(fs, source, Some(path), workspace_path, &workspace))
+        .collect()
 }
 
 pub fn lint_rq_file(
@@ -256,28 +260,43 @@ impl WorkspaceFile {
     }
 }
 
-fn collect_workspace(
+fn lint_against(
     fs: &dyn Fs,
-    workspace_path: &std::path::Path,
-    draft_path: Option<&std::path::Path>,
-    draft_rq_file: &RqFile,
-) -> (Vec<Request>, Vec<EndpointSummary>) {
-    let mut collector = WorkspaceCollector::new(draft_rq_file);
-    let draft_canonical = draft_path.and_then(|p| fs.canonicalize(p).ok());
-
-    for path in workspace_rq_files(fs, workspace_path) {
-        if let Some(draft) = &draft_canonical {
-            if fs.canonicalize(&path).is_ok_and(|canon| &canon == draft) {
-                continue;
-            }
-        }
-        let Ok(content) = fs.read(&path) else {
+    source: &str,
+    path: Option<&str>,
+    workspace_path: Option<&std::path::Path>,
+    workspace: &[WorkspaceFile],
+) -> LintResult {
+    let display_path = path.unwrap_or("<inline>");
+    let source_path =
+        crate::paths::resolve_under_workspace(std::path::Path::new(display_path), workspace_path);
+    let rq_file = RqFile::from_content_lenient(source_path.clone(), source, fs);
+    let draft = path.and_then(|_| fs.canonicalize(&source_path).ok());
+    let mut collector = WorkspaceCollector::new(&rq_file);
+    for file in workspace {
+        if draft.is_some() && fs.canonicalize(&file.path).ok() == draft {
             continue;
-        };
-        collector.absorb(&path, &content, fs);
+        }
+        collector.absorb_file(file);
     }
+    let (workspace_requests, workspace_endpoints) = collector.finish();
+    lint_rq_file(
+        &rq_file,
+        source,
+        display_path,
+        &workspace_requests,
+        &workspace_endpoints,
+    )
+}
 
-    collector.finish()
+fn read_workspace(fs: &dyn Fs, workspace_path: &std::path::Path) -> Vec<WorkspaceFile> {
+    workspace_rq_files(fs, workspace_path)
+        .into_iter()
+        .filter_map(|path| {
+            let content = fs.read(&path).ok()?;
+            Some(WorkspaceFile::parse(&path, &content, fs))
+        })
+        .collect()
 }
 
 fn declared_in(endpoint: &EndpointDefinition, path: &std::path::Path) -> bool {
@@ -496,7 +515,7 @@ fn line_col(source: &str, offset: usize) -> (usize, usize) {
 
 #[cfg(test)]
 mod tests {
-    use super::{lint, lint_rq_file};
+    use super::{lint, lint_drafts_with_fs, lint_rq_file, LintResult};
     use crate::native::NativeFs;
     use crate::syntax::rq_file::RqFile;
     use std::path::PathBuf;
@@ -651,6 +670,53 @@ mod tests {
             Some("api/users.rq"),
             "diagnostics keep the logical path the caller passed"
         );
+    }
+
+    fn rules_of(result: &LintResult) -> Vec<String> {
+        result
+            .diagnostics
+            .iter()
+            .map(|d| d.rule.to_string())
+            .collect()
+    }
+
+    #[test]
+    fn lint_drafts_sees_the_saved_workspace_files() {
+        let dir = nested_workspace(&[(
+            "users.rq",
+            "ep users(\"http://localhost:8080/users\") {\n    rq list();\n}\n",
+        )]);
+        let draft = dir.path().join("widgets.rq").to_string_lossy().to_string();
+        let source = "ep widgets(\"http://localhost:8080/widgets\") {\n    rq list();\n}\n";
+        let target = lint_drafts_with_fs(&NativeFs, &[(&draft, source)], Some(dir.path()));
+        assert!(rules_of(&target[0]).contains(&"duplicated_ep_base".to_string()));
+    }
+
+    #[test]
+    fn lint_drafts_does_not_compare_a_draft_with_its_own_saved_copy() {
+        let source = "ep users(\"http://localhost:8080/users\") {\n    rq list();\n}\n";
+        let dir = nested_workspace(&[("users.rq", source)]);
+        let draft = dir.path().join("users.rq").to_string_lossy().to_string();
+        let target = lint_drafts_with_fs(&NativeFs, &[(&draft, source)], Some(dir.path()));
+        assert!(!rules_of(&target[0]).contains(&"duplicated_ep_base".to_string()));
+    }
+
+    #[test]
+    fn lint_drafts_returns_one_result_per_draft_in_order() {
+        let dir = nested_workspace(&[]);
+        let first = dir.path().join("a.rq").to_string_lossy().to_string();
+        let second = dir.path().join("b.rq").to_string_lossy().to_string();
+        let target = lint_drafts_with_fs(
+            &NativeFs,
+            &[
+                (&first, "rq a(\"\");\n"),
+                (&second, "rq b(\"http://x\");\n"),
+            ],
+            Some(dir.path()),
+        );
+        assert_eq!(target.len(), 2);
+        assert!(rules_of(&target[0]).contains(&"empty_url_string".to_string()));
+        assert!(!rules_of(&target[1]).contains(&"empty_url_string".to_string()));
     }
 
     #[test]

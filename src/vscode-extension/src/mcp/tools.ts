@@ -100,7 +100,8 @@ export async function lintRq(args: { source: string; path?: string; workspace_pa
     const draft = draftPath(workspace, args.path);
     const filesJson = draftsJson([{ path: draft, source: args.source }]);
     const lintWorkspace = isUnscoped(workspace) ? undefined : workspace;
-    return JSON.parse(await wasmCall('lint', [filesJson, args.source, draft, lintWorkspace])) as CheckResult;
+    const byPath = JSON.parse(await wasmCall('lint', [filesJson, lintWorkspace])) as Record<string, CheckResult>;
+    return byPath[draft] ?? { ok: true, diagnostics: [] };
 }
 
 export async function listRequests(args: { path?: string }): Promise<unknown> {

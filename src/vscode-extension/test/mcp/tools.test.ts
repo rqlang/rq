@@ -139,7 +139,7 @@ describe('tools run from the home directory', () => {
         await lintRq({ source: 'rq ping("http://x");\n' });
         cwd.mockRestore();
 
-        expect(mockLint.mock.calls[0][3]).toBeUndefined();
+        expect(mockLint.mock.calls[0][1]).toBeUndefined();
     });
 
     it('refuse to list requests without a project folder', async () => {
@@ -192,11 +192,8 @@ describe('lintRq', () => {
 
         await lintRq({ source, path: 'users.rq', workspace_path: workspace });
 
-        const [filesJson, passedSource, draft] = mockLint.mock.calls[0];
-        const files = JSON.parse(filesJson);
-        expect(passedSource).toBe(source);
-        expect(draft).toBe(`${workspace}/users.rq`);
-        expect(files).toEqual({ [draft]: source });
+        const files = JSON.parse(mockLint.mock.calls[0][0]);
+        expect(files).toEqual({ [`${workspace}/users.rq`]: source });
     });
 
     it('passes the workspace so the linter reads the files around the draft', async () => {
@@ -204,12 +201,12 @@ describe('lintRq', () => {
 
         await lintRq({ source: 'rq list("http://x");\n', path: 'users.rq', workspace_path: workspace });
 
-        expect(mockLint.mock.calls[0][3]).toBe(workspace.replace(/\\/g, '/'));
+        expect(mockLint.mock.calls[0][1]).toBe(workspace.replace(/\\/g, '/'));
     });
 
     it('returns the linter result unchanged', async () => {
         const diagnostics = [{ severity: 'error', rule: 'empty_url_string', message: 'x', line: 1, column: 1 }];
-        mockLint.mockReturnValue(JSON.stringify({ ok: false, diagnostics }));
+        mockLint.mockReturnValue(JSON.stringify({ [`${workspace}/users.rq`]: { ok: false, diagnostics } }));
 
         const target = await lintRq({ source: 'rq list("");\n', path: 'users.rq', workspace_path: workspace });
 

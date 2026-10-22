@@ -143,6 +143,21 @@
           "type": "boolean",
           "default": true,
           "description": "Show rqlang idiom and style lint warnings in the editor, alongside syntax errors."
+        },
+        "rq.results.tabMode": {
+          "type": "string",
+          "enum": [
+            "single",
+            "perRequest",
+            "perExecution"
+          ],
+          "enumDescriptions": [
+            "Reuse one results tab for every request.",
+            "Open one results tab per request; running a request again reuses its tab.",
+            "Open a new results tab every time a request runs from the explorer. Run again reuses the tab it is clicked in."
+          ],
+          "default": "single",
+          "description": "How request results are distributed across editor tabs."
         }
       }
     },

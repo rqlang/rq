@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Features
+
+- Added the `rq.results.tabMode` setting to choose where request results open: one shared tab (`single`, the default and the previous behavior), one tab per request (`perRequest`), or a new tab for every run (`perExecution`). **Run again** and **Copy** in a results tab now act on that tab's own request and body.
+
 ### Bug Fixes
 
 - Fixed *Run Request* sending a different request than `rq request run` for the same `.rq` file. The extension now runs every request through the same preparation as the CLI and only performs the network call itself, so these divergences are gone:

@@ -3,6 +3,7 @@ import * as rqClient from '../rqClient';
 import { RequestExplorerProvider, RequestTreeItem } from '../requestExplorer';
 import { performOAuth2Flow } from '../auth';
 import { getWebviewContent, getErrorWebviewContent } from '../ui/webviewGenerator';
+import { ResultsMessage, ResultsPanels, ResultsSession, readResultsTabMode } from '../ui/resultsPanels';
 import { Logger } from '../logger';
 import { CANCELLED_MESSAGE } from '../utils';
 
@@ -16,20 +17,26 @@ interface RequestExecutionContext {
     variables: Record<string, string> | undefined;
 }
 
+interface ResultsData {
+    executionContext: RequestExecutionContext;
+    treeItem: RequestTreeItem | undefined;
+    body: string | undefined;
+}
+
+type RequestResultsSession = ResultsSession<ResultsData>;
+
 interface ActiveExecution {
     requestName: string;
     cancellationSource: vscode.CancellationTokenSource;
     treeItem: RequestTreeItem | undefined;
+    session: RequestResultsSession;
 }
 
 export class RequestRunner {
-    private resultsPanel: vscode.WebviewPanel | undefined;
-    private lastExecutionContext: RequestExecutionContext | undefined;
-    private lastBody: string | undefined;
+    private readonly resultsPanels = new ResultsPanels<ResultsData>((session, message) => this.handlePanelMessage(session, message));
     private logger!: Logger;
     private provider: RequestExplorerProvider | undefined;
     private activeExecution: ActiveExecution | undefined;
-    private lastRequestItem: RequestTreeItem | undefined;
 
     constructor(
         private context: vscode.ExtensionContext,
@@ -61,10 +68,11 @@ export class RequestRunner {
         this.logger = Logger.init(this.outputChannel);
         this.provider = provider;
         const requestName = requestItem.request.name;
-        this.beginExecution(requestName, requestItem);
+        const sourceFile = requestItem.request.file;
+        const session = this.resultsPanels.sessionFor(readResultsTabMode(), requestName, sourceFile);
+        this.beginExecution(requestName, requestItem, session);
         try {
             const sourceDirectory = this.getSourceDirectory();
-            const sourceFile = requestItem.request.file;
             const environment = provider.getSelectedEnvironment();
 
             this.logger.log(`Selected environment: ${environment || '(none)'}`);
@@ -73,7 +81,10 @@ export class RequestRunner {
             await this.collectRequiredVariables(requestName, sourceDirectory, sourceFile, environment, variables);
             this.throwIfCancelled();
 
-            await this.executeRequestLogic(requestName, sourceDirectory, sourceFile, environment, Object.keys(variables).length > 0 ? variables : undefined);
+            await this.executeRequestLogic(session, {
+                requestName, sourceDirectory, sourceFile, environment,
+                variables: Object.keys(variables).length > 0 ? variables : undefined
+            });
 
         } catch (error) {
             await this.handleError(error);
@@ -94,10 +105,11 @@ export class RequestRunner {
         this.logger = Logger.init(this.outputChannel);
         this.provider = provider;
         const requestName = requestItem.request.name;
-        this.beginExecution(requestName, requestItem);
+        const sourceFile = requestItem.request.file;
+        const session = this.resultsPanels.sessionFor(readResultsTabMode(), requestName, sourceFile);
+        this.beginExecution(requestName, requestItem, session);
         try {
             const sourceDirectory = this.getSourceDirectory();
-            const sourceFile = requestItem.request.file;
             const environment = provider.getSelectedEnvironment();
 
             const variables: Record<string, string> = {};
@@ -106,7 +118,10 @@ export class RequestRunner {
             await this.collectRequiredVariables(requestName, sourceDirectory, sourceFile, environment, variables);
             this.throwIfCancelled();
 
-            await this.executeRequestLogic(requestName, sourceDirectory, sourceFile, environment, Object.keys(variables).length > 0 ? variables : undefined);
+            await this.executeRequestLogic(session, {
+                requestName, sourceDirectory, sourceFile, environment,
+                variables: Object.keys(variables).length > 0 ? variables : undefined
+            });
 
         } catch (error) {
             await this.handleError(error);
@@ -137,18 +152,18 @@ export class RequestRunner {
         return false;
     }
 
-    private beginExecution(requestName: string, treeItem: RequestTreeItem | undefined) {
+    private beginExecution(requestName: string, treeItem: RequestTreeItem | undefined, session: RequestResultsSession) {
         this.activeExecution = {
             requestName,
             cancellationSource: new vscode.CancellationTokenSource(),
-            treeItem
+            treeItem,
+            session
         };
         if (treeItem) {
-            this.lastRequestItem = treeItem;
             this.provider?.setItemRunning(treeItem, true);
         }
         vscode.commands.executeCommand('setContext', RUNNING_CONTEXT_KEY, true);
-        this.postExecutionState(true);
+        this.postExecutionState(session, true);
     }
 
     private endExecution() {
@@ -159,7 +174,9 @@ export class RequestRunner {
         }
         execution?.cancellationSource.dispose();
         vscode.commands.executeCommand('setContext', RUNNING_CONTEXT_KEY, false);
-        this.postExecutionState(false);
+        if (execution) {
+            this.postExecutionState(execution.session, false);
+        }
     }
 
     private throwIfCancelled() {
@@ -168,8 +185,8 @@ export class RequestRunner {
         }
     }
 
-    private postExecutionState(running: boolean) {
-        this.resultsPanel?.webview.postMessage({ command: 'executionState', running });
+    private postExecutionState(session: RequestResultsSession, running: boolean) {
+        session.panel?.webview.postMessage({ command: 'executionState', running });
     }
 
     private async acquireInteractiveToken(auth: rqClient.PreparedAuth): Promise<string> {
@@ -260,14 +277,9 @@ export class RequestRunner {
         return null;
     }
 
-    private async executeRequestLogic(
-        requestName: string,
-        sourceDirectory: string | undefined,
-        sourceFile: string | undefined,
-        environment: string | undefined,
-        variables: Record<string, string> | undefined
-    ) {
-        this.lastExecutionContext = { requestName, sourceDirectory, sourceFile, environment, variables };
+    private async executeRequestLogic(session: RequestResultsSession, executionContext: RequestExecutionContext) {
+        const { requestName, sourceDirectory, sourceFile, environment, variables } = executionContext;
+        session.data = { executionContext, treeItem: this.activeExecution?.treeItem, body: undefined };
 
         await vscode.window.withProgress({
             location: vscode.ProgressLocation.Notification,
@@ -287,9 +299,9 @@ export class RequestRunner {
                 });
 
                 if (result.results.length > 0) {
-                    await this.handleSuccessfulExecution(requestName, variables, result);
+                    await this.handleSuccessfulExecution(session, requestName, variables, result);
                 } else {
-                    await this.handleFailedExecution(requestName, variables, result);
+                    await this.handleFailedExecution(session, requestName, variables, result);
                 }
             } finally {
                 subscription.dispose();
@@ -298,6 +310,7 @@ export class RequestRunner {
     }
 
     private async handleSuccessfulExecution(
+        session: RequestResultsSession,
         requestName: string,
         variables: Record<string, string> | undefined,
         result: rqClient.ExecuteRequestResult
@@ -308,21 +321,15 @@ export class RequestRunner {
             this.logger.log(`STDERR output:\n${result.stderr}`);
         }
 
-        if (this.resultsPanel) {
-            this.resultsPanel.title = `RQ: ${requestName}`;
-            this.resultsPanel.reveal(vscode.ViewColumn.One);
-        } else {
-            this.createWebviewPanel(requestName);
+        const panel = this.resultsPanels.show(session, requestName);
+        if (session.data) {
+            session.data.body = result.results[0].body;
         }
-
-        this.lastBody = result.results[0].body;
-        const html = await getWebviewContent(this.context, result.results[0]);
-        if (this.resultsPanel) {
-            this.resultsPanel.webview.html = html;
-        }
+        panel.webview.html = await getWebviewContent(this.context, result.results[0]);
     }
 
     private async handleFailedExecution(
+        session: RequestResultsSession,
         requestName: string,
         variables: Record<string, string> | undefined,
         result: rqClient.ExecuteRequestResult
@@ -339,37 +346,24 @@ export class RequestRunner {
         this.logger.log(fullError);
         this.logger.log(`${'='.repeat(80)}\n`);
 
-        await this.showErrorPanel(requestName, fullError);
+        await this.showErrorPanel(session, requestName, fullError);
     }
 
-    private createWebviewPanel(requestName: string) {
-        this.resultsPanel = vscode.window.createWebviewPanel(
-            'rqRequestResult',
-            `RQ: ${requestName}`,
-            vscode.ViewColumn.One,
-            { enableScripts: true, retainContextWhenHidden: true }
-        );
-
-        this.resultsPanel.onDidDispose(() => {
-            this.resultsPanel = undefined;
-        });
-
-        this.resultsPanel.webview.onDidReceiveMessage(message => {
-            if (message.command === 'runAgain') {
-                this.runAgain();
-            }
-            if (message.command === 'cancel') {
-                this.cancelActiveExecution();
-            }
-            if (message.command === 'copyBody' && this.lastBody !== undefined) {
-                vscode.env.clipboard.writeText(this.lastBody);
-                vscode.window.showInformationMessage('Body copied to clipboard');
-            }
-            if (message.command === 'copy' && typeof message.text === 'string') {
-                vscode.env.clipboard.writeText(message.text);
-                vscode.window.showInformationMessage('Copied to clipboard');
-            }
-        }, undefined, this.context.subscriptions);
+    private handlePanelMessage(session: RequestResultsSession, message: ResultsMessage) {
+        if (message.command === 'runAgain') {
+            this.runAgain(session);
+        }
+        if (message.command === 'cancel') {
+            this.cancelActiveExecution();
+        }
+        if (message.command === 'copyBody' && session.data?.body !== undefined) {
+            vscode.env.clipboard.writeText(session.data.body);
+            vscode.window.showInformationMessage('Body copied to clipboard');
+        }
+        if (message.command === 'copy' && typeof message.text === 'string') {
+            vscode.env.clipboard.writeText(message.text);
+            vscode.window.showInformationMessage('Copied to clipboard');
+        }
     }
 
     private logOutput(title: string, result: rqClient.RequestExecutionResult, variables?: Record<string, string>) {
@@ -392,18 +386,18 @@ export class RequestRunner {
         this.logger.log(`${'='.repeat(80)}\n`);
     }
 
-    private async runAgain() {
-        if (!this.lastExecutionContext) {
+    private async runAgain(session: RequestResultsSession) {
+        if (!session.data) {
             return;
         }
         if (!this.ensureNoActiveExecution()) {
             return;
         }
 
-        const { requestName, sourceDirectory, sourceFile, environment, variables } = this.lastExecutionContext;
-        this.beginExecution(requestName, this.lastRequestItem);
+        const { executionContext, treeItem } = session.data;
+        this.beginExecution(executionContext.requestName, treeItem, session);
         try {
-            await this.executeRequestLogic(requestName, sourceDirectory, sourceFile, environment, variables);
+            await this.executeRequestLogic(session, executionContext);
         } catch (error) {
             await this.handleError(error);
         } finally {
@@ -433,35 +427,31 @@ export class RequestRunner {
             return;
         }
         this.logger.log(`\nERROR: ${errorMessage}\n`);
-        const requestName = this.lastExecutionContext?.requestName ?? 'Request';
-        await this.showErrorPanel(requestName, errorMessage);
+        const execution = this.activeExecution;
+        if (execution) {
+            await this.showErrorPanel(execution.session, execution.requestName, errorMessage);
+        }
     }
 
-    private async showErrorPanel(requestName: string, errorMessage: string) {
-        if (this.resultsPanel) {
-            this.resultsPanel.title = `RQ: ${requestName}`;
-            this.resultsPanel.reveal(vscode.ViewColumn.One);
-        } else {
-            this.createWebviewPanel(requestName);
-        }
+    private async showErrorPanel(session: RequestResultsSession, requestName: string, errorMessage: string) {
+        const panel = this.resultsPanels.show(session, requestName);
+        const executionContext = session.data?.executionContext;
 
         let requestDetails: rqClient.RequestShowOutput | undefined;
         try {
             requestDetails = await rqClient.showRequest(
                 requestName,
-                this.lastExecutionContext?.sourceDirectory,
-                this.lastExecutionContext?.environment,
+                executionContext?.sourceDirectory,
+                executionContext?.environment,
                 true,
                 false,
-                this.lastExecutionContext?.sourceFile
+                executionContext?.sourceFile
             );
         } catch {
             // best-effort: show error panel without request details
         }
 
-        if (this.resultsPanel) {
-            this.resultsPanel.webview.html = await getErrorWebviewContent(this.context, requestName, errorMessage, requestDetails);
-        }
+        panel.webview.html = await getErrorWebviewContent(this.context, requestName, errorMessage, requestDetails);
     }
 
     private cleanErrorMessage(stderr: string): string {

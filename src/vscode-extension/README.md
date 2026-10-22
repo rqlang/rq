@@ -32,5 +32,5 @@ Want the full tour? Check out the [VS Code Extension docs](https://www.rqlang.co
 - **Format document** — format the current `.rq` file via the **Format Document** command (`Shift+Alt+F` on Windows/Linux, `Shift+Option+F` on macOS).
 - **Request Explorer** sidebar to browse and run requests, with environment selection and run/run-with-variables actions.
 - **Configuration view** — a dedicated sidebar view listing the environments and auth providers defined across your workspace.
-- **Response panel** — view response status, headers, and formatted body; copy the body with one click.
+- **Response panel** — view response status, headers, and formatted body; copy the body with one click. With `rq.results.tabMode`, results open in one shared tab, one tab per request, or a new tab per run.
 - **Integration with rq auth providers, including interactive OAuth flows (Authorization Code with PKCE and Implicit).**

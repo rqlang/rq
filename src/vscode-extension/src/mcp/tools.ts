@@ -45,10 +45,17 @@ export async function workspaceFor(workspacePath?: string, filePath?: string): P
 async function existing(target: string): Promise<string> {
     try {
         await fs.promises.stat(target);
-    } catch {
-        throw new Error(`Path not found: ${target}`);
+    } catch (err) {
+        throw accessError(target, err);
     }
     return target;
+}
+
+function accessError(target: string, err: unknown): Error {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT' || code === 'ENOTDIR') { return new Error(`Path not found: ${target}`); }
+    if (code === 'EACCES' || code === 'EPERM') { return new Error(`Permission denied: ${target}`); }
+    return new Error(`Cannot access ${target}: ${err instanceof Error ? err.message : String(err)}`);
 }
 
 export async function validateRq(args: {

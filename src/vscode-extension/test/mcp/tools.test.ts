@@ -48,6 +48,14 @@ describe('workspaceFor', () => {
         await expect(workspaceFor(path.join(workspace, 'missing'))).rejects.toThrow('Path not found');
     });
 
+    it('reports a path it may not read as a permission problem, not a missing one', async () => {
+        const denied = Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' });
+        const stat = jest.spyOn(fs.promises, 'stat').mockRejectedValueOnce(denied);
+
+        await expect(workspaceFor(workspace)).rejects.toThrow(`Permission denied: ${workspace}`);
+        stat.mockRestore();
+    });
+
     it('rejects an absolute draft whose directory does not exist', async () => {
         await expect(workspaceFor(undefined, path.join(workspace, 'missing', 'users.rq'))).rejects.toThrow('Path not found');
     });

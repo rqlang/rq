@@ -8,7 +8,7 @@ nav_order: 9
 
 # MCP Server
 
-The rq extension bundles `rq-mcp`, an [MCP](https://modelcontextprotocol.io) server that teaches AI assistants to write `.rq` files correctly. It is registered automatically on activation — nothing to install or configure.
+`rq-mcp` is an [MCP](https://modelcontextprotocol.io) server that teaches AI assistants to write `.rq` files correctly. The VS Code extension registers it automatically for Copilot, and any other MCP client — Claude Code, Claude Desktop, Cursor, Windsurf, Codex, Gemini CLI, Zed — runs it from npm as [`@rqlang/mcp`](https://www.npmjs.com/package/@rqlang/mcp).
 
 For a hands-on walkthrough, start with [AI-Assisted Authoring](AI_ASSISTED_AUTHORING.md). This page is the reference: what each tool does, what the checks enforce, and what they do not.
 
@@ -18,11 +18,41 @@ Ask a model for an HTTP request file and it falls back on what it has seen most:
 
 The server closes the gap from both ends: it gives the assistant rq's grammar reference and style guide up front, then checks each draft with the same parser, analyzer and linter behind the editor's diagnostics and `rq check`.
 
+## Setup
+
+**VS Code**: install the [extension](VSCODE_EXTENSION.md). The server is registered on activation, with nothing to configure.
+
+**Any other MCP client** launches it over stdio with Node.js 18 or newer:
+
+```bash
+npx -y @rqlang/mcp
+```
+
+Claude Code and Codex add it from the command line:
+
+```bash
+claude mcp add rq -- npx -y @rqlang/mcp
+codex mcp add rq -- npx -y @rqlang/mcp
+```
+
+Claude Desktop, Cursor, Windsurf, Gemini CLI and other clients configured through a JSON file take the same command under `mcpServers`:
+
+```json
+{
+  "mcpServers": {
+    "rq": {
+      "command": "npx",
+      "args": ["-y", "@rqlang/mcp"]
+    }
+  }
+}
+```
+
 ## How it runs
 
-The server is bundled as JavaScript and launched on the same Node.js that VS Code itself runs on, reusing the WebAssembly build of rq the extension already loads. There is no native binary and no platform-specific download — a single package works everywhere the extension does.
+The server is JavaScript running the WebAssembly build of rq — the same parser, analyzer and linter the CLI uses. There is no native binary and no platform-specific download. In VS Code it runs on the Node.js the editor ships with; elsewhere, on the Node.js that `npx` finds.
 
-It runs with your first workspace folder as its working directory, so relative paths, `import` statements and `.env` files resolve the way they do on disk.
+It works relative to the folder it runs in: the first workspace folder in VS Code, the folder the client was started from elsewhere. Relative paths, `import` statements and `.env` files resolve from there the way they do on disk, and every tool that takes a path accepts an absolute one to point somewhere else.
 
 ## Tools
 

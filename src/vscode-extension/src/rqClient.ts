@@ -261,14 +261,14 @@ export async function listEnvironmentsWithErrors(sourceDirectory?: string): Prom
     };
 }
 
-export async function listAuthConfigs(sourceDirectory?: string, rootDirectory?: string): Promise<AuthListEntry[]> {
-    return (await listAuthConfigsWithErrors(sourceDirectory, rootDirectory)).authConfigs;
+export async function listAuthConfigs(sourceDirectory?: string, rootDirectory?: string, drafts: DraftFile[] = []): Promise<AuthListEntry[]> {
+    return (await listAuthConfigsWithErrors(sourceDirectory, rootDirectory, drafts)).authConfigs;
 }
 
-export async function listAuthConfigsWithErrors(sourceDirectory?: string, rootDirectory?: string): Promise<ListAuthConfigsResult> {
+export async function listAuthConfigsWithErrors(sourceDirectory?: string, rootDirectory?: string, drafts: DraftFile[] = []): Promise<ListAuthConfigsResult> {
     const source = resolveSource(sourceDirectory);
     const root = resolveSource(rootDirectory ?? sourceDirectory);
-    const result = await wasmCall('list_auth', [draftsJson(), await buildSecretsMap(root), source]);
+    const result = await wasmCall('list_auth', [draftsJson(drafts), await buildSecretsMap(root), source]);
     const parsed = JSON.parse(result) as { auth: AuthListEntry[]; parse_errors?: { message: string }[] };
     return {
         authConfigs: parsed.auth,
@@ -283,10 +283,10 @@ export async function showEnvironment(name: string, sourceDirectory?: string): P
     return { ...raw, file: normalizePath(raw.file) };
 }
 
-export async function listEndpoints(sourceDirectory?: string, rootDirectory?: string): Promise<EndpointShowOutput[]> {
+export async function listEndpoints(sourceDirectory?: string, rootDirectory?: string, drafts: DraftFile[] = []): Promise<EndpointShowOutput[]> {
     const source = resolveSource(sourceDirectory);
     const root = resolveSource(rootDirectory ?? sourceDirectory);
-    const result = await wasmCall('list_endpoints', [draftsJson(), await buildSecretsMap(root), source]);
+    const result = await wasmCall('list_endpoints', [draftsJson(drafts), await buildSecretsMap(root), source]);
     const raw = JSON.parse(result) as EndpointShowOutput[];
     return raw.map(e => ({ ...e, file: normalizePath(e.file) }));
 }
@@ -305,10 +305,10 @@ export async function showVariable(name: string, sourceDirectory?: string, envir
     return { ...raw, file: normalizePath(raw.file) };
 }
 
-export async function listVariables(sourceFile?: string, environment?: string, rootDirectory?: string): Promise<VariableShowOutput[]> {
+export async function listVariables(sourceFile?: string, environment?: string, rootDirectory?: string, drafts: DraftFile[] = []): Promise<VariableShowOutput[]> {
     const source = resolveSource(sourceFile);
     const root = resolveSource(rootDirectory ?? sourceFile);
-    const result = await wasmCall('list_variables', [draftsJson(), await buildSecretsMap(root), source, environment]);
+    const result = await wasmCall('list_variables', [draftsJson(drafts), await buildSecretsMap(root), source, environment]);
     const raw = JSON.parse(result) as VariableShowOutput[];
     return raw.map(v => ({ ...v, file: normalizePath(v.file) }));
 }
@@ -471,8 +471,8 @@ export async function unusedSuppressionRemoval(source: string, line: number, col
     return JSON.parse(raw) as SourceEdit | null;
 }
 
-export async function checkFolder(folderPath: string, envName?: string): Promise<CheckResult> {
-    const result = await wasmCall('check', [draftsJson(), await buildSecretsMap(folderPath), folderPath, envName]);
+export async function checkFolder(folderPath: string, envName?: string, drafts: DraftFile[] = []): Promise<CheckResult> {
+    const result = await wasmCall('check', [draftsJson(drafts), await buildSecretsMap(folderPath), folderPath, envName]);
     return JSON.parse(result) as CheckResult;
 }
 

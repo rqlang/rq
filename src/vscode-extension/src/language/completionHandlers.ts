@@ -53,7 +53,7 @@ export const epTemplateHandler: CompletionHandler = {
             replaceRange = new vscode.Range(position.line, position.character - partial.length, position.line, position.character + trailingWord.length);
         }
         try {
-            const endpoints = await rqClient.listEndpoints(await ctx.getCliFilePath(), await ctx.getCliRootPath());
+            const endpoints = await rqClient.listEndpoints(ctx.filePath, ctx.rootPath, ctx.drafts);
             return endpoints.filter(ep => ep.is_template).map(ep => {
                 const item = new vscode.CompletionItem(ep.name, vscode.CompletionItemKind.Reference);
                 item.detail = 'Endpoint template';
@@ -161,9 +161,8 @@ export const interpolationHandler: CompletionHandler = {
         const builtins = builtinFunctionItems();
         if (replaceRange) { builtins.forEach(i => { i.range = replaceRange; }); }
         try {
-            const cliFilePath = await ctx.getCliFilePath();
-            const raw = await rqClient.listVariables(cliFilePath, ctx.getEnvironment(), await ctx.getCliRootPath());
-            const variables = filterRequiredVars(raw, documentPrefix, cliFilePath);
+            const raw = await rqClient.listVariables(ctx.filePath, ctx.getEnvironment(), ctx.rootPath, ctx.drafts);
+            const variables = filterRequiredVars(raw, documentPrefix, ctx.filePath);
             if (variables.length > 0) {
                 const varItems = variables.map(v => {
                     const item = new vscode.CompletionItem(v.name, vscode.CompletionItemKind.Variable);
@@ -338,11 +337,10 @@ function buildRqEpHandler(
                 ...remainingProps,
             ];
             try {
-                const cliFilePath = await ctx.getCliFilePath();
                 const variables = filterRequiredVars(
-                    await rqClient.listVariables(cliFilePath, ctx.getEnvironment(), await ctx.getCliRootPath()),
+                    await rqClient.listVariables(ctx.filePath, ctx.getEnvironment(), ctx.rootPath, ctx.drafts),
                     documentPrefix,
-                    cliFilePath
+                    ctx.filePath
                 );
                 variables.forEach(v => {
                     const item = new vscode.CompletionItem(v.name, vscode.CompletionItemKind.Variable);
@@ -390,7 +388,7 @@ export const authNameValueHandler: CompletionHandler = {
         const authContext = getAuthAttributeContext(ctx.documentPrefix);
         if (!authContext) { return undefined; }
         try {
-            const authConfigs = await rqClient.listAuthConfigs(await ctx.getCliFilePath(), await ctx.getCliRootPath());
+            const authConfigs = await rqClient.listAuthConfigs(ctx.filePath, ctx.rootPath, ctx.drafts);
             const range = authNameReplaceRange(ctx, authContext);
             return authConfigs.map(a => {
                 const item = new vscode.CompletionItem(a.name, vscode.CompletionItemKind.Reference);

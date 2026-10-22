@@ -158,3 +158,37 @@ describe('DiagnosticsProvider lint setting changes', () => {
         expect(dispose).toHaveBeenCalled();
     });
 });
+
+describe('DiagnosticsProvider unsaved documents', () => {
+    it('checks the folder itself with the unsaved documents as drafts', async () => {
+        workspace.textDocuments = [{ ...documentAt('/repo/users.rq', 'rq list("http://x");\n'), isDirty: true }];
+        const target = new DiagnosticsProvider(collection());
+
+        await (target as any).validateFolder(FOLDER);
+
+        expect(mockedClient.checkFolder).toHaveBeenCalledWith('/repo', undefined, [
+            { path: '/repo/users.rq', source: 'rq list("http://x");\n' }
+        ]);
+    });
+
+    it('checks the folder without drafts when every document is saved', async () => {
+        const target = new DiagnosticsProvider(collection());
+
+        await (target as any).validateFolder(FOLDER);
+
+        expect(mockedClient.checkFolder).toHaveBeenCalledWith('/repo', undefined, []);
+    });
+
+    it('reports an error in an unsaved document on that document', async () => {
+        workspace.textDocuments = [{ ...documentAt('/repo/users.rq', 'rq list(\n'), isDirty: true }];
+        mockedClient.checkFolder.mockResolvedValue({
+            errors: [{ file: '/repo/users.rq', line: 1, column: 9, message: 'boom' }]
+        } as any);
+        const target = new DiagnosticsProvider(collection());
+
+        await (target as any).validateFolder(FOLDER);
+
+        const [uri] = ((target as any).diagnosticCollection.set as jest.Mock).mock.calls[0];
+        expect(uri.fsPath).toBe('/repo/users.rq');
+    });
+});

@@ -1,12 +1,7 @@
 jest.mock('../../src/rqClient');
-jest.mock('../../src/utils', () => ({
-    ...jest.requireActual('../../src/utils'),
-    mirrorToTemp: jest.fn().mockReturnValue('/tmp/rq-check-mock'),
-}));
 
 import * as vscode from 'vscode';
 import * as cliService from '../../src/rqClient';
-import * as utils from '../../src/utils';
 import '../../src/language/completionProvider';
 import { makeDocument } from './completionTestUtils';
 
@@ -25,7 +20,6 @@ beforeEach(() => {
     (cliService.listEndpoints as jest.Mock).mockResolvedValue([]);
     (cliService.listVariables as jest.Mock).mockResolvedValue([]);
     (cliService.listAuthConfigs as jest.Mock).mockResolvedValue([]);
-    (utils.mirrorToTemp as jest.Mock).mockReturnValue('/tmp/rq-check-mock');
 });
 
 describe('variable reference completion', () => {
@@ -40,7 +34,7 @@ describe('variable reference completion', () => {
 
         const items = await provideCompletionItems(doc, position);
 
-        expect(cliService.listVariables).toHaveBeenCalledWith('/workspace/current.rq', undefined, '/workspace');
+        expect(cliService.listVariables).toHaveBeenCalledWith('/workspace/current.rq', undefined, '/workspace', []);
         expect(items.find((i: any) => i.label === 'base_url')?.insertText).toBe('base_url;');
         expect(items.find((i: any) => i.label === 'base_url')?.detail).toBe('= http://localhost');
         expect(items.find((i: any) => i.label === 'token')).toBeDefined();
@@ -150,7 +144,7 @@ describe('variable interpolation completion', () => {
 
         const items = await provideCompletionItems(doc, position);
 
-        expect(cliService.listVariables).toHaveBeenCalledWith('/workspace/current.rq', undefined, '/workspace');
+        expect(cliService.listVariables).toHaveBeenCalledWith('/workspace/current.rq', undefined, '/workspace', []);
         expect(items.some((i: any) => i.label === 'random.guid()')).toBe(true);
         const baseUrl = items.find((i: any) => i.label === 'base_url');
         expect(baseUrl).toBeDefined();

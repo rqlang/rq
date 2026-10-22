@@ -1,3 +1,7 @@
+use crate::error::RqError;
+use crate::logger::Logger;
+use crate::syntax::fs::Fs;
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 pub fn clean_path_str(s: &str) -> &str {
@@ -21,6 +25,19 @@ pub fn is_skipped_directory(path: &Path) -> bool {
     path.file_name()
         .and_then(|name| name.to_str())
         .is_some_and(|name| SKIPPED_DIRECTORIES.contains(&name))
+}
+
+pub fn walk_rq_files(fs: &dyn Fs, root: &Path) -> Result<Vec<PathBuf>, RqError> {
+    let mut walk = RqFileWalk {
+        fs,
+        root,
+        paths: Vec::new(),
+        visited: HashSet::new(),
+    };
+    if fs.is_dir(root) {
+        walk.visit(root)?;
+    }
+    Ok(walk.paths)
 }
 
 pub fn resolve_under_workspace(logical: &Path, workspace: Option<&Path>) -> PathBuf {
@@ -48,10 +65,116 @@ fn workspace_root(workspace: &Path) -> &Path {
     }
 }
 
+struct RqFileWalk<'a> {
+    fs: &'a dyn Fs,
+    root: &'a Path,
+    paths: Vec<PathBuf>,
+    visited: HashSet<PathBuf>,
+}
+
+impl RqFileWalk<'_> {
+    fn visit(&mut self, dir: &Path) -> Result<(), RqError> {
+        if !self.mark_visited(dir) {
+            return Ok(());
+        }
+        let entries = match self.fs.read_dir(dir) {
+            Ok(entries) => entries,
+            Err(e) if dir == self.root => return Err(RqError::Generic(e)),
+            Err(e) => {
+                Logger::debug(&format!(
+                    "* Skipping unreadable directory {}: {e}",
+                    clean_path(dir)
+                ));
+                return Ok(());
+            }
+        };
+        for path in entries {
+            if self.fs.is_dir(&path) {
+                if is_skipped_directory(&path) {
+                    Logger::debug(&format!("* Skipping directory {}", clean_path(&path)));
+                    continue;
+                }
+                self.visit(&path)?;
+            } else if path.extension().and_then(|s| s.to_str()) == Some("rq") {
+                self.paths.push(path);
+            }
+        }
+        Ok(())
+    }
+
+    fn mark_visited(&mut self, dir: &Path) -> bool {
+        let key = self
+            .fs
+            .canonicalize(dir)
+            .unwrap_or_else(|_| dir.to_path_buf());
+        if self.visited.insert(key) {
+            return true;
+        }
+        Logger::debug(&format!(
+            "* Skipping already visited directory {}",
+            clean_path(dir)
+        ));
+        false
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{is_skipped_directory, resolve_under_workspace};
+    use super::{is_skipped_directory, resolve_under_workspace, walk_rq_files};
+    use crate::native::NativeFs;
     use std::path::{Path, PathBuf};
+
+    fn workspace_with(files: &[&str]) -> tempfile::TempDir {
+        let dir = tempfile::tempdir().expect("tempdir");
+        for file in files {
+            let path = dir.path().join(file);
+            std::fs::create_dir_all(path.parent().expect("parent")).expect("mkdir");
+            std::fs::write(path, "").expect("write");
+        }
+        dir
+    }
+
+    fn walked_names(root: &Path) -> Vec<String> {
+        let mut names: Vec<String> = walk_rq_files(&NativeFs, root)
+            .expect("walk")
+            .iter()
+            .map(|p| {
+                p.strip_prefix(root)
+                    .expect("inside root")
+                    .to_string_lossy()
+                    .replace('\\', "/")
+            })
+            .collect();
+        names.sort();
+        names
+    }
+
+    #[test]
+    fn walk_finds_rq_files_in_nested_directories() {
+        let dir = workspace_with(&["a.rq", "api/b.rq", "api/deep/c.rq"]);
+        assert_eq!(
+            walked_names(dir.path()),
+            ["a.rq", "api/b.rq", "api/deep/c.rq"]
+        );
+    }
+
+    #[test]
+    fn walk_ignores_files_that_are_not_rq() {
+        let dir = workspace_with(&["a.rq", "notes.txt", "data.json"]);
+        assert_eq!(walked_names(dir.path()), ["a.rq"]);
+    }
+
+    #[test]
+    fn walk_skips_dependency_and_build_directories() {
+        let dir = workspace_with(&["a.rq", "node_modules/pkg/b.rq", "target/c.rq"]);
+        assert_eq!(walked_names(dir.path()), ["a.rq"]);
+    }
+
+    #[test]
+    fn walk_of_a_path_that_is_not_a_directory_finds_nothing() {
+        let dir = workspace_with(&["a.rq"]);
+        assert!(walked_names(&dir.path().join("a.rq")).is_empty());
+    }
 
     #[test]
     fn skips_dependency_and_build_directories() {

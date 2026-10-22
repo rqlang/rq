@@ -259,19 +259,17 @@ fn collect_workspace(
     let mut collector = WorkspaceCollector::new(draft_rq_file);
     let draft_canonical = draft_path.and_then(|p| std::fs::canonicalize(p).ok());
 
-    walk_rq_files(workspace_path, &mut |path| {
+    for path in workspace_rq_files(workspace_path) {
         if let Some(draft) = &draft_canonical {
-            if let Ok(canon) = std::fs::canonicalize(path) {
-                if &canon == draft {
-                    return;
-                }
+            if std::fs::canonicalize(&path).is_ok_and(|canon| &canon == draft) {
+                continue;
             }
         }
-        let Ok(content) = std::fs::read_to_string(path) else {
-            return;
+        let Ok(content) = std::fs::read_to_string(&path) else {
+            continue;
         };
-        collector.absorb(path, &content, &NativeFs);
-    });
+        collector.absorb(&path, &content, &NativeFs);
+    }
 
     collector.finish()
 }
@@ -465,40 +463,13 @@ pub fn endpoint_extensions(source: &str) -> Vec<EndpointExtension> {
 }
 
 #[cfg(feature = "native")]
-fn walk_rq_files(root: &std::path::Path, visit: &mut dyn FnMut(&std::path::Path)) {
-    walk_rq_files_once(root, visit, &mut std::collections::HashSet::new());
-}
+fn workspace_rq_files(workspace_path: &std::path::Path) -> Vec<std::path::PathBuf> {
+    use crate::native::NativeFs;
 
-#[cfg(feature = "native")]
-fn walk_rq_files_once(
-    root: &std::path::Path,
-    visit: &mut dyn FnMut(&std::path::Path),
-    visited: &mut std::collections::HashSet<std::path::PathBuf>,
-) {
-    if root.is_file() {
-        if root.extension().and_then(|s| s.to_str()) == Some("rq") {
-            visit(root);
-        }
-        return;
+    if workspace_path.is_file() {
+        return vec![workspace_path.to_path_buf()];
     }
-    let key = std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
-    if !visited.insert(key) {
-        return;
-    }
-    let Ok(entries) = std::fs::read_dir(root) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            if crate::paths::is_skipped_directory(&path) {
-                continue;
-            }
-            walk_rq_files_once(&path, visit, visited);
-        } else if path.extension().and_then(|s| s.to_str()) == Some("rq") {
-            visit(&path);
-        }
-    }
+    crate::paths::walk_rq_files(&NativeFs, workspace_path).unwrap_or_default()
 }
 
 fn known_rule_ids() -> Vec<&'static str> {

@@ -219,7 +219,7 @@ describe('executeRequest', () => {
             expect([call[2], call[6]]).toEqual(['/tmp/project', '/tmp/project/sub/main.rq']);
         });
 
-        test('builds the files map from the opened folder', async () => {
+        test('sends no files of its own so rq reads the opened folder from disk', async () => {
             mockPrepareRequest.mockReturnValue(prepared());
             makeHttpsMock();
 
@@ -229,7 +229,7 @@ describe('executeRequest', () => {
                 sourceFile: '/tmp/project/sub/main.rq',
             });
 
-            expect(mockBuildFilesMap).toHaveBeenCalledWith('/tmp/project');
+            expect(mockPrepareRequest.mock.calls[0][0]).toBe('{}');
         });
 
         test('reads secrets from the opened folder, not from the request file', async () => {
@@ -479,9 +479,9 @@ describe('varRefs', () => {
 
         await varRefs('resource_id', doc, new vscode.Position(0, 8), '/tmp/project');
 
-        expect(mockBuildFilesMap).toHaveBeenCalledWith('/tmp/project', [
-            { path: '/tmp/project/foo.rq', source: 'rq get(resource_id);' },
-        ]);
+        expect(JSON.parse(mockListVariableRefs.mock.calls[0][0])).toEqual({
+            '/tmp/project/foo.rq': 'rq get(resource_id);',
+        });
     });
 
     test('includes other unsaved documents of the folder', async () => {
@@ -492,10 +492,10 @@ describe('varRefs', () => {
 
         await varRefs('base', doc, new vscode.Position(0, 8), '/tmp/project');
 
-        expect(mockBuildFilesMap).toHaveBeenCalledWith('/tmp/project', [
-            { path: '/tmp/project/foo.rq', source: 'rq get(base);' },
-            { path: '/tmp/project/shared.rq', source: 'let base = "x";' },
-        ]);
+        expect(JSON.parse(mockListVariableRefs.mock.calls[0][0])).toEqual({
+            '/tmp/project/foo.rq': 'rq get(base);',
+            '/tmp/project/shared.rq': 'let base = "x";',
+        });
     });
 
     test('passes the cursor position so a required variable stays in its request', async () => {

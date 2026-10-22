@@ -13,6 +13,7 @@ export class DiagnosticsProvider {
     private readonly diagnosticCollection: vscode.DiagnosticCollection;
     private readonly environmentProvider: EnvironmentProvider | undefined;
     private readonly debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
+    private readonly reportedFailures = new Map<string, string>();
     private readonly configurationListener: vscode.Disposable;
 
     constructor(diagnosticCollection: vscode.DiagnosticCollection, environmentProvider?: EnvironmentProvider) {
@@ -100,8 +101,25 @@ export class DiagnosticsProvider {
 
         const lint = await this.collectLintDiagnostics(folderPath);
 
-        const result = await rqClient.checkFolder(folderPath, env, drafts);
+        let result: rqClient.CheckResult;
+        try {
+            result = await rqClient.checkFolder(folderPath, env, drafts);
+        } catch (error) {
+            this.reportFailure(folderPath, error);
+            return;
+        }
+        this.reportedFailures.delete(normalizePath(folderPath));
         this.applyDiagnostics(result, folderPath, lint);
+    }
+
+    private reportFailure(folderPath: string, error: unknown): void {
+        const key = normalizePath(folderPath);
+        const message = error instanceof Error ? error.message : String(error);
+        if (this.reportedFailures.get(key) === message) {
+            return;
+        }
+        this.reportedFailures.set(key, message);
+        vscode.window.showWarningMessage(`rq could not check ${folderPath}: ${message}`);
     }
 
     private lintEnabled(): boolean {

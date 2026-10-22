@@ -192,3 +192,41 @@ describe('DiagnosticsProvider unsaved documents', () => {
         expect(uri.fsPath).toBe('/repo/users.rq');
     });
 });
+
+describe('DiagnosticsProvider check failures', () => {
+    beforeEach(() => {
+        (vscode as any).window.showWarningMessage = jest.fn();
+    });
+
+    it('tells the user why the folder could not be checked', async () => {
+        mockedClient.checkFolder.mockRejectedValue(new Error('Too many files under /repo'));
+        const target = new DiagnosticsProvider(collection());
+
+        await (target as any).validateFolder(FOLDER);
+
+        expect((vscode as any).window.showWarningMessage).toHaveBeenCalledWith(expect.stringContaining('Too many files under /repo'));
+    });
+
+    it('does not repeat the same failure on every validation', async () => {
+        mockedClient.checkFolder.mockRejectedValue(new Error('Too many files under /repo'));
+        const target = new DiagnosticsProvider(collection());
+
+        await (target as any).validateFolder(FOLDER);
+        await (target as any).validateFolder(FOLDER);
+
+        expect((vscode as any).window.showWarningMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it('reports the failure again after a successful check', async () => {
+        const target = new DiagnosticsProvider(collection());
+        mockedClient.checkFolder.mockRejectedValueOnce(new Error('Too many files under /repo'));
+        await (target as any).validateFolder(FOLDER);
+        mockedClient.checkFolder.mockResolvedValueOnce({ errors: [] } as any);
+        await (target as any).validateFolder(FOLDER);
+        mockedClient.checkFolder.mockRejectedValueOnce(new Error('Too many files under /repo'));
+
+        await (target as any).validateFolder(FOLDER);
+
+        expect((vscode as any).window.showWarningMessage).toHaveBeenCalledTimes(2);
+    });
+});

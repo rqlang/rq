@@ -1,8 +1,9 @@
+use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
+
 use crate::error::RqError;
 use crate::logger::Logger;
 use crate::syntax::fs::Fs;
-use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
 
 pub fn clean_path_str(s: &str) -> &str {
     #[cfg(windows)]

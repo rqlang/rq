@@ -131,7 +131,7 @@ struct RqFileWalk<'a> {
 }
 
 impl RqFileWalk<'_> {
-    fn visit(&mut self, dir: &Path, folder: Option<&str>) -> Result<(), RqError> {
+    fn visit(&mut self, dir: &Path, relative: Option<&str>) -> Result<(), RqError> {
         if !self.mark_visited(dir) {
             return Ok(());
         }
@@ -146,15 +146,15 @@ impl RqFileWalk<'_> {
                 return Ok(());
             }
         };
-        self.count(folder, entries.len())?;
+        self.count(relative, entries.len())?;
         for path in entries {
             if self.fs.is_dir(&path) {
-                let (name, relative) = self.names_of(&path);
-                if self.rules.skips(&name, &relative) {
+                let (name, child) = self.names_of(&path);
+                if self.rules.skips(&name, &child) {
                     Logger::debug(&format!("* Skipping directory {}", clean_path(&path)));
                     continue;
                 }
-                self.visit(&path, Some(folder.unwrap_or(&name)))?;
+                self.visit(&path, Some(&child))?;
             } else if path.extension().and_then(|s| s.to_str()) == Some("rq") {
                 self.paths.push(path);
             }
@@ -162,10 +162,15 @@ impl RqFileWalk<'_> {
         Ok(())
     }
 
-    fn count(&mut self, folder: Option<&str>, entries: usize) -> Result<(), RqError> {
+    fn count(&mut self, relative: Option<&str>, entries: usize) -> Result<(), RqError> {
         self.walked += entries;
-        if let Some(folder) = folder {
-            *self.walked_by_folder.entry(folder.to_string()).or_default() += entries;
+        let mut folder = relative;
+        while let Some(current) = folder {
+            *self
+                .walked_by_folder
+                .entry(current.to_string())
+                .or_default() += entries;
+            folder = current.rsplit_once('/').map(|(parent, _)| parent);
         }
         if self.walked > self.limit {
             return Err(self.too_many_files());
@@ -174,12 +179,17 @@ impl RqFileWalk<'_> {
     }
 
     fn too_many_files(&self) -> RqError {
-        let mut largest: Vec<(&String, &usize)> = self.walked_by_folder.iter().collect();
+        let mut largest: Vec<(&String, &usize)> = self
+            .walked_by_folder
+            .iter()
+            .filter(|(folder, _)| !folder.contains('/'))
+            .collect();
         largest.sort_by(|a, b| b.1.cmp(a.1).then(a.0.cmp(b.0)));
         let folders: Vec<String> = largest
             .iter()
             .take(3)
-            .map(|(name, count)| format!("{name} ({count})"))
+            .map(|(folder, count)| self.culprit(folder, **count))
+            .map(|(folder, count)| format!("{folder} ({count})"))
             .collect();
         let largest = if folders.is_empty() {
             String::new()
@@ -192,6 +202,25 @@ impl RqFileWalk<'_> {
             self.limit,
             clean_path(&self.root.join(IGNORE_FILE))
         ))
+    }
+
+    fn culprit<'b>(&'b self, folder: &'b str, count: usize) -> (&'b str, usize) {
+        let prefix = format!("{folder}/");
+        let largest_child = self
+            .walked_by_folder
+            .iter()
+            .filter(|(child, _)| {
+                child
+                    .strip_prefix(&prefix)
+                    .is_some_and(|rest| !rest.contains('/'))
+            })
+            .max_by(|a, b| a.1.cmp(b.1).then(b.0.cmp(a.0)));
+        match largest_child {
+            Some((child, &child_count)) if child_count * 5 >= count * 4 => {
+                self.culprit(child, child_count)
+            }
+            _ => (folder, count),
+        }
     }
 
     fn names_of(&self, path: &Path) -> (String, String) {
@@ -358,6 +387,30 @@ mod tests {
         let dir = workspace_with(&["a.rq", "b.txt", "api/c.rq"]);
         let target = walk_rq_files_up_to(&NativeFs, dir.path(), 4);
         assert_eq!(target.expect("within the limit").len(), 2);
+    }
+
+    #[test]
+    fn walk_error_names_the_nested_folder_that_holds_most_entries() {
+        let dir = workspace_with(&[
+            "web/a.rq",
+            "web/node_modules/0",
+            "web/node_modules/1",
+            "web/node_modules/2",
+            "web/node_modules/3",
+            "web/node_modules/4",
+            "web/node_modules/5",
+            "web/node_modules/6",
+            "web/node_modules/7",
+            "web/node_modules/8",
+            "web/node_modules/9",
+        ]);
+        let target = walk_rq_files_up_to(&NativeFs, dir.path(), 12)
+            .expect_err("over the limit")
+            .to_string();
+        assert!(
+            target.contains("Largest folders: web/node_modules (10)"),
+            "{target}"
+        );
     }
 
     #[test]

@@ -45,7 +45,7 @@ describe('rqClient.lintSources', () => {
         expect(firstMap).toBe(secondMap);
     });
 
-    it('lets every draft see the unsaved content of its siblings', async () => {
+    it('sends every unsaved draft and leaves the saved files to the linter', async () => {
         mockLint.mockReturnValue(JSON.stringify({ ok: true, diagnostics: [] }));
 
         await lintSources([
@@ -56,7 +56,7 @@ describe('rqClient.lintSources', () => {
         const files = JSON.parse(mockLint.mock.calls[0][0]);
         expect(files[`${workspace}/users.rq`]).toContain('rq a(');
         expect(files[`${workspace}/orders.rq`]).toContain('rq b(');
-        expect(files[`${workspace}/widgets.rq`]).toContain('ep widgets');
+        expect(Object.keys(files)).toHaveLength(2);
     });
 
     it('passes the workspace so the linter reads the files around the drafts', async () => {

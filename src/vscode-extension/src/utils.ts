@@ -40,27 +40,6 @@ export function collectAllFiles(dir: string): string[] {
     return results;
 }
 
-export async function collectAllFilesAsync(dir: string): Promise<string[]> {
-    const results: string[] = [];
-    try {
-        const entries = await fs.promises.readdir(dir, { withFileTypes: true });
-        for (const entry of entries) {
-            if (entry.isDirectory() && SKIPPED_DIRECTORIES.has(entry.name)) {
-                continue;
-            }
-            const full = path.join(dir, entry.name);
-            if (entry.isDirectory()) {
-                results.push(...await collectAllFilesAsync(full));
-            } else if (entry.isFile()) {
-                results.push(full);
-            }
-        }
-    } catch {
-        // skip unreadable dirs
-    }
-    return results;
-}
-
 export function mirrorToTemp(folderPath: string, overrides: Map<string, string>): string {
     const tempDir = normalizePath(fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'rq-check-'))));
     try {
@@ -100,21 +79,8 @@ export interface DraftFile {
     source: string;
 }
 
-export async function buildFilesMap(source: string, drafts: DraftFile[] = []): Promise<string> {
-    const dir = await directoryOf(source);
-    const files: Record<string, string> = {};
-    for (const filePath of await collectAllFilesAsync(dir)) {
-        const normalized = filePath.replace(/\\/g, '/');
-        try {
-            files[normalized] = await fs.promises.readFile(filePath, 'utf8');
-        } catch {
-            continue;
-        }
-    }
-    for (const draft of drafts) {
-        files[draft.path.replace(/\\/g, '/')] = draft.source;
-    }
-    return JSON.stringify(files);
+export function draftsJson(drafts: DraftFile[] = []): string {
+    return JSON.stringify(Object.fromEntries(drafts.map(draft => [draft.path.replace(/\\/g, '/'), draft.source])));
 }
 
 export async function buildSecretsMap(source: string): Promise<string> {

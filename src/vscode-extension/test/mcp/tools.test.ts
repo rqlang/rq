@@ -160,16 +160,15 @@ describe('tools run from the home directory', () => {
 });
 
 describe('validateRq for an unsaved draft', () => {
-    it('scans the sibling files of the draft so imports can resolve', async () => {
+    it('sends only the draft and checks it from its own directory', async () => {
         mockCheck.mockReturnValue(JSON.stringify({ errors: [] }));
+        const draft = path.join(workspace, 'unsaved.rq').replace(/\\/g, '/');
 
-        await validateRq({ source: 'import "widgets";\n', path: path.join(workspace, 'unsaved.rq') });
+        await validateRq({ source: 'import "widgets";\n', path: draft });
 
-        const [filesJson] = mockCheck.mock.calls[0];
-        const files = JSON.parse(filesJson) as Record<string, string>;
-        expect(Object.keys(files).sort()).toEqual(
-            [`${workspace}/unsaved.rq`, `${workspace}/widgets.rq`].map(f => f.replace(/\\/g, '/')).sort()
-        );
+        const [filesJson, , source] = mockCheck.mock.calls[0];
+        expect(Object.keys(JSON.parse(filesJson))).toEqual([draft]);
+        expect(source).toBe(draft);
     });
 });
 
@@ -187,7 +186,7 @@ describe('lintRq', () => {
         expect(mockLint).toHaveBeenCalledTimes(1);
     });
 
-    it('passes the unsaved draft to the linter alongside the workspace files', async () => {
+    it('passes only the unsaved draft and leaves the saved files to the linter', async () => {
         mockLint.mockReturnValue(JSON.stringify({ ok: true, diagnostics: [] }));
         const source = 'rq list("http://x");\n';
 
@@ -197,8 +196,7 @@ describe('lintRq', () => {
         const files = JSON.parse(filesJson);
         expect(passedSource).toBe(source);
         expect(draft).toBe(`${workspace}/users.rq`);
-        expect(files[draft]).toBe(source);
-        expect(files[`${workspace}/widgets.rq`]).toContain('ep widgets');
+        expect(files).toEqual({ [draft]: source });
     });
 
     it('passes the workspace so the linter reads the files around the draft', async () => {

@@ -5,7 +5,7 @@ import * as http from 'http';
 import * as https from 'https';
 import * as crypto from 'crypto';
 import * as forge from 'node-forge';
-import { normalizePath, buildFilesMap, buildSecretsMap, DraftFile, CANCELLED_MESSAGE } from './utils';
+import { normalizePath, draftsJson, buildSecretsMap, DraftFile, CANCELLED_MESSAGE } from './utils';
 import { wasmCall } from './wasmHost';
 import { UiColor } from './language/definitions';
 
@@ -182,8 +182,7 @@ function resolveSource(sourceDir?: string): string {
 
 async function buildRequestScope(sourceDirectory?: string): Promise<[string, string, string]> {
     const source = resolveSource(sourceDirectory);
-    const [filesJson, secretsJson] = await Promise.all([buildFilesMap(source), buildSecretsMap(source)]);
-    return [filesJson, secretsJson, source];
+    return [draftsJson(), await buildSecretsMap(source), source];
 }
 
 function toVariablesJson(variables?: Record<string, string>): string | undefined {
@@ -253,7 +252,7 @@ export async function listEnvironments(sourceDirectory?: string): Promise<string
 
 export async function listEnvironmentsWithErrors(sourceDirectory?: string): Promise<ListEnvironmentsResult> {
     const source = resolveSource(sourceDirectory);
-    const result = await wasmCall('list_environments', [await buildFilesMap(source), await buildSecretsMap(source), source]);
+    const result = await wasmCall('list_environments', [draftsJson(), await buildSecretsMap(source), source]);
     const parsed = JSON.parse(result) as { environments: EnvironmentEntry[]; parse_errors?: { message: string }[] };
     return {
         environments: parsed.environments.map(e => e.name),
@@ -269,7 +268,7 @@ export async function listAuthConfigs(sourceDirectory?: string, rootDirectory?: 
 export async function listAuthConfigsWithErrors(sourceDirectory?: string, rootDirectory?: string): Promise<ListAuthConfigsResult> {
     const source = resolveSource(sourceDirectory);
     const root = resolveSource(rootDirectory ?? sourceDirectory);
-    const result = await wasmCall('list_auth', [await buildFilesMap(root), await buildSecretsMap(root), source]);
+    const result = await wasmCall('list_auth', [draftsJson(), await buildSecretsMap(root), source]);
     const parsed = JSON.parse(result) as { auth: AuthListEntry[]; parse_errors?: { message: string }[] };
     return {
         authConfigs: parsed.auth,
@@ -279,7 +278,7 @@ export async function listAuthConfigsWithErrors(sourceDirectory?: string, rootDi
 
 export async function showEnvironment(name: string, sourceDirectory?: string): Promise<EnvironmentShowOutput> {
     const source = resolveSource(sourceDirectory);
-    const result = await wasmCall('get_environment', [await buildFilesMap(source), await buildSecretsMap(source), source, name]);
+    const result = await wasmCall('get_environment', [draftsJson(), await buildSecretsMap(source), source, name]);
     const raw = JSON.parse(result) as EnvironmentShowOutput;
     return { ...raw, file: normalizePath(raw.file) };
 }
@@ -287,21 +286,21 @@ export async function showEnvironment(name: string, sourceDirectory?: string): P
 export async function listEndpoints(sourceDirectory?: string, rootDirectory?: string): Promise<EndpointShowOutput[]> {
     const source = resolveSource(sourceDirectory);
     const root = resolveSource(rootDirectory ?? sourceDirectory);
-    const result = await wasmCall('list_endpoints', [await buildFilesMap(root), await buildSecretsMap(root), source]);
+    const result = await wasmCall('list_endpoints', [draftsJson(), await buildSecretsMap(root), source]);
     const raw = JSON.parse(result) as EndpointShowOutput[];
     return raw.map(e => ({ ...e, file: normalizePath(e.file) }));
 }
 
 export async function showEndpoint(name: string, sourceDirectory?: string, scopeFile?: string): Promise<EndpointShowOutput> {
     const source = resolveSource(sourceDirectory);
-    const result = await wasmCall('get_endpoint', [await buildFilesMap(source), await buildSecretsMap(source), source, name, resolveScopeFile(scopeFile)]);
+    const result = await wasmCall('get_endpoint', [draftsJson(), await buildSecretsMap(source), source, name, resolveScopeFile(scopeFile)]);
     const raw = JSON.parse(result) as EndpointShowOutput;
     return { ...raw, file: normalizePath(raw.file) };
 }
 
 export async function showVariable(name: string, sourceDirectory?: string, environment?: string, interpolateVariables = true, scopeFile?: string): Promise<VariableShowOutput> {
     const source = resolveSource(sourceDirectory);
-    const result = await wasmCall('get_variable', [await buildFilesMap(source), await buildSecretsMap(source), source, name, environment, interpolateVariables, resolveScopeFile(scopeFile)]);
+    const result = await wasmCall('get_variable', [draftsJson(), await buildSecretsMap(source), source, name, environment, interpolateVariables, resolveScopeFile(scopeFile)]);
     const raw = JSON.parse(result) as VariableShowOutput;
     return { ...raw, file: normalizePath(raw.file) };
 }
@@ -309,7 +308,7 @@ export async function showVariable(name: string, sourceDirectory?: string, envir
 export async function listVariables(sourceFile?: string, environment?: string, rootDirectory?: string): Promise<VariableShowOutput[]> {
     const source = resolveSource(sourceFile);
     const root = resolveSource(rootDirectory ?? sourceFile);
-    const result = await wasmCall('list_variables', [await buildFilesMap(root), await buildSecretsMap(root), source, environment]);
+    const result = await wasmCall('list_variables', [draftsJson(), await buildSecretsMap(root), source, environment]);
     const raw = JSON.parse(result) as VariableShowOutput[];
     return raw.map(v => ({ ...v, file: normalizePath(v.file) }));
 }
@@ -325,7 +324,8 @@ export async function epRefs(name: string, document: vscode.TextDocument, source
 async function symbolRefs(binding: 'list_variable_refs' | 'list_endpoint_refs', name: string, document: vscode.TextDocument, sourceDirectory: string | undefined, extraArgs: unknown[]): Promise<SymbolReference[]> {
     const source = resolveSource(sourceDirectory);
     const scopeFile = documentDraftPath(document, source);
-    const [filesJson, secretsJson] = await Promise.all([buildFilesMap(source, openDrafts(document, source)), buildSecretsMap(source)]);
+    const filesJson = draftsJson(openDrafts(document, source));
+    const secretsJson = await buildSecretsMap(source);
     const result = await wasmCall(binding, [filesJson, secretsJson, source, name, scopeFile, ...extraArgs]);
     const raw = JSON.parse(result) as ReferenceLocation[];
     return raw.map(r => ({
@@ -354,7 +354,7 @@ function openDrafts(document: vscode.TextDocument, source: string): DraftFile[] 
 
 export async function showAuthConfig(name: string, sourceDirectory?: string, environment?: string): Promise<AuthShowOutput> {
     const source = resolveSource(sourceDirectory);
-    const result = await wasmCall('get_auth_details', [await buildFilesMap(source), await buildSecretsMap(source), source, name, environment, true]);
+    const result = await wasmCall('get_auth_details', [draftsJson(), await buildSecretsMap(source), source, name, environment, true]);
     const raw = JSON.parse(result) as AuthShowRaw;
     return {
         name: raw['Auth Configuration'],
@@ -369,7 +369,7 @@ export async function showAuthConfig(name: string, sourceDirectory?: string, env
 
 export async function listRequests(sourceDirectory?: string): Promise<ListRequestsResult> {
     const source = resolveSource(sourceDirectory);
-    const result = await wasmCall('list_requests', [await buildFilesMap(source), await buildSecretsMap(source), source]);
+    const result = await wasmCall('list_requests', [draftsJson(), await buildSecretsMap(source), source]);
     const parsed = JSON.parse(result) as { requests: RequestInfo[]; parse_errors?: { message: string }[] };
     const requests = parsed.requests ?? [];
     requests.forEach(r => {
@@ -398,14 +398,14 @@ export async function showRequest(requestName: string, sourceDirectory?: string,
 
 export async function showAuthLocation(name: string, sourceDirectory?: string): Promise<LocationOutput> {
     const source = resolveSource(sourceDirectory);
-    const result = await wasmCall('get_auth_details', [await buildFilesMap(source), await buildSecretsMap(source), source, name, undefined, false]);
+    const result = await wasmCall('get_auth_details', [draftsJson(), await buildSecretsMap(source), source, name, undefined, false]);
     const raw = JSON.parse(result) as AuthShowRaw;
     return { file: normalizePath(raw.file), line: raw.line, character: raw.character };
 }
 
 export async function showRequestLocation(requestName: string, sourceDirectory?: string): Promise<LocationOutput> {
     const source = resolveSource(sourceDirectory);
-    const result = await wasmCall('get_request_details', [await buildFilesMap(source), await buildSecretsMap(source), source, requestName, undefined, false, false]);
+    const result = await wasmCall('get_request_details', [draftsJson(), await buildSecretsMap(source), source, requestName, undefined, false, false]);
     const raw = JSON.parse(result) as RequestShowRaw;
     return { file: normalizePath(raw.file), line: raw.line, character: raw.character };
 }
@@ -437,7 +437,7 @@ export async function lintSources(files: DraftFile[], workspaceDirectory?: strin
 
     const workspace = resolveSource(workspaceDirectory);
     const drafts = files.map(f => ({ path: draftKey(f.path), source: f.source }));
-    const filesJson = await buildFilesMap(workspace, drafts);
+    const filesJson = draftsJson(drafts);
 
     for (const draft of drafts) {
         const raw = await wasmCall('lint', [filesJson, draft.source, draft.path, workspace]);
@@ -472,7 +472,7 @@ export async function unusedSuppressionRemoval(source: string, line: number, col
 }
 
 export async function checkFolder(folderPath: string, envName?: string): Promise<CheckResult> {
-    const result = await wasmCall('check', [await buildFilesMap(folderPath), await buildSecretsMap(folderPath), folderPath, envName]);
+    const result = await wasmCall('check', [draftsJson(), await buildSecretsMap(folderPath), folderPath, envName]);
     return JSON.parse(result) as CheckResult;
 }
 

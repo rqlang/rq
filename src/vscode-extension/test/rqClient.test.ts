@@ -15,12 +15,10 @@ jest.mock('../src/wasm/rq_wasm', () => ({
     list_auth: mockListAuth,
 }), { virtual: true });
 
-const mockBuildFilesMap = jest.fn(async () => '{}');
 const mockBuildSecretsMap = jest.fn(async () => JSON.stringify({ env_file: null, os_vars: [] }));
 
 jest.mock('../src/utils', () => ({
     ...jest.requireActual('../src/utils'),
-    buildFilesMap: mockBuildFilesMap,
     buildSecretsMap: mockBuildSecretsMap,
 }));
 

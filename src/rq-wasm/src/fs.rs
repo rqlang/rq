@@ -555,6 +555,16 @@ mod tests {
     }
 
     #[test]
+    fn walk_skips_the_folders_a_saved_rqignore_lists() {
+        let dir = disk_with(&[(".rqignore", "vendor\n"), ("a.rq", ""), ("vendor/b.rq", "")]);
+        let target = make_fs(&[]);
+        let found =
+            rq_lib::paths::walk_rq_files(&target, Path::new(&WasmFs::normalize(dir.path())))
+                .unwrap();
+        assert_eq!(found, vec![PathBuf::from(key(&dir, "a.rq"))]);
+    }
+
+    #[test]
     fn canonicalize_normalizes_path() {
         let target = make_fs(&[]);
         let result = target

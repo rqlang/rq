@@ -654,9 +654,9 @@ mod tests {
     }
 
     #[test]
-    fn does_not_walk_into_dependency_and_build_directories() {
+    fn does_not_walk_into_hidden_directories() {
         let peer = "rq fetch_users(\"http://localhost:8080/users\");\n";
-        for skipped in ["node_modules", ".git", "target"] {
+        for skipped in [".git", ".venv"] {
             let dir = nested_workspace(&[(&format!("{skipped}/dep.rq"), peer)]);
             let rules = workspace_rules(&dir, "rq list(\"http://localhost:8080/users\");\n");
             assert!(

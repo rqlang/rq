@@ -19,15 +19,8 @@ pub fn clean_path(path: &Path) -> String {
     clean_path_str(&s).to_string()
 }
 
-const SKIPPED_DIRECTORIES: &[&str] = &["node_modules", "target", "dist", "out"];
-
-pub fn is_skipped_directory(path: &Path) -> bool {
-    path.file_name()
-        .and_then(|name| name.to_str())
-        .is_some_and(|name| name.starts_with('.') || SKIPPED_DIRECTORIES.contains(&name))
-}
-
 pub const MAX_WALKED_ENTRIES: usize = 50_000;
+pub const IGNORE_FILE: &str = ".rqignore";
 
 pub fn walk_rq_files(fs: &dyn Fs, root: &Path) -> Result<Vec<PathBuf>, RqError> {
     walk_rq_files_up_to(fs, root, MAX_WALKED_ENTRIES)
@@ -37,6 +30,7 @@ fn walk_rq_files_up_to(fs: &dyn Fs, root: &Path, limit: usize) -> Result<Vec<Pat
     let mut walk = RqFileWalk {
         fs,
         root,
+        rules: SkipRules::load(fs, root),
         limit,
         walked: 0,
         paths: Vec::new(),
@@ -73,9 +67,48 @@ fn workspace_root(workspace: &Path) -> &Path {
     }
 }
 
+#[derive(Default)]
+struct SkipRules {
+    names: HashSet<String>,
+    paths: HashSet<String>,
+    included: HashSet<String>,
+}
+
+impl SkipRules {
+    fn load(fs: &dyn Fs, root: &Path) -> Self {
+        Self::parse(&fs.read(&root.join(IGNORE_FILE)).unwrap_or_default())
+    }
+
+    fn parse(content: &str) -> Self {
+        let mut rules = Self::default();
+        for line in content.lines() {
+            let entry = line.trim().trim_start_matches("./").trim_end_matches('/');
+            if entry.is_empty() || entry.starts_with('#') {
+                continue;
+            }
+            if let Some(included) = entry.strip_prefix('!') {
+                rules.included.insert(included.to_string());
+            } else if entry.contains('/') {
+                rules.paths.insert(entry.to_string());
+            } else {
+                rules.names.insert(entry.to_string());
+            }
+        }
+        rules
+    }
+
+    fn skips(&self, name: &str, relative: &str) -> bool {
+        if self.included.contains(name) || self.included.contains(relative) {
+            return false;
+        }
+        name.starts_with('.') || self.names.contains(name) || self.paths.contains(relative)
+    }
+}
+
 struct RqFileWalk<'a> {
     fs: &'a dyn Fs,
     root: &'a Path,
+    rules: SkipRules,
     limit: usize,
     walked: usize,
     paths: Vec<PathBuf>,
@@ -100,15 +133,12 @@ impl RqFileWalk<'_> {
         };
         self.walked += entries.len();
         if self.walked > self.limit {
-            return Err(RqError::Generic(format!(
-                "Too many files under {}: rq stops looking for .rq files after {} entries. Point it at the folder that holds them.",
-                clean_path(self.root),
-                self.limit
-            )));
+            return Err(self.too_many_files());
         }
         for path in entries {
             if self.fs.is_dir(&path) {
-                if is_skipped_directory(&path) {
+                let (name, relative) = self.names_of(&path);
+                if self.rules.skips(&name, &relative) {
                     Logger::debug(&format!("* Skipping directory {}", clean_path(&path)));
                     continue;
                 }
@@ -118,6 +148,27 @@ impl RqFileWalk<'_> {
             }
         }
         Ok(())
+    }
+
+    fn too_many_files(&self) -> RqError {
+        RqError::Generic(format!(
+            "Too many files under {}: rq stops looking for .rq files after {} entries. Add the folders rq should skip to {}.",
+            clean_path(self.root),
+            self.limit,
+            clean_path(&self.root.join(IGNORE_FILE))
+        ))
+    }
+
+    fn names_of(&self, path: &Path) -> (String, String) {
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default();
+        let relative = path
+            .strip_prefix(self.root)
+            .map(|r| r.to_string_lossy().replace('\\', "/"))
+            .unwrap_or_else(|_| name.clone());
+        (name, relative)
     }
 
     fn mark_visited(&mut self, dir: &Path) -> bool {
@@ -138,9 +189,7 @@ impl RqFileWalk<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        is_skipped_directory, resolve_under_workspace, walk_rq_files, walk_rq_files_up_to,
-    };
+    use super::{resolve_under_workspace, walk_rq_files, walk_rq_files_up_to, IGNORE_FILE};
     use crate::native::NativeFs;
     use std::path::{Path, PathBuf};
 
@@ -151,6 +200,12 @@ mod tests {
             std::fs::create_dir_all(path.parent().expect("parent")).expect("mkdir");
             std::fs::write(path, "").expect("write");
         }
+        dir
+    }
+
+    fn workspace_ignoring(ignore: &str, files: &[&str]) -> tempfile::TempDir {
+        let dir = workspace_with(files);
+        std::fs::write(dir.path().join(IGNORE_FILE), ignore).expect("write ignore file");
         dir
     }
 
@@ -185,25 +240,60 @@ mod tests {
     }
 
     #[test]
-    fn walk_skips_dependency_and_build_directories() {
-        let dir = workspace_with(&["a.rq", "node_modules/pkg/b.rq", "target/c.rq"]);
+    fn walk_enters_dependency_directories_unless_the_ignore_file_lists_them() {
+        let dir = workspace_with(&["a.rq", "node_modules/pkg/b.rq"]);
+        assert_eq!(walked_names(dir.path()), ["a.rq", "node_modules/pkg/b.rq"]);
+    }
+
+    #[test]
+    fn walk_skips_a_directory_named_in_the_ignore_file_at_any_depth() {
+        let dir = workspace_ignoring(
+            "node_modules\n",
+            &["a.rq", "node_modules/b.rq", "web/node_modules/c.rq"],
+        );
         assert_eq!(walked_names(dir.path()), ["a.rq"]);
+    }
+
+    #[test]
+    fn walk_skips_only_the_relative_path_the_ignore_file_lists() {
+        let dir = workspace_ignoring("fixtures/big/\n", &["fixtures/big/a.rq", "big/b.rq"]);
+        assert_eq!(walked_names(dir.path()), ["big/b.rq"]);
+    }
+
+    #[test]
+    fn walk_ignores_comments_and_blank_lines_in_the_ignore_file() {
+        let dir = workspace_ignoring("# api\n\n  \n", &["api/a.rq"]);
+        assert_eq!(walked_names(dir.path()), ["api/a.rq"]);
+    }
+
+    #[test]
+    fn walk_does_not_skip_a_directory_merely_containing_an_ignored_name() {
+        let dir = workspace_ignoring("target\n", &["target_api/a.rq"]);
+        assert_eq!(walked_names(dir.path()), ["target_api/a.rq"]);
+    }
+
+    #[test]
+    fn walk_skips_hidden_directories() {
+        let dir = workspace_with(&["a.rq", ".git/b.rq", ".venv/c.rq"]);
+        assert_eq!(walked_names(dir.path()), ["a.rq"]);
+    }
+
+    #[test]
+    fn walk_enters_a_hidden_directory_the_ignore_file_includes() {
+        let dir = workspace_ignoring("!.config\n", &[".config/a.rq", ".git/b.rq"]);
+        assert_eq!(walked_names(dir.path()), [".config/a.rq"]);
+    }
+
+    #[test]
+    fn walk_still_enters_a_hidden_root() {
+        let dir = workspace_with(&[".config/a.rq"]);
+        assert_eq!(walked_names(&dir.path().join(".config")), ["a.rq"]);
     }
 
     #[test]
     fn walk_of_a_path_that_is_not_a_directory_finds_nothing() {
         let dir = workspace_with(&["a.rq"]);
         assert!(walked_names(&dir.path().join("a.rq")).is_empty());
-    }
-
-    #[test]
-    fn skips_dependency_and_build_directories() {
-        for name in ["node_modules", "target", "dist", "out"] {
-            assert!(
-                is_skipped_directory(Path::new("/workspace").join(name).as_path()),
-                "`{name}` must be skipped"
-            );
-        }
     }
 
     #[test]
@@ -224,29 +314,12 @@ mod tests {
     }
 
     #[test]
-    fn skips_hidden_directories() {
-        for name in [".git", ".venv", ".cache"] {
-            assert!(
-                is_skipped_directory(Path::new("/workspace").join(name).as_path()),
-                "`{name}` must be skipped"
-            );
-        }
-    }
-
-    #[test]
-    fn walk_still_enters_a_hidden_root() {
-        let dir = workspace_with(&[".config/a.rq"]);
-        assert_eq!(walked_names(&dir.path().join(".config")), ["a.rq"]);
-    }
-
-    #[test]
-    fn does_not_skip_an_ordinary_directory() {
-        assert!(!is_skipped_directory(Path::new("/workspace/api")));
-    }
-
-    #[test]
-    fn does_not_skip_a_directory_merely_containing_a_skipped_name() {
-        assert!(!is_skipped_directory(Path::new("/workspace/target_api")));
+    fn walk_error_points_at_the_ignore_file() {
+        let dir = workspace_with(&["a.rq", "b.txt", "api/c.rq"]);
+        let target = walk_rq_files_up_to(&NativeFs, dir.path(), 3)
+            .expect_err("over the limit")
+            .to_string();
+        assert!(target.contains(IGNORE_FILE), "{target}");
     }
 
     #[test]

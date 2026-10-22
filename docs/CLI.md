@@ -89,11 +89,25 @@ Unless otherwise noted, most commands share these common flags:
 
 ### Which files rq reads
 
-When `--source` is a directory, rq looks for `.rq` files in it and in every subdirectory, except `node_modules`, `target`, `dist`, `out` and hidden directories (any name starting with `.`, such as `.git` or `.venv`). A hidden directory given as the source itself is still read. Other files are only read when a request asks for them, for example through `io.read_file`.
+When `--source` is a directory, rq looks for `.rq` files in it and in every subdirectory except hidden ones (any name starting with `.`, such as `.git` or `.venv`). A hidden directory given as the source itself is still read. Other files are only read when a request asks for them, for example through `io.read_file`.
 
-To keep a wrong source, such as your home directory, from hanging, rq stops after 50,000 files and directories and fails with `Too many files under <path>`. Point `--source` at the folder that holds your `.rq` files instead.
+To skip more directories, list them in a `.rqignore` file at the root of the source directory:
 
-The VS Code extension and the MCP server read files the same way.
+```
+# one entry per line; blank lines and lines starting with # are ignored
+node_modules
+target
+fixtures/large
+!.config
+```
+
+- A bare name, such as `node_modules`, skips every directory with that name at any depth.
+- A path with a `/`, such as `fixtures/large`, skips only that directory, relative to the source.
+- `!name` reads a hidden directory that would otherwise be skipped.
+
+To keep a wrong source, such as your home directory, from hanging, rq stops after 50,000 files and directories and asks you to add the folders it should skip to `.rqignore`, or to point `--source` at the folder that holds your `.rq` files.
+
+The VS Code extension and the MCP server read files the same way, with the `.rqignore` of the opened folder.
 
 ## Managing requests: `rq request`
 

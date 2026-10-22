@@ -54,7 +54,7 @@ The VSCode extension talks to `rq-wasm` in-process (worker), not a CLI subproces
 - `client/` — request execution (`mod.rs`, `models.rs`). `RqClient::prepare_request` turns a request into exactly what is sent (resolution, auth, default headers, timeout) and is the only place that does; `run` is `prepare` + token acquisition + `HttpClient::execute`
 - `auth/` — runtime auth providers: `bearer.rs`, `oauth2_*.rs`, `auth_provider.rs`. Each `AuthProvider` has `known_token` (apply a token that needs no network call; defaults to the `auth_token` variable) and `configure` (obtain one that is not known yet)
 - `native/` — native (non-WASM) impls of `fs`, `http`, `secrets`; `NativeFs` builds without the `native` feature so `rq-wasm` can test against the disk
-- `paths.rs` — `walk_rq_files`, the only directory walk every channel uses (skipped directories, 50,000-entry limit)
+- `paths.rs` — `walk_rq_files`, the only directory walk every channel uses (hidden directories and `.rqignore` entries skipped, 50,000-entry limit)
 - `http.rs` (`HttpClient` trait, `request_timeout`), `error.rs`, `logger.rs`, `version.rs`, `lib.rs`
 
 **CLI — `src/cli/src/`**

@@ -19,7 +19,7 @@ GitHub Actions workflows for building, testing and releasing `rq`.
 | `publish_extension.yaml` | Called by `publish_release.yaml`, or manual | Publishes a release VSIX to the VS Code Marketplace |
 | `publish_homebrew.yaml` | Called by `publish_release.yaml`, or manual | Renders, verifies and pushes the Homebrew formula to the tap |
 | `publish_scoop.yaml` | Called by `publish_release.yaml`, or manual | Renders, verifies and pushes the Scoop manifest to the bucket |
-| `publish_npm.yaml` | Called by `publish_release.yaml`, or manual | Smoke-tests the release `@rqlang/mcp` tarball and publishes it to npm |
+| `publish_npm.yaml` | Called by `publish_release.yaml` | Smoke-tests the release `@rqlang/mcp` tarball and publishes it to npm |
 | `publish_winget.yaml` | Called by `publish_release.yaml`, or manual | Renders, verifies and submits the WinGet manifests to `microsoft/winget-pkgs` |
 | `build_cli.yaml` | Called by the release workflows | Builds and signs the CLI for every platform |
 | `build_extension.yaml` | Called by the release workflows | Packages the VS Code extension VSIX |
@@ -120,7 +120,16 @@ deployment/winget/test/run.sh
 
 The MCP server is distributed as [`@rqlang/mcp`](https://www.npmjs.com/package/@rqlang/mcp), so any MCP client can run it with `npx -y @rqlang/mcp`. It is the same server the extension registers for Copilot, bundled from `src/vscode-extension/src/mcp/` with `rq-wasm`; see [`src/rq-mcp/README.md`](../../src/rq-mcp/README.md).
 
-`publish_npm.yaml` downloads `rqlang-mcp-<version>.tgz` from the release, installs it in an empty project and checks that `validate_rq` answers over stdio, and only then publishes it with `npm publish --provenance` using the `NPM_TOKEN` secret (a granular access token with read and write access to the `@rqlang` scope). Pre-releases are rejected, and a version already on npm is skipped. To retry or republish a release, run it manually with the tag.
+`publish_npm.yaml` downloads `rqlang-mcp-<version>.tgz` from the release, installs it in an empty project and checks that `validate_rq` answers over stdio, and only then publishes it. Pre-releases are rejected, and a version already on npm is skipped. To retry a release, run `publish_release.yaml` again with only the npm channel ticked.
+
+Publishing uses npm [trusted publishing](https://docs.npmjs.com/trusted-publishers): GitHub Actions authenticates through OIDC, so there is no npm token in the repository, and npm attaches provenance on its own. npm validates the workflow that started the run, not the reusable one that publishes, so the trusted publisher on `@rqlang/mcp` is set to repository `rqlang/rq` and workflow `publish_release.yaml`, and `publish_npm.yaml` has no manual trigger of its own. It needs npm 11.5.1 or newer, which the workflow installs over the npm that comes with Node 22.
+
+A trusted publisher can only be added to a package that already exists, so the first version is published by hand from the release tarball, and the trusted publisher is added after it:
+
+```bash
+gh release download <tag> --repo rqlang/rq --pattern "rqlang-mcp-*.tgz"
+npm publish rqlang-mcp-<version>.tgz --access public
+```
 
 ## Install script
 

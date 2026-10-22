@@ -10,18 +10,6 @@ on:
         required: false
         type: boolean
         default: false
-    secrets:
-      NPM_TOKEN:
-        required: true
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: 'Release tag to publish (e.g. 0.8.0)'
-        required: true
-      dry_run:
-        description: 'Verify the package without publishing'
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -65,6 +53,9 @@ jobs:
         with:
           node-version: '22'
           registry-url: 'https://registry.npmjs.org'
+
+      - name: Update npm for trusted publishing
+        run: npm install -g npm@^11.5.1
 
       - name: Find package
         id: find_package
@@ -111,6 +102,5 @@ jobs:
       - name: Publish to npm
         if: ${{ !inputs.dry_run && steps.published.outputs.exists != 'true' }}
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           TARBALL: ${{ steps.find_package.outputs.tarball }}
-        run: npm publish "$TARBALL" --access public --provenance
+        run: npm publish "$TARBALL" --access public

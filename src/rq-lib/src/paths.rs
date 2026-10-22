@@ -195,10 +195,7 @@ impl RqFileWalk<'_> {
     }
 
     fn mark_visited(&mut self, dir: &Path) -> bool {
-        let key = self
-            .fs
-            .canonicalize(dir)
-            .unwrap_or_else(|_| dir.to_path_buf());
+        let key = self.fs.real_path(dir).unwrap_or_else(|_| dir.to_path_buf());
         if self.visited.insert(key) {
             return true;
         }

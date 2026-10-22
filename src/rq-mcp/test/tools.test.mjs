@@ -162,6 +162,13 @@ describe('list_requests', () => {
         assert.ok(target.parse_errors[0].file.endsWith('broken.rq'), target.parse_errors[0].file);
     });
 
+    it('lists each request once through a symlink cycle', { skip: process.platform === 'win32' }, async () => {
+        const workspace = tempWorkspace({ 'api/greet.rq': 'rq greet("http://example.test/hi");\n' });
+        fs.symlinkSync(workspace, path.join(workspace, 'api', 'loop'));
+        const target = await callJson(client, 'list_requests', { path: workspace });
+        assert.deepEqual(target.requests.map(r => r.name), ['greet']);
+    });
+
     it('defaults to the directory the server runs in', async () => {
         const workspace = tempWorkspace({ 'greet.rq': 'rq greet("http://example.test/hi");\n' });
         const scoped = await connect(workspace);

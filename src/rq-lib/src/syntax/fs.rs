@@ -8,4 +8,7 @@ pub trait Fs: Send + Sync {
     fn is_dir(&self, path: &Path) -> bool;
     fn read_dir(&self, dir: &Path) -> Result<Vec<PathBuf>, String>;
     fn canonicalize(&self, path: &Path) -> Result<PathBuf, String>;
+    fn real_path(&self, path: &Path) -> Result<PathBuf, String> {
+        self.canonicalize(path)
+    }
 }

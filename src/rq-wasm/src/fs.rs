@@ -131,6 +131,14 @@ impl Fs for WasmFs {
     fn canonicalize(&self, path: &Path) -> Result<PathBuf, String> {
         Ok(PathBuf::from(Self::normalize(path)))
     }
+
+    fn real_path(&self, path: &Path) -> Result<PathBuf, String> {
+        let key = Self::normalize(path);
+        match self.disk.real_path(Path::new(&key)) {
+            Ok(real) => Ok(real),
+            Err(_) => Ok(PathBuf::from(key)),
+        }
+    }
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -162,6 +170,9 @@ mod node {
 
         #[wasm_bindgen(catch, js_name = statSync)]
         fn stat_sync(path: &str) -> Result<Stats, JsValue>;
+
+        #[wasm_bindgen(catch, js_name = realpathSync)]
+        fn realpath_sync(path: &str) -> Result<String, JsValue>;
 
         #[wasm_bindgen(method, js_name = isDirectory)]
         fn is_directory(this: &Stats) -> bool;
@@ -204,6 +215,12 @@ mod node {
 
         fn canonicalize(&self, path: &Path) -> Result<PathBuf, String> {
             Ok(path.to_path_buf())
+        }
+
+        fn real_path(&self, path: &Path) -> Result<PathBuf, String> {
+            realpath_sync(&path.to_string_lossy())
+                .map(PathBuf::from)
+                .map_err(message)
         }
     }
 
@@ -580,6 +597,18 @@ mod tests {
             .resolve_path(Path::new(&key(&dir, "a.rq")), "common.rq")
             .unwrap();
         assert_eq!(resolved, PathBuf::from(key(&dir, "common.rq")));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn walk_visits_each_file_once_through_a_symlink_cycle() {
+        let dir = disk_with(&[("api/a.rq", "")]);
+        std::os::unix::fs::symlink(dir.path(), dir.path().join("api/loop")).unwrap();
+        let target = make_fs(&[]);
+        let found =
+            rq_lib::paths::walk_rq_files(&target, Path::new(&WasmFs::normalize(dir.path())))
+                .unwrap();
+        assert_eq!(found, vec![PathBuf::from(key(&dir, "api/a.rq"))]);
     }
 
     #[test]

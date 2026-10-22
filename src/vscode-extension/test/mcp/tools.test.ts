@@ -100,6 +100,10 @@ describe('isUnscoped', () => {
         expect(isUnscoped(os.homedir())).toBe(true);
     });
 
+    it('flags a relative path that resolves to the home directory', () => {
+        expect(isUnscoped(path.relative(process.cwd(), os.homedir()) || '.')).toBe(true);
+    });
+
     it('accepts a project folder', () => {
         expect(isUnscoped(workspace)).toBe(false);
     });

@@ -45,7 +45,7 @@ export async function workspaceFor(workspacePath?: string, filePath?: string): P
 }
 
 export function isUnscoped(directory: string): boolean {
-    const target = posix(directory).replace(/\/$/, '');
+    const target = posix(path.resolve(directory)).replace(/\/$/, '');
     const root = posix(path.parse(path.resolve(directory)).root).replace(/\/$/, '');
     return target === root || target === posix(os.homedir()).replace(/\/$/, '');
 }

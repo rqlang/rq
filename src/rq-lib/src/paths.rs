@@ -27,10 +27,18 @@ pub fn is_skipped_directory(path: &Path) -> bool {
         .is_some_and(|name| name.starts_with('.') || SKIPPED_DIRECTORIES.contains(&name))
 }
 
+pub const MAX_WALKED_ENTRIES: usize = 50_000;
+
 pub fn walk_rq_files(fs: &dyn Fs, root: &Path) -> Result<Vec<PathBuf>, RqError> {
+    walk_rq_files_up_to(fs, root, MAX_WALKED_ENTRIES)
+}
+
+fn walk_rq_files_up_to(fs: &dyn Fs, root: &Path, limit: usize) -> Result<Vec<PathBuf>, RqError> {
     let mut walk = RqFileWalk {
         fs,
         root,
+        limit,
+        walked: 0,
         paths: Vec::new(),
         visited: HashSet::new(),
     };
@@ -68,6 +76,8 @@ fn workspace_root(workspace: &Path) -> &Path {
 struct RqFileWalk<'a> {
     fs: &'a dyn Fs,
     root: &'a Path,
+    limit: usize,
+    walked: usize,
     paths: Vec<PathBuf>,
     visited: HashSet<PathBuf>,
 }
@@ -88,6 +98,14 @@ impl RqFileWalk<'_> {
                 return Ok(());
             }
         };
+        self.walked += entries.len();
+        if self.walked > self.limit {
+            return Err(RqError::Generic(format!(
+                "Too many files under {}: rq stops looking for .rq files after {} entries. Point it at the folder that holds them.",
+                clean_path(self.root),
+                self.limit
+            )));
+        }
         for path in entries {
             if self.fs.is_dir(&path) {
                 if is_skipped_directory(&path) {
@@ -120,7 +138,9 @@ impl RqFileWalk<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_skipped_directory, resolve_under_workspace, walk_rq_files};
+    use super::{
+        is_skipped_directory, resolve_under_workspace, walk_rq_files, walk_rq_files_up_to,
+    };
     use crate::native::NativeFs;
     use std::path::{Path, PathBuf};
 
@@ -184,6 +204,23 @@ mod tests {
                 "`{name}` must be skipped"
             );
         }
+    }
+
+    #[test]
+    fn walk_stops_with_an_error_past_the_entry_limit() {
+        let dir = workspace_with(&["a.rq", "b.txt", "api/c.rq"]);
+        let target = walk_rq_files_up_to(&NativeFs, dir.path(), 3);
+        assert!(target
+            .expect_err("over the limit")
+            .to_string()
+            .contains("Too many files"));
+    }
+
+    #[test]
+    fn walk_counts_every_entry_up_to_the_limit() {
+        let dir = workspace_with(&["a.rq", "b.txt", "api/c.rq"]);
+        let target = walk_rq_files_up_to(&NativeFs, dir.path(), 4);
+        assert_eq!(target.expect("within the limit").len(), 2);
     }
 
     #[test]

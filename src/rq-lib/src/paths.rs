@@ -188,8 +188,10 @@ impl RqFileWalk<'_> {
         let folders: Vec<String> = largest
             .iter()
             .take(3)
-            .map(|(folder, count)| self.culprit(folder, **count))
-            .map(|(folder, count)| format!("{folder} ({count})"))
+            .map(|(folder, count)| match self.culprit(folder, **count) {
+                (culprit, _) if culprit == folder.as_str() => format!("{folder} ({count})"),
+                (culprit, _) => format!("{folder} ({count}, most in {culprit})"),
+            })
             .collect();
         let largest = if folders.is_empty() {
             String::new()
@@ -408,7 +410,7 @@ mod tests {
             .expect_err("over the limit")
             .to_string();
         assert!(
-            target.contains("Largest folders: web/node_modules (10)"),
+            target.contains("Largest folders: web (12, most in web/node_modules)"),
             "{target}"
         );
     }

@@ -41,7 +41,15 @@ describe('draftPath', () => {
 
 describe('workspaceFor', () => {
     it('prefers the explicit workspace path', async () => {
-        await expect(workspaceFor('/repo', '/other/users.rq')).resolves.toBe('/repo');
+        await expect(workspaceFor(workspace, '/other/users.rq')).resolves.toBe(workspace.replace(/\\/g, '/'));
+    });
+
+    it('rejects a workspace path that does not exist', async () => {
+        await expect(workspaceFor(path.join(workspace, 'missing'))).rejects.toThrow('Path not found');
+    });
+
+    it('rejects an absolute draft whose directory does not exist', async () => {
+        await expect(workspaceFor(undefined, path.join(workspace, 'missing', 'users.rq'))).rejects.toThrow('Path not found');
     });
 
     it('falls back to the working directory', async () => {
@@ -78,6 +86,11 @@ describe('validateRq for an unsaved draft', () => {
 });
 
 describe('lintRq', () => {
+    it('rejects a workspace path that does not exist instead of linting against nothing', async () => {
+        await expect(lintRq({ source: '', workspace_path: path.join(workspace, 'missing') })).rejects.toThrow('Path not found');
+        expect(mockLint).not.toHaveBeenCalled();
+    });
+
     it('reaches the wasm through the shared host rather than its own loader', async () => {
         mockLint.mockReturnValue(JSON.stringify({ ok: true, diagnostics: [] }));
 
@@ -111,6 +124,11 @@ describe('lintRq', () => {
 });
 
 describe('validateRq', () => {
+    it('rejects a workspace path that does not exist instead of validating against nothing', async () => {
+        await expect(validateRq({ source: '', workspace_path: path.join(workspace, 'missing') })).rejects.toThrow('Path not found');
+        expect(mockCheck).not.toHaveBeenCalled();
+    });
+
     it('maps parser errors into diagnostics and reports not ok', async () => {
         mockCheck.mockReturnValue(JSON.stringify({ errors: [{ file: 'users.rq', line: 2, column: 3, message: 'boom' }] }));
 

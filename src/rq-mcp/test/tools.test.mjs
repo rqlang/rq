@@ -82,6 +82,14 @@ describe('validate_rq', () => {
         assert.deepEqual(target.diagnostics, []);
     });
 
+    it('reports a missing workspace path as a tool error', async () => {
+        const target = await client.callTool({
+            name: 'validate_rq',
+            arguments: { source: '', workspace_path: path.join(tempWorkspace(), 'missing') }
+        });
+        assert.equal(target.isError, true);
+    });
+
     it('does not write the draft into the workspace', async () => {
         const workspace = tempWorkspace();
         await callJson(client, 'validate_rq', {

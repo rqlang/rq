@@ -35,11 +35,20 @@ export function draftPath(workspacePath: string, filePath: string | undefined): 
 }
 
 export async function workspaceFor(workspacePath?: string, filePath?: string): Promise<string> {
-    if (workspacePath) { return posix(workspacePath); }
+    if (workspacePath) { return posix(await existing(workspacePath)); }
     if (filePath && path.isAbsolute(filePath)) {
-        return posix((await isDirectory(filePath)) ? filePath : path.dirname(filePath));
+        return posix(await existing((await isDirectory(filePath)) ? filePath : path.dirname(filePath)));
     }
     return posix(process.cwd());
+}
+
+async function existing(target: string): Promise<string> {
+    try {
+        await fs.promises.stat(target);
+    } catch {
+        throw new Error(`Path not found: ${target}`);
+    }
+    return target;
 }
 
 export async function validateRq(args: {
@@ -65,17 +74,8 @@ export async function lintRq(args: { source: string; path?: string; workspace_pa
     return JSON.parse(await wasmCall('lint', [filesJson, args.source, draft])) as CheckResult;
 }
 
-async function requireExisting(target: string): Promise<void> {
-    try {
-        await fs.promises.stat(target);
-    } catch {
-        throw new Error(`Path not found: ${target}`);
-    }
-}
-
 export async function listRequests(args: { path?: string }): Promise<unknown> {
     const target = await workspaceFor(args.path);
-    await requireExisting(target);
     const filesJson = await buildFilesMap(target);
     const secretsJson = await buildSecretsMap(target);
     const raw = await wasmCall('list_requests', [filesJson, secretsJson, target]);

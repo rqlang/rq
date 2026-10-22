@@ -73,9 +73,9 @@ Verify:
 
 ## Quick repo check
 
-Run the Rust commands from the repo root; the workspace covers `src/cli`, `src/rq-lib` and `src/rq-mcp`.
+Run the Rust commands from the repo root; the workspace covers `src/cli` and `src/rq-lib`.
 
-- CLI, library and MCP server (Rust):
+- CLI and library (Rust):
   - Start the echo server (required for `cargo test`):
     - `docker run -d --rm --name rq-echo -p 8080:80 ealen/echo-server`
     - Wait until it responds:
@@ -94,6 +94,13 @@ Run the Rust commands from the repo root; the workspace covers `src/cli`, `src/r
   - `npm ci`
   - `npm run build-wasm`
   - `npm run compile`
+
+- MCP server (`@rqlang/mcp`, bundled from the extension's `src/mcp/`):
+  - `cd src/rq-mcp`
+  - `npm ci`
+  - `npm run build-wasm`
+  - `npm run build`
+  - `npm test`
 
 ## Installing dev builds
 

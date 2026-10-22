@@ -1,0 +1,106 @@
+name: Publish MCP Package to npm
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+      dry_run:
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  publish:
+    name: Publish @rqlang/mcp
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Reject pre-releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          prerelease=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isPrerelease --jq .isPrerelease)
+          if [ "$prerelease" = "true" ]; then
+            echo "::error::$TAG is a pre-release; only stable releases are published to npm"
+            exit 1
+          fi
+
+      - name: Download package from release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          mkdir -p package-artifact
+          gh release download "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "rqlang-mcp-*.tgz" \
+            --dir package-artifact
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Update npm for trusted publishing
+        run: npm install -g npm@^11.5.1
+
+      - name: Find package
+        id: find_package
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          version="${TAG#v}"
+          tarball="package-artifact/rqlang-mcp-${version}.tgz"
+          if [ ! -f "$tarball" ]; then
+            echo "::error::rqlang-mcp-${version}.tgz not found in release $TAG"
+            ls package-artifact
+            exit 1
+          fi
+          echo "tarball=$tarball" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Check whether the version is already published
+        id: published
+        env:
+          VERSION: ${{ steps.find_package.outputs.version }}
+        run: |
+          if npm view "@rqlang/mcp@${VERSION}" version > /dev/null 2>&1; then
+            echo "@rqlang/mcp@${VERSION} is already on npm; skipping"
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Smoke test the package
+        env:
+          TARBALL: ${{ steps.find_package.outputs.tarball }}
+        run: |
+          mkdir smoke && cd smoke
+          npm init -y > /dev/null
+          npm install "../$TARBALL" > /dev/null
+          printf '%s\n' \
+            '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"smoke","version":"0"}}}' \
+            '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
+            '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"validate_rq","arguments":{"source":"rq ping(\"http://localhost\");\n"}}}' \
+            | timeout 30 npx --no-install @rqlang/mcp > replies.jsonl
+          cat replies.jsonl
+          grep -F '\"ok\": true' replies.jsonl > /dev/null
+
+      - name: Publish to npm
+        if: ${{ !inputs.dry_run && steps.published.outputs.exists != 'true' }}
+        env:
+          TARBALL: ${{ steps.find_package.outputs.tarball }}
+        run: npm publish "$TARBALL" --access public

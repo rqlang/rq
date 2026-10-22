@@ -13,7 +13,7 @@ The project provides two main tools to work with `.rq` files:
 
 New to rq? See the [getting started guide](https://www.rqlang.com/docs/GETTING_STARTED.html). Ready for more? Work through the [advanced example](https://www.rqlang.com/docs/ADVANCED_EXAMPLE.html).
 
-The extension also bundles an MCP server, so Copilot and other AI assistants write `.rq` files against rq's own parser and linter — see [AI-assisted authoring](https://www.rqlang.com/docs/AI_ASSISTED_AUTHORING.html).
+The extension also bundles an MCP server, so Copilot and other AI assistants write `.rq` files against rq's own parser and linter. Claude Code, Cursor and any other MCP client run the same server with `npx -y @rqlang/mcp` — see [AI-assisted authoring](https://www.rqlang.com/docs/AI_ASSISTED_AUTHORING.html).
 
 For full documentation, visit [rqlang.com](https://www.rqlang.com).
 

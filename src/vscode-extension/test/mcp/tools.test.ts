@@ -12,7 +12,7 @@ jest.mock('../../src/wasm/rq_wasm', () => ({
     list_requests: mockListRequests
 }), { virtual: true });
 
-import { Diagnostic, lintRq, validateRq, listRequests, draftPath, workspaceFor } from '../../src/mcp/tools';
+import { Diagnostic, lintRq, validateRq, listRequests, draftPath, workspaceFor, isUnscoped } from '../../src/mcp/tools';
 
 let workspace: string;
 
@@ -30,8 +30,16 @@ describe('draftPath', () => {
         expect(draftPath('/repo', 'users.rq')).toBe('/repo/users.rq');
     });
 
-    it('keeps an absolute path as given', () => {
-        expect(draftPath('/repo', '/elsewhere/users.rq')).toBe('/elsewhere/users.rq');
+    it('keeps an absolute path that is inside the workspace', () => {
+        expect(draftPath('/repo', '/repo/api/users.rq')).toBe('/repo/api/users.rq');
+    });
+
+    it('moves an absolute path from outside the workspace into it so imports resolve there', () => {
+        expect(draftPath('/repo', '/elsewhere/users.rq')).toBe('/repo/users.rq');
+    });
+
+    it('keeps the subdirectory of a relative path', () => {
+        expect(draftPath('/repo', 'api/users.rq')).toBe('/repo/api/users.rq');
     });
 
     it('falls back to draft.rq when no filename is supplied', () => {
@@ -41,7 +49,27 @@ describe('draftPath', () => {
 
 describe('workspaceFor', () => {
     it('prefers the explicit workspace path', async () => {
-        await expect(workspaceFor('/repo', '/other/users.rq')).resolves.toBe('/repo');
+        await expect(workspaceFor(workspace, '/other/users.rq')).resolves.toBe(workspace.replace(/\\/g, '/'));
+    });
+
+    it('uses the directory of a workspace path that names a file', async () => {
+        await expect(workspaceFor(path.join(workspace, 'widgets.rq'))).resolves.toBe(workspace.replace(/\\/g, '/'));
+    });
+
+    it('rejects a workspace path that does not exist', async () => {
+        await expect(workspaceFor(path.join(workspace, 'missing'))).rejects.toThrow('Path not found');
+    });
+
+    it('reports a path it may not read as a permission problem, not a missing one', async () => {
+        const denied = Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' });
+        const stat = jest.spyOn(fs.promises, 'stat').mockRejectedValueOnce(denied);
+
+        await expect(workspaceFor(workspace)).rejects.toThrow(`Permission denied: ${workspace}`);
+        stat.mockRestore();
+    });
+
+    it('rejects an absolute draft whose directory does not exist', async () => {
+        await expect(workspaceFor(undefined, path.join(workspace, 'missing', 'users.rq'))).rejects.toThrow('Path not found');
     });
 
     it('falls back to the working directory', async () => {
@@ -63,6 +91,64 @@ describe('workspaceFor', () => {
     });
 });
 
+describe('isUnscoped', () => {
+    it('flags the filesystem root', () => {
+        expect(isUnscoped(path.parse(workspace).root)).toBe(true);
+    });
+
+    it('flags the home directory', () => {
+        expect(isUnscoped(os.homedir())).toBe(true);
+    });
+
+    it('flags a relative path that resolves to the home directory', () => {
+        expect(isUnscoped(path.relative(process.cwd(), os.homedir()) || '.')).toBe(true);
+    });
+
+    it('accepts a project folder', () => {
+        expect(isUnscoped(workspace)).toBe(false);
+    });
+});
+
+describe('tools run from the home directory', () => {
+    it('validate only the draft instead of reading every file under it', async () => {
+        mockCheck.mockReturnValue(JSON.stringify({ errors: [] }));
+        const cwd = jest.spyOn(process, 'cwd').mockReturnValue(os.homedir());
+
+        await validateRq({ source: 'rq ping("http://x");\n' });
+        cwd.mockRestore();
+
+        const files = JSON.parse(mockCheck.mock.calls[0][0]) as Record<string, string>;
+        expect(Object.keys(files)).toHaveLength(1);
+    });
+
+    it('lint only the draft instead of reading every file under it', async () => {
+        mockLint.mockReturnValue(JSON.stringify({ ok: true, diagnostics: [] }));
+        const cwd = jest.spyOn(process, 'cwd').mockReturnValue(os.homedir());
+
+        await lintRq({ source: 'rq ping("http://x");\n' });
+        cwd.mockRestore();
+
+        const files = JSON.parse(mockLint.mock.calls[0][0]) as Record<string, string>;
+        expect(Object.keys(files)).toHaveLength(1);
+    });
+
+    it('refuse to list requests without a project folder', async () => {
+        const cwd = jest.spyOn(process, 'cwd').mockReturnValue(os.homedir());
+
+        await expect(listRequests({})).rejects.toThrow('pass the project folder');
+        cwd.mockRestore();
+        expect(mockListRequests).not.toHaveBeenCalled();
+    });
+
+    it('refuse to list a file that sits directly in the filesystem root', async () => {
+        const stat = jest.spyOn(fs.promises, 'stat').mockResolvedValue({ isDirectory: () => false } as fs.Stats);
+
+        await expect(listRequests({ path: path.join(path.parse(workspace).root, 'users.rq') })).rejects.toThrow('pass the project folder');
+        stat.mockRestore();
+        expect(mockListRequests).not.toHaveBeenCalled();
+    });
+});
+
 describe('validateRq for an unsaved draft', () => {
     it('scans the sibling files of the draft so imports can resolve', async () => {
         mockCheck.mockReturnValue(JSON.stringify({ errors: [] }));
@@ -78,6 +164,11 @@ describe('validateRq for an unsaved draft', () => {
 });
 
 describe('lintRq', () => {
+    it('rejects a workspace path that does not exist instead of linting against nothing', async () => {
+        await expect(lintRq({ source: '', workspace_path: path.join(workspace, 'missing') })).rejects.toThrow('Path not found');
+        expect(mockLint).not.toHaveBeenCalled();
+    });
+
     it('reaches the wasm through the shared host rather than its own loader', async () => {
         mockLint.mockReturnValue(JSON.stringify({ ok: true, diagnostics: [] }));
 
@@ -111,6 +202,11 @@ describe('lintRq', () => {
 });
 
 describe('validateRq', () => {
+    it('rejects a workspace path that does not exist instead of validating against nothing', async () => {
+        await expect(validateRq({ source: '', workspace_path: path.join(workspace, 'missing') })).rejects.toThrow('Path not found');
+        expect(mockCheck).not.toHaveBeenCalled();
+    });
+
     it('maps parser errors into diagnostics and reports not ok', async () => {
         mockCheck.mockReturnValue(JSON.stringify({ errors: [{ file: 'users.rq', line: 2, column: 3, message: 'boom' }] }));
 
@@ -164,5 +260,10 @@ describe('listRequests', () => {
         const target = await listRequests({ path: workspace }) as { parse_errors: Diagnostic[] };
 
         expect(target.parse_errors).toEqual([]);
+    });
+
+    it('rejects a path that does not exist instead of listing nothing', async () => {
+        await expect(listRequests({ path: path.join(workspace, 'missing') })).rejects.toThrow('Path not found');
+        expect(mockListRequests).not.toHaveBeenCalled();
     });
 });

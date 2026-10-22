@@ -1,0 +1,92 @@
+name: Build MCP Package
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  build:
+    name: Build MCP Package
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: ./src/rq-mcp
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: src/rq-mcp/package-lock.json
+
+      - name: Install wasm-pack
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Set version in Cargo.toml
+        working-directory: ${{ github.workspace }}
+        env:
+          VERSION: ${{ inputs.version }}
+        run: sed -i "s/^version = \".*\"/version = \"${VERSION}\"/" Cargo.toml
+
+      - name: Set version in package.json
+        env:
+          VERSION: ${{ inputs.version }}
+        run: npm version "$VERSION" --no-git-tag-version --allow-same-version
+
+      - name: Build rq-wasm
+        run: npm run build-wasm
+
+      - name: Build package
+        run: node build.js --production
+
+      - name: Run tests
+        run: npm test
+
+      - name: Pack package
+        run: |
+          npm pack
+          ls -lh *.tgz
+
+      - name: Verify package contents
+        run: |
+          tarball=$(ls *.tgz | head -n 1)
+          contents=$(tar -tzf "$tarball")
+          for entry in package/dist/server.js package/dist/wasm/rq_wasm.js package/dist/wasm/rq_wasm_bg.wasm package/dist/LICENSE package/package.json package/README.md; do
+            if ! echo "$contents" | grep -Fx "$entry" > /dev/null; then
+              echo "Error: $entry missing from $tarball"
+              echo "$contents"
+              exit 1
+            fi
+          done
+          leaked=$(echo "$contents" | grep -E '\.map$|^package/(test|node_modules)/' || true)
+          if [ -n "$leaked" ]; then
+            echo "Error: development files found in $tarball:"
+            echo "$leaked"
+            exit 1
+          fi
+          echo "OK: $tarball"
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: rq-mcp-package-${{ inputs.version }}
+          path: src/rq-mcp/*.tgz
+          if-no-files-found: error

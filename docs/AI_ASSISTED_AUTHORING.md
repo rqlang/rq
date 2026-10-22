@@ -12,6 +12,8 @@ Ten minutes, eight prompts. Copilot writes the `.rq` files; rq checks every draf
 
 You need the [VS Code extension](INSTALLATION.md) and nothing else. It ships with an MCP server that gives the assistant rq's grammar and style rules, then validates whatever it writes.
 
+Working with Claude Code, Cursor or another assistant instead? Add the same server with `npx -y @rqlang/mcp` (see [Setup](MCP_SERVER.md#setup)); the prompts below work the same way.
+
 ## Check it is working
 
 Ask Copilot Chat what rq tools it has. You should see `validate_rq`, `lint_rq`, `list_requests` and `get_rq_reference`. If not, open any `.rq` file to activate the extension.

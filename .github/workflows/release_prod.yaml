@@ -44,9 +44,16 @@ jobs:
       version: ${{ needs.version.outputs.version }}
       channel: prod
 
+  build-mcp:
+    name: Build MCP Package
+    needs: version
+    uses: ./.github/workflows/build_mcp.yaml
+    with:
+      version: ${{ needs.version.outputs.version }}
+
   publish:
     name: Publish Release Assets
-    needs: [build-cli, build-extension]
+    needs: [build-cli, build-extension, build-mcp]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -68,6 +75,7 @@ jobs:
             name=$(basename "$dir")
             case "$name" in
               rq-language-extension-*) cp "$dir"*.vsix dist/ ;;
+              rq-mcp-package-*) cp "$dir"*.tgz dist/ ;;
               *) cp "$dir"rq* "dist/$name" ;;
             esac
           done

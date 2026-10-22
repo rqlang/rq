@@ -88,3 +88,10 @@ jobs:
     with:
       version: ${{ needs.version.outputs.version }}
       channel: dev
+
+  build-mcp:
+    name: Build MCP Package
+    needs: version
+    uses: ./.github/workflows/build_mcp.yaml
+    with:
+      version: ${{ needs.version.outputs.version }}

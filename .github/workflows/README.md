@@ -19,9 +19,11 @@ GitHub Actions workflows for building, testing and releasing `rq`.
 | `publish_extension.yaml` | Called by `publish_release.yaml`, or manual | Publishes a release VSIX to the VS Code Marketplace |
 | `publish_homebrew.yaml` | Called by `publish_release.yaml`, or manual | Renders, verifies and pushes the Homebrew formula to the tap |
 | `publish_scoop.yaml` | Called by `publish_release.yaml`, or manual | Renders, verifies and pushes the Scoop manifest to the bucket |
+| `publish_npm.yaml` | Called by `publish_release.yaml`, or manual | Smoke-tests the release `@rqlang/mcp` tarball and publishes it to npm |
 | `publish_winget.yaml` | Called by `publish_release.yaml`, or manual | Renders, verifies and submits the WinGet manifests to `microsoft/winget-pkgs` |
 | `build_cli.yaml` | Called by the release workflows | Builds and signs the CLI for every platform |
 | `build_extension.yaml` | Called by the release workflows | Packages the VS Code extension VSIX |
+| `build_mcp.yaml` | Called by the release workflows | Builds, tests and packs the `@rqlang/mcp` npm tarball |
 
 ## CLI platforms
 
@@ -49,13 +51,13 @@ The repository keeps `version = "0.0.0"` in the root `Cargo.toml`; the workflows
 1. Make sure `main` is green.
 2. On GitHub, go to Releases → "Draft a new release", create the tag (e.g. `0.8.0`) and write the notes.
 3. Publish the release. `release_prod.yaml` then:
-   - builds the CLI for every platform and the VSIX,
-   - once every build has succeeded, uploads all binaries, the VSIX and a `SHA256SUMS` file to the release,
-   - records build provenance attestations for every binary and the VSIX listed in `SHA256SUMS`.
+   - builds the CLI for every platform, the VSIX and the `@rqlang/mcp` tarball,
+   - once every build has succeeded, uploads all binaries, the VSIX, the tarball and a `SHA256SUMS` file to the release,
+   - records build provenance attestations for every asset listed in `SHA256SUMS`.
 
    Nothing is published to any channel yet, so the release assets can be tested first.
-4. Run `publish_release.yaml` with the tag and `dry_run` checked (the default). It renders and verifies the Homebrew formula, the Scoop manifest and the WinGet manifests, and finds the VSIX, without publishing anything.
-5. Run `publish_release.yaml` again with `dry_run` unchecked to publish to the VS Code Marketplace, the Homebrew tap and the Scoop bucket, and to open a pull request with the WinGet manifests (see below). Untick a channel to leave it out.
+4. Run `publish_release.yaml` with the tag and `dry_run` checked (the default). It renders and verifies the Homebrew formula, the Scoop manifest and the WinGet manifests, finds the VSIX and smoke-tests the npm tarball, without publishing anything.
+5. Run `publish_release.yaml` again with `dry_run` unchecked to publish to the VS Code Marketplace, npm, the Homebrew tap and the Scoop bucket, and to open a pull request with the WinGet manifests (see below). Untick a channel to leave it out.
 
 Nothing is uploaded to the release unless every build succeeds. To retry a failed release, re-run the failed jobs of the workflow run.
 
@@ -113,6 +115,12 @@ To test the renderer locally:
 ```bash
 deployment/winget/test/run.sh
 ```
+
+## npm
+
+The MCP server is distributed as [`@rqlang/mcp`](https://www.npmjs.com/package/@rqlang/mcp), so any MCP client can run it with `npx -y @rqlang/mcp`. It is the same server the extension registers for Copilot, bundled from `src/vscode-extension/src/mcp/` with `rq-wasm`; see [`src/rq-mcp/README.md`](../../src/rq-mcp/README.md).
+
+`publish_npm.yaml` downloads `rqlang-mcp-<version>.tgz` from the release, installs it in an empty project and checks that `validate_rq` answers over stdio, and only then publishes it with `npm publish --provenance` using the `NPM_TOKEN` secret (a granular access token with read and write access to the `@rqlang` scope). Pre-releases are rejected, and a version already on npm is skipped. To retry or republish a release, run it manually with the tag.
 
 ## Install script
 

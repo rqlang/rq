@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { assignArguments, escapeRegex, IDENTIFIER_PATTERN } from './definitions';
+import { normalizePath } from '../utils';
 
 export const COMMON_HEADERS = [
     'Accept', 'Accept-Encoding', 'Accept-Language', 'Authorization',
@@ -393,7 +394,7 @@ export function filterRequiredVars<T extends { source: string; line: number; fil
     const epStartLine = getCurrentEpBlockStartLine(documentPrefix);
     return variables.filter(v =>
         v.source !== 'required' ||
-        (v.file === currentFile && v.line >= epStartLine)
+        (normalizePath(v.file) === normalizePath(currentFile) && v.line >= epStartLine)
     );
 }
 

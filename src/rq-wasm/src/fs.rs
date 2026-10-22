@@ -56,7 +56,8 @@ impl WasmFs {
 
     fn holds_directory(&self, key: &str) -> bool {
         let prefix = Self::directory_prefix(key);
-        self.files.keys().any(|k| k.starts_with(&prefix)) || self.root.as_deref() == Some(key)
+        self.files.keys().any(|k| k.starts_with(&prefix))
+            || (self.root.as_deref() == Some(key) && !self.disk.is_file(Path::new(key)))
     }
 
     fn draft_entries(&self, key: &str) -> Vec<String> {
@@ -562,6 +563,23 @@ mod tests {
             rq_lib::paths::walk_rq_files(&target, Path::new(&WasmFs::normalize(dir.path())))
                 .unwrap();
         assert_eq!(found, vec![PathBuf::from(key(&dir, "a.rq"))]);
+    }
+
+    #[test]
+    fn is_dir_false_for_a_root_that_is_a_file_saved_on_disk() {
+        let dir = disk_with(&[("a.rq", "")]);
+        let target = make_rooted_fs(&[], &key(&dir, "a.rq"));
+        assert!(!target.is_dir(Path::new(&key(&dir, "a.rq"))));
+    }
+
+    #[test]
+    fn imports_of_a_saved_root_file_resolve_next_to_it() {
+        let dir = disk_with(&[("a.rq", ""), ("common.rq", "")]);
+        let target = make_rooted_fs(&[], &key(&dir, "a.rq"));
+        let resolved = target
+            .resolve_path(Path::new(&key(&dir, "a.rq")), "common.rq")
+            .unwrap();
+        assert_eq!(resolved, PathBuf::from(key(&dir, "common.rq")));
     }
 
     #[test]

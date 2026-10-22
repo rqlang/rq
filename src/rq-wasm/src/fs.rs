@@ -11,7 +11,7 @@ pub struct WasmFs {
 impl WasmFs {
     pub fn new(files: HashMap<String, String>) -> Self {
         Self {
-            files,
+            files: Self::normalize_keys(files),
             root: None,
             disk: disk(),
         }
@@ -20,10 +20,17 @@ impl WasmFs {
     pub fn with_root(files: HashMap<String, String>, root: &Path) -> Self {
         let root = Self::normalize(root);
         Self {
-            files,
+            files: Self::normalize_keys(files),
             root: Some(root),
             disk: disk(),
         }
+    }
+
+    fn normalize_keys(files: HashMap<String, String>) -> HashMap<String, String> {
+        files
+            .into_iter()
+            .map(|(path, source)| (Self::normalize(Path::new(&path)), source))
+            .collect()
     }
 
     fn normalize(path: &Path) -> String {
@@ -39,10 +46,21 @@ impl WasmFs {
                 other => parts.push(other),
             }
         }
+        let joined = parts.join("/");
         if s.starts_with('/') {
-            format!("/{}", parts.join("/"))
+            format!("/{joined}")
         } else {
-            parts.join("/")
+            Self::upper_drive_letter(joined)
+        }
+    }
+
+    fn upper_drive_letter(path: String) -> String {
+        let mut chars = path.chars();
+        match (chars.next(), chars.next()) {
+            (Some(drive), Some(':')) if drive.is_ascii_lowercase() => {
+                format!("{}{}", drive.to_ascii_uppercase(), &path[1..])
+            }
+            _ => path,
         }
     }
 
@@ -609,6 +627,19 @@ mod tests {
             rq_lib::paths::walk_rq_files(&target, Path::new(&WasmFs::normalize(dir.path())))
                 .unwrap();
         assert_eq!(found, vec![PathBuf::from(key(&dir, "api/a.rq"))]);
+    }
+
+    #[test]
+    fn a_draft_keyed_with_a_lower_case_drive_is_found_by_an_upper_case_path() {
+        let target = make_fs(&[("c:/proj/a.rq", "draft")]);
+        assert_eq!(target.read(Path::new("C:/proj/a.rq")).unwrap(), "draft");
+    }
+
+    #[test]
+    fn read_dir_lists_drafts_under_the_drive_spelled_either_way() {
+        let target = make_fs(&[("C:/proj/a.rq", "")]);
+        let entries = target.read_dir(Path::new("c:/proj")).unwrap_or_default();
+        assert_eq!(entries, vec![PathBuf::from("C:/proj/a.rq")]);
     }
 
     #[test]

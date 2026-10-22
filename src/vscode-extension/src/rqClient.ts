@@ -329,7 +329,7 @@ async function symbolRefs(binding: 'list_variable_refs' | 'list_endpoint_refs', 
     const result = await wasmCall(binding, [filesJson, secretsJson, source, name, scopeFile, ...extraArgs]);
     const raw = JSON.parse(result) as ReferenceLocation[];
     return raw.map(r => ({
-        uri: forwardSlashes(r.file) === scopeFile ? document.uri : vscode.Uri.file(normalizePath(r.file)),
+        uri: sameFile(r.file, scopeFile) ? document.uri : vscode.Uri.file(normalizePath(r.file)),
         line: r.line,
         character: r.character,
         shared: r.shared ?? false,
@@ -338,6 +338,10 @@ async function symbolRefs(binding: 'list_variable_refs' | 'list_endpoint_refs', 
 
 function documentDraftPath(document: vscode.TextDocument, source: string): string {
     return forwardSlashes(document.isUntitled ? path.join(source, document.uri.path) : document.uri.fsPath);
+}
+
+function sameFile(a: string, b: string): boolean {
+    return forwardSlashes(normalizePath(a)) === forwardSlashes(normalizePath(b));
 }
 
 function forwardSlashes(filePath: string): string {

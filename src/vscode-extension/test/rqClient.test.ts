@@ -484,6 +484,15 @@ describe('varRefs', () => {
         });
     });
 
+    test('maps a reference back to the open document whatever the case of its drive letter', async () => {
+        const doc = makeDocument({ fsPath: 'c:\\project\\foo.rq' }, 'rq get(base);');
+        mockListVariableRefs.mockReturnValue(JSON.stringify([{ file: 'C:/project/foo.rq', line: 0, character: 7 }]));
+
+        const target = await varRefs('base', doc, new vscode.Position(0, 8), 'c:/project');
+
+        expect(target[0].uri).toBe(doc.uri);
+    });
+
     test('includes other unsaved documents of the folder', async () => {
         const doc = makeDocument({ fsPath: '/tmp/project/foo.rq' }, 'rq get(base);');
         const other = makeDocument({ fsPath: '/tmp/project/shared.rq' }, 'let base = "x";');

@@ -6,6 +6,9 @@ on:
       - main
     paths:
       - 'src/vscode-extension/**'
+      - 'src/rq-mcp/surface.json'
+      - 'docs/LANGUAGE_DEFINITION.md'
+      - 'docs/RQLANG_IDIOMS.md'
       - '.github/workflows/extension_bvt.yaml'
 
 env:

@@ -642,6 +642,34 @@ describe('runRequest Commands', () => {
             expect(vscode.env.clipboard.writeText).toHaveBeenCalledWith('{"a":1}');
         });
 
+        test('copy body keeps the shown body while the next response is rendering', async () => {
+            useTabMode('perRequest');
+            respondWith('{"a":1}');
+            respondWith('{"a":2}');
+            await requestRunner.runRequest(makeItem('a'), provider);
+            (webviewGenerator.getWebviewContent as jest.Mock).mockImplementationOnce(() => new Promise(() => {}));
+            void requestRunner.runRequest(makeItem('a'), provider);
+            await settle();
+
+            messageHandler(panels[0])({ command: 'copyBody' });
+
+            expect(vscode.env.clipboard.writeText).toHaveBeenCalledWith('{"a":1}');
+        });
+
+        test('copy body keeps the shown body while an error is rendering', async () => {
+            useTabMode('perRequest');
+            respondWith('{"a":1}');
+            (cliService.executeRequest as jest.Mock).mockRejectedValueOnce(new Error('boom'));
+            await requestRunner.runRequest(makeItem('a'), provider);
+            (webviewGenerator.getErrorWebviewContent as jest.Mock).mockImplementationOnce(() => new Promise(() => {}));
+            void requestRunner.runRequest(makeItem('a'), provider);
+            await settle();
+
+            messageHandler(panels[0])({ command: 'copyBody' });
+
+            expect(vscode.env.clipboard.writeText).toHaveBeenCalledWith('{"a":1}');
+        });
+
         test('cancel from another tab leaves the running request alone', async () => {
             useTabMode('perRequest');
             respondWith('{"a":1}');

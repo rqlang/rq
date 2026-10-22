@@ -309,10 +309,8 @@ export class RequestRunner {
             this.logger.log(`STDERR output:\n${result.stderr}`);
         }
 
-        const { session } = execution;
-        const panel = this.resultsPanels.show(session, requestName);
-        session.data = { run: execution.run, body: result.results[0].body };
-        panel.webview.html = await getWebviewContent(this.context, result.results[0]);
+        const html = await getWebviewContent(this.context, result.results[0]);
+        this.showResult(execution, html, result.results[0].body);
     }
 
     private async handleFailedExecution(execution: ActiveExecution, result: rqClient.ExecuteRequestResult) {
@@ -397,10 +395,7 @@ export class RequestRunner {
     }
 
     private async showErrorPanel(execution: ActiveExecution, errorMessage: string) {
-        const { session, run } = execution;
-        const { requestName, sourceDirectory, sourceFile, environment } = run.executionContext;
-        const panel = this.resultsPanels.show(session, requestName);
-        session.data = { run, body: undefined };
+        const { requestName, sourceDirectory, sourceFile, environment } = execution.run.executionContext;
 
         let requestDetails: rqClient.RequestShowOutput | undefined;
         try {
@@ -416,7 +411,15 @@ export class RequestRunner {
             // best-effort: show error panel without request details
         }
 
-        panel.webview.html = await getErrorWebviewContent(this.context, requestName, errorMessage, requestDetails);
+        const html = await getErrorWebviewContent(this.context, requestName, errorMessage, requestDetails);
+        this.showResult(execution, html, undefined);
+    }
+
+    private showResult(execution: ActiveExecution, html: string, body: string | undefined) {
+        const { session, run } = execution;
+        const panel = this.resultsPanels.show(session, run.executionContext.requestName);
+        session.data = { run, body };
+        panel.webview.html = html;
     }
 
     private cleanErrorMessage(stderr: string): string {

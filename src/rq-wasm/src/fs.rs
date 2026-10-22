@@ -1,15 +1,20 @@
 use rq_lib::syntax::fs::Fs;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 pub struct WasmFs {
     files: HashMap<String, String>,
     root: Option<String>,
+    disk: Box<dyn Fs>,
 }
 
 impl WasmFs {
     pub fn new(files: HashMap<String, String>) -> Self {
-        Self { files, root: None }
+        Self {
+            files,
+            root: None,
+            disk: disk(),
+        }
     }
 
     pub fn with_root(files: HashMap<String, String>, root: &Path) -> Self {
@@ -17,6 +22,7 @@ impl WasmFs {
         Self {
             files,
             root: Some(root),
+            disk: disk(),
         }
     }
 
@@ -39,15 +45,39 @@ impl WasmFs {
             parts.join("/")
         }
     }
+
+    fn directory_prefix(key: &str) -> String {
+        if key.ends_with('/') {
+            key.to_string()
+        } else {
+            format!("{key}/")
+        }
+    }
+
+    fn holds_directory(&self, key: &str) -> bool {
+        let prefix = Self::directory_prefix(key);
+        self.files.keys().any(|k| k.starts_with(&prefix)) || self.root.as_deref() == Some(key)
+    }
+
+    fn draft_entries(&self, key: &str) -> Vec<String> {
+        let prefix = Self::directory_prefix(key);
+        self.files
+            .keys()
+            .filter_map(|k| k.strip_prefix(&prefix))
+            .filter_map(|rest| rest.split('/').next())
+            .filter(|immediate| !immediate.is_empty())
+            .map(|immediate| format!("{prefix}{immediate}"))
+            .collect()
+    }
 }
 
 impl Fs for WasmFs {
     fn read(&self, path: &Path) -> Result<String, String> {
         let key = Self::normalize(path);
-        self.files
-            .get(&key)
-            .cloned()
-            .ok_or_else(|| format!("file not found in WasmFs: {key}"))
+        match self.files.get(&key) {
+            Some(content) => Ok(content.clone()),
+            None => self.disk.read(Path::new(&key)),
+        }
     }
 
     fn resolve_path(&self, base: &Path, relative: &str) -> Result<PathBuf, String> {
@@ -63,12 +93,14 @@ impl Fs for WasmFs {
 
     fn exists(&self, path: &Path) -> bool {
         let key = Self::normalize(path);
-        self.files.contains_key(&key) || self.is_dir(path)
+        self.files.contains_key(&key)
+            || self.holds_directory(&key)
+            || self.disk.exists(Path::new(&key))
     }
 
     fn is_file(&self, path: &Path) -> bool {
         let key = Self::normalize(path);
-        self.files.contains_key(&key)
+        self.files.contains_key(&key) || self.disk.is_file(Path::new(&key))
     }
 
     fn is_dir(&self, path: &Path) -> bool {
@@ -76,37 +108,109 @@ impl Fs for WasmFs {
         if self.files.contains_key(&key) {
             return false;
         }
-        let prefix = if key.ends_with('/') {
-            key.clone()
-        } else {
-            format!("{key}/")
-        };
-        self.files.keys().any(|k| k.starts_with(&prefix))
-            || self.root.as_deref() == Some(key.as_str())
+        self.holds_directory(&key) || self.disk.is_dir(Path::new(&key))
     }
 
     fn read_dir(&self, dir: &Path) -> Result<Vec<PathBuf>, String> {
         let key = Self::normalize(dir);
-        let prefix = if key.ends_with('/') {
-            key.clone()
-        } else {
-            format!("{key}/")
-        };
-        let mut seen = std::collections::HashSet::new();
-        let mut entries: Vec<PathBuf> = Vec::new();
-        for k in self.files.keys() {
-            if let Some(rest) = k.strip_prefix(&prefix) {
-                let immediate = rest.split('/').next().unwrap_or("");
-                if !immediate.is_empty() && seen.insert(immediate.to_string()) {
-                    entries.push(PathBuf::from(format!("{prefix}{immediate}")));
-                }
-            }
+        let mut entries = self.draft_entries(&key);
+        match self.disk.read_dir(Path::new(&key)) {
+            Ok(found) => entries.extend(found.iter().map(|p| Self::normalize(p))),
+            Err(e) if !self.holds_directory(&key) => return Err(e),
+            Err(_) => {}
         }
-        Ok(entries)
+        let mut seen = HashSet::new();
+        Ok(entries
+            .into_iter()
+            .filter(|entry| seen.insert(entry.clone()))
+            .map(PathBuf::from)
+            .collect())
     }
 
     fn canonicalize(&self, path: &Path) -> Result<PathBuf, String> {
         Ok(PathBuf::from(Self::normalize(path)))
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn disk() -> Box<dyn Fs> {
+    Box::new(node::NodeFs)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn disk() -> Box<dyn Fs> {
+    Box::new(rq_lib::native::NativeFs)
+}
+
+#[cfg(target_arch = "wasm32")]
+mod node {
+    use rq_lib::syntax::fs::Fs;
+    use std::path::{Path, PathBuf};
+    use wasm_bindgen::prelude::*;
+    use wasm_bindgen::JsCast;
+
+    #[wasm_bindgen(module = "fs")]
+    extern "C" {
+        type Stats;
+
+        #[wasm_bindgen(catch, js_name = readFileSync)]
+        fn read_file_sync(path: &str, encoding: &str) -> Result<String, JsValue>;
+
+        #[wasm_bindgen(catch, js_name = readdirSync)]
+        fn readdir_sync(path: &str) -> Result<js_sys::Array, JsValue>;
+
+        #[wasm_bindgen(catch, js_name = statSync)]
+        fn stat_sync(path: &str) -> Result<Stats, JsValue>;
+
+        #[wasm_bindgen(method, js_name = isDirectory)]
+        fn is_directory(this: &Stats) -> bool;
+
+        #[wasm_bindgen(method, js_name = isFile)]
+        fn is_regular_file(this: &Stats) -> bool;
+    }
+
+    pub struct NodeFs;
+
+    impl Fs for NodeFs {
+        fn read(&self, path: &Path) -> Result<String, String> {
+            read_file_sync(&path.to_string_lossy(), "utf8").map_err(message)
+        }
+
+        fn resolve_path(&self, base: &Path, relative: &str) -> Result<PathBuf, String> {
+            Ok(base.join(relative))
+        }
+
+        fn exists(&self, path: &Path) -> bool {
+            stat_sync(&path.to_string_lossy()).is_ok()
+        }
+
+        fn is_file(&self, path: &Path) -> bool {
+            stat_sync(&path.to_string_lossy()).is_ok_and(|stats| stats.is_regular_file())
+        }
+
+        fn is_dir(&self, path: &Path) -> bool {
+            stat_sync(&path.to_string_lossy()).is_ok_and(|stats| stats.is_directory())
+        }
+
+        fn read_dir(&self, dir: &Path) -> Result<Vec<PathBuf>, String> {
+            let names = readdir_sync(&dir.to_string_lossy()).map_err(message)?;
+            Ok(names
+                .iter()
+                .filter_map(|name| name.as_string())
+                .map(|name| dir.join(name))
+                .collect())
+        }
+
+        fn canonicalize(&self, path: &Path) -> Result<PathBuf, String> {
+            Ok(path.to_path_buf())
+        }
+    }
+
+    fn message(error: JsValue) -> String {
+        match error.dyn_ref::<js_sys::Error>() {
+            Some(error) => String::from(error.message()),
+            None => format!("{error:?}"),
+        }
     }
 }
 
@@ -355,6 +459,99 @@ mod tests {
     fn is_dir_still_true_for_ancestor_when_root_is_set() {
         let target = make_rooted_fs(&[("/project/sub/foo.rq", "")], "/project");
         assert!(target.is_dir(Path::new("/project/sub")));
+    }
+
+    fn disk_with(files: &[(&str, &str)]) -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        for (file, content) in files {
+            let path = dir.path().join(file);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, content).unwrap();
+        }
+        dir
+    }
+
+    fn key(dir: &tempfile::TempDir, file: &str) -> String {
+        WasmFs::normalize(&dir.path().join(file))
+    }
+
+    #[test]
+    fn read_falls_back_to_a_file_on_disk() {
+        let dir = disk_with(&[("data.json", "{}")]);
+        let target = make_fs(&[]);
+        assert_eq!(
+            target.read(Path::new(&key(&dir, "data.json"))).unwrap(),
+            "{}"
+        );
+    }
+
+    #[test]
+    fn read_prefers_the_draft_over_the_saved_file() {
+        let dir = disk_with(&[("a.rq", "saved")]);
+        let target = make_fs(&[(&key(&dir, "a.rq"), "draft")]);
+        assert_eq!(target.read(Path::new(&key(&dir, "a.rq"))).unwrap(), "draft");
+    }
+
+    #[test]
+    fn is_dir_true_for_a_directory_only_on_disk() {
+        let dir = disk_with(&[("api/a.rq", "")]);
+        let target = make_fs(&[]);
+        assert!(target.is_dir(Path::new(&key(&dir, "api"))));
+    }
+
+    #[test]
+    fn read_dir_merges_disk_entries_with_unsaved_drafts() {
+        let dir = disk_with(&[("a.rq", "")]);
+        let target = make_fs(&[(&key(&dir, "b.rq"), "")]);
+        let mut entries = target
+            .read_dir(Path::new(&WasmFs::normalize(dir.path())))
+            .unwrap();
+        entries.sort();
+        assert_eq!(
+            entries,
+            vec![
+                PathBuf::from(key(&dir, "a.rq")),
+                PathBuf::from(key(&dir, "b.rq"))
+            ]
+        );
+    }
+
+    #[test]
+    fn read_dir_lists_a_saved_file_with_a_draft_once() {
+        let dir = disk_with(&[("a.rq", "saved")]);
+        let target = make_fs(&[(&key(&dir, "a.rq"), "draft")]);
+        let entries = target
+            .read_dir(Path::new(&WasmFs::normalize(dir.path())))
+            .unwrap();
+        assert_eq!(entries, vec![PathBuf::from(key(&dir, "a.rq"))]);
+    }
+
+    #[test]
+    fn read_dir_of_a_missing_directory_is_an_error() {
+        let dir = disk_with(&[]);
+        let target = make_fs(&[]);
+        assert!(target.read_dir(Path::new(&key(&dir, "missing"))).is_err());
+    }
+
+    #[test]
+    fn walk_finds_saved_files_and_drafts_but_not_other_files() {
+        let dir = disk_with(&[("a.rq", ""), ("notes.txt", ""), ("api/b.rq", "")]);
+        let target = make_fs(&[(&key(&dir, "api/c.rq"), "")]);
+        let mut found: Vec<String> =
+            rq_lib::paths::walk_rq_files(&target, Path::new(&WasmFs::normalize(dir.path())))
+                .unwrap()
+                .iter()
+                .map(|p| p.to_string_lossy().to_string())
+                .collect();
+        found.sort();
+        assert_eq!(
+            found,
+            vec![
+                key(&dir, "a.rq"),
+                key(&dir, "api/b.rq"),
+                key(&dir, "api/c.rq")
+            ]
+        );
     }
 
     #[test]

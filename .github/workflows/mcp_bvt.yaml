@@ -1,0 +1,68 @@
+name: MCP BVT
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'src/rq-mcp/**'
+      - 'src/vscode-extension/src/mcp/**'
+      - 'src/vscode-extension/src/wasmHost.ts'
+      - 'src/vscode-extension/src/utils.ts'
+      - 'src/rq-wasm/**'
+      - 'src/rq-lib/**'
+      - 'docs/LANGUAGE_DEFINITION.md'
+      - 'docs/RQLANG_IDIOMS.md'
+      - '.github/workflows/mcp_bvt.yaml'
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  build-and-test:
+    name: Build and Test MCP Package
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: ./src/rq-mcp
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: src/rq-mcp/package-lock.json
+
+      - name: Install wasm-pack
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build rq-wasm
+        run: npm run build-wasm
+
+      - name: Build package
+        run: npm run build
+
+      - name: Run tests
+        run: npm test
+
+      - name: Verify package contents
+        run: |
+          contents=$(npm pack --dry-run --json | node -p "JSON.parse(require('fs').readFileSync(0)).flatMap(p => p.files.map(f => f.path)).join('\n')")
+          echo "$contents"
+          for entry in dist/server.js dist/wasm/rq_wasm.js dist/wasm/rq_wasm_bg.wasm dist/LICENSE package.json README.md; do
+            if ! echo "$contents" | grep -Fx "$entry" > /dev/null; then
+              echo "Error: $entry missing from the package"
+              exit 1
+            fi
+          done

@@ -9,6 +9,7 @@ GitHub Actions workflows for building, testing and releasing `rq`.
 | `cli_bvt.yaml` | PR to `main` touching Rust code | fmt, clippy, build and test the Cargo workspace |
 | `wasm_bvt.yaml` | PR to `main` touching `rq-wasm` or `rq-lib` | fmt, clippy, test and `wasm32` check of `rq-wasm` |
 | `extension_bvt.yaml` | PR to `main` touching the extension | Lint, compile and test the VS Code extension |
+| `mcp_bvt.yaml` | PR to `main` touching the MCP server, `rq-wasm` or `rq-lib` | Build `rq-wasm` and the `@rqlang/mcp` package, and test it end to end over stdio |
 | `deployment_bvt.yaml` | PR to `main` touching `deployment/` | Tests the install script and the Homebrew, Scoop and WinGet renderers on Linux and macOS |
 | `codeql.yml` | Nightly | CodeQL analysis for Rust and JavaScript |
 | `fuzz_nightly.yaml` | Nightly and manual | Fuzz the tokenizer and parser; opens an issue on a crash |

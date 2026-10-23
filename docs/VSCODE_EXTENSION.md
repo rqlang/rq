@@ -25,6 +25,8 @@ For a complete description of the rq language (statements, variables, environmen
 
 The extension adds a dedicated **Request Explorer** view in the Activity Bar. It discovers `.rq` files in your workspace and organizes requests by folder and endpoint.
 
+Running or showing a request uses what you see in the editor: unsaved edits to any `.rq` file of the folder are sent as they are, without saving them first. Which files are read follows the same rules as the CLI, including `.rqignore` (see [Which files rq reads](./CLI.md#which-files-rq-reads)).
+
 Key capabilities:
 
 1. **Environment selection**

@@ -219,7 +219,7 @@ describe('executeRequest', () => {
             expect([call[2], call[6]]).toEqual(['/tmp/project', '/tmp/project/sub/main.rq']);
         });
 
-        test('sends no files of its own so rq reads the opened folder from disk', async () => {
+        test('sends no drafts when every document is saved so rq reads the folder from disk', async () => {
             mockPrepareRequest.mockReturnValue(prepared());
             makeHttpsMock();
 
@@ -230,6 +230,26 @@ describe('executeRequest', () => {
             });
 
             expect(mockPrepareRequest.mock.calls[0][0]).toBe('{}');
+        });
+
+        test('runs the unsaved text of an open request file', async () => {
+            mockPrepareRequest.mockReturnValue(prepared());
+            makeHttpsMock();
+            (vscode.workspace as any).textDocuments = [
+                { languageId: 'rq', isDirty: true, isUntitled: false, uri: { fsPath: '/tmp/project/sub/main.rq' }, getText: () => 'rq test_req("http://edited");' },
+                { languageId: 'rq', isDirty: true, isUntitled: false, uri: { fsPath: '/tmp/project-other/main.rq' }, getText: () => 'rq other("http://x");' },
+            ];
+
+            await executeRequest({
+                requestName: 'test-req',
+                sourceDirectory: '/tmp/project',
+                sourceFile: '/tmp/project/sub/main.rq',
+            });
+            (vscode.workspace as any).textDocuments = [];
+
+            expect(JSON.parse(mockPrepareRequest.mock.calls[0][0])).toEqual({
+                '/tmp/project/sub/main.rq': 'rq test_req("http://edited");',
+            });
         });
 
         test('reads secrets from the opened folder, not from the request file', async () => {

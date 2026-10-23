@@ -182,7 +182,13 @@ function resolveSource(sourceDir?: string): string {
 
 async function buildRequestScope(sourceDirectory?: string): Promise<[string, string, string]> {
     const source = resolveSource(sourceDirectory);
-    return [draftsJson(), await buildSecretsMap(source), source];
+    return [draftsJson(unsavedDrafts(source)), await buildSecretsMap(source), source];
+}
+
+function unsavedDrafts(folder: string): DraftFile[] {
+    return vscode.workspace.textDocuments
+        .filter(doc => doc.languageId === 'rq' && doc.isDirty && !doc.isUntitled && isInsideFolder(doc.uri.fsPath, folder))
+        .map(doc => ({ path: forwardSlashes(doc.uri.fsPath), source: doc.getText() }));
 }
 
 function toVariablesJson(variables?: Record<string, string>): string | undefined {
@@ -349,11 +355,9 @@ function forwardSlashes(filePath: string): string {
 }
 
 function openDrafts(document: vscode.TextDocument, source: string): DraftFile[] {
-    const dirty = vscode.workspace.textDocuments
-        .filter(doc => doc !== document && doc.languageId === 'rq' && doc.isDirty && !doc.isUntitled)
-        .filter(doc => isInsideFolder(doc.uri.fsPath, source))
-        .map(doc => ({ path: forwardSlashes(doc.uri.fsPath), source: doc.getText() }));
-    return [{ path: documentDraftPath(document, source), source: document.getText() }, ...dirty];
+    const current = documentDraftPath(document, source);
+    const dirty = unsavedDrafts(source).filter(draft => draft.path !== current);
+    return [{ path: current, source: document.getText() }, ...dirty];
 }
 
 export async function showAuthConfig(name: string, sourceDirectory?: string, environment?: string): Promise<AuthShowOutput> {
@@ -409,7 +413,7 @@ export async function showAuthLocation(name: string, sourceDirectory?: string): 
 
 export async function showRequestLocation(requestName: string, sourceDirectory?: string): Promise<LocationOutput> {
     const source = resolveSource(sourceDirectory);
-    const result = await wasmCall('get_request_details', [draftsJson(), await buildSecretsMap(source), source, requestName, undefined, false, false]);
+    const result = await wasmCall('get_request_details', [draftsJson(unsavedDrafts(source)), await buildSecretsMap(source), source, requestName, undefined, false, false]);
     const raw = JSON.parse(result) as RequestShowRaw;
     return { file: normalizePath(raw.file), line: raw.line, character: raw.character };
 }

@@ -105,6 +105,7 @@ fn workspace_root(workspace: &Path) -> &Path {
 struct SkipRules {
     names: HashSet<String>,
     paths: HashSet<String>,
+    nested_paths: HashSet<String>,
     included: HashSet<String>,
 }
 
@@ -124,30 +125,53 @@ impl SkipRules {
                 None => (false, line),
             };
             let anchored = entry.starts_with('/') || entry.starts_with("./");
+            let any_depth = entry.starts_with("**/");
             let entry = entry
                 .trim_start_matches("**/")
                 .trim_start_matches("./")
                 .trim_start_matches('/')
+                .trim_end_matches("/**")
                 .trim_end_matches('/');
             if entry.is_empty() {
                 continue;
             }
-            if included {
-                rules.included.insert(entry.to_string());
-            } else if anchored || entry.contains('/') {
-                rules.paths.insert(entry.to_string());
-            } else {
-                rules.names.insert(entry.to_string());
+            if entry.contains(['*', '?', '[']) {
+                Logger::debug(&format!(
+                    "* Ignoring `{line}` in {IGNORE_FILE}: wildcards are not supported"
+                ));
+                continue;
             }
+            rules.add(entry, included, anchored, any_depth);
         }
         rules
+    }
+
+    fn add(&mut self, entry: &str, included: bool, anchored: bool, any_depth: bool) {
+        let entry = entry.to_string();
+        if included {
+            self.included.insert(entry);
+        } else if !entry.contains('/') && !anchored {
+            self.names.insert(entry);
+        } else if any_depth {
+            self.nested_paths.insert(entry);
+        } else {
+            self.paths.insert(entry);
+        }
     }
 
     fn skips(&self, name: &str, relative: &str) -> bool {
         if self.included.contains(name) || self.included.contains(relative) {
             return false;
         }
-        name.starts_with('.') || self.names.contains(name) || self.paths.contains(relative)
+        name.starts_with('.')
+            || self.names.contains(name)
+            || self.paths.contains(relative)
+            || self.nested_paths.iter().any(|nested| {
+                relative == nested
+                    || relative
+                        .strip_suffix(nested.as_str())
+                        .is_some_and(|parent| parent.ends_with('/'))
+            })
     }
 }
 
@@ -424,6 +448,40 @@ mod tests {
             &["a.rq", "node_modules/b.rq", "web/node_modules/c.rq"],
         );
         assert_eq!(walked_names(dir.path()), ["a.rq"]);
+    }
+
+    #[test]
+    fn walk_skips_a_directory_listed_with_a_trailing_double_star() {
+        let dir = workspace_ignoring(
+            "node_modules/**\n",
+            &["a.rq", "node_modules/b.rq", "web/node_modules/c.rq"],
+        );
+        assert_eq!(walked_names(dir.path()), ["a.rq"]);
+    }
+
+    #[test]
+    fn walk_skips_a_double_star_path_at_any_depth() {
+        let dir = workspace_ignoring(
+            "**/fixtures/large\n",
+            &[
+                "fixtures/large/a.rq",
+                "web/fixtures/large/b.rq",
+                "large/c.rq",
+            ],
+        );
+        assert_eq!(walked_names(dir.path()), ["large/c.rq"]);
+    }
+
+    #[test]
+    fn walk_ignores_entries_with_wildcards() {
+        let dir = workspace_ignoring(
+            "*.egg-info\nbuild*/\n",
+            &["pkg.egg-info/a.rq", "build1/b.rq"],
+        );
+        assert_eq!(
+            walked_names(dir.path()),
+            ["build1/b.rq", "pkg.egg-info/a.rq"]
+        );
     }
 
     #[test]

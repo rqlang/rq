@@ -759,10 +759,9 @@ impl RqClient {
             };
             (vec![path.to_path_buf()], workspace)
         } else if self.fs.is_dir(path) {
-            (
-                self.discover_rq_files(path)?,
-                self.read_workspace_files(path)?,
-            )
+            let targets = self.discover_rq_files(path)?;
+            let workspace = self.parse_workspace_files(&targets);
+            (targets, workspace)
         } else {
             return Err(RqError::DirectoryNotFound(path.display().to_string()));
         };
@@ -920,14 +919,18 @@ impl RqClient {
     }
 
     fn read_workspace_files(&self, root: &Path) -> Result<Vec<WorkspaceFile>, RqError> {
-        Ok(crate::paths::walk_rq_files(&*self.fs, root)?
-            .into_iter()
+        Ok(self.parse_workspace_files(&crate::paths::walk_rq_files(&*self.fs, root)?))
+    }
+
+    fn parse_workspace_files(&self, paths: &[PathBuf]) -> Vec<WorkspaceFile> {
+        paths
+            .iter()
             .filter_map(|path| {
-                let canonical = self.fs.canonicalize(&path).ok()?;
+                let canonical = self.fs.canonicalize(path).ok()?;
                 let content = self.fs.read(&canonical).ok()?;
                 Some(WorkspaceFile::parse(&canonical, &content, &*self.fs))
             })
-            .collect())
+            .collect()
     }
 
     fn lint_file(&self, target: &Path, workspace: &[WorkspaceFile]) -> Vec<LintDiagnostic> {
@@ -3376,8 +3379,65 @@ mod lint_path_tests {
     use super::{native, RqClient};
     use crate::lint::LintScope;
     use crate::paths::overflowing::{OverflowingFolder, REQUEST_FILE};
-    use std::path::Path;
+    use crate::syntax::Fs;
+    use std::path::{Path, PathBuf};
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
+
+    struct CountingFs {
+        read_dirs: AtomicUsize,
+    }
+
+    impl Fs for CountingFs {
+        fn read(&self, path: &Path) -> Result<String, String> {
+            native::NativeFs.read(path)
+        }
+
+        fn resolve_path(&self, base: &Path, relative: &str) -> Result<PathBuf, String> {
+            native::NativeFs.resolve_path(base, relative)
+        }
+
+        fn exists(&self, path: &Path) -> bool {
+            native::NativeFs.exists(path)
+        }
+
+        fn is_file(&self, path: &Path) -> bool {
+            native::NativeFs.is_file(path)
+        }
+
+        fn is_dir(&self, path: &Path) -> bool {
+            native::NativeFs.is_dir(path)
+        }
+
+        fn read_dir(&self, dir: &Path) -> Result<Vec<PathBuf>, String> {
+            self.read_dirs.fetch_add(1, Ordering::SeqCst);
+            native::NativeFs.read_dir(dir)
+        }
+
+        fn canonicalize(&self, path: &Path) -> Result<PathBuf, String> {
+            native::NativeFs.canonicalize(path)
+        }
+    }
+
+    #[test]
+    fn lint_path_walks_a_directory_source_once() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::create_dir_all(dir.path().join("api")).expect("mkdir");
+        std::fs::write(dir.path().join("a.rq"), "rq a(\"http://x\");\n").expect("write");
+        std::fs::write(dir.path().join("api/b.rq"), "rq b(\"http://x\");\n").expect("write");
+        let fs = Arc::new(CountingFs {
+            read_dirs: AtomicUsize::new(0),
+        });
+        let client = RqClient::new(
+            fs.clone(),
+            Arc::new(native::NativeSecretProvider),
+            Arc::new(native::ReqwestHttpClient),
+        );
+        client
+            .lint_path(dir.path(), LintScope::SourceDirectory)
+            .expect("lint");
+        assert_eq!(fs.read_dirs.load(Ordering::SeqCst), 2);
+    }
 
     #[test]
     fn lint_path_reports_a_source_directory_too_large_to_walk() {

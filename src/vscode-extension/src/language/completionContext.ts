@@ -32,6 +32,7 @@ export function buildContext(
 ): CompletionContext {
     const rootPath = vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath
         ?? path.dirname(document.uri.fsPath);
+    let drafts: DraftFile[] | undefined;
     return {
         document,
         position,
@@ -40,7 +41,10 @@ export function buildContext(
         triggerKind: vsContext?.triggerKind ?? vscode.CompletionTriggerKind.Invoke,
         filePath: document.uri.fsPath,
         rootPath,
-        drafts: unsavedDrafts(rootPath),
+        get drafts() {
+            drafts ??= unsavedDrafts(rootPath);
+            return drafts;
+        },
         getEnvironment: () => environmentProvider?.getSelectedEnvironment(),
     };
 }

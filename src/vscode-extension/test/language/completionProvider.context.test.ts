@@ -80,6 +80,19 @@ describe('unsaved documents reach rq as drafts', () => {
         expect(cliService.listVariables).toHaveBeenCalledWith('/workspace/current.rq', undefined, '/workspace', []);
     });
 
+    test('does not read unsaved documents for completions that do not ask rq', async () => {
+        const getText = jest.fn(() => 'let token = "secret"');
+        (vscode.workspace.textDocuments as any) = [
+            { languageId: 'rq', isDirty: true, uri: { fsPath: '/workspace/shared.rq' }, getText }
+        ];
+        (vscode.workspace.getWorkspaceFolder as jest.Mock).mockReturnValue({ uri: { fsPath: '/workspace' } });
+
+        await provideCompletionItems(makeDocument(['']), new vscode.Position(0, 0));
+
+        expect(cliService.listVariables).not.toHaveBeenCalled();
+        expect(getText).not.toHaveBeenCalled();
+    });
+
     test('ignores non-rq dirty documents', async () => {
         const dirtyDoc = {
             languageId: 'typescript',

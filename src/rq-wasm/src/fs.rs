@@ -660,6 +660,18 @@ mod tests {
     }
 
     #[test]
+    fn walk_applies_rqignore_paths_whatever_the_case_of_the_root_drive() {
+        let target = make_fs(&[
+            ("C:/repo/.rqignore", "fixtures/large\n/target\n"),
+            ("C:/repo/fixtures/large/a.rq", ""),
+            ("C:/repo/target/b.rq", ""),
+            ("C:/repo/api/target/c.rq", ""),
+        ]);
+        let found = rq_lib::paths::walk_rq_files(&target, Path::new("c:/repo")).unwrap();
+        assert_eq!(found, vec![PathBuf::from("C:/repo/api/target/c.rq")]);
+    }
+
+    #[test]
     fn canonicalize_normalizes_path() {
         let target = make_fs(&[]);
         let result = target

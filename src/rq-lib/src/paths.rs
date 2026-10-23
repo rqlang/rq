@@ -31,6 +31,7 @@ fn walk_rq_files_up_to(fs: &dyn Fs, root: &Path, limit: usize) -> Result<Vec<Pat
     let mut walk = RqFileWalk {
         fs,
         root,
+        root_key: fs.canonicalize(root).ok(),
         rules: SkipRules::load(fs, root),
         limit,
         walked: 0,
@@ -122,6 +123,7 @@ impl SkipRules {
 struct RqFileWalk<'a> {
     fs: &'a dyn Fs,
     root: &'a Path,
+    root_key: Option<PathBuf>,
     rules: SkipRules,
     limit: usize,
     walked: usize,
@@ -232,8 +234,14 @@ impl RqFileWalk<'_> {
             .unwrap_or_default();
         let relative = path
             .strip_prefix(self.root)
+            .ok()
+            .or_else(|| {
+                self.root_key
+                    .as_deref()
+                    .and_then(|key| path.strip_prefix(key).ok())
+            })
             .map(|r| r.to_string_lossy().replace('\\', "/"))
-            .unwrap_or_else(|_| name.clone());
+            .unwrap_or_else(|| name.clone());
         (name, relative)
     }
 

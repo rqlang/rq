@@ -47,7 +47,9 @@ impl WasmFs {
             }
         }
         let joined = parts.join("/");
-        if s.starts_with('/') {
+        if s.starts_with("//") {
+            format!("//{joined}")
+        } else if s.starts_with('/') {
             format!("/{joined}")
         } else {
             Self::upper_drive_letter(joined)
@@ -640,6 +642,21 @@ mod tests {
         let target = make_fs(&[("C:/proj/a.rq", "")]);
         let entries = target.read_dir(Path::new("c:/proj")).unwrap_or_default();
         assert_eq!(entries, vec![PathBuf::from("C:/proj/a.rq")]);
+    }
+
+    #[test]
+    fn keeps_the_double_slash_of_a_unc_path() {
+        let target = make_fs(&[("//server/share/project/a.rq", "draft")]);
+        assert_eq!(
+            target
+                .read(Path::new("\\\\server\\share\\project\\a.rq"))
+                .unwrap(),
+            "draft"
+        );
+        assert_eq!(
+            WasmFs::normalize(Path::new("//server/share/project/../a.rq")),
+            "//server/share/a.rq"
+        );
     }
 
     #[test]

@@ -50,8 +50,8 @@ pub fn resolve_under_workspace(logical: &Path, workspace: Option<&Path>) -> Path
         return logical.to_path_buf();
     };
     let root = workspace_root(workspace);
-    if logical.is_absolute() {
-        if logical.starts_with(root) {
+    if is_absolute(logical) {
+        if with_upper_drive(logical).starts_with(with_upper_drive(root)) {
             return logical.to_path_buf();
         }
         return match logical.file_name() {
@@ -60,6 +60,30 @@ pub fn resolve_under_workspace(logical: &Path, workspace: Option<&Path>) -> Path
         };
     }
     root.join(logical)
+}
+
+fn is_absolute(path: &Path) -> bool {
+    path.is_absolute() || drive_letter(path).is_some()
+}
+
+fn drive_letter(path: &Path) -> Option<char> {
+    let text = path.to_string_lossy();
+    let mut chars = text.chars();
+    match (chars.next(), chars.next(), chars.next()) {
+        (Some(drive), Some(':'), Some('/' | '\\')) if drive.is_ascii_alphabetic() => Some(drive),
+        _ => None,
+    }
+}
+
+fn with_upper_drive(path: &Path) -> PathBuf {
+    match drive_letter(path) {
+        Some(drive) => {
+            let text = path.to_string_lossy();
+            let rest: String = text.chars().skip(1).collect();
+            PathBuf::from(format!("{}{rest}", drive.to_ascii_uppercase()))
+        }
+        None => path.to_path_buf(),
+    }
 }
 
 fn workspace_root(workspace: &Path) -> &Path {
@@ -431,6 +455,33 @@ mod tests {
             .to_string();
         assert!(target.contains("Largest folders: deps (3)"), "{target}");
         assert!(target.contains(IGNORE_FILE), "{target}");
+    }
+
+    #[test]
+    fn keeps_a_windows_absolute_path_already_inside_the_workspace() {
+        let target = resolve_under_workspace(
+            Path::new("C:/repo/sub/users.rq"),
+            Some(Path::new("C:/repo")),
+        );
+        assert_eq!(target, PathBuf::from("C:/repo/sub/users.rq"));
+    }
+
+    #[test]
+    fn keeps_a_windows_absolute_path_whatever_the_case_of_the_drive() {
+        let target = resolve_under_workspace(
+            Path::new("C:/repo/sub/users.rq"),
+            Some(Path::new("c:/repo")),
+        );
+        assert_eq!(target, PathBuf::from("C:/repo/sub/users.rq"));
+    }
+
+    #[test]
+    fn moves_a_windows_absolute_path_from_another_drive_into_the_workspace() {
+        let target = resolve_under_workspace(
+            Path::new("D:/elsewhere/users.rq"),
+            Some(Path::new("C:/repo")),
+        );
+        assert_eq!(target, PathBuf::from("C:/repo").join("users.rq"));
     }
 
     #[test]

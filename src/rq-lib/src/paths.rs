@@ -45,6 +45,20 @@ fn walk_rq_files_up_to(fs: &dyn Fs, root: &Path, limit: usize) -> Result<Vec<Pat
     Ok(walk.paths)
 }
 
+pub fn upper_drive_letter(text: &str) -> String {
+    let mut chars = text.chars();
+    match (chars.next(), chars.next()) {
+        (Some(drive), Some(':')) if drive.is_ascii_alphabetic() => {
+            let mut upper = String::with_capacity(text.len());
+            upper.push(drive.to_ascii_uppercase());
+            upper.push(':');
+            upper.extend(chars);
+            upper
+        }
+        _ => text.to_string(),
+    }
+}
+
 pub fn resolve_under_workspace(logical: &Path, workspace: Option<&Path>) -> PathBuf {
     let Some(workspace) = workspace else {
         return logical.to_path_buf();
@@ -76,14 +90,7 @@ fn drive_letter(path: &Path) -> Option<char> {
 }
 
 fn with_upper_drive(path: &Path) -> PathBuf {
-    match drive_letter(path) {
-        Some(drive) => {
-            let text = path.to_string_lossy();
-            let rest: String = text.chars().skip(1).collect();
-            PathBuf::from(format!("{}{rest}", drive.to_ascii_uppercase()))
-        }
-        None => path.to_path_buf(),
-    }
+    PathBuf::from(upper_drive_letter(&path.to_string_lossy()))
 }
 
 fn workspace_root(workspace: &Path) -> &Path {
@@ -330,7 +337,10 @@ pub(crate) mod overflowing {
 
 #[cfg(test)]
 mod tests {
-    use super::{resolve_under_workspace, walk_rq_files, walk_rq_files_up_to, IGNORE_FILE};
+    use super::{
+        resolve_under_workspace, upper_drive_letter, walk_rq_files, walk_rq_files_up_to,
+        IGNORE_FILE,
+    };
     use crate::native::NativeFs;
     use std::path::{Path, PathBuf};
 
@@ -528,6 +538,19 @@ mod tests {
             Some(Path::new("C:/repo")),
         );
         assert_eq!(target, PathBuf::from("C:/repo").join("users.rq"));
+    }
+
+    #[test]
+    fn upper_drive_letter_capitalizes_only_the_drive() {
+        assert_eq!(upper_drive_letter("c:/repo/a.rq"), "C:/repo/a.rq");
+        assert_eq!(upper_drive_letter("c:"), "C:");
+    }
+
+    #[test]
+    fn upper_drive_letter_leaves_other_paths_alone() {
+        assert_eq!(upper_drive_letter("/repo/c:/a.rq"), "/repo/c:/a.rq");
+        assert_eq!(upper_drive_letter("ñ:/x"), "ñ:/x");
+        assert_eq!(upper_drive_letter(""), "");
     }
 
     #[test]

@@ -52,17 +52,7 @@ impl WasmFs {
         } else if s.starts_with('/') {
             format!("/{joined}")
         } else {
-            Self::upper_drive_letter(joined)
-        }
-    }
-
-    fn upper_drive_letter(path: String) -> String {
-        let mut chars = path.chars();
-        match (chars.next(), chars.next()) {
-            (Some(drive), Some(':')) if drive.is_ascii_lowercase() => {
-                format!("{}{}", drive.to_ascii_uppercase(), &path[1..])
-            }
-            _ => path,
+            rq_lib::paths::upper_drive_letter(&joined)
         }
     }
 

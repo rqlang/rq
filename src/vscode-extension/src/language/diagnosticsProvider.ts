@@ -106,6 +106,7 @@ export class DiagnosticsProvider {
             result = await rqClient.checkFolder(folderPath, env, drafts);
         } catch (error) {
             this.reportFailure(folderPath, error);
+            this.applyDiagnostics({ errors: [] }, folderPath, lint);
             return;
         }
         this.reportedFailures.delete(normalizePath(folderPath));

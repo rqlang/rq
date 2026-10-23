@@ -207,6 +207,22 @@ describe('DiagnosticsProvider check failures', () => {
         expect((vscode as any).window.showWarningMessage).toHaveBeenCalledWith(expect.stringContaining('Too many files under /repo'));
     });
 
+    it('still shows lint findings and clears stale check errors when the check fails', async () => {
+        mockedClient.checkFolder.mockRejectedValue(new Error('Too many files under /repo'));
+        mockedClient.lintSources.mockResolvedValue(new Map([
+            ['/repo/users.rq', { ok: false, diagnostics: [
+                { severity: 'error', rule: 'empty_url_string', message: 'empty url', line: 1, column: 9 }
+            ] }]
+        ]) as any);
+        const target = new DiagnosticsProvider(collection());
+
+        await (target as any).validateFolder(FOLDER);
+
+        const [, diagnostics] = ((target as any).diagnosticCollection.set as jest.Mock).mock.calls[0];
+        expect(diagnostics).toHaveLength(1);
+        expect(diagnostics[0].source).toBe('rq lint');
+    });
+
     it('does not repeat the same failure on every validation', async () => {
         mockedClient.checkFolder.mockRejectedValue(new Error('Too many files under /repo'));
         const target = new DiagnosticsProvider(collection());

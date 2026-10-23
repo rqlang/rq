@@ -83,6 +83,18 @@ describe('rqClient.lintSources', () => {
         expect(target.get(orders)?.ok).toBe(true);
     });
 
+    it('lints the drafts on their own when the workspace cannot be read', async () => {
+        const users = `${workspace}/users.rq`;
+        mockLint
+            .mockImplementationOnce(() => { throw new Error('Too many files'); })
+            .mockReturnValueOnce(JSON.stringify({ [users]: { ok: false, diagnostics: [{ rule: 'empty_url_string' }] } }));
+
+        const target = await lintSources([{ path: users, source: 'rq list("");\n' }], workspace);
+
+        expect(mockLint.mock.calls[1][1]).toBeUndefined();
+        expect(target.get(users)?.diagnostics[0].rule).toBe('empty_url_string');
+    });
+
     it('keys the results by normalized path', async () => {
         lintedAs({});
 

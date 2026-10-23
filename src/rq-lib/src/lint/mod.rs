@@ -176,15 +176,6 @@ impl WorkspaceCollector {
         }
     }
 
-    pub fn absorb(
-        &mut self,
-        path: &std::path::Path,
-        content: &str,
-        fs: &dyn crate::syntax::fs::Fs,
-    ) {
-        self.absorb_file(&WorkspaceFile::parse(path, content, fs));
-    }
-
     pub fn absorb_file(&mut self, file: &WorkspaceFile) {
         use std::path::PathBuf;
         for req in &file.requests {

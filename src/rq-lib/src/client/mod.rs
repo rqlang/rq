@@ -3371,7 +3371,7 @@ mod environment_color_tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "native"))]
 mod lint_path_tests {
     use super::{native, RqClient};
     use crate::lint::LintScope;

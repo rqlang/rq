@@ -91,7 +91,7 @@ Unless otherwise noted, most commands share these common flags:
 
 When `--source` is a directory, rq looks for `.rq` files in it and in every subdirectory except hidden ones (any name starting with `.`, such as `.git` or `.venv`). A hidden directory given as the source itself is still read. Other files are only read when a request asks for them, for example through `io.read_file`.
 
-To skip more directories, list them in a `.rqignore` file at the root of the source directory:
+To skip more directories, list them in a `.rqignore` file in the source directory, or in the file's own directory when `--source` is a file. rq reads only that `.rqignore`, not those of parent folders or subfolders, so a different source needs its own:
 
 ```
 # one entry per line; blank lines and lines starting with # are ignored

@@ -283,6 +283,52 @@ impl RqFileWalk<'_> {
 }
 
 #[cfg(test)]
+pub(crate) mod overflowing {
+    use crate::syntax::fs::Fs;
+    use std::path::{Path, PathBuf};
+
+    pub(crate) const ROOT: &str = "/huge";
+    pub(crate) const REQUEST_FILE: &str = "/huge/api.rq";
+
+    pub(crate) struct OverflowingFolder;
+
+    impl Fs for OverflowingFolder {
+        fn read(&self, path: &Path) -> Result<String, String> {
+            if self.is_file(path) {
+                return Ok("rq list(\"http://x\");\n".to_string());
+            }
+            Err(format!("not found: {}", path.display()))
+        }
+
+        fn resolve_path(&self, base: &Path, relative: &str) -> Result<PathBuf, String> {
+            Ok(base.parent().unwrap_or(base).join(relative))
+        }
+
+        fn exists(&self, path: &Path) -> bool {
+            self.is_file(path) || self.is_dir(path)
+        }
+
+        fn is_file(&self, path: &Path) -> bool {
+            path == Path::new(REQUEST_FILE)
+        }
+
+        fn is_dir(&self, path: &Path) -> bool {
+            path == Path::new(ROOT)
+        }
+
+        fn read_dir(&self, dir: &Path) -> Result<Vec<PathBuf>, String> {
+            Ok((0..=super::MAX_WALKED_ENTRIES)
+                .map(|i| dir.join(format!("{i}.txt")))
+                .collect())
+        }
+
+        fn canonicalize(&self, path: &Path) -> Result<PathBuf, String> {
+            Ok(path.to_path_buf())
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::{resolve_under_workspace, walk_rq_files, walk_rq_files_up_to, IGNORE_FILE};
     use crate::native::NativeFs;

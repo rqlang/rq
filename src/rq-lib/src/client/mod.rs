@@ -754,14 +754,14 @@ impl RqClient {
                 LintScope::SourceOnly => Vec::new(),
                 LintScope::SourceDirectory => {
                     let parent = path.parent().filter(|p| !p.as_os_str().is_empty());
-                    self.read_workspace_files(parent.unwrap_or(Path::new(".")))
+                    self.read_workspace_files(parent.unwrap_or(Path::new(".")))?
                 }
             };
             (vec![path.to_path_buf()], workspace)
         } else if self.fs.is_dir(path) {
             (
                 self.discover_rq_files(path)?,
-                self.read_workspace_files(path),
+                self.read_workspace_files(path)?,
             )
         } else {
             return Err(RqError::DirectoryNotFound(path.display().to_string()));
@@ -919,16 +919,15 @@ impl RqClient {
         RqFile::from_content(canonical, &content, &*self.fs).map_err(Self::map_parse_error)
     }
 
-    fn read_workspace_files(&self, root: &Path) -> Vec<WorkspaceFile> {
-        crate::paths::walk_rq_files(&*self.fs, root)
-            .unwrap_or_default()
+    fn read_workspace_files(&self, root: &Path) -> Result<Vec<WorkspaceFile>, RqError> {
+        Ok(crate::paths::walk_rq_files(&*self.fs, root)?
             .into_iter()
             .filter_map(|path| {
                 let canonical = self.fs.canonicalize(&path).ok()?;
                 let content = self.fs.read(&canonical).ok()?;
                 Some(WorkspaceFile::parse(&canonical, &content, &*self.fs))
             })
-            .collect()
+            .collect())
     }
 
     fn lint_file(&self, target: &Path, workspace: &[WorkspaceFile]) -> Vec<LintDiagnostic> {
@@ -3369,5 +3368,27 @@ mod environment_color_tests {
             (positions("color"), positions("red")),
             (vec![(0, 4), (5, 13)], vec![(1, 4), (5, 22)])
         );
+    }
+}
+
+#[cfg(test)]
+mod lint_path_tests {
+    use super::{native, RqClient};
+    use crate::lint::LintScope;
+    use crate::paths::overflowing::{OverflowingFolder, REQUEST_FILE};
+    use std::path::Path;
+    use std::sync::Arc;
+
+    #[test]
+    fn lint_path_reports_a_source_directory_too_large_to_walk() {
+        let client = RqClient::new(
+            Arc::new(OverflowingFolder),
+            Arc::new(native::NativeSecretProvider),
+            Arc::new(native::ReqwestHttpClient),
+        );
+        let target = client.lint_path(Path::new(REQUEST_FILE), LintScope::SourceDirectory);
+        assert!(target
+            .err()
+            .is_some_and(|e| e.to_string().contains("Too many files")));
     }
 }

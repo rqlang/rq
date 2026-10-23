@@ -1,3 +1,4 @@
+use crate::error::RqError;
 use crate::syntax::fs::Fs;
 use crate::syntax::parse_result::{EndpointDefinition, Request};
 use crate::syntax::rq_file::RqFile;
@@ -74,38 +75,32 @@ pub trait LintRule: Send + Sync {
     fn check(&self, ctx: &LintContext, out: &mut Vec<LintDiagnostic>);
 }
 
+#[cfg(test)]
 pub fn lint(
     source: &str,
     path: Option<&str>,
     workspace_path: Option<&std::path::Path>,
 ) -> LintResult {
-    lint_with_fs(&crate::native::NativeFs, source, path, workspace_path)
-}
-
-pub fn lint_with_fs(
-    fs: &dyn Fs,
-    source: &str,
-    path: Option<&str>,
-    workspace_path: Option<&std::path::Path>,
-) -> LintResult {
+    let fs = crate::native::NativeFs;
     let workspace = workspace_path
-        .map(|w| read_workspace(fs, w))
+        .map(|w| read_workspace(&fs, w).expect("workspace walk"))
         .unwrap_or_default();
-    lint_against(fs, source, path, workspace_path, &workspace)
+    lint_against(&fs, source, path, workspace_path, &workspace)
 }
 
 pub fn lint_drafts_with_fs(
     fs: &dyn Fs,
     drafts: &[(&str, &str)],
     workspace_path: Option<&std::path::Path>,
-) -> Vec<LintResult> {
-    let workspace = workspace_path
-        .map(|w| read_workspace(fs, w))
-        .unwrap_or_default();
-    drafts
+) -> Result<Vec<LintResult>, RqError> {
+    let workspace = match workspace_path {
+        Some(w) => read_workspace(fs, w)?,
+        None => Vec::new(),
+    };
+    Ok(drafts
         .iter()
         .map(|(path, source)| lint_against(fs, source, Some(path), workspace_path, &workspace))
-        .collect()
+        .collect())
 }
 
 pub fn lint_rq_file(
@@ -289,14 +284,17 @@ fn lint_against(
     )
 }
 
-fn read_workspace(fs: &dyn Fs, workspace_path: &std::path::Path) -> Vec<WorkspaceFile> {
-    workspace_rq_files(fs, workspace_path)
+fn read_workspace(
+    fs: &dyn Fs,
+    workspace_path: &std::path::Path,
+) -> Result<Vec<WorkspaceFile>, RqError> {
+    Ok(workspace_rq_files(fs, workspace_path)?
         .into_iter()
         .filter_map(|path| {
             let content = fs.read(&path).ok()?;
             Some(WorkspaceFile::parse(&path, &content, fs))
         })
-        .collect()
+        .collect())
 }
 
 fn declared_in(endpoint: &EndpointDefinition, path: &std::path::Path) -> bool {
@@ -487,11 +485,14 @@ pub fn endpoint_extensions(source: &str) -> Vec<EndpointExtension> {
     found
 }
 
-fn workspace_rq_files(fs: &dyn Fs, workspace_path: &std::path::Path) -> Vec<std::path::PathBuf> {
+fn workspace_rq_files(
+    fs: &dyn Fs,
+    workspace_path: &std::path::Path,
+) -> Result<Vec<std::path::PathBuf>, RqError> {
     if fs.is_file(workspace_path) {
-        return vec![workspace_path.to_path_buf()];
+        return Ok(vec![workspace_path.to_path_buf()]);
     }
-    crate::paths::walk_rq_files(fs, workspace_path).unwrap_or_default()
+    crate::paths::walk_rq_files(fs, workspace_path)
 }
 
 fn known_rule_ids() -> Vec<&'static str> {
@@ -688,7 +689,8 @@ mod tests {
         )]);
         let draft = dir.path().join("widgets.rq").to_string_lossy().to_string();
         let source = "ep widgets(\"http://localhost:8080/widgets\") {\n    rq list();\n}\n";
-        let target = lint_drafts_with_fs(&NativeFs, &[(&draft, source)], Some(dir.path()));
+        let target =
+            lint_drafts_with_fs(&NativeFs, &[(&draft, source)], Some(dir.path())).expect("lint");
         assert!(rules_of(&target[0]).contains(&"duplicated_ep_base".to_string()));
     }
 
@@ -697,8 +699,22 @@ mod tests {
         let source = "ep users(\"http://localhost:8080/users\") {\n    rq list();\n}\n";
         let dir = nested_workspace(&[("users.rq", source)]);
         let draft = dir.path().join("users.rq").to_string_lossy().to_string();
-        let target = lint_drafts_with_fs(&NativeFs, &[(&draft, source)], Some(dir.path()));
+        let target =
+            lint_drafts_with_fs(&NativeFs, &[(&draft, source)], Some(dir.path())).expect("lint");
         assert!(!rules_of(&target[0]).contains(&"duplicated_ep_base".to_string()));
+    }
+
+    #[test]
+    fn lint_drafts_reports_a_workspace_too_large_to_walk() {
+        use crate::paths::overflowing::{OverflowingFolder, REQUEST_FILE, ROOT};
+        let target = lint_drafts_with_fs(
+            &OverflowingFolder,
+            &[(REQUEST_FILE, "rq list(\"http://x\");\n")],
+            Some(std::path::Path::new(ROOT)),
+        );
+        assert!(target
+            .err()
+            .is_some_and(|e| e.to_string().contains("Too many files")));
     }
 
     #[test]
@@ -713,7 +729,8 @@ mod tests {
                 (&second, "rq b(\"http://x\");\n"),
             ],
             Some(dir.path()),
-        );
+        )
+        .expect("lint");
         assert_eq!(target.len(), 2);
         assert!(rules_of(&target[0]).contains(&"empty_url_string".to_string()));
         assert!(!rules_of(&target[1]).contains(&"empty_url_string".to_string()));

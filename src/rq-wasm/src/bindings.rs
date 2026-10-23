@@ -287,7 +287,7 @@ pub fn lint(files_json: &str, workspace: Option<String>) -> Result<String, JsErr
         Some(root) => WasmFs::with_root(files.clone(), root),
         None => WasmFs::new(files.clone()),
     };
-    let results = rq_lib::lint::lint_drafts_with_fs(&fs, &drafts, workspace);
+    let results = rq_lib::lint::lint_drafts_with_fs(&fs, &drafts, workspace).map_err(rq_err)?;
     let by_path: HashMap<&str, _> = drafts.iter().map(|(path, _)| *path).zip(results).collect();
     serde_json::to_string(&by_path).map_err(|e| JsError::new(&e.to_string()))
 }

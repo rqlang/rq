@@ -1,4 +1,4 @@
-import { draftsJson, normalizePath } from '../src/utils';
+import { draftsJson, isInsideFolder, normalizePath } from '../src/utils';
 
 describe('utils', () => {
     describe('normalizePath', () => {
@@ -21,6 +21,25 @@ describe('utils', () => {
         it('should handle paths without drive letters (relative or unix)', () => {
             const input = 'src/test.ts';
             expect(normalizePath(input)).toBe(input);
+        });
+    });
+
+    describe('isInsideFolder', () => {
+        it('accepts a file under the folder', () => {
+            expect(isInsideFolder('/repo/api/a.rq', '/repo')).toBe(true);
+        });
+
+        it('accepts the folder itself and a folder given with a trailing slash', () => {
+            expect(isInsideFolder('/repo', '/repo')).toBe(true);
+            expect(isInsideFolder('/repo/a.rq', '/repo/')).toBe(true);
+        });
+
+        it('rejects a sibling folder that merely shares the prefix', () => {
+            expect(isInsideFolder('/repo-other/a.rq', '/repo')).toBe(false);
+        });
+
+        it('compares Windows paths whatever their separators and drive case', () => {
+            expect(isInsideFolder('c:\\repo\\a.rq', 'C:/repo')).toBe(true);
         });
     });
 

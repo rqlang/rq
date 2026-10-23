@@ -493,6 +493,17 @@ describe('varRefs', () => {
         expect(target[0].uri).toBe(doc.uri);
     });
 
+    test('leaves out unsaved documents of a sibling folder that shares the prefix', async () => {
+        const doc = makeDocument({ fsPath: '/tmp/project/foo.rq' }, 'rq get(base);');
+        const other = makeDocument({ fsPath: '/tmp/project-other/shared.rq' }, 'let base = "x";');
+        (vscode.workspace as any).textDocuments = [doc, other];
+        mockListVariableRefs.mockReturnValue('[]');
+
+        await varRefs('base', doc, new vscode.Position(0, 8), '/tmp/project');
+
+        expect(Object.keys(JSON.parse(mockListVariableRefs.mock.calls[0][0]))).toEqual(['/tmp/project/foo.rq']);
+    });
+
     test('includes other unsaved documents of the folder', async () => {
         const doc = makeDocument({ fsPath: '/tmp/project/foo.rq' }, 'rq get(base);');
         const other = makeDocument({ fsPath: '/tmp/project/shared.rq' }, 'let base = "x";');

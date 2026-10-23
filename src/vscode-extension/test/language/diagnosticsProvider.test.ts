@@ -246,3 +246,17 @@ describe('DiagnosticsProvider check failures', () => {
         expect((vscode as any).window.showWarningMessage).toHaveBeenCalledTimes(2);
     });
 });
+
+describe('DiagnosticsProvider folders sharing a prefix', () => {
+    it('keeps the diagnostics of a sibling folder whose name starts like this one', async () => {
+        const sibling = { fsPath: '/repo-other/users.rq' };
+        const existing = collection();
+        existing.entries.set(sibling.fsPath, []);
+        existing[Symbol.iterator] = function* () { yield [sibling, []]; };
+        const target = new DiagnosticsProvider(existing);
+
+        await (target as any).validateFolder(FOLDER);
+
+        expect(existing.delete).not.toHaveBeenCalled();
+    });
+});

@@ -5,7 +5,7 @@ import * as http from 'http';
 import * as https from 'https';
 import * as crypto from 'crypto';
 import * as forge from 'node-forge';
-import { normalizePath, draftsJson, buildSecretsMap, DraftFile, CANCELLED_MESSAGE } from './utils';
+import { normalizePath, draftsJson, buildSecretsMap, DraftFile, CANCELLED_MESSAGE, isInsideFolder } from './utils';
 import { wasmCall } from './wasmHost';
 import { UiColor } from './language/definitions';
 
@@ -351,7 +351,7 @@ function forwardSlashes(filePath: string): string {
 function openDrafts(document: vscode.TextDocument, source: string): DraftFile[] {
     const dirty = vscode.workspace.textDocuments
         .filter(doc => doc !== document && doc.languageId === 'rq' && doc.isDirty && !doc.isUntitled)
-        .filter(doc => normalizePath(doc.uri.fsPath).startsWith(normalizePath(source)))
+        .filter(doc => isInsideFolder(doc.uri.fsPath, source))
         .map(doc => ({ path: forwardSlashes(doc.uri.fsPath), source: doc.getText() }));
     return [{ path: documentDraftPath(document, source), source: document.getText() }, ...dirty];
 }

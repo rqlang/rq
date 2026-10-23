@@ -35,6 +35,12 @@ export interface DraftFile {
     source: string;
 }
 
+export function isInsideFolder(filePath: string, folder: string): boolean {
+    const file = normalizePath(filePath).replace(/\\/g, '/');
+    const root = normalizePath(folder).replace(/\\/g, '/').replace(/\/+$/, '');
+    return file === root || file.startsWith(`${root}/`);
+}
+
 export function draftsJson(drafts: DraftFile[] = []): string {
     return JSON.stringify(Object.fromEntries(drafts.map(draft => [draft.path.replace(/\\/g, '/'), draft.source])));
 }

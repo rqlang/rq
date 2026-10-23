@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as rqClient from '../rqClient';
-import { DraftFile, normalizePath } from '../utils';
+import { DraftFile, isInsideFolder, normalizePath } from '../utils';
 
 const DEBOUNCE_MS = 1000;
 const LINT_SETTING = 'rq.lint.enabled';
@@ -201,7 +201,7 @@ export class DiagnosticsProvider {
         const toDelete: vscode.Uri[] = [];
         for (const [uri] of this.diagnosticCollection) {
             const filePath = normalizePath(uri.fsPath);
-            if (filePath.startsWith(normalizePath(folderPath)) && !diagnosticsMap.has(filePath)) {
+            if (isInsideFolder(filePath, folderPath) && !diagnosticsMap.has(filePath)) {
                 toDelete.push(uri);
             }
         }

@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as rqClient from '../rqClient';
-import { DraftFile, normalizePath } from '../utils';
+import { DraftFile, isInsideFolder } from '../utils';
 import { filterRequiredVars } from './completionHelpers';
 
 export interface CompletionContext {
@@ -20,7 +20,7 @@ export type EnvironmentProvider = { getSelectedEnvironment(): string | undefined
 
 function unsavedDrafts(workspaceRoot: string): DraftFile[] {
     return vscode.workspace.textDocuments
-        .filter(doc => doc.languageId === 'rq' && doc.isDirty && normalizePath(doc.uri.fsPath).startsWith(normalizePath(workspaceRoot)))
+        .filter(doc => doc.languageId === 'rq' && doc.isDirty && isInsideFolder(doc.uri.fsPath, workspaceRoot))
         .map(doc => ({ path: doc.uri.fsPath, source: doc.getText() }));
 }
 

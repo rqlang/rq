@@ -109,6 +109,8 @@ scratch.rq
 - Wildcards such as `*.egg-info` or `build*` are not supported; rq ignores those lines and says so in the debug log (`-d`).
 - `!name` reads a hidden directory that would otherwise be skipped.
 
+`.rqignore` only decides where rq looks for `.rq` files. A file a request names by path is always read, even inside an ignored folder: an `import`, `io.read_file` or `io.read_json`. So a `data` folder full of JSON bodies can go in `.rqignore` to keep the search fast, and requests still read the bodies they use.
+
 To keep a wrong source, such as your home directory, from hanging, rq stops after 50,000 files and directories. The error names the largest folders it found so you can add them to `.rqignore`, or point `--source` at the folder that holds your `.rq` files.
 
 The VS Code extension and the MCP server read files the same way, with the `.rqignore` of the opened folder.

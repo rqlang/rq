@@ -91,19 +91,20 @@ Unless otherwise noted, most commands share these common flags:
 
 When `--source` is a directory, rq looks for `.rq` files in it and in every subdirectory except hidden ones (any name starting with `.`, such as `.git` or `.venv`). A hidden directory given as the source itself is still read. Other files are only read when a request asks for them, for example through `io.read_file`.
 
-To skip more directories, list them in a `.rqignore` file in the source directory, or in the file's own directory when `--source` is a file. rq reads only that `.rqignore`, not those of parent folders or subfolders, so a different source needs its own:
+To skip more directories or `.rq` files, list them in a `.rqignore` file in the source directory, or in the file's own directory when `--source` is a file. rq reads only that `.rqignore`, not those of parent folders or subfolders, so a different source needs its own:
 
 ```
 # one entry per line; blank lines and lines starting with # are ignored
 node_modules
 target
 fixtures/large
+scratch.rq
 !.config
 ```
 
-- A bare name, such as `node_modules`, skips every directory with that name at any depth.
-- A path with a `/`, such as `fixtures/large`, skips only that directory, relative to the source.
-- A leading `/`, as in `/target`, skips only the directory of that name at the root of the source.
+- A bare name, such as `node_modules` or `scratch.rq`, skips every directory or `.rq` file with that name at any depth.
+- A path with a `/`, such as `fixtures/large` or `api/old.rq`, skips only that directory or file, relative to the source.
+- A leading `/`, as in `/target`, skips only the entry of that name at the root of the source.
 - `**/` at the start and `/**` at the end are accepted, so `**/node_modules`, `node_modules/**` and `**/fixtures/large` (that path at any depth) work as in a `.gitignore`.
 - Wildcards such as `*.egg-info` or `build*` are not supported; rq ignores those lines and says so in the debug log (`-d`).
 - `!name` reads a hidden directory that would otherwise be skipped.

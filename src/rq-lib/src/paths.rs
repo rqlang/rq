@@ -159,12 +159,15 @@ impl SkipRules {
         }
     }
 
-    fn skips(&self, name: &str, relative: &str) -> bool {
+    fn skips_directory(&self, name: &str, relative: &str) -> bool {
         if self.included.contains(name) || self.included.contains(relative) {
             return false;
         }
-        name.starts_with('.')
-            || self.names.contains(name)
+        name.starts_with('.') || self.lists(name, relative)
+    }
+
+    fn lists(&self, name: &str, relative: &str) -> bool {
+        self.names.contains(name)
             || self.paths.contains(relative)
             || self.nested_paths.iter().any(|nested| {
                 relative == nested
@@ -207,12 +210,17 @@ impl RqFileWalk<'_> {
         for path in entries {
             if self.fs.is_dir(&path) {
                 let (name, child) = self.names_of(&path);
-                if self.rules.skips(&name, &child) {
+                if self.rules.skips_directory(&name, &child) {
                     Logger::debug(&format!("* Skipping directory {}", clean_path(&path)));
                     continue;
                 }
                 self.visit(&path, Some(&child))?;
             } else if path.extension().and_then(|s| s.to_str()) == Some("rq") {
+                let (name, relative) = self.names_of(&path);
+                if self.rules.lists(&name, &relative) {
+                    Logger::debug(&format!("* Skipping file {}", clean_path(&path)));
+                    continue;
+                }
                 self.paths.push(path);
             }
         }
@@ -482,6 +490,24 @@ mod tests {
             walked_names(dir.path()),
             ["build1/b.rq", "pkg.egg-info/a.rq"]
         );
+    }
+
+    #[test]
+    fn walk_skips_an_rq_file_named_in_the_ignore_file_at_any_depth() {
+        let dir = workspace_ignoring("scratch.rq\n", &["a.rq", "scratch.rq", "api/scratch.rq"]);
+        assert_eq!(walked_names(dir.path()), ["a.rq"]);
+    }
+
+    #[test]
+    fn walk_skips_only_the_rq_file_at_the_listed_path() {
+        let dir = workspace_ignoring("api/old.rq\n", &["old.rq", "api/old.rq", "api/new.rq"]);
+        assert_eq!(walked_names(dir.path()), ["api/new.rq", "old.rq"]);
+    }
+
+    #[test]
+    fn walk_still_finds_hidden_rq_files() {
+        let dir = workspace_with(&["a.rq", ".draft.rq"]);
+        assert_eq!(walked_names(dir.path()), [".draft.rq", "a.rq"]);
     }
 
     #[test]

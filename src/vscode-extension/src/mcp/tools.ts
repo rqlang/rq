@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { setWasmTransport, wasmCall } from '../wasmHost';
-import { buildFilesMap, buildSecretsMap, DraftFile, isDirectory, normalizePath } from '../utils';
+import { buildSecretsMap, draftsJson, isDirectory, normalizePath } from '../utils';
 import { RESOURCE_BODIES, surface } from './surface';
 
 const DRAFT_FILE_NAME = 'draft.rq';
@@ -79,13 +79,6 @@ function accessError(target: string, err: unknown): Error {
     return new Error(`Cannot access ${target}: ${err instanceof Error ? err.message : String(err)}`);
 }
 
-async function filesFor(workspace: string, draft: DraftFile): Promise<string> {
-    if (isUnscoped(workspace)) {
-        return JSON.stringify({ [draft.path]: draft.source });
-    }
-    return buildFilesMap(workspace, [draft]);
-}
-
 export async function validateRq(args: {
     source: string;
     path?: string;
@@ -94,7 +87,7 @@ export async function validateRq(args: {
 }): Promise<CheckResult> {
     const workspace = await workspaceFor(args.workspace_path, args.path);
     const draft = draftPath(workspace, args.path);
-    const filesJson = await filesFor(workspace, { path: draft, source: args.source });
+    const filesJson = draftsJson([{ path: draft, source: args.source }]);
     const secretsJson = await buildSecretsMap(workspace);
     const raw = await wasmCall('check', [filesJson, secretsJson, draft, args.env]);
     const parsed = JSON.parse(raw) as { errors: Diagnostic[] };
@@ -105,8 +98,10 @@ export async function validateRq(args: {
 export async function lintRq(args: { source: string; path?: string; workspace_path?: string }): Promise<CheckResult> {
     const workspace = await workspaceFor(args.workspace_path, args.path);
     const draft = draftPath(workspace, args.path);
-    const filesJson = await filesFor(workspace, { path: draft, source: args.source });
-    return JSON.parse(await wasmCall('lint', [filesJson, args.source, draft])) as CheckResult;
+    const filesJson = draftsJson([{ path: draft, source: args.source }]);
+    const lintWorkspace = isUnscoped(workspace) ? undefined : workspace;
+    const byPath = JSON.parse(await wasmCall('lint', [filesJson, lintWorkspace])) as Record<string, CheckResult>;
+    return byPath[draft] ?? { ok: true, diagnostics: [] };
 }
 
 export async function listRequests(args: { path?: string }): Promise<unknown> {
@@ -115,7 +110,7 @@ export async function listRequests(args: { path?: string }): Promise<unknown> {
     if (isUnscoped(scanned)) {
         throw new Error(`Refusing to scan every file under ${scanned}: pass the project folder as \`path\`.`);
     }
-    const filesJson = await buildFilesMap(target);
+    const filesJson = draftsJson();
     const secretsJson = await buildSecretsMap(target);
     const raw = await wasmCall('list_requests', [filesJson, secretsJson, target]);
     const parsed = JSON.parse(raw) as { requests: unknown[]; parse_errors?: Diagnostic[] };

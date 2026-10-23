@@ -1,12 +1,7 @@
 jest.mock('../../src/rqClient');
-jest.mock('../../src/utils', () => ({
-    ...jest.requireActual('../../src/utils'),
-    mirrorToTemp: jest.fn().mockReturnValue('/tmp/rq-check-mock'),
-}));
 
 import * as vscode from 'vscode';
 import * as cliService from '../../src/rqClient';
-import * as utils from '../../src/utils';
 import '../../src/language/completionProvider';
 import { makeDocument } from './completionTestUtils';
 
@@ -25,26 +20,18 @@ beforeEach(() => {
     (cliService.listEndpoints as jest.Mock).mockResolvedValue([]);
     (cliService.listVariables as jest.Mock).mockResolvedValue([]);
     (cliService.listAuthConfigs as jest.Mock).mockResolvedValue([]);
-    (utils.mirrorToTemp as jest.Mock).mockReturnValue('/tmp/rq-check-mock');
 });
 
-describe('resolveCliPath — temp mirroring for unsaved files', () => {
-    test('uses original file path when no dirty rq docs exist', async () => {
+describe('unsaved documents reach rq as drafts', () => {
+    test('passes no drafts when no rq doc is dirty', async () => {
         (vscode.workspace.textDocuments as any) = [];
-        (cliService.listVariables as jest.Mock).mockResolvedValue([
-            { name: 'my_var', value: 'x', source: 'let' }
-        ]);
 
-        const doc = makeDocument(['let a = ']);
-        const position = new vscode.Position(0, 8);
+        await provideCompletionItems(makeDocument(['let a = ']), new vscode.Position(0, 8));
 
-        await provideCompletionItems(doc, position);
-
-        expect(utils.mirrorToTemp).not.toHaveBeenCalled();
-        expect(cliService.listVariables).toHaveBeenCalledWith('/workspace/current.rq', undefined, '/workspace');
+        expect(cliService.listVariables).toHaveBeenCalledWith('/workspace/current.rq', undefined, '/workspace', []);
     });
 
-    test('uses temp path when current document is dirty', async () => {
+    test('passes the current document as a draft when it is dirty', async () => {
         const dirtyDoc = {
             languageId: 'rq',
             isDirty: true,
@@ -52,21 +39,16 @@ describe('resolveCliPath — temp mirroring for unsaved files', () => {
             getText: () => 'let a = "dirty"'
         };
         (vscode.workspace.textDocuments as any) = [dirtyDoc];
-        (vscode.workspace.getWorkspaceFolder as jest.Mock).mockReturnValue({
-            uri: { fsPath: '/workspace' }
-        });
-        (cliService.listVariables as jest.Mock).mockResolvedValue([]);
+        (vscode.workspace.getWorkspaceFolder as jest.Mock).mockReturnValue({ uri: { fsPath: '/workspace' } });
 
-        const doc = makeDocument(['let a = ']);
-        const position = new vscode.Position(0, 8);
+        await provideCompletionItems(makeDocument(['let a = ']), new vscode.Position(0, 8));
 
-        await provideCompletionItems(doc, position);
-
-        expect(utils.mirrorToTemp).toHaveBeenCalled();
-        expect(cliService.listVariables).toHaveBeenCalledWith('/tmp/rq-check-mock/current.rq', undefined, '/tmp/rq-check-mock');
+        expect(cliService.listVariables).toHaveBeenCalledWith('/workspace/current.rq', undefined, '/workspace', [
+            { path: '/workspace/current.rq', source: 'let a = "dirty"' }
+        ]);
     });
 
-    test('uses temp path when a different rq file is dirty', async () => {
+    test('passes another dirty rq doc as a draft', async () => {
         const dirtyDoc = {
             languageId: 'rq',
             isDirty: true,
@@ -74,39 +56,56 @@ describe('resolveCliPath — temp mirroring for unsaved files', () => {
             getText: () => 'let token = "secret"'
         };
         (vscode.workspace.textDocuments as any) = [dirtyDoc];
-        (vscode.workspace.getWorkspaceFolder as jest.Mock).mockReturnValue({
-            uri: { fsPath: '/workspace' }
-        });
-        (cliService.listVariables as jest.Mock).mockResolvedValue([]);
+        (vscode.workspace.getWorkspaceFolder as jest.Mock).mockReturnValue({ uri: { fsPath: '/workspace' } });
 
-        const doc = makeDocument(['let a = ']);
-        const position = new vscode.Position(0, 8);
+        await provideCompletionItems(makeDocument(['let a = ']), new vscode.Position(0, 8));
 
-        await provideCompletionItems(doc, position);
-
-        expect(utils.mirrorToTemp).toHaveBeenCalled();
-        expect(cliService.listVariables).toHaveBeenCalledWith('/tmp/rq-check-mock/current.rq', undefined, '/tmp/rq-check-mock');
+        expect(cliService.listVariables).toHaveBeenCalledWith('/workspace/current.rq', undefined, '/workspace', [
+            { path: '/workspace/shared.rq', source: 'let token = "secret"' }
+        ]);
     });
 
-    test('passes dirty doc content as overrides to mirrorToTemp', async () => {
+    test('leaves out dirty rq docs from another folder', async () => {
         const dirtyDoc = {
             languageId: 'rq',
             isDirty: true,
-            uri: { fsPath: '/workspace/shared.rq' },
+            uri: { fsPath: '/elsewhere/shared.rq' },
             getText: () => 'let token = "secret"'
         };
         (vscode.workspace.textDocuments as any) = [dirtyDoc];
-        (vscode.workspace.getWorkspaceFolder as jest.Mock).mockReturnValue({
-            uri: { fsPath: '/workspace' }
-        });
+        (vscode.workspace.getWorkspaceFolder as jest.Mock).mockReturnValue({ uri: { fsPath: '/workspace' } });
 
-        const doc = makeDocument(['let a = ']);
-        const position = new vscode.Position(0, 8);
+        await provideCompletionItems(makeDocument(['let a = ']), new vscode.Position(0, 8));
 
-        await provideCompletionItems(doc, position);
+        expect(cliService.listVariables).toHaveBeenCalledWith('/workspace/current.rq', undefined, '/workspace', []);
+    });
 
-        const overrides: Map<string, string> = (utils.mirrorToTemp as jest.Mock).mock.calls[0][1];
-        expect(overrides.get('/workspace/shared.rq')).toBe('let token = "secret"');
+    test('does not read unsaved documents for completions that do not ask rq', async () => {
+        const getText = jest.fn(() => 'let token = "secret"');
+        (vscode.workspace.textDocuments as any) = [
+            { languageId: 'rq', isDirty: true, uri: { fsPath: '/workspace/shared.rq' }, getText }
+        ];
+        (vscode.workspace.getWorkspaceFolder as jest.Mock).mockReturnValue({ uri: { fsPath: '/workspace' } });
+
+        await provideCompletionItems(makeDocument(['']), new vscode.Position(0, 0));
+
+        expect(cliService.listVariables).not.toHaveBeenCalled();
+        expect(getText).not.toHaveBeenCalled();
+    });
+
+    test('leaves out dirty rq docs from a sibling folder that shares the prefix', async () => {
+        const dirtyDoc = {
+            languageId: 'rq',
+            isDirty: true,
+            uri: { fsPath: '/workspace-other/shared.rq' },
+            getText: () => 'let token = "secret"'
+        };
+        (vscode.workspace.textDocuments as any) = [dirtyDoc];
+        (vscode.workspace.getWorkspaceFolder as jest.Mock).mockReturnValue({ uri: { fsPath: '/workspace' } });
+
+        await provideCompletionItems(makeDocument(['let a = ']), new vscode.Position(0, 8));
+
+        expect(cliService.listVariables).toHaveBeenCalledWith('/workspace/current.rq', undefined, '/workspace', []);
     });
 
     test('ignores non-rq dirty documents', async () => {
@@ -118,12 +117,9 @@ describe('resolveCliPath — temp mirroring for unsaved files', () => {
         };
         (vscode.workspace.textDocuments as any) = [dirtyDoc];
 
-        const doc = makeDocument(['let a = ']);
-        const position = new vscode.Position(0, 8);
+        await provideCompletionItems(makeDocument(['let a = ']), new vscode.Position(0, 8));
 
-        await provideCompletionItems(doc, position);
-
-        expect(utils.mirrorToTemp).not.toHaveBeenCalled();
+        expect(cliService.listVariables).toHaveBeenCalledWith('/workspace/current.rq', undefined, '/workspace', []);
     });
 });
 
@@ -141,7 +137,8 @@ describe('workspace root seeding for nested files', () => {
         expect(cliService.listVariables).toHaveBeenCalledWith(
             '/workspace/inma/collections.rq',
             undefined,
-            '/workspace'
+            '/workspace',
+            []
         );
     });
 
@@ -155,7 +152,8 @@ describe('workspace root seeding for nested files', () => {
 
         expect(cliService.listEndpoints).toHaveBeenCalledWith(
             '/workspace/inma/collections.rq',
-            '/workspace'
+            '/workspace',
+            []
         );
     });
 
@@ -169,7 +167,8 @@ describe('workspace root seeding for nested files', () => {
 
         expect(cliService.listAuthConfigs).toHaveBeenCalledWith(
             '/workspace/inma/collections.rq',
-            '/workspace'
+            '/workspace',
+            []
         );
     });
 });

@@ -132,6 +132,16 @@ describe('tools run from the home directory', () => {
         expect(Object.keys(files)).toHaveLength(1);
     });
 
+    it('lint without a workspace so the linter does not walk it', async () => {
+        mockLint.mockReturnValue(JSON.stringify({ ok: true, diagnostics: [] }));
+        const cwd = jest.spyOn(process, 'cwd').mockReturnValue(os.homedir());
+
+        await lintRq({ source: 'rq ping("http://x");\n' });
+        cwd.mockRestore();
+
+        expect(mockLint.mock.calls[0][1]).toBeUndefined();
+    });
+
     it('refuse to list requests without a project folder', async () => {
         const cwd = jest.spyOn(process, 'cwd').mockReturnValue(os.homedir());
 
@@ -150,16 +160,15 @@ describe('tools run from the home directory', () => {
 });
 
 describe('validateRq for an unsaved draft', () => {
-    it('scans the sibling files of the draft so imports can resolve', async () => {
+    it('sends only the draft and checks it from its own directory', async () => {
         mockCheck.mockReturnValue(JSON.stringify({ errors: [] }));
+        const draft = path.join(workspace, 'unsaved.rq').replace(/\\/g, '/');
 
-        await validateRq({ source: 'import "widgets";\n', path: path.join(workspace, 'unsaved.rq') });
+        await validateRq({ source: 'import "widgets";\n', path: draft });
 
-        const [filesJson] = mockCheck.mock.calls[0];
-        const files = JSON.parse(filesJson) as Record<string, string>;
-        expect(Object.keys(files).sort()).toEqual(
-            [`${workspace}/unsaved.rq`, `${workspace}/widgets.rq`].map(f => f.replace(/\\/g, '/')).sort()
-        );
+        const [filesJson, , source] = mockCheck.mock.calls[0];
+        expect(Object.keys(JSON.parse(filesJson))).toEqual([draft]);
+        expect(source).toBe(draft);
     });
 });
 
@@ -177,23 +186,27 @@ describe('lintRq', () => {
         expect(mockLint).toHaveBeenCalledTimes(1);
     });
 
-    it('passes the unsaved draft to the linter alongside the workspace files', async () => {
+    it('passes only the unsaved draft and leaves the saved files to the linter', async () => {
         mockLint.mockReturnValue(JSON.stringify({ ok: true, diagnostics: [] }));
         const source = 'rq list("http://x");\n';
 
         await lintRq({ source, path: 'users.rq', workspace_path: workspace });
 
-        const [filesJson, passedSource, draft] = mockLint.mock.calls[0];
-        const files = JSON.parse(filesJson);
-        expect(passedSource).toBe(source);
-        expect(draft).toBe(`${workspace}/users.rq`);
-        expect(files[draft]).toBe(source);
-        expect(files[`${workspace}/widgets.rq`]).toContain('ep widgets');
+        const files = JSON.parse(mockLint.mock.calls[0][0]);
+        expect(files).toEqual({ [`${workspace}/users.rq`]: source });
+    });
+
+    it('passes the workspace so the linter reads the files around the draft', async () => {
+        mockLint.mockReturnValue(JSON.stringify({ ok: true, diagnostics: [] }));
+
+        await lintRq({ source: 'rq list("http://x");\n', path: 'users.rq', workspace_path: workspace });
+
+        expect(mockLint.mock.calls[0][1]).toBe(workspace.replace(/\\/g, '/'));
     });
 
     it('returns the linter result unchanged', async () => {
         const diagnostics = [{ severity: 'error', rule: 'empty_url_string', message: 'x', line: 1, column: 1 }];
-        mockLint.mockReturnValue(JSON.stringify({ ok: false, diagnostics }));
+        mockLint.mockReturnValue(JSON.stringify({ [`${workspace}/users.rq`]: { ok: false, diagnostics } }));
 
         const target = await lintRq({ source: 'rq list("");\n', path: 'users.rq', workspace_path: workspace });
 

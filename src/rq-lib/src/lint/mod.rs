@@ -1,3 +1,5 @@
+use crate::error::RqError;
+use crate::syntax::fs::Fs;
 use crate::syntax::parse_result::{EndpointDefinition, Request};
 use crate::syntax::rq_file::RqFile;
 use crate::syntax::token::TokenType;
@@ -73,27 +75,32 @@ pub trait LintRule: Send + Sync {
     fn check(&self, ctx: &LintContext, out: &mut Vec<LintDiagnostic>);
 }
 
-#[cfg(feature = "native")]
+#[cfg(test)]
 pub fn lint(
     source: &str,
     path: Option<&str>,
     workspace_path: Option<&std::path::Path>,
 ) -> LintResult {
-    use crate::native::NativeFs;
-    let display_path = path.unwrap_or("<inline>");
-    let source_path =
-        crate::paths::resolve_under_workspace(std::path::Path::new(display_path), workspace_path);
-    let rq_file = RqFile::from_content_lenient(source_path.clone(), source, &NativeFs);
-    let (workspace_requests, workspace_endpoints) = workspace_path
-        .map(|w| collect_workspace(w, path.map(|_| source_path.as_path()), &rq_file))
+    let fs = crate::native::NativeFs;
+    let workspace = workspace_path
+        .map(|w| read_workspace(&fs, w).expect("workspace walk"))
         .unwrap_or_default();
-    lint_rq_file(
-        &rq_file,
-        source,
-        display_path,
-        &workspace_requests,
-        &workspace_endpoints,
-    )
+    lint_against(&fs, source, path, workspace_path, &workspace)
+}
+
+pub fn lint_drafts_with_fs(
+    fs: &dyn Fs,
+    drafts: &[(&str, &str)],
+    workspace_path: Option<&std::path::Path>,
+) -> Result<Vec<LintResult>, RqError> {
+    let workspace = match workspace_path {
+        Some(w) => read_workspace(fs, w)?,
+        None => Vec::new(),
+    };
+    Ok(drafts
+        .iter()
+        .map(|(path, source)| lint_against(fs, source, Some(path), workspace_path, &workspace))
+        .collect())
 }
 
 pub fn lint_rq_file(
@@ -169,15 +176,6 @@ impl WorkspaceCollector {
         }
     }
 
-    pub fn absorb(
-        &mut self,
-        path: &std::path::Path,
-        content: &str,
-        fs: &dyn crate::syntax::fs::Fs,
-    ) {
-        self.absorb_file(&WorkspaceFile::parse(path, content, fs));
-    }
-
     pub fn absorb_file(&mut self, file: &WorkspaceFile) {
         use std::path::PathBuf;
         for req in &file.requests {
@@ -248,32 +246,46 @@ impl WorkspaceFile {
     }
 }
 
-#[cfg(feature = "native")]
-fn collect_workspace(
-    workspace_path: &std::path::Path,
-    draft_path: Option<&std::path::Path>,
-    draft_rq_file: &RqFile,
-) -> (Vec<Request>, Vec<EndpointSummary>) {
-    use crate::native::NativeFs;
-
-    let mut collector = WorkspaceCollector::new(draft_rq_file);
-    let draft_canonical = draft_path.and_then(|p| std::fs::canonicalize(p).ok());
-
-    walk_rq_files(workspace_path, &mut |path| {
-        if let Some(draft) = &draft_canonical {
-            if let Ok(canon) = std::fs::canonicalize(path) {
-                if &canon == draft {
-                    return;
-                }
-            }
+fn lint_against(
+    fs: &dyn Fs,
+    source: &str,
+    path: Option<&str>,
+    workspace_path: Option<&std::path::Path>,
+    workspace: &[WorkspaceFile],
+) -> LintResult {
+    let display_path = path.unwrap_or("<inline>");
+    let source_path =
+        crate::paths::resolve_under_workspace(std::path::Path::new(display_path), workspace_path);
+    let rq_file = RqFile::from_content_lenient(source_path.clone(), source, fs);
+    let draft = path.and_then(|_| fs.canonicalize(&source_path).ok());
+    let mut collector = WorkspaceCollector::new(&rq_file);
+    for file in workspace {
+        if draft.is_some() && fs.canonicalize(&file.path).ok() == draft {
+            continue;
         }
-        let Ok(content) = std::fs::read_to_string(path) else {
-            return;
-        };
-        collector.absorb(path, &content, &NativeFs);
-    });
+        collector.absorb_file(file);
+    }
+    let (workspace_requests, workspace_endpoints) = collector.finish();
+    lint_rq_file(
+        &rq_file,
+        source,
+        display_path,
+        &workspace_requests,
+        &workspace_endpoints,
+    )
+}
 
-    collector.finish()
+fn read_workspace(
+    fs: &dyn Fs,
+    workspace_path: &std::path::Path,
+) -> Result<Vec<WorkspaceFile>, RqError> {
+    Ok(workspace_rq_files(fs, workspace_path)?
+        .into_iter()
+        .filter_map(|path| {
+            let content = fs.read(&path).ok()?;
+            Some(WorkspaceFile::parse(&path, &content, fs))
+        })
+        .collect())
 }
 
 fn declared_in(endpoint: &EndpointDefinition, path: &std::path::Path) -> bool {
@@ -464,41 +476,14 @@ pub fn endpoint_extensions(source: &str) -> Vec<EndpointExtension> {
     found
 }
 
-#[cfg(feature = "native")]
-fn walk_rq_files(root: &std::path::Path, visit: &mut dyn FnMut(&std::path::Path)) {
-    walk_rq_files_once(root, visit, &mut std::collections::HashSet::new());
-}
-
-#[cfg(feature = "native")]
-fn walk_rq_files_once(
-    root: &std::path::Path,
-    visit: &mut dyn FnMut(&std::path::Path),
-    visited: &mut std::collections::HashSet<std::path::PathBuf>,
-) {
-    if root.is_file() {
-        if root.extension().and_then(|s| s.to_str()) == Some("rq") {
-            visit(root);
-        }
-        return;
+fn workspace_rq_files(
+    fs: &dyn Fs,
+    workspace_path: &std::path::Path,
+) -> Result<Vec<std::path::PathBuf>, RqError> {
+    if fs.is_file(workspace_path) {
+        return Ok(vec![workspace_path.to_path_buf()]);
     }
-    let key = std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
-    if !visited.insert(key) {
-        return;
-    }
-    let Ok(entries) = std::fs::read_dir(root) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            if crate::paths::is_skipped_directory(&path) {
-                continue;
-            }
-            walk_rq_files_once(&path, visit, visited);
-        } else if path.extension().and_then(|s| s.to_str()) == Some("rq") {
-            visit(&path);
-        }
-    }
+    crate::paths::walk_rq_files(fs, workspace_path)
 }
 
 fn known_rule_ids() -> Vec<&'static str> {
@@ -522,7 +507,7 @@ fn line_col(source: &str, offset: usize) -> (usize, usize) {
 
 #[cfg(test)]
 mod tests {
-    use super::{lint, lint_rq_file};
+    use super::{lint, lint_drafts_with_fs, lint_rq_file, LintResult};
     use crate::native::NativeFs;
     use crate::syntax::rq_file::RqFile;
     use std::path::PathBuf;
@@ -679,10 +664,73 @@ mod tests {
         );
     }
 
+    fn rules_of(result: &LintResult) -> Vec<String> {
+        result
+            .diagnostics
+            .iter()
+            .map(|d| d.rule.to_string())
+            .collect()
+    }
+
     #[test]
-    fn does_not_walk_into_dependency_and_build_directories() {
+    fn lint_drafts_sees_the_saved_workspace_files() {
+        let dir = nested_workspace(&[(
+            "users.rq",
+            "ep users(\"http://localhost:8080/users\") {\n    rq list();\n}\n",
+        )]);
+        let draft = dir.path().join("widgets.rq").to_string_lossy().to_string();
+        let source = "ep widgets(\"http://localhost:8080/widgets\") {\n    rq list();\n}\n";
+        let target =
+            lint_drafts_with_fs(&NativeFs, &[(&draft, source)], Some(dir.path())).expect("lint");
+        assert!(rules_of(&target[0]).contains(&"duplicated_ep_base".to_string()));
+    }
+
+    #[test]
+    fn lint_drafts_does_not_compare_a_draft_with_its_own_saved_copy() {
+        let source = "ep users(\"http://localhost:8080/users\") {\n    rq list();\n}\n";
+        let dir = nested_workspace(&[("users.rq", source)]);
+        let draft = dir.path().join("users.rq").to_string_lossy().to_string();
+        let target =
+            lint_drafts_with_fs(&NativeFs, &[(&draft, source)], Some(dir.path())).expect("lint");
+        assert!(!rules_of(&target[0]).contains(&"duplicated_ep_base".to_string()));
+    }
+
+    #[test]
+    fn lint_drafts_reports_a_workspace_too_large_to_walk() {
+        use crate::paths::overflowing::{OverflowingFolder, REQUEST_FILE, ROOT};
+        let target = lint_drafts_with_fs(
+            &OverflowingFolder,
+            &[(REQUEST_FILE, "rq list(\"http://x\");\n")],
+            Some(std::path::Path::new(ROOT)),
+        );
+        assert!(target
+            .err()
+            .is_some_and(|e| e.to_string().contains("Too many files")));
+    }
+
+    #[test]
+    fn lint_drafts_returns_one_result_per_draft_in_order() {
+        let dir = nested_workspace(&[]);
+        let first = dir.path().join("a.rq").to_string_lossy().to_string();
+        let second = dir.path().join("b.rq").to_string_lossy().to_string();
+        let target = lint_drafts_with_fs(
+            &NativeFs,
+            &[
+                (&first, "rq a(\"\");\n"),
+                (&second, "rq b(\"http://x\");\n"),
+            ],
+            Some(dir.path()),
+        )
+        .expect("lint");
+        assert_eq!(target.len(), 2);
+        assert!(rules_of(&target[0]).contains(&"empty_url_string".to_string()));
+        assert!(!rules_of(&target[1]).contains(&"empty_url_string".to_string()));
+    }
+
+    #[test]
+    fn does_not_walk_into_hidden_directories() {
         let peer = "rq fetch_users(\"http://localhost:8080/users\");\n";
-        for skipped in ["node_modules", ".git", "target"] {
+        for skipped in [".git", ".venv"] {
             let dir = nested_workspace(&[(&format!("{skipped}/dep.rq"), peer)]);
             let rules = workspace_rules(&dir, "rq list(\"http://localhost:8080/users\");\n");
             assert!(

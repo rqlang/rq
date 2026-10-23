@@ -6,6 +6,8 @@
 
 **Core invariant**: syntax layer is strictly separate from execution layer. Parse once, reuse results. Never mix HTTP logic into parser code.
 
+**Shared code across channels**: the CLI, the VS Code extension and the MCP server must share as much code as possible. Architecture, design and implementation put behaviour in `rq-lib` (reached by the extension and the MCP server through `rq-wasm`) and keep each channel a thin adapter, so a fix lands once and is tested once. Never re-implement in one channel something another already does (file discovery, path resolution, skip lists, validation); move it into the shared layer instead.
+
 ---
 
 ## Repository Structure
@@ -51,8 +53,9 @@ The VSCode extension talks to `rq-wasm` in-process (worker), not a CLI subproces
   - `secrets.rs`, `fs.rs` — syntax-side hooks into platform traits
 - `client/` — request execution (`mod.rs`, `models.rs`). `RqClient::prepare_request` turns a request into exactly what is sent (resolution, auth, default headers, timeout) and is the only place that does; `run` is `prepare` + token acquisition + `HttpClient::execute`
 - `auth/` — runtime auth providers: `bearer.rs`, `oauth2_*.rs`, `auth_provider.rs`. Each `AuthProvider` has `known_token` (apply a token that needs no network call; defaults to the `auth_token` variable) and `configure` (obtain one that is not known yet)
-- `native/` — native (non-WASM) impls of `fs`, `http`, `secrets`
-- `http.rs` (`HttpClient` trait, `request_timeout`), `paths.rs`, `error.rs`, `logger.rs`, `version.rs`, `lib.rs`
+- `native/` — native (non-WASM) impls of `fs`, `http`, `secrets`; `NativeFs` builds without the `native` feature so `rq-wasm` can test against the disk
+- `paths.rs` — `walk_rq_files`, the only directory walk every channel uses (hidden directories and `.rqignore` entries skipped, 50,000-entry limit)
+- `http.rs` (`HttpClient` trait, `request_timeout`), `error.rs`, `logger.rs`, `version.rs`, `lib.rs`
 
 **CLI — `src/cli/src/`**
 - `main.rs` — entry point, arg dispatch
@@ -61,7 +64,8 @@ The VSCode extension talks to `rq-wasm` in-process (worker), not a CLI subproces
 
 **WASM bindings — `src/rq-wasm/src/`**
 - `bindings.rs` — JS-facing API surface (add here when exposing new `rq-lib` calls)
-- `fs.rs`, `http.rs`, `secrets.rs` — WASM impls of `native/` traits
+- `fs.rs` — `WasmFs`: the unsaved drafts the caller passes, over the disk read through Node's `fs` (`NativeFs` in host tests). Callers send only drafts, never the workspace
+- `http.rs`, `secrets.rs` — WASM impls of `native/` traits
 - `wasm/` — built artifacts; do not edit
 
 **VSCode extension — `src/vscode-extension/src/`**

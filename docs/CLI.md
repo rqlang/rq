@@ -87,6 +87,34 @@ Unless otherwise noted, most commands share these common flags:
 - `-s, --source <SOURCE>` – Path to a `.rq` file or directory (defaults to current directory).
 - `-f, --format <FORMAT>` – Output format: `text` or `json` (defaults to `text`, case-insensitive).
 
+### Which files rq reads
+
+When `--source` is a directory, rq looks for `.rq` files in it and in every subdirectory except hidden ones (any name starting with `.`, such as `.git` or `.venv`). A hidden directory given as the source itself is still read. Other files are only read when a request asks for them, for example through `io.read_file`.
+
+To skip more directories or `.rq` files, list them in a `.rqignore` file in the source directory, or in the file's own directory when `--source` is a file. rq reads only that `.rqignore`, not those of parent folders or subfolders, so a different source needs its own:
+
+```
+# one entry per line; blank lines and lines starting with # are ignored
+node_modules
+target
+fixtures/large
+scratch.rq
+!.config
+```
+
+- A bare name, such as `node_modules` or `scratch.rq`, skips every directory or `.rq` file with that name at any depth.
+- A path with a `/`, such as `fixtures/large` or `api/old.rq`, skips only that directory or file, relative to the source.
+- A leading `/`, as in `/target`, skips only the entry of that name at the root of the source.
+- `**/` at the start and `/**` at the end are accepted, so `**/node_modules`, `node_modules/**` and `**/fixtures/large` (that path at any depth) work as in a `.gitignore`.
+- Wildcards such as `*.egg-info` or `build*` are not supported; rq ignores those lines and says so in the debug log (`-d`).
+- `!name` reads a hidden directory that would otherwise be skipped.
+
+`.rqignore` only decides where rq looks for `.rq` files. A file a request names by path is always read, even inside an ignored folder: an `import`, `io.read_file` or `io.read_json`. So a `data` folder full of JSON bodies can go in `.rqignore` to keep the search fast, and requests still read the bodies they use.
+
+To keep a wrong source, such as your home directory, from hanging, rq stops after 50,000 files and directories. The error names the largest folders it found so you can add them to `.rqignore`, or point `--source` at the folder that holds your `.rq` files.
+
+The VS Code extension and the MCP server read files the same way, with the `.rqignore` of the opened folder.
+
 ## Managing requests: `rq request`
 
 The `request` subcommand lets you list, inspect, and run requests defined in `.rq` files.

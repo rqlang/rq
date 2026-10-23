@@ -15,12 +15,10 @@ jest.mock('../src/wasm/rq_wasm', () => ({
     list_auth: mockListAuth,
 }), { virtual: true });
 
-const mockBuildFilesMap = jest.fn(async () => '{}');
 const mockBuildSecretsMap = jest.fn(async () => JSON.stringify({ env_file: null, os_vars: [] }));
 
 jest.mock('../src/utils', () => ({
     ...jest.requireActual('../src/utils'),
-    buildFilesMap: mockBuildFilesMap,
     buildSecretsMap: mockBuildSecretsMap,
 }));
 
@@ -221,7 +219,7 @@ describe('executeRequest', () => {
             expect([call[2], call[6]]).toEqual(['/tmp/project', '/tmp/project/sub/main.rq']);
         });
 
-        test('builds the files map from the opened folder', async () => {
+        test('sends no drafts when every document is saved so rq reads the folder from disk', async () => {
             mockPrepareRequest.mockReturnValue(prepared());
             makeHttpsMock();
 
@@ -231,7 +229,27 @@ describe('executeRequest', () => {
                 sourceFile: '/tmp/project/sub/main.rq',
             });
 
-            expect(mockBuildFilesMap).toHaveBeenCalledWith('/tmp/project');
+            expect(mockPrepareRequest.mock.calls[0][0]).toBe('{}');
+        });
+
+        test('runs the unsaved text of an open request file', async () => {
+            mockPrepareRequest.mockReturnValue(prepared());
+            makeHttpsMock();
+            (vscode.workspace as any).textDocuments = [
+                { languageId: 'rq', isDirty: true, isUntitled: false, uri: { fsPath: '/tmp/project/sub/main.rq' }, getText: () => 'rq test_req("http://edited");' },
+                { languageId: 'rq', isDirty: true, isUntitled: false, uri: { fsPath: '/tmp/project-other/main.rq' }, getText: () => 'rq other("http://x");' },
+            ];
+
+            await executeRequest({
+                requestName: 'test-req',
+                sourceDirectory: '/tmp/project',
+                sourceFile: '/tmp/project/sub/main.rq',
+            });
+            (vscode.workspace as any).textDocuments = [];
+
+            expect(JSON.parse(mockPrepareRequest.mock.calls[0][0])).toEqual({
+                '/tmp/project/sub/main.rq': 'rq test_req("http://edited");',
+            });
         });
 
         test('reads secrets from the opened folder, not from the request file', async () => {
@@ -481,9 +499,29 @@ describe('varRefs', () => {
 
         await varRefs('resource_id', doc, new vscode.Position(0, 8), '/tmp/project');
 
-        expect(mockBuildFilesMap).toHaveBeenCalledWith('/tmp/project', [
-            { path: '/tmp/project/foo.rq', source: 'rq get(resource_id);' },
-        ]);
+        expect(JSON.parse(mockListVariableRefs.mock.calls[0][0])).toEqual({
+            '/tmp/project/foo.rq': 'rq get(resource_id);',
+        });
+    });
+
+    test('maps a reference back to the open document whatever the case of its drive letter', async () => {
+        const doc = makeDocument({ fsPath: 'c:\\project\\foo.rq' }, 'rq get(base);');
+        mockListVariableRefs.mockReturnValue(JSON.stringify([{ file: 'C:/project/foo.rq', line: 0, character: 7 }]));
+
+        const target = await varRefs('base', doc, new vscode.Position(0, 8), 'c:/project');
+
+        expect(target[0].uri).toBe(doc.uri);
+    });
+
+    test('leaves out unsaved documents of a sibling folder that shares the prefix', async () => {
+        const doc = makeDocument({ fsPath: '/tmp/project/foo.rq' }, 'rq get(base);');
+        const other = makeDocument({ fsPath: '/tmp/project-other/shared.rq' }, 'let base = "x";');
+        (vscode.workspace as any).textDocuments = [doc, other];
+        mockListVariableRefs.mockReturnValue('[]');
+
+        await varRefs('base', doc, new vscode.Position(0, 8), '/tmp/project');
+
+        expect(Object.keys(JSON.parse(mockListVariableRefs.mock.calls[0][0]))).toEqual(['/tmp/project/foo.rq']);
     });
 
     test('includes other unsaved documents of the folder', async () => {
@@ -494,10 +532,10 @@ describe('varRefs', () => {
 
         await varRefs('base', doc, new vscode.Position(0, 8), '/tmp/project');
 
-        expect(mockBuildFilesMap).toHaveBeenCalledWith('/tmp/project', [
-            { path: '/tmp/project/foo.rq', source: 'rq get(base);' },
-            { path: '/tmp/project/shared.rq', source: 'let base = "x";' },
-        ]);
+        expect(JSON.parse(mockListVariableRefs.mock.calls[0][0])).toEqual({
+            '/tmp/project/foo.rq': 'rq get(base);',
+            '/tmp/project/shared.rq': 'let base = "x";',
+        });
     });
 
     test('passes the cursor position so a required variable stays in its request', async () => {

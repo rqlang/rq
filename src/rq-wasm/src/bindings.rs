@@ -276,31 +276,20 @@ pub fn list_variables(
 }
 
 #[wasm_bindgen]
-pub fn lint(files_json: &str, source: &str, path: &str) -> Result<String, JsError> {
-    use rq_lib::lint::{lint_rq_file, WorkspaceCollector};
-    use rq_lib::syntax::rq_file::RqFile;
-
+pub fn lint(files_json: &str, workspace: Option<String>) -> Result<String, JsError> {
     let files = parse_files(files_json)?;
-    let fs = WasmFs::new(files.clone());
-    let draft = RqFile::from_content_lenient(std::path::PathBuf::from(path), source, &fs);
-
-    let mut collector = WorkspaceCollector::new(&draft);
-    for (file_path, content) in files.iter() {
-        if file_path == path || !file_path.ends_with(".rq") {
-            continue;
-        }
-        collector.absorb(Path::new(file_path), content, &fs);
-    }
-    let (workspace_requests, workspace_endpoints) = collector.finish();
-
-    let result = lint_rq_file(
-        &draft,
-        source,
-        path,
-        &workspace_requests,
-        &workspace_endpoints,
-    );
-    serde_json::to_string(&result).map_err(|e| JsError::new(&e.to_string()))
+    let drafts: Vec<(&str, &str)> = files
+        .iter()
+        .map(|(path, source)| (path.as_str(), source.as_str()))
+        .collect();
+    let workspace = workspace.as_deref().map(Path::new);
+    let fs = match workspace {
+        Some(root) => WasmFs::with_root(files.clone(), root),
+        None => WasmFs::new(files.clone()),
+    };
+    let results = rq_lib::lint::lint_drafts_with_fs(&fs, &drafts, workspace).map_err(rq_err)?;
+    let by_path: HashMap<&str, _> = drafts.iter().map(|(path, _)| *path).zip(results).collect();
+    serde_json::to_string(&by_path).map_err(|e| JsError::new(&e.to_string()))
 }
 
 #[wasm_bindgen]

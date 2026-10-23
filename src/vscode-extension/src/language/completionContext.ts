@@ -1,8 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import * as fs from 'fs';
 import * as rqClient from '../rqClient';
-import { normalizePath, mirrorToTemp } from '../utils';
+import { DraftFile, isInsideFolder } from '../utils';
 import { filterRequiredVars } from './completionHelpers';
 
 export interface CompletionContext {
@@ -11,31 +10,18 @@ export interface CompletionContext {
     linePrefix: string;
     documentPrefix: string;
     triggerKind: vscode.CompletionTriggerKind;
-    getCliFilePath(): Promise<string>;
-    getCliRootPath(): Promise<string>;
+    filePath: string;
+    rootPath: string;
+    drafts: DraftFile[];
     getEnvironment(): string | undefined;
 }
 
 export type EnvironmentProvider = { getSelectedEnvironment(): string | undefined };
 
-async function resolveCliPath(document: vscode.TextDocument): Promise<{ filePath: string; root: string; tempDir: string | null }> {
-    const workspaceRoot = vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath
-        ?? path.dirname(document.uri.fsPath);
-    const overrides = new Map<string, string>();
-    for (const doc of vscode.workspace.textDocuments) {
-        if (doc.languageId === 'rq' && doc.isDirty && normalizePath(doc.uri.fsPath).startsWith(normalizePath(workspaceRoot))) {
-            overrides.set(normalizePath(doc.uri.fsPath), doc.getText());
-        }
-    }
-    if (overrides.size === 0) {
-        return { filePath: document.uri.fsPath, root: workspaceRoot, tempDir: null };
-    }
-    const tempDir = mirrorToTemp(workspaceRoot, overrides);
-    const relPath = path.relative(workspaceRoot, document.uri.fsPath);
-    if (relPath.startsWith('..')) {
-        return { filePath: document.uri.fsPath, root: workspaceRoot, tempDir };
-    }
-    return { filePath: path.join(tempDir, relPath), root: tempDir, tempDir };
+function unsavedDrafts(workspaceRoot: string): DraftFile[] {
+    return vscode.workspace.textDocuments
+        .filter(doc => doc.languageId === 'rq' && doc.isDirty && isInsideFolder(doc.uri.fsPath, workspaceRoot))
+        .map(doc => ({ path: doc.uri.fsPath, source: doc.getText() }));
 }
 
 export function buildContext(
@@ -43,52 +29,30 @@ export function buildContext(
     position: vscode.Position,
     vsContext: vscode.CompletionContext | undefined,
     environmentProvider: EnvironmentProvider | undefined
-): { ctx: CompletionContext; cleanup: () => void } {
-    let cliPathResult: { filePath: string; root: string; tempDir: string | null } | undefined;
-
-    const resolveCliPathResult = async () => {
-        if (!cliPathResult) {
-            try {
-                cliPathResult = await resolveCliPath(document);
-            } catch {
-                cliPathResult = {
-                    filePath: document.uri.fsPath,
-                    root: path.dirname(document.uri.fsPath),
-                    tempDir: null
-                };
-            }
-        }
-        return cliPathResult;
-    };
-
-    const getCliFilePath = async (): Promise<string> => (await resolveCliPathResult()).filePath;
-    const getCliRootPath = async (): Promise<string> => (await resolveCliPathResult()).root;
-
-    const ctx: CompletionContext = {
+): CompletionContext {
+    const rootPath = vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath
+        ?? path.dirname(document.uri.fsPath);
+    let drafts: DraftFile[] | undefined;
+    return {
         document,
         position,
         linePrefix: document.lineAt(position).text.substring(0, position.character),
         documentPrefix: document.getText(new vscode.Range(new vscode.Position(0, 0), position)),
         triggerKind: vsContext?.triggerKind ?? vscode.CompletionTriggerKind.Invoke,
-        getCliFilePath,
-        getCliRootPath,
+        filePath: document.uri.fsPath,
+        rootPath,
+        get drafts() {
+            drafts ??= unsavedDrafts(rootPath);
+            return drafts;
+        },
         getEnvironment: () => environmentProvider?.getSelectedEnvironment(),
     };
-
-    const cleanup = () => {
-        if (cliPathResult?.tempDir) {
-            fs.rmSync(cliPathResult.tempDir, { recursive: true, force: true });
-        }
-    };
-
-    return { ctx, cleanup };
 }
 
 export async function listVariablesWithFallback(ctx: CompletionContext): Promise<vscode.CompletionItem[]> {
     try {
-        const cliFilePath = await ctx.getCliFilePath();
-        const raw = await rqClient.listVariables(cliFilePath, ctx.getEnvironment(), await ctx.getCliRootPath());
-        const variables = filterRequiredVars(raw, ctx.documentPrefix, cliFilePath);
+        const raw = await rqClient.listVariables(ctx.filePath, ctx.getEnvironment(), ctx.rootPath, ctx.drafts);
+        const variables = filterRequiredVars(raw, ctx.documentPrefix, ctx.filePath);
         if (variables.length > 0) {
             return variables.map(v => {
                 const item = new vscode.CompletionItem(v.name, vscode.CompletionItemKind.Variable);

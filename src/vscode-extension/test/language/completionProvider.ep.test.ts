@@ -1,12 +1,7 @@
 jest.mock('../../src/rqClient');
-jest.mock('../../src/utils', () => ({
-    ...jest.requireActual('../../src/utils'),
-    mirrorToTemp: jest.fn().mockReturnValue('/tmp/rq-check-mock'),
-}));
 
 import * as vscode from 'vscode';
 import * as cliService from '../../src/rqClient';
-import * as utils from '../../src/utils';
 import '../../src/language/completionProvider';
 import { makeDocument } from './completionTestUtils';
 
@@ -25,7 +20,6 @@ beforeEach(() => {
     (cliService.listEndpoints as jest.Mock).mockResolvedValue([]);
     (cliService.listVariables as jest.Mock).mockResolvedValue([]);
     (cliService.listAuthConfigs as jest.Mock).mockResolvedValue([]);
-    (utils.mirrorToTemp as jest.Mock).mockReturnValue('/tmp/rq-check-mock');
 });
 
 describe('ep template completion', () => {
@@ -40,7 +34,7 @@ describe('ep template completion', () => {
 
         const items = await provideCompletionItems(doc, position);
 
-        expect(cliService.listEndpoints).toHaveBeenCalledWith('/workspace/current.rq', '/workspace');
+        expect(cliService.listEndpoints).toHaveBeenCalledWith('/workspace/current.rq', '/workspace', []);
         expect(items).toHaveLength(2);
         expect(items[0].label).toBe('api');
         expect(items[0].insertText).toBe('api');

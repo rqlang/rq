@@ -21,3 +21,4 @@ wasm-bindgen-futures = "0.4"
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3"
+tempfile = "3"

@@ -61,3 +61,55 @@ fn prepared_auth_header_uses_the_secrets_of_the_context() {
         .map(|(_, v)| v.clone());
     assert_eq!(authorization.as_deref(), Some("Bearer from-context-env"));
 }
+
+fn prepare_from_disk(
+    files: &[(&str, &str)],
+    workspace: &str,
+    request_file: &str,
+) -> PreparedRequest {
+    let disk = tempfile::tempdir().expect("tempdir");
+    for (file, content) in files {
+        let path = disk.path().join(file);
+        std::fs::create_dir_all(path.parent().expect("parent")).expect("mkdir");
+        std::fs::write(path, content).expect("write");
+    }
+    let root = disk.path().to_string_lossy().replace('\\', "/");
+    let workspace = format!("{root}/{workspace}");
+    let request_file = format!("{root}/{request_file}");
+    let client = RqClient::new(
+        Arc::new(WasmFs::with_root(HashMap::new(), Path::new(&workspace))),
+        Arc::new(WasmSecretProvider::new(None, Vec::new())),
+        Arc::new(WasmHttpClient),
+    );
+    let target =
+        RequestTarget::new(Path::new(&workspace), "upload").in_file(Some(Path::new(&request_file)));
+    client
+        .prepare_request(target, None, &[])
+        .expect("prepare_request failed")
+}
+
+#[test]
+fn prepared_body_reads_a_file_saved_next_to_the_request() {
+    let target = prepare_from_disk(
+        &[
+            ("api/upload.rq", "rq upload(\"http://x\", $[\"Content-Type\": \"text/plain\"], io.read_file(\"data.txt\"));\n"),
+            ("api/data.txt", "from disk"),
+        ],
+        "api",
+        "api/upload.rq",
+    );
+    assert_eq!(target.request.body.as_deref(), Some("from disk"));
+}
+
+#[test]
+fn prepared_body_reads_a_file_outside_the_workspace() {
+    let target = prepare_from_disk(
+        &[
+            ("api/upload.rq", "rq upload(\"http://x\", $[\"Content-Type\": \"text/plain\"], io.read_file(\"../fixtures/data.txt\"));\n"),
+            ("fixtures/data.txt", "shared fixture"),
+        ],
+        "api",
+        "api/upload.rq",
+    );
+    assert_eq!(target.request.body.as_deref(), Some("shared fixture"));
+}

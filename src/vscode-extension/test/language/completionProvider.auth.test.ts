@@ -1,12 +1,7 @@
 jest.mock('../../src/rqClient');
-jest.mock('../../src/utils', () => ({
-    ...jest.requireActual('../../src/utils'),
-    mirrorToTemp: jest.fn().mockReturnValue('/tmp/rq-check-mock'),
-}));
 
 import * as vscode from 'vscode';
 import * as cliService from '../../src/rqClient';
-import * as utils from '../../src/utils';
 import '../../src/language/completionProvider';
 import { makeDocument } from './completionTestUtils';
 
@@ -25,7 +20,6 @@ beforeEach(() => {
     (cliService.listEndpoints as jest.Mock).mockResolvedValue([]);
     (cliService.listVariables as jest.Mock).mockResolvedValue([]);
     (cliService.listAuthConfigs as jest.Mock).mockResolvedValue([]);
-    (utils.mirrorToTemp as jest.Mock).mockReturnValue('/tmp/rq-check-mock');
 });
 
 describe('auth declaration parameter completion', () => {
@@ -224,7 +218,7 @@ describe('auth attribute value completion', () => {
 
         const items = await authNameItems(['[auth("']);
 
-        expect(cliService.listAuthConfigs).toHaveBeenCalledWith('/workspace/current.rq', '/workspace');
+        expect(cliService.listAuthConfigs).toHaveBeenCalledWith('/workspace/current.rq', '/workspace', []);
         expect(items).toHaveLength(2);
         expect(items[0].label).toBe('my_bearer');
         expect(items[0].detail).toBe('bearer');
@@ -338,7 +332,7 @@ describe('auth attribute value completion', () => {
         expect(items[0].insertText).toBe('my_bearer');
     });
 
-    test('uses temp path for auth configs when docs are dirty', async () => {
+    test('passes unsaved docs to auth configs as drafts', async () => {
         const dirtyDoc = {
             languageId: 'rq',
             isDirty: true,
@@ -358,8 +352,9 @@ describe('auth attribute value completion', () => {
 
         await provideCompletionItems(doc, position);
 
-        expect(utils.mirrorToTemp).toHaveBeenCalled();
-        expect(cliService.listAuthConfigs).toHaveBeenCalledWith('/tmp/rq-check-mock/current.rq', '/tmp/rq-check-mock');
+        expect(cliService.listAuthConfigs).toHaveBeenCalledWith('/workspace/current.rq', '/workspace', [
+            { path: '/workspace/auth.rq', source: 'auth my_bearer(auth_type.bearer) { token: "t" }' }
+        ]);
     });
 
     test('returns undefined when listAuthConfigs throws', async () => {

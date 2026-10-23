@@ -158,3 +158,105 @@ describe('DiagnosticsProvider lint setting changes', () => {
         expect(dispose).toHaveBeenCalled();
     });
 });
+
+describe('DiagnosticsProvider unsaved documents', () => {
+    it('checks the folder itself with the unsaved documents as drafts', async () => {
+        workspace.textDocuments = [{ ...documentAt('/repo/users.rq', 'rq list("http://x");\n'), isDirty: true }];
+        const target = new DiagnosticsProvider(collection());
+
+        await (target as any).validateFolder(FOLDER);
+
+        expect(mockedClient.checkFolder).toHaveBeenCalledWith('/repo', undefined, [
+            { path: '/repo/users.rq', source: 'rq list("http://x");\n' }
+        ]);
+    });
+
+    it('checks the folder without drafts when every document is saved', async () => {
+        const target = new DiagnosticsProvider(collection());
+
+        await (target as any).validateFolder(FOLDER);
+
+        expect(mockedClient.checkFolder).toHaveBeenCalledWith('/repo', undefined, []);
+    });
+
+    it('reports an error in an unsaved document on that document', async () => {
+        workspace.textDocuments = [{ ...documentAt('/repo/users.rq', 'rq list(\n'), isDirty: true }];
+        mockedClient.checkFolder.mockResolvedValue({
+            errors: [{ file: '/repo/users.rq', line: 1, column: 9, message: 'boom' }]
+        } as any);
+        const target = new DiagnosticsProvider(collection());
+
+        await (target as any).validateFolder(FOLDER);
+
+        const [uri] = ((target as any).diagnosticCollection.set as jest.Mock).mock.calls[0];
+        expect(uri.fsPath).toBe('/repo/users.rq');
+    });
+});
+
+describe('DiagnosticsProvider check failures', () => {
+    beforeEach(() => {
+        (vscode as any).window.showWarningMessage = jest.fn();
+    });
+
+    it('tells the user why the folder could not be checked', async () => {
+        mockedClient.checkFolder.mockRejectedValue(new Error('Too many files under /repo'));
+        const target = new DiagnosticsProvider(collection());
+
+        await (target as any).validateFolder(FOLDER);
+
+        expect((vscode as any).window.showWarningMessage).toHaveBeenCalledWith(expect.stringContaining('Too many files under /repo'));
+    });
+
+    it('still shows lint findings and clears stale check errors when the check fails', async () => {
+        mockedClient.checkFolder.mockRejectedValue(new Error('Too many files under /repo'));
+        mockedClient.lintSources.mockResolvedValue(new Map([
+            ['/repo/users.rq', { ok: false, diagnostics: [
+                { severity: 'error', rule: 'empty_url_string', message: 'empty url', line: 1, column: 9 }
+            ] }]
+        ]) as any);
+        const target = new DiagnosticsProvider(collection());
+
+        await (target as any).validateFolder(FOLDER);
+
+        const [, diagnostics] = ((target as any).diagnosticCollection.set as jest.Mock).mock.calls[0];
+        expect(diagnostics).toHaveLength(1);
+        expect(diagnostics[0].source).toBe('rq lint');
+    });
+
+    it('does not repeat the same failure on every validation', async () => {
+        mockedClient.checkFolder.mockRejectedValue(new Error('Too many files under /repo'));
+        const target = new DiagnosticsProvider(collection());
+
+        await (target as any).validateFolder(FOLDER);
+        await (target as any).validateFolder(FOLDER);
+
+        expect((vscode as any).window.showWarningMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it('reports the failure again after a successful check', async () => {
+        const target = new DiagnosticsProvider(collection());
+        mockedClient.checkFolder.mockRejectedValueOnce(new Error('Too many files under /repo'));
+        await (target as any).validateFolder(FOLDER);
+        mockedClient.checkFolder.mockResolvedValueOnce({ errors: [] } as any);
+        await (target as any).validateFolder(FOLDER);
+        mockedClient.checkFolder.mockRejectedValueOnce(new Error('Too many files under /repo'));
+
+        await (target as any).validateFolder(FOLDER);
+
+        expect((vscode as any).window.showWarningMessage).toHaveBeenCalledTimes(2);
+    });
+});
+
+describe('DiagnosticsProvider folders sharing a prefix', () => {
+    it('keeps the diagnostics of a sibling folder whose name starts like this one', async () => {
+        const sibling = { fsPath: '/repo-other/users.rq' };
+        const existing = collection();
+        existing.entries.set(sibling.fsPath, []);
+        existing[Symbol.iterator] = function* () { yield [sibling, []]; };
+        const target = new DiagnosticsProvider(existing);
+
+        await (target as any).validateFolder(FOLDER);
+
+        expect(existing.delete).not.toHaveBeenCalled();
+    });
+});

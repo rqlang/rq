@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { insideJsonLiteral, insideUnclosedAttribute, insideMethodAttributeValue, insideUiColorAttributeValue, attributeTarget, getAuthAttributeContext, afterCommaTrigger, followsArgumentSeparator, claimedParams } from '../../src/language/completionHelpers';
+import { insideJsonLiteral, insideUnclosedAttribute, insideMethodAttributeValue, insideUiColorAttributeValue, attributeTarget, getAuthAttributeContext, afterCommaTrigger, followsArgumentSeparator, claimedParams, filterRequiredVars } from '../../src/language/completionHelpers';
 
 describe('followsArgumentSeparator', () => {
     test('returns true when the previous line ends with a comma', () => {
@@ -328,5 +328,22 @@ describe('claimedParams', () => {
     test('claims the qs slot for an endpoint positional after a named headers', () => {
         expect(claimedParams('ep base(headers: $["A": "1"], "http://x", "v=1", ', ['url', 'headers', 'qs']))
             .toEqual(new Set(['headers', 'url', 'qs']));
+    });
+});
+
+describe('filterRequiredVars', () => {
+    const prefix = 'ep users<base>("/users") {\n    rq list("{{';
+    const required = { name: 'id', source: 'required', line: 0, file: 'C:\\proj\\a.rq' };
+
+    it('keeps a required variable of the current endpoint', () => {
+        expect(filterRequiredVars([required], prefix, 'C:\\proj\\a.rq')).toEqual([required]);
+    });
+
+    it('keeps it when the drive letter of the current file is lower case', () => {
+        expect(filterRequiredVars([required], prefix, 'c:\\proj\\a.rq')).toEqual([required]);
+    });
+
+    it('drops a required variable declared in another file', () => {
+        expect(filterRequiredVars([required], prefix, 'C:\\proj\\b.rq')).toEqual([]);
     });
 });

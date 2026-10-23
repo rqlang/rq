@@ -1,8 +1,6 @@
 import * as vscode from 'vscode';
-import * as fs from 'fs';
-import * as path from 'path';
 import * as rqClient from '../rqClient';
-import { normalizePath, mirrorToTemp } from '../utils';
+import { DraftFile, isInsideFolder, normalizePath } from '../utils';
 
 const DEBOUNCE_MS = 1000;
 const LINT_SETTING = 'rq.lint.enabled';
@@ -14,8 +12,8 @@ interface EnvironmentProvider {
 export class DiagnosticsProvider {
     private readonly diagnosticCollection: vscode.DiagnosticCollection;
     private readonly environmentProvider: EnvironmentProvider | undefined;
-    private readonly tempRoots = new Map<string, string>();
     private readonly debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
+    private readonly reportedFailures = new Map<string, string>();
     private readonly configurationListener: vscode.Disposable;
 
     constructor(diagnosticCollection: vscode.DiagnosticCollection, environmentProvider?: EnvironmentProvider) {
@@ -84,21 +82,17 @@ export class DiagnosticsProvider {
             clearTimeout(timer);
         }
         this.debounceTimers.clear();
-        for (const tempRoot of this.tempRoots.values()) {
-            this.removeTempDir(tempRoot);
-        }
-        this.tempRoots.clear();
     }
 
     private async validateFolder(workspaceFolder: vscode.WorkspaceFolder): Promise<void> {
         const folderPath = workspaceFolder.uri.fsPath;
-        const openDocuments = new Map<string, string>();
+        const drafts: DraftFile[] = [];
 
         for (const doc of vscode.workspace.textDocuments) {
             if (doc.languageId === 'rq' && doc.isDirty) {
                 const wsFolder = vscode.workspace.getWorkspaceFolder(doc.uri);
                 if (wsFolder && normalizePath(wsFolder.uri.fsPath) === normalizePath(folderPath)) {
-                    openDocuments.set(normalizePath(doc.uri.fsPath), doc.getText());
+                    drafts.push({ path: doc.uri.fsPath, source: doc.getText() });
                 }
             }
         }
@@ -107,15 +101,26 @@ export class DiagnosticsProvider {
 
         const lint = await this.collectLintDiagnostics(folderPath);
 
-        if (openDocuments.size > 0) {
-            const tempRoot = this.rebuildTempRoot(folderPath, openDocuments);
-            const result = await rqClient.checkFolder(tempRoot, env);
-            this.applyDiagnostics(result, tempRoot, folderPath, lint);
-        } else {
-            this.clearTempRoot(folderPath);
-            const result = await rqClient.checkFolder(folderPath, env);
-            this.applyDiagnostics(result, folderPath, folderPath, lint);
+        let result: rqClient.CheckResult;
+        try {
+            result = await rqClient.checkFolder(folderPath, env, drafts);
+        } catch (error) {
+            this.reportFailure(folderPath, error);
+            this.applyDiagnostics({ errors: [] }, folderPath, lint);
+            return;
         }
+        this.reportedFailures.delete(normalizePath(folderPath));
+        this.applyDiagnostics(result, folderPath, lint);
+    }
+
+    private reportFailure(folderPath: string, error: unknown): void {
+        const key = normalizePath(folderPath);
+        const message = error instanceof Error ? error.message : String(error);
+        if (this.reportedFailures.get(key) === message) {
+            return;
+        }
+        this.reportedFailures.set(key, message);
+        vscode.window.showWarningMessage(`rq could not check ${folderPath}: ${message}`);
     }
 
     private lintEnabled(): boolean {
@@ -158,45 +163,23 @@ export class DiagnosticsProvider {
         return byFile;
     }
 
-    private rebuildTempRoot(folderPath: string, overrides: Map<string, string>): string {
-        this.clearTempRoot(folderPath);
-        const tempRoot = mirrorToTemp(folderPath, overrides);
-        this.tempRoots.set(normalizePath(folderPath), tempRoot);
-        return tempRoot;
-    }
-
-    private clearTempRoot(folderPath: string): void {
-        const key = normalizePath(folderPath);
-        const existing = this.tempRoots.get(key);
-        if (existing) {
-            this.removeTempDir(existing);
-            this.tempRoots.delete(key);
-        }
-    }
-
     private applyDiagnostics(
         result: rqClient.CheckResult,
-        sourcePath: string,
-        realPath: string,
+        folderPath: string,
         lintDiagnostics: Map<string, vscode.Diagnostic[]> = new Map()
     ): void {
         const diagnosticsMap = new Map<string, vscode.Diagnostic[]>();
 
         for (const e of result.errors) {
-            const normalizedSource = normalizePath(sourcePath);
-            const normalizedReal = normalizePath(realPath);
-            const normalizedFile = normalizePath(e.file);
-            const realFile = normalizedSource === normalizedReal
-                ? normalizedFile
-                : normalizePath(path.join(normalizedReal, path.relative(normalizedSource, normalizedFile)));
+            const file = normalizePath(e.file);
             const range = new vscode.Range(e.line - 1, e.column - 1, e.line - 1, Number.MAX_VALUE);
             const diagnostic = new vscode.Diagnostic(range, e.message, vscode.DiagnosticSeverity.Error);
             diagnostic.source = 'rq';
 
-            if (!diagnosticsMap.has(realFile)) {
-                diagnosticsMap.set(realFile, []);
+            if (!diagnosticsMap.has(file)) {
+                diagnosticsMap.set(file, []);
             }
-            diagnosticsMap.get(realFile)!.push(diagnostic);
+            diagnosticsMap.get(file)!.push(diagnostic);
         }
 
         for (const [file, diagnostics] of lintDiagnostics) {
@@ -218,20 +201,12 @@ export class DiagnosticsProvider {
         const toDelete: vscode.Uri[] = [];
         for (const [uri] of this.diagnosticCollection) {
             const filePath = normalizePath(uri.fsPath);
-            if (filePath.startsWith(normalizePath(realPath)) && !diagnosticsMap.has(filePath)) {
+            if (isInsideFolder(filePath, folderPath) && !diagnosticsMap.has(filePath)) {
                 toDelete.push(uri);
             }
         }
         for (const uri of toDelete) {
             this.diagnosticCollection.delete(uri);
-        }
-    }
-
-    private removeTempDir(tempRoot: string): void {
-        try {
-            fs.rmSync(tempRoot, { recursive: true, force: true });
-        } catch {
-            // ignore
         }
     }
 }

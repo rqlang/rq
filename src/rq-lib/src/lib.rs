@@ -4,7 +4,6 @@ pub mod error;
 pub mod http;
 pub mod lint;
 pub mod logger;
-#[cfg(feature = "native")]
 pub mod native;
 pub mod paths;
 pub mod syntax;

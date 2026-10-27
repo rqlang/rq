@@ -36,6 +36,11 @@ describe('claude plugin manifest', () => {
         assert.equal(manifest.version, '0.0.0');
     });
 
+    it('ships the license it declares', () => {
+        assert.equal(manifest.license, 'MIT');
+        assert.match(fs.readFileSync(path.join(pluginDir, 'LICENSE'), 'utf8'), /^MIT License\n/);
+    });
+
     it('has a description', () => {
         assert.ok(manifest.description.length > 0);
     });

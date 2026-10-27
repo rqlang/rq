@@ -20,6 +20,6 @@ Ask Claude for a request, an endpoint or a whole suite from an OpenAPI spec, or 
 
 - The first time the MCP server starts, `npx` downloads `@rqlang/mcp` at the exact version pinned in `.mcp.json`, with its dependencies, from the public npm registry. Later starts reuse the npm cache.
 - The server runs locally on Node.js. It reads the `.rq` files under the workspace folder, or under the path a tool is given, to resolve imports and list request names.
-- To check that the secrets a file uses are defined, the server reads the `.env` file next to the checked files and the `RQ__*` environment variables. Their values stay on the machine.
+- To check that the secrets a file uses are defined, the server reads the `.env` file in the workspace folder (the `workspace_path` a tool is given, or the session's working directory) and the `RQ__*` environment variables. Their values stay on the machine.
 - Drafts passed to `validate_rq` and `lint_rq` are checked in memory and never written to disk.
 - The server never sends the HTTP requests described in `.rq` files, makes no other network calls and collects no data.

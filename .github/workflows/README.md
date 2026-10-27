@@ -140,6 +140,8 @@ The Claude Code plugin is distributed through [`rqlang/claude-plugin`](https://g
 /plugin install rqlang --marketplace rqlang/claude-plugin
 ```
 
+Claude Code before 2.1.275 needs `/plugin marketplace add rqlang/claude-plugin` and then `/plugin install rqlang@rqlang`.
+
 `src/claude-plugin` is its source and keeps version `0.0.0`, like `Cargo.toml`. `publish_claude_plugin.yaml` runs after the npm channel: it renders the plugin from the release tag with `deployment/claude-plugin/render-plugin.sh`, which sets the version in `plugin.json` and the `@rqlang/mcp` pin in `.mcp.json`, checks that the pinned version is on npm, and only then replaces the contents of the plugin repository and pushes them with the `CLAUDE_PLUGIN_TOKEN` secret (a fine-grained token with `Contents: Read and write` on `rqlang/claude-plugin`). Pre-releases are rejected, and the plugin repository never moves back to an older version than the one it already has. A change to the plugin reaches users with the next release. To retry or republish a release, run it manually with the tag.
 
 To test the renderer locally:

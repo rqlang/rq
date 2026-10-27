@@ -14,6 +14,13 @@ Ask Claude for a request, an endpoint or a whole suite from an OpenAPI spec, or 
 /plugin install rqlang --marketplace rqlang/claude-plugin
 ```
 
+Before Claude Code 2.1.275, add the marketplace first:
+
+```text
+/plugin marketplace add rqlang/claude-plugin
+/plugin install rqlang@rqlang
+```
+
 This repository is published from [`src/claude-plugin`](https://github.com/rqlang/rq/tree/main/src/claude-plugin) in `rqlang/rq` with every release; send changes there.
 
 ## The rq ecosystem

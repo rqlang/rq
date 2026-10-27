@@ -13,7 +13,13 @@
     "rq",
     "rqlang",
     "http",
+    "rest",
     "api",
+    "api-client",
+    "api-testing",
+    "http-client",
+    "requests-as-code",
+    "oauth2",
     "mcp"
   ]
 }

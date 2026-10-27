@@ -1,22 +1,20 @@
-# rqlang plugin for Claude Code
+# rqlang
 
-Teaches Claude Code to write [rqlang](https://www.rqlang.com) `.rq` files correctly.
+HTTP requests as code, written by Claude and checked by rq's own parser and linter.
 
-## Install
-
-```
-/plugin install rqlang@claude-plugins-official
+```rust
+rq get("https://rqlang.com");
 ```
 
-Requires Node.js 18 or newer: the plugin starts the [`@rqlang/mcp`](../rq-mcp) server with `npx`.
+Ask Claude for a request, an endpoint or a whole suite from an OpenAPI spec, or run `/rqlang:generate`. Works in Claude Code, and in Cowork when the session runs on your computer. Requires Node.js 18 or newer.
 
-## What it provides
+## The rq ecosystem
 
-| Kind | Name | Purpose |
-|---|---|---|
-| MCP server | `rq` | `validate_rq`, `lint_rq`, `list_requests`, `get_rq_reference` and the `generate_rq` prompt, from `@rqlang/mcp` |
-| Skill | `rq-authoring` | The reference → list → draft → validate → lint loop Claude follows for any `.rq` work |
-| Command | `/rqlang:generate` | Generates requests from a natural-language description |
+- [rqlang.com](https://www.rqlang.com): [getting started](https://www.rqlang.com/docs/GETTING_STARTED.html), [advanced example](https://www.rqlang.com/docs/ADVANCED_EXAMPLE.html), [AI-assisted authoring](https://www.rqlang.com/docs/AI_ASSISTED_AUTHORING.html)
+- [VS Code extension](https://marketplace.visualstudio.com/items?itemName=rq-lang.rq-language): run requests from the editor
+- [CLI](https://www.rqlang.com/docs/INSTALLATION.html): run them from the terminal and CI
+- [`@rqlang/mcp`](https://www.npmjs.com/package/@rqlang/mcp): the MCP server behind this plugin, for any other assistant
+- [GitHub](https://github.com/rqlang/rq)
 
 ## What it runs and sends
 
@@ -25,13 +23,3 @@ Requires Node.js 18 or newer: the plugin starts the [`@rqlang/mcp`](../rq-mcp) s
 - To check that the secrets a file uses are defined, the server reads the `.env` file next to the checked files and the `RQ__*` environment variables. Their values stay on the machine.
 - Drafts passed to `validate_rq` and `lint_rq` are checked in memory and never written to disk.
 - The server never sends the HTTP requests described in `.rq` files, makes no other network calls and collects no data.
-
-## Develop
-
-Load the plugin from the checkout without installing it:
-
-```bash
-claude --plugin-dir ./src/claude-plugin
-```
-
-To try an unpublished server, point `.mcp.json` at a local build (`node ../rq-mcp/dist/server.js`) instead of `npx`, and do not commit that change.

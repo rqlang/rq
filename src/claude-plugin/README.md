@@ -6,7 +6,7 @@ HTTP requests as code, written by Claude and checked by rq's own parser and lint
 rq get("https://rqlang.com");
 ```
 
-Ask Claude for a request, an endpoint or a whole suite from an OpenAPI spec, or run `/rqlang:generate`. Works in Claude Code, and in Cowork when the session runs on your computer. Requires Node.js 18 or newer.
+Ask Claude for a request, an endpoint or a whole suite from an OpenAPI spec, or run the server's `generate_rq` prompt from the `/` menu. Works in Claude Code, and in Cowork when the session runs on your computer. Requires Node.js 18 or newer.
 
 ## The rq ecosystem
 

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "rq": {
+      "command": "npx",
+      "args": ["-y", "@rqlang/mcp@0.9.0"]
+    }
+  }
+}

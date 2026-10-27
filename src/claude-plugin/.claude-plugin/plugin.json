@@ -1,0 +1,19 @@
+{
+  "name": "rqlang",
+  "version": "0.9.0",
+  "description": "Write, validate and lint rqlang (.rq) HTTP request files",
+  "author": {
+    "name": "rqlang",
+    "url": "https://www.rqlang.com"
+  },
+  "homepage": "https://www.rqlang.com",
+  "repository": "https://github.com/rqlang/rq",
+  "license": "MIT",
+  "keywords": [
+    "rq",
+    "rqlang",
+    "http",
+    "api",
+    "mcp"
+  ]
+}

@@ -1,6 +1,6 @@
 {
   "name": "rqlang",
-  "version": "0.9.0",
+  "version": "0.0.0",
   "description": "Write, validate and lint rqlang (.rq) HTTP request files",
   "author": {
     "name": "rqlang",

@@ -8,6 +8,14 @@ rq get("https://rqlang.com");
 
 Ask Claude for a request, an endpoint or a whole suite from an OpenAPI spec, or run the server's `generate_rq` prompt from the `/` menu. Works in Claude Code, and in Cowork when the session runs on your computer. Requires Node.js 18 or newer.
 
+## Install
+
+```text
+/plugin install rqlang --marketplace rqlang/claude-plugin
+```
+
+This repository is published from [`src/claude-plugin`](https://github.com/rqlang/rq/tree/main/src/claude-plugin) in `rqlang/rq` with every release; send changes there.
+
 ## The rq ecosystem
 
 - [rqlang.com](https://www.rqlang.com): [getting started](https://www.rqlang.com/docs/GETTING_STARTED.html), [advanced example](https://www.rqlang.com/docs/ADVANCED_EXAMPLE.html), [AI-assisted authoring](https://www.rqlang.com/docs/AI_ASSISTED_AUTHORING.html)

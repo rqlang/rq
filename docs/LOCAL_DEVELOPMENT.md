@@ -153,7 +153,7 @@ Load the plugin from the checkout for one session, without installing it:
 claude --plugin-dir ./src/claude-plugin
 ```
 
-To try an unpublished MCP server, point `src/claude-plugin/.mcp.json` at a local build (`node ${CLAUDE_PLUGIN_ROOT}/../rq-mcp/dist/server.js`; plugin servers start in the session's working directory, not in the plugin folder) instead of `npx`, and do not commit that change.
+The checkout pins `@rqlang/mcp@0.0.0`, which release builds replace with the release version, so point `src/claude-plugin/.mcp.json` at a local build (`node ${CLAUDE_PLUGIN_ROOT}/../rq-mcp/dist/server.js`; plugin servers start in the session's working directory, not in the plugin folder) instead of `npx`, and do not commit that change.
 
 ## Release channels
 

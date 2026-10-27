@@ -2,7 +2,7 @@
   "mcpServers": {
     "rq": {
       "command": "node",
-      "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/npx.mjs", "-y", "@rqlang/mcp@0.9.0"]
+      "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/npx.mjs", "-y", "@rqlang/mcp@0.0.0"]
     }
   }
 }

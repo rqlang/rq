@@ -22,6 +22,7 @@ function frontmatter(file) {
 }
 
 const manifest = readJson(path.join(pluginDir, '.claude-plugin/plugin.json'));
+const marketplace = readJson(path.join(pluginDir, '.claude-plugin/marketplace.json'));
 const servers = readJson(path.join(pluginDir, '.mcp.json')).mcpServers;
 const packageJson = readJson(path.join(packageDir, 'package.json'));
 const surface = readJson(path.join(packageDir, 'surface.json'));
@@ -30,13 +31,23 @@ const skillsDir = path.join(pluginDir, 'skills');
 const skills = fs.readdirSync(skillsDir).map(name => ({ name, file: path.join(skillsDir, name, 'SKILL.md') }));
 
 describe('claude plugin manifest', () => {
-    it('names the plugin with a semver version', () => {
+    it('names the plugin and keeps the version the release replaces', () => {
         assert.equal(manifest.name, 'rqlang');
-        assert.match(manifest.version, /^\d+\.\d+\.\d+$/);
+        assert.equal(manifest.version, '0.0.0');
     });
 
     it('has a description', () => {
         assert.ok(manifest.description.length > 0);
+    });
+});
+
+describe('claude plugin marketplace', () => {
+    it('lists only this plugin from the repository root', () => {
+        assert.deepEqual(marketplace.plugins.map(plugin => [plugin.name, plugin.source]), [[manifest.name, './']]);
+    });
+
+    it('leaves the version to the plugin manifest', () => {
+        assert.equal(marketplace.plugins[0].version, undefined);
     });
 });
 

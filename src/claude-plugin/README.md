@@ -18,6 +18,7 @@ Ask Claude for a request, an endpoint or a whole suite from an OpenAPI spec, or 
 
 ## What it runs and sends
 
+- The server is started by `scripts/npx.mjs`, which only runs `npx` with the arguments in `.mcp.json` (through the shell on Windows, where `npx` is a `.cmd` script).
 - The first time the MCP server starts, `npx` downloads `@rqlang/mcp` at the exact version pinned in `.mcp.json`, with its dependencies, from the public npm registry. Later starts reuse the npm cache.
 - The server runs locally on Node.js. It reads the `.rq` files under the workspace folder, or under the path a tool is given, to resolve imports and list request names.
 - To check that the secrets a file uses are defined, the server reads the `.env` file in the workspace folder (the `workspace_path` a tool is given, or the session's working directory) and the `RQ__*` environment variables. Their values stay on the machine.

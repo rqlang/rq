@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, it } from 'node:test';
@@ -24,6 +25,7 @@ const manifest = readJson(path.join(pluginDir, '.claude-plugin/plugin.json'));
 const servers = readJson(path.join(pluginDir, '.mcp.json')).mcpServers;
 const packageJson = readJson(path.join(packageDir, 'package.json'));
 const surface = readJson(path.join(packageDir, 'surface.json'));
+const launcher = path.join(pluginDir, 'scripts/npx.mjs');
 const skillsDir = path.join(pluginDir, 'skills');
 const skills = fs.readdirSync(skillsDir).map(name => ({ name, file: path.join(skillsDir, name, 'SKILL.md') }));
 
@@ -43,9 +45,25 @@ describe('claude plugin mcp server', () => {
         assert.deepEqual(Object.keys(servers), ['rq']);
     });
 
-    it('starts this package at the plugin version', () => {
-        assert.equal(servers.rq.command, 'npx');
-        assert.deepEqual(servers.rq.args, ['-y', `${packageJson.name}@${manifest.version}`]);
+    it('starts this package at the plugin version through the bundled npx launcher', () => {
+        assert.equal(servers.rq.command, 'node');
+        assert.deepEqual(servers.rq.args, [
+            '${CLAUDE_PLUGIN_ROOT}/scripts/npx.mjs', '-y', `${packageJson.name}@${manifest.version}`
+        ]);
+    });
+
+    it('passes its arguments to npx', () => {
+        const target = spawnSync(process.execPath, [launcher, '--version'], { encoding: 'utf8' });
+        assert.equal(target.status, 0, target.stderr);
+        assert.match(target.stdout.trim(), /^\d+\.\d+\.\d+$/);
+    });
+
+    it('reports a failing npx run through its exit code', () => {
+        const target = spawnSync(process.execPath, [launcher, '--no-install', '--package', 'rq-mcp-missing-launcher-probe', '--', 'missing'], {
+            encoding: 'utf8',
+            env: { ...process.env, npm_config_offline: 'true' }
+        });
+        assert.notEqual(target.status, 0);
     });
 
     it('starts the only bin the package exposes', () => {

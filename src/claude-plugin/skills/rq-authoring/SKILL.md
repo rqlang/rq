@@ -12,8 +12,8 @@ rqlang syntax is not reliably known from memory. The `rq` MCP server bundled wit
 1. Before writing or refactoring any `.rq` file, call `get_rq_reference` with `doc="language-definition"` and with `doc="idioms"`.
 2. Before adding requests, call `list_requests` on the target folder so new names do not collide with existing ones.
 3. Draft the snippet. Keep one `ep` per file, named after the endpoint.
-4. Call `validate_rq` with the file's name as `path`. Fix and repeat until it returns `ok: true`.
-5. Call `lint_rq` with the same `path`. Apply the suggested fixes and repeat until it returns `ok: true`.
+4. Call `validate_rq` with the file's name as `path` and the folder the file is written to as `workspace_path`, so imports and `.env` secrets resolve against that folder. Fix and repeat until it returns `ok: true`.
+5. Call `lint_rq` with the same `path` and `workspace_path`. Apply the suggested fixes, then go back to step 4: a fix can break validation. Repeat until both return `ok: true`.
 
 When the output spans several files, run steps 4 and 5 once per file.
 

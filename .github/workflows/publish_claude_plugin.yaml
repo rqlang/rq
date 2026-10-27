@@ -1,0 +1,141 @@
+name: Publish Claude Code Plugin
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+      dry_run:
+        required: false
+        type: boolean
+        default: false
+    secrets:
+      CLAUDE_PLUGIN_TOKEN:
+        required: true
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to publish (e.g. 0.8.0)'
+        required: true
+      dry_run:
+        description: 'Render and verify without publishing'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-claude-plugin
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  PLUGIN_REPOSITORY: rqlang/claude-plugin
+
+jobs:
+  publish:
+    name: Render and Push Plugin
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Checkout plugin source from the release
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.tag }}
+          path: release
+          sparse-checkout: src/claude-plugin
+
+      - name: Reject pre-releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          prerelease=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isPrerelease --jq .isPrerelease)
+          if [ "$prerelease" = "true" ]; then
+            echo "::error::$TAG is a pre-release; only stable releases are published to the plugin"
+            exit 1
+          fi
+
+      - name: Render plugin
+        id: render
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          version=$(deployment/claude-plugin/render-plugin.sh "$TAG" release/src/claude-plugin "$RUNNER_TEMP/plugin")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          cat "$RUNNER_TEMP/plugin/.claude-plugin/plugin.json" "$RUNNER_TEMP/plugin/.mcp.json"
+
+      - name: Check the pinned server is on npm
+        env:
+          VERSION: ${{ steps.render.outputs.version }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            if npm view "@rqlang/mcp@${VERSION}" version --prefer-online > /dev/null 2>&1; then
+              echo "@rqlang/mcp@${VERSION} is on npm"
+              exit 0
+            fi
+            if [ "$DRY_RUN" = "true" ]; then
+              echo "::notice::@rqlang/mcp@${VERSION} is not on npm yet; publish it before the plugin pins it"
+              exit 0
+            fi
+            echo "@rqlang/mcp@${VERSION} not visible on npm yet (attempt $attempt); retrying in 30s"
+            sleep 30
+          done
+          echo "::error::@rqlang/mcp@${VERSION} is not on npm; the plugin would not start"
+          exit 1
+
+      - name: Checkout plugin repository
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ env.PLUGIN_REPOSITORY }}
+          token: ${{ secrets.CLAUDE_PLUGIN_TOKEN }}
+          path: plugin-repo
+
+      - name: Compare with the published version
+        id: compare
+        working-directory: plugin-repo
+        env:
+          VERSION: ${{ steps.render.outputs.version }}
+        run: |
+          if [ ! -f .claude-plugin/plugin.json ]; then
+            echo "No plugin published yet"
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          current=$(jq -r '.version // empty' .claude-plugin/plugin.json)
+          if [ -z "$current" ]; then
+            echo "::error::Cannot read the published version from .claude-plugin/plugin.json"
+            exit 1
+          fi
+          newest=$(printf '%s\n%s\n' "$current" "$VERSION" | sort -V | tail -n1)
+          if [ "$current" != "$VERSION" ] && [ "$newest" = "$current" ]; then
+            echo "::notice::Plugin repository already has $current, newer than $VERSION; leaving it unchanged"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Plugin repository has $current; publishing $VERSION"
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Commit and push plugin
+        if: ${{ !inputs.dry_run && steps.compare.outputs.publish == 'true' }}
+        working-directory: plugin-repo
+        env:
+          VERSION: ${{ steps.render.outputs.version }}
+        run: |
+          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp -R "$RUNNER_TEMP/plugin/." .
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Plugin already up to date for $VERSION"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "rqlang $VERSION"
+          git push origin HEAD

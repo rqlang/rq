@@ -20,6 +20,7 @@ GitHub Actions workflows for building, testing and releasing `rq`.
 | `publish_homebrew.yaml` | Called by `publish_release.yaml`, or manual | Renders, verifies and pushes the Homebrew formula to the tap |
 | `publish_scoop.yaml` | Called by `publish_release.yaml`, or manual | Renders, verifies and pushes the Scoop manifest to the bucket |
 | `publish_npm.yaml` | Called by `publish_release.yaml` | Smoke-tests the release `@rqlang/mcp` tarball and publishes it to npm |
+| `publish_claude_plugin.yaml` | Called by `publish_release.yaml` after npm, or manual | Renders the Claude Code plugin at the release version and pushes it to its repository |
 | `publish_winget.yaml` | Called by `publish_release.yaml`, or manual | Renders, verifies and submits the WinGet manifests to `microsoft/winget-pkgs` |
 | `build_cli.yaml` | Called by the release workflows | Builds and signs the CLI for every platform |
 | `build_extension.yaml` | Called by the release workflows | Packages the VS Code extension VSIX |
@@ -57,7 +58,7 @@ The repository keeps `version = "0.0.0"` in the root `Cargo.toml`; the workflows
 
    Nothing is published to any channel yet, so the release assets can be tested first.
 4. Run `publish_release.yaml` with the tag and `dry_run` checked (the default). It renders and verifies the Homebrew formula, the Scoop manifest and the WinGet manifests, finds the VSIX and smoke-tests the npm tarball, without publishing anything.
-5. Run `publish_release.yaml` again with `dry_run` unchecked to publish to the VS Code Marketplace, npm, the Homebrew tap and the Scoop bucket, and to open a pull request with the WinGet manifests (see below). Untick a channel to leave it out.
+5. Run `publish_release.yaml` again with `dry_run` unchecked to publish to the VS Code Marketplace, npm, the Homebrew tap and the Scoop bucket, to push the Claude Code plugin to its repository, and to open a pull request with the WinGet manifests (see below). Untick a channel to leave it out.
 
 Nothing is uploaded to the release unless every build succeeds. To retry a failed release, re-run the failed jobs of the workflow run.
 
@@ -129,6 +130,26 @@ A trusted publisher can only be added to a package that already exists, so the f
 ```bash
 gh release download <tag> --repo rqlang/rq --pattern "rqlang-mcp-*.tgz"
 npm publish rqlang-mcp-<version>.tgz --access public
+```
+
+## Claude Code plugin
+
+The Claude Code plugin is distributed through [`rqlang/claude-plugin`](https://github.com/rqlang/claude-plugin), which is both the plugin and a marketplace that lists it:
+
+```text
+/plugin install rqlang --marketplace rqlang/claude-plugin
+```
+
+Claude Code before 2.1.275 needs `/plugin marketplace add rqlang/claude-plugin` and then `/plugin install rqlang@rqlang`.
+
+`src/claude-plugin` is its source and keeps version `0.0.0`, like `Cargo.toml`. `publish_claude_plugin.yaml` runs after the npm channel. It takes `src/claude-plugin` from the release tag and renders it with the `deployment/claude-plugin/render-plugin.sh` on the branch it runs from, which sets the version in `plugin.json` and the `@rqlang/mcp` pin in `.mcp.json`. It waits up to five minutes for the pinned version to show on npm, checks out the plugin repository with the `CLAUDE_PLUGIN_TOKEN` secret (a fine-grained token with `Contents: Read and write` on `rqlang/claude-plugin`) and compares versions; a dry run stops there. Only then does it replace the contents of the plugin repository and push them. Pre-releases are rejected, and the plugin repository never moves back to an older version than the one it already has. The plugin repository is generated: anything added to it by hand is removed by the next release, so changes, including its `LICENSE`, go in `src/claude-plugin`. A change to the plugin reaches users with the next release. To retry or republish a release, run it manually with the tag.
+
+Create `rqlang/claude-plugin` with an initial commit (for example *Add a README file*), so that the first release has a branch to check out and push to.
+
+To test the renderer locally:
+
+```bash
+deployment/claude-plugin/test/run.sh
 ```
 
 ## Install script

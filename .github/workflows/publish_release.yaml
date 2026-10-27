@@ -30,6 +30,10 @@ on:
         description: 'npm (@rqlang/mcp)'
         type: boolean
         default: true
+      claude_plugin:
+        description: 'Claude Code plugin (after npm)'
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -85,3 +89,14 @@ jobs:
     with:
       tag: ${{ inputs.tag }}
       dry_run: ${{ inputs.dry_run }}
+
+  publish-claude-plugin:
+    name: Publish Claude Code Plugin
+    needs: publish-npm
+    if: ${{ inputs.claude_plugin && !failure() && !cancelled() }}
+    uses: ./.github/workflows/publish_claude_plugin.yaml
+    with:
+      tag: ${{ inputs.tag }}
+      dry_run: ${{ inputs.dry_run }}
+    secrets:
+      CLAUDE_PLUGIN_TOKEN: ${{ secrets.CLAUDE_PLUGIN_TOKEN }}

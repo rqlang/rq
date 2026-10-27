@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - 'deployment/**'
+      - 'src/claude-plugin/**'
       - '.github/workflows/deployment_bvt.yaml'
 
 env:
@@ -40,6 +41,9 @@ jobs:
 
       - name: Test WinGet manifest renderer
         run: deployment/winget/test/run.sh
+
+      - name: Test Claude Code plugin renderer
+        run: deployment/claude-plugin/test/run.sh
 
   test-windows:
     name: Test deployment scripts on windows-latest

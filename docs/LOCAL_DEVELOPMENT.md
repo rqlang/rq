@@ -145,6 +145,16 @@ gh run download "$run_id" --repo rqlang/rq --pattern 'rq-language-extension-*'
 
 Then install the `.vsix` from VS Code, as described in [Install from a VSIX](https://code.visualstudio.com/docs/configure/extensions/extension-marketplace#_install-from-a-vsix), or with `code --install-extension <file>.vsix`.
 
+### Claude Code plugin
+
+Load the plugin from the checkout for one session, without installing it:
+
+```bash
+claude --plugin-dir ./src/claude-plugin
+```
+
+The checkout pins `@rqlang/mcp@0.0.0`, which release builds replace with the release version, so point `src/claude-plugin/.mcp.json` at a local build (`node ${CLAUDE_PLUGIN_ROOT}/../rq-mcp/dist/server.js`; plugin servers start in the session's working directory, not in the plugin folder) instead of `npx`, and do not commit that change.
+
 ## Release channels
 
 Released versions reach users through the GitHub Release, the VS Code Marketplace, Homebrew, Scoop, WinGet and the install script; [INSTALLATION.md](INSTALLATION.md) is the user-facing guide and [.github/workflows/README.md](../.github/workflows/README.md) describes the release process.

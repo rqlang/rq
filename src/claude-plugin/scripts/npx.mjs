@@ -1,6 +1,9 @@
 import { spawn } from 'node:child_process';
 
-const child = spawn('npx', process.argv.slice(2), { stdio: 'inherit', shell: process.platform === 'win32' });
+const args = process.argv.slice(2);
+const child = process.platform === 'win32'
+    ? spawn(['npx', ...args].join(' '), { stdio: 'inherit', shell: true })
+    : spawn('npx', args, { stdio: 'inherit' });
 
 for (const signal of ['SIGINT', 'SIGTERM']) {
     process.on(signal, () => child.kill(signal));

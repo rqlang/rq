@@ -72,6 +72,14 @@ describe('server instructions', () => {
     it('forbids lint suppressions the user did not ask for', () => {
         expect(render(surface.instructions)).toContain('never add an `rq-lint-ignore` comment unless the user explicitly asks');
     });
+
+    it('checks each file against the folder it is written to', () => {
+        expect(render(surface.instructions)).toContain('the folder it is written to as `workspace_path`');
+    });
+
+    it('re-validates after applying lint fixes', () => {
+        expect(render(surface.instructions)).toContain('re-validate and re-lint until both return ok:true');
+    });
 });
 
 describe('buildGenerateRqPrompt', () => {

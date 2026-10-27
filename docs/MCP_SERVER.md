@@ -28,7 +28,13 @@ The server closes the gap from both ends: it gives the assistant rq's grammar re
 npx -y @rqlang/mcp
 ```
 
-Claude Code and Codex add it from the command line:
+**Claude Code**: install the [plugin](#claude-code-plugin), which also teaches Claude when to use the server:
+
+```text
+/plugin install rqlang --marketplace rqlang/claude-plugin
+```
+
+Claude Code and Codex can also add the server alone from the command line:
 
 ```bash
 claude mcp add rq -- npx -y @rqlang/mcp
@@ -53,6 +59,17 @@ Claude Desktop, Cursor, Windsurf, Gemini CLI and other clients configured throug
 The server is JavaScript running the WebAssembly build of rq — the same parser, analyzer and linter the CLI uses. There is no native binary and no platform-specific download. In VS Code it runs on the Node.js the editor ships with; elsewhere, on the Node.js that `npx` finds.
 
 It works relative to the folder it runs in: the first workspace folder in VS Code, the folder the client was started from elsewhere. Relative paths, `import` statements and `.env` files resolve from there the way they do on disk, and every tool that takes a path accepts an absolute one to point somewhere else.
+
+## Claude Code plugin
+
+The `rqlang` plugin for Claude Code, published from [`src/claude-plugin`](https://github.com/rqlang/rq/tree/main/src/claude-plugin) to [`rqlang/claude-plugin`](https://github.com/rqlang/claude-plugin), bundles this server with an `rq-authoring` skill that tells Claude to use it whenever `.rq` files come up. The plugin has no server code of its own:
+
+- It starts the server through `scripts/npx.mjs`, which only runs `npx` with the arguments in `.mcp.json` (through `cmd.exe` on Windows, where `npx` is a `.cmd` script).
+- The first time the server starts, `npx` downloads `@rqlang/mcp` at the exact version pinned in `.mcp.json`, with its dependencies, from the public npm registry. Later starts reuse the npm cache. Each rq release pins its own version.
+- The server runs locally on Node.js. It reads the `.rq` files under the workspace folder, or under the path a tool is given, to resolve imports and list request names.
+- To check that the secrets a file uses are defined, it reads the `.env` file in the workspace folder (the `workspace_path` a tool is given, or the session's working directory) and the `RQ__*` environment variables. Their values stay on the machine.
+- Drafts passed to `validate_rq` and `lint_rq` are checked in memory and never written to disk.
+- It never sends the HTTP requests described in `.rq` files, makes no other network calls and collects no data.
 
 ## Tools
 

@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - 'src/rq-mcp/**'
+      - 'src/claude-plugin/**'
       - 'src/vscode-extension/src/mcp/**'
       - 'src/vscode-extension/src/wasmHost.ts'
       - 'src/vscode-extension/src/utils.ts'

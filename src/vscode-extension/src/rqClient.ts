@@ -3,10 +3,10 @@ import * as path from 'path';
 import { normalizePath, draftsJson, buildSecretsMap, DraftFile, isInsideFolder } from './utils';
 import * as execution from './execution';
 import { ExecuteRequestOptions, ExecuteRequestResult, requestScope, resolveScopeFile } from './execution';
-
-export type { CancellationSignal, ExecuteRequestOptions, ExecuteRequestResult, PreparedAuth, PreparedRequest, RequestExecutionResult } from './execution';
 import { wasmCall } from './wasmHost';
 import { UiColor } from './language/definitions';
+
+export type { CancellationSignal, ExecuteRequestOptions, ExecuteRequestResult, PreparedAuth, PreparedRequest, RequestExecutionResult } from './execution';
 
 // ---------------------------------------------------------------------------
 // Shared types
@@ -127,11 +127,6 @@ export interface LocationOutput {
     character: number;
 }
 
-
-
-
-
-
 export interface CheckDiagnostic {
     file: string;
     line: number;
@@ -152,18 +147,11 @@ function resolveSource(sourceDir?: string): string {
     return raw.replace(/\\/g, '/');
 }
 
-async function buildRequestScope(sourceDirectory?: string): Promise<[string, string, string]> {
-    const source = resolveSource(sourceDirectory);
-    return [draftsJson(unsavedDrafts(source)), await buildSecretsMap(source), source];
-}
-
 function unsavedDrafts(folder: string): DraftFile[] {
     return vscode.workspace.textDocuments
         .filter(doc => doc.languageId === 'rq' && doc.isDirty && !doc.isUntitled && isInsideFolder(doc.uri.fsPath, folder))
         .map(doc => ({ path: forwardSlashes(doc.uri.fsPath), source: doc.getText() }));
 }
-
-
 
 // ---------------------------------------------------------------------------
 // Raw output shapes returned by WASM bindings
@@ -192,7 +180,6 @@ interface RequestShowRaw {
     line: number;
     character: number;
 }
-
 
 interface EnvironmentEntry {
     name: string;
@@ -342,7 +329,8 @@ export async function listRequests(sourceDirectory?: string): Promise<ListReques
 }
 
 export async function showRequest(requestName: string, sourceDirectory?: string, environment?: string, interpolate = false, skipRequiredVariables = false, sourceFile?: string): Promise<RequestShowOutput> {
-    const [filesJson, secretsJson, source] = await buildRequestScope(sourceDirectory);
+    const source = resolveSource(sourceDirectory);
+    const { filesJson, secretsJson } = await requestScope(source, unsavedDrafts(source));
     const result = await wasmCall('get_request_details', [filesJson, secretsJson, source, requestName, environment, interpolate, skipRequiredVariables, undefined, resolveScopeFile(sourceFile)]);
     const raw = JSON.parse(result) as RequestShowRaw;
     return {

@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import * as rqClient from './rqClient';
+import { RequestInfo } from './rqClient';
 import * as path from 'path';
 import { normalizePath } from './utils';
 import { applyTreeItemLoading } from './vscodeUtils';
@@ -24,19 +25,6 @@ function environmentThemeColor(color: UiColor): vscode.ThemeColor {
 function environmentLabel(value: string): string {
     return `Environment: ${value}`;
 }
-
-export interface RequestInfo {
-    name: string;
-    description?: string | null;
-    endpoint: string | null;
-    endpoint_description?: string | null;
-    file: string;
-    endpoint_file?: string;
-    endpoint_line?: number;
-    endpoint_character?: number;
-}
-
-
 
 /**
  * Tree data provider for RQ requests explorer

@@ -133,6 +133,17 @@ describe('variable reference completion', () => {
 });
 
 describe('variable interpolation completion', () => {
+    test('does not suggest variables inside the text of a description', async () => {
+        (cliService.listVariables as jest.Mock).mockResolvedValue([
+            { name: 'base_url', value: 'http://localhost', file: '/workspace/shared.rq', line: 0, character: 0, source: 'let' }
+        ]);
+
+        const doc = makeDocument(['[doc.description("Users on {{']);
+        const items = await provideCompletionItems(doc, new vscode.Position(0, 29));
+
+        expect((items ?? []).some((i: any) => i.label === 'base_url' || i.label === 'random.guid()')).toBe(false);
+    });
+
     test('suggests builtin functions and variables when typing "{{"', async () => {
         (cliService.listVariables as jest.Mock).mockResolvedValue([
             { name: 'base_url', value: 'http://localhost', file: '/workspace/shared.rq', line: 0, character: 0, source: 'let' },

@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { insideJsonLiteral, insideUnclosedAttribute, insideMethodAttributeValue, insideUiColorAttributeValue, attributeTarget, getAuthAttributeContext, afterCommaTrigger, followsArgumentSeparator, claimedParams, filterRequiredVars } from '../../src/language/completionHelpers';
+import { insideJsonLiteral, insideDescriptionAttribute, insideUnclosedAttribute, insideMethodAttributeValue, insideUiColorAttributeValue, attributeTarget, getAuthAttributeContext, afterCommaTrigger, followsArgumentSeparator, claimedParams, filterRequiredVars } from '../../src/language/completionHelpers';
 
 describe('followsArgumentSeparator', () => {
     test('returns true when the previous line ends with a comma', () => {
@@ -234,6 +234,28 @@ describe('insideUnclosedAttribute', () => {
 
     test('does not treat the dot in ui.color as a wildcard', () => {
         expect(insideUnclosedAttribute('[uixcolor(\n    ')).toBe(false);
+    });
+
+    test('returns true inside an unfinished doc.description attribute', () => {
+        expect(insideUnclosedAttribute('[doc.description("List users\n    ')).toBe(true);
+    });
+
+    test('returns true inside an unfinished confirm attribute', () => {
+        expect(insideUnclosedAttribute('[confirm\n    ')).toBe(true);
+    });
+});
+
+describe('insideDescriptionAttribute', () => {
+    test('returns true inside the text of a description', () => {
+        expect(insideDescriptionAttribute('[doc.description("Users on {{')).toBe(true);
+    });
+
+    test('returns false once the description is closed', () => {
+        expect(insideDescriptionAttribute('[doc.description("Users")]\nrq list("{{')).toBe(false);
+    });
+
+    test('returns false inside another attribute', () => {
+        expect(insideDescriptionAttribute('[auth("{{')).toBe(false);
     });
 });
 

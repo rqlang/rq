@@ -121,7 +121,7 @@ export function insideOpenBlock(text: string, blockPattern: RegExp): boolean {
     return depth > 0;
 }
 
-export const ATTRIBUTE_NAMES = ['method', 'timeout', 'auth', 'required', 'ui.color'];
+export const ATTRIBUTE_NAMES = ['method', 'timeout', 'auth', 'required', 'ui.color', 'doc.description', 'confirm'];
 
 export const HTTP_METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'];
 
@@ -205,6 +205,12 @@ export function insideUnclosedAttribute(text: string): boolean {
     if (index === -1) { return false; }
     const names = ATTRIBUTE_NAMES.map(escapeRegex).join('|');
     return new RegExp(`^\\s*(${names})\\b`).test(text.slice(index + 1));
+}
+
+export function insideDescriptionAttribute(text: string): boolean {
+    const index = openAttributeBracketIndex(text);
+    if (index === -1) { return false; }
+    return /^\s*doc\.description\s*\(/.test(text.slice(index + 1));
 }
 
 export function insideMethodAttributeValue(text: string): boolean {

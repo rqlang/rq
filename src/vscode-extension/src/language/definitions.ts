@@ -178,6 +178,18 @@ export const ATTRIBUTE_DEFINITIONS: AttributeDefinition[] = [
         description: 'Marks an environment with a color so it stands out in the Requests view, for example to flag production.',
         targets: 'env',
         values: UI_COLORS.join(', ')
+    },
+    {
+        name: 'doc.description',
+        signature: '[doc.description("text")]',
+        description: 'Says in plain words what a request or endpoint does, so people and assistants can find it. The text is a literal: it is not interpolated and not inherited.',
+        targets: 'rq, ep'
+    },
+    {
+        name: 'confirm',
+        signature: '[confirm]',
+        description: 'Asks for confirmation before the request is sent. On an ep it applies to every child request, and on an env to every request run against it.',
+        targets: 'rq, ep, env'
     }
 ];
 

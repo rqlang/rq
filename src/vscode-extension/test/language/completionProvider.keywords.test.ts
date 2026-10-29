@@ -502,14 +502,14 @@ describe('attribute completion', () => {
 });
 
 describe('ui.color attribute completion', () => {
-    test('suggests only ui.color when the attribute precedes an env', async () => {
+    test('suggests only the env attributes when the attribute precedes an env', async () => {
         const lines = ['[', 'env production {', '    host: "x",', '}'];
         const doc = makeDocument(lines);
         const position = new vscode.Position(0, 1);
 
         const items = await provideCompletionItems(doc, position);
 
-        expect(items.map((i: any) => i.label)).toEqual(['ui.color']);
+        expect(items.map((i: any) => i.label)).toEqual(['ui.color', 'confirm']);
     });
 
     test('ui.color item uses a snippet with the palette choices', async () => {
@@ -533,14 +533,14 @@ describe('ui.color attribute completion', () => {
         expect(item.range).toEqual(new vscode.Range(0, 1, 0, 4));
     });
 
-    test('suggests only ui.color when a block comment separates the attribute from the env', async () => {
+    test('suggests only the env attributes when a block comment separates the attribute from the env', async () => {
         const lines = ['[', '/* production', '   handle with care */', 'env production {', '}'];
         const doc = makeDocument(lines);
         const position = new vscode.Position(0, 1);
 
         const items = await provideCompletionItems(doc, position);
 
-        expect(items.map((i: any) => i.label)).toEqual(['ui.color']);
+        expect(items.map((i: any) => i.label)).toEqual(['ui.color', 'confirm']);
     });
 
     test('does not suggest ui.color when the attribute precedes a request', async () => {
@@ -570,5 +570,25 @@ describe('ui.color attribute completion', () => {
         const items = await provideCompletionItems(doc, position);
 
         expect(items.map((i: any) => i.label)).toEqual(['red', 'orange', 'yellow', 'green', 'blue', 'purple']);
+    });
+});
+
+describe('doc.description and confirm attribute completion', () => {
+    test('suggests doc.description and confirm before a request', async () => {
+        const doc = makeDocument(['[', 'rq get("http://localhost");']);
+        const items = await provideCompletionItems(doc, new vscode.Position(0, 1));
+        expect(['doc.description', 'confirm'].every(label => items.some((i: any) => i.label === label))).toBe(true);
+    });
+
+    test('doc.description item inserts a string literal snippet', async () => {
+        const doc = makeDocument(['[', 'rq get("http://localhost");']);
+        const items = await provideCompletionItems(doc, new vscode.Position(0, 1));
+        expect(items.find((i: any) => i.label === 'doc.description').insertText.value).toBe('doc.description("$1")');
+    });
+
+    test('suggests doc.description after the doc namespace is typed', async () => {
+        const doc = makeDocument(['[doc.', 'rq get("http://localhost");']);
+        const items = await provideCompletionItems(doc, new vscode.Position(0, 5));
+        expect(items.find((i: any) => i.label === 'doc.description').range).toEqual(new vscode.Range(0, 1, 0, 5));
     });
 });

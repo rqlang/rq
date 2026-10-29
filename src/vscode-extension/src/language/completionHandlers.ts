@@ -15,6 +15,7 @@ import {
     getAuthAttributeContext,
     insideMethodAttributeValue,
     insideUiColorAttributeValue,
+    insideDescriptionAttribute,
     insideUnclosedAttribute,
     attributeTarget,
     AuthAttributeContext,
@@ -143,7 +144,8 @@ export const letAssignmentHandler: CompletionHandler = {
 };
 
 export const interpolationHandler: CompletionHandler = {
-    canHandle: ({ linePrefix }) => /\{\{\s*([a-zA-Z0-9_-]*)$/.test(linePrefix),
+    canHandle: ({ linePrefix, documentPrefix }) =>
+        /\{\{\s*([a-zA-Z0-9_-]*)$/.test(linePrefix) && !insideDescriptionAttribute(documentPrefix),
     async provide(ctx) {
         const { linePrefix, document, position, documentPrefix } = ctx;
         const interpolationMatch = linePrefix.match(/\{\{\s*([a-zA-Z0-9_-]*)$/);
@@ -445,6 +447,14 @@ function uiColorAttributeItem(ctx: CompletionContext, bracketOffset: number): vs
     return item;
 }
 
+function confirmAttributeItem(): vscode.CompletionItem {
+    const item = new vscode.CompletionItem('confirm', vscode.CompletionItemKind.Keyword);
+    item.detail = 'Ask before sending';
+    item.documentation = new vscode.MarkdownString('Asks for confirmation before the request is sent. Applies to an `rq`, every request of an `ep`, or every request run against an `env`.\n\n**Example:** `[confirm]`');
+    item.insertText = 'confirm';
+    return item;
+}
+
 export const attributeHandler: CompletionHandler = {
     canHandle: ({ linePrefix }) => /^\s*\[([\w.]*)$/.test(linePrefix),
     async provide(ctx) {
@@ -458,7 +468,7 @@ export const attributeHandler: CompletionHandler = {
             return undefined;
         }
         if (attributeTarget(textAfterLine(ctx)) === 'env') {
-            return [uiColorAttributeItem(ctx, bracketOffset)];
+            return [uiColorAttributeItem(ctx, bracketOffset), confirmAttributeItem()];
         }
 
         const methodItem = new vscode.CompletionItem('method', vscode.CompletionItemKind.Keyword);
@@ -482,7 +492,14 @@ export const attributeHandler: CompletionHandler = {
         requiredItem.documentation = new vscode.MarkdownString('Marks a variable as required.\n\n**Example:** `[required(user_id)]`');
         requiredItem.insertText = new vscode.SnippetString('required(${1:var_name})');
 
-        return [methodItem, timeoutItem, authItem, requiredItem];
+        const descriptionItem = new vscode.CompletionItem('doc.description', vscode.CompletionItemKind.Keyword);
+        descriptionItem.detail = 'Describe what the request does';
+        descriptionItem.documentation = new vscode.MarkdownString('Describes the next `rq` or `ep` in plain words. The text is not interpolated.\n\n**Example:** `[doc.description("List every user")]`');
+        descriptionItem.insertText = new vscode.SnippetString('doc.description("$1")');
+        descriptionItem.filterText = 'doc.description';
+        descriptionItem.range = new vscode.Range(position.line, bracketOffset + 1, position.line, position.character);
+
+        return [methodItem, timeoutItem, authItem, requiredItem, descriptionItem, confirmAttributeItem()];
     },
 };
 

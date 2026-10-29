@@ -4,7 +4,7 @@
 
 ### Features
 
-- Added the `doc.description` attribute: a request or an endpoint can say in plain words what it does, and the Request Explorer shows it in the tooltip.
+- Added the `doc.description` attribute: a request or an endpoint can say in plain words what it does, and the Request Explorer shows it in the tooltip. `doc.description` and `confirm` have completion, hover and syntax highlighting.
 - Added the `confirm` attribute: a request marked `[confirm]`, or run in an endpoint or environment marked with it, opens a modal dialog before it is sent, on **Run again** too. Mark `env production` once and every request against it asks.
 - The bundled MCP server can now run the requests of the workspace through the new `run_request` tool, so an assistant answers *"show me all the users"* by finding the matching request and sending it. It asks you before every write and before every request marked `[confirm]`.
 

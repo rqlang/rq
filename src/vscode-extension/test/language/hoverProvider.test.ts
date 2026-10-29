@@ -382,6 +382,19 @@ describe('attribute hover', () => {
         expect(value).toContain('red, orange, yellow, green, blue, purple');
     });
 
+    test('describes [doc.description] as valid on rq and ep', async () => {
+        const doc = makeDocument(['[doc.description("List users")]', 'rq list("/users");']);
+        const result = await provideHover(doc, pos(0, 6)) as vscode.Hover;
+        const value = (result!.contents as unknown as vscode.MarkdownString).value;
+        expect([value.includes('**Attribute: `doc.description`**'), value.includes('**Applies to:** `rq, ep`')]).toEqual([true, true]);
+    });
+
+    test('describes [confirm] as valid on rq, ep and env', async () => {
+        const doc = makeDocument(['[confirm]', 'env production {', '}']);
+        const result = await provideHover(doc, pos(0, 3)) as vscode.Hover;
+        expect((result!.contents as unknown as vscode.MarkdownString).value).toContain('**Applies to:** `rq, ep, env`');
+    });
+
     test('ignores an unknown attribute name', async () => {
         const doc = makeDocument(['[unknown(1)]', 'rq x("/x");']);
         const result = await provideHover(doc, pos(0, 2));

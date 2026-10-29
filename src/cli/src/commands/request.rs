@@ -23,6 +23,8 @@ struct AuthConfigView {
 #[derive(Serialize)]
 struct RequestDetailsView {
     name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    description: Option<String>,
     url: String,
     method: String,
     headers: BTreeMap<String, String>,
@@ -44,6 +46,7 @@ impl From<RequestDetails> for RequestDetailsView {
         };
         Self {
             name: details.name,
+            description: details.description,
             url: details.url,
             method: details.method,
             headers: details.headers.into_iter().collect(),
@@ -136,6 +139,7 @@ impl RequestDetailsView {
             .map(|auth| format!("{} ({})", auth.name, auth.auth_type));
         TextBlock::default()
             .field("name", &self.name)
+            .optional("description", self.description.as_deref())
             .field("method", &self.method)
             .field("url", &self.url)
             .map("headers", &self.headers)

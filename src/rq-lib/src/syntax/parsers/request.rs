@@ -1,7 +1,8 @@
 use super::{
     attributes::{
         parse_attributes, AttributeContext, AttributeParser, AuthAttributeParser,
-        MethodAttributeParser, RequiredAttributeParser, TimeoutAttributeParser,
+        DescriptionAttributeParser, MethodAttributeParser, RequiredAttributeParser,
+        TimeoutAttributeParser,
     },
     parse_trait::Parse,
     utils::{
@@ -227,6 +228,7 @@ pub(crate) fn parse_request_with_context(
         &AuthAttributeParser,
         &TimeoutAttributeParser,
         &RequiredAttributeParser,
+        &DescriptionAttributeParser,
     ];
     parse_attributes(r, &parsers, KW_RQ, &mut ctx)?;
 
@@ -315,6 +317,7 @@ pub(crate) fn parse_request_with_context(
         auth: ctx.auth,
         auth_location: ctx.auth_location,
         timeout: ctx.timeout,
+        description: ctx.description,
         required_variables: ctx.required_variables.into_iter().map(|v| v.name).collect(),
         source_path: Some(file),
         related_files: Vec::new(),

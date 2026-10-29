@@ -480,6 +480,7 @@ The following attributes are currently supported:
 - `timeout`
 - `auth`
 - `required`
+- `description`
 - `ui.color` (only on `env`, see [Marking an environment with a color](#marking-an-environment-with-a-color))
 
 ### `method` attribute
@@ -559,6 +560,29 @@ The exact enforcement behaviour differs by tool:
 - **CLI** — see [`rq request run` and required variables](CLI.md#required-variables) for how to supply values via `--var` and what error code is returned when they are missing.
 - **VS Code extension** — see [Required variables](VSCODE_EXTENSION.md#required-variables) for how the extension prompts you for missing values before executing.
 
+### `description` attribute
+
+The `description` attribute documents what a request or an endpoint is for, in plain language:
+
+```
+[description("Users of the platform")]
+ep users("http://localhost:8080/users") {
+  [description("List every user, newest first")]
+  rq list();
+
+  [description("Get one user by id")]
+  [required(id)]
+  rq get(id);
+}
+```
+
+- The value is a single string literal, in double or single quotes, with the usual escapes (`\"`, `\n`, ...). Identifiers, numbers and variables are not accepted.
+- The text is taken literally: `{{...}}` inside it is not interpolated, is not a variable reference and never produces an unresolved-variable error.
+- It may appear at most once per statement, on `rq` and `ep` statements only.
+- A request does not inherit the description of its endpoint, nor an endpoint the description of its template: each one describes its own statement.
+- It is metadata only: it does not define a variable and never changes what a request sends.
+- Tools show it next to the request: `rq request show` prints it, the VS Code extension uses it in the Requests view tooltip, and the MCP server's `list_requests` returns it (with the endpoint's as `endpoint_description`) so that an assistant can find the request a user describes in their own words.
+
 ## Environments
 
 Environments allow you to group variable values under a named context (such as `local`, `dev`, or `production`) and then run the same `.rq` file against different backends or settings without changing the file itself.
@@ -616,7 +640,7 @@ env production {
 
 The value is one of a fixed palette, written as a bare lowercase identifier: `red`, `orange`, `yellow`, `green`, `blue` or `purple`. Strings, variables and interpolation are not accepted.
 
-- `ui.color` is valid only on `env` statements; using it on `rq` or `ep` is a parse error, and so is using `method`, `timeout`, `auth` or `required` on an `env`.
+- `ui.color` is valid only on `env` statements; using it on `rq` or `ep` is a parse error, and so is using `method`, `timeout`, `auth`, `required` or `description` on an `env`.
 - It may appear at most once per environment.
 - It is UI metadata only: it does not define a variable and never changes what a request sends.
 - The VS Code extension paints the selected environment in the Requests view with this color (see [Environment color](VSCODE_EXTENSION.md#environment-color)).
@@ -767,9 +791,10 @@ Not all attributes are valid on both `ep` and `rq` statements. The table below s
 | `auth`    | yes  | yes  |
 | `method`  | no   | yes  |
 | `required`| no   | yes  |
+| `description` | yes | yes |
 | `ui.color`| no   | no   |
 
-When an attribute is placed on an `ep` statement, it applies as a default to all `rq` requests inside that endpoint block. An `rq` statement can override or extend those defaults with its own attributes.
+When an attribute is placed on an `ep` statement, it applies as a default to all `rq` requests inside that endpoint block (except `description`, which only describes the endpoint itself). An `rq` statement can override or extend those defaults with its own attributes.
 
 ```
 [timeout(20)]

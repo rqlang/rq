@@ -173,8 +173,8 @@ Options:
 Behavior:
 
 - Resolves the specified request (including endpoint context if applicable).
-- In `text` mode, prints `name`, `method`, `url`, `headers`, the optional `body`, `timeout` and `auth` (as `name (type)`), and `location` as `file:line:column`.
-- In `json` mode, prints the same fields as an object: `name`, `method`, `url`, `headers`, optional `body`, `timeout` and `auth` (`{"name", "type"}`), plus `file`, `line` and `column`.
+- In `text` mode, prints `name`, the optional `description`, `method`, `url`, `headers`, the optional `body`, `timeout` and `auth` (as `name (type)`), and `location` as `file:line:column`.
+- In `json` mode, prints the same fields as an object: `name`, optional `description`, `method`, `url`, `headers`, optional `body`, `timeout` and `auth` (`{"name", "type"}`), plus `file`, `line` and `column`.
 
 Example:
 

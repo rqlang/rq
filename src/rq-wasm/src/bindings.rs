@@ -97,6 +97,8 @@ struct ListEnvironmentsResult {
 struct RequestDetailsJson {
     #[serde(rename = "Request")]
     name: String,
+    #[serde(rename = "Description", skip_serializing_if = "Option::is_none")]
+    description: Option<String>,
     #[serde(rename = "URL")]
     url: String,
     #[serde(rename = "Method")]
@@ -389,6 +391,7 @@ pub fn get_request_details(
 
     let view = RequestDetailsJson {
         name: details.name,
+        description: details.description,
         url: details.url,
         method: details.method,
         headers,

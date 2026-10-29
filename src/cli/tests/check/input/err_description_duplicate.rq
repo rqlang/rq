@@ -1,0 +1,3 @@
+[description("Health")]
+[description("Probe")]
+rq health("http://localhost:8080/health");

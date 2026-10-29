@@ -27,7 +27,9 @@ function environmentLabel(value: string): string {
 
 export interface RequestInfo {
     name: string;
+    description?: string | null;
     endpoint: string | null;
+    endpoint_description?: string | null;
     file: string;
     endpoint_file?: string;
     endpoint_line?: number;
@@ -432,6 +434,7 @@ export class RequestExplorerProvider implements RestorableTreeDataProvider<Reque
             endpointItem.id = endpointId;
             endpointItem.iconPath = new vscode.ThemeIcon('globe');
             const epRef = endpointRequests[0];
+            endpointItem.tooltip = withDescription(`Endpoint: ${endpointName}`, epRef.endpoint_description);
             if (epRef.endpoint_file) {
                 endpointItem.command = {
                     command: 'rq.openEndpoint',
@@ -455,6 +458,10 @@ export class RequestExplorerProvider implements RestorableTreeDataProvider<Reque
         item.id = ids.next(`request:${normalizePath(request.file)}#${request.name}`);
         return item;
     }
+}
+
+function withDescription(title: string, description?: string | null, ...details: string[]): string {
+    return [title, description, ...details].filter(line => line).join('\n');
 }
 
 function findItemById(items: RequestTreeItem[], id: string): RequestTreeItem | undefined {
@@ -485,7 +492,7 @@ export class RequestTreeItem extends vscode.TreeItem {
         if (request) {
             // This is a request item
             this.contextValue = 'request';
-            this.tooltip = `${request.name}\nFile: ${request.file}`;
+            this.tooltip = withDescription(request.name, request.description, `File: ${request.file}`);
             this.description = undefined;
             
             // Set icon

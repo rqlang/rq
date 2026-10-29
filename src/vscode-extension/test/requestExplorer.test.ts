@@ -133,6 +133,30 @@ describe('RequestExplorerProvider', () => {
         expect(reqItem).toBeDefined();
     });
 
+    test('request tooltip shows the description under the request name', () => {
+        const item = new RequestTreeItem('list', { name: 'users/list', description: 'List every user', endpoint: 'users', file: '/root/users.rq' }, vscode.TreeItemCollapsibleState.None);
+
+        expect(item.tooltip).toBe('users/list\nList every user\nFile: /root/users.rq');
+    });
+
+    test('request tooltip without a description keeps only the name and file', () => {
+        const item = new RequestTreeItem('req', { name: 'req', description: null, endpoint: null, file: '/root/req.rq' }, vscode.TreeItemCollapsibleState.None);
+
+        expect(item.tooltip).toBe('req\nFile: /root/req.rq');
+    });
+
+    test('endpoint tooltip shows the endpoint description', async () => {
+        (rqClient.listRequests as jest.Mock).mockResolvedValue({
+            requests: [{ name: 'users/list', endpoint: 'users', endpoint_description: 'Users of the platform', file: '/root/users.rq' }],
+            errors: []
+        });
+
+        const items = await getRequestItems(target);
+
+        const endpointItem = items.find(c => c.label === 'users')!;
+        expect(endpointItem.tooltip).toBe('Endpoint: users\nUsers of the platform');
+    });
+
     test('setItemLoading(true) saves original icon and sets spinner', () => {
         const item = new RequestTreeItem('req', { name: 'req', endpoint: null, file: '/root/req.rq' }, vscode.TreeItemCollapsibleState.None);
         const originalIcon = item.iconPath;

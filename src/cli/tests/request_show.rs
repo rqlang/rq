@@ -667,3 +667,42 @@ fn test_request_show_uses_local_override_of_imported_variable(
 
     Ok(())
 }
+
+#[test]
+fn test_request_show_description_text() -> Result<(), Box<dyn std::error::Error>> {
+    let output = rq_cmd()
+        .args([
+            "request",
+            "show",
+            "-s",
+            "tests/fixtures/request_show_description.rq",
+            "-n",
+            "users.list",
+        ])
+        .output()?;
+    let stdout = String::from_utf8(output.stdout)?;
+    assert!(
+        stdout.contains("description: List every user\n"),
+        "{stdout}"
+    );
+    Ok(())
+}
+
+#[test]
+fn test_request_show_description_json() -> Result<(), Box<dyn std::error::Error>> {
+    let output = rq_cmd()
+        .args([
+            "request",
+            "show",
+            "-s",
+            "tests/fixtures/request_show_description.rq",
+            "-n",
+            "users.list",
+            "-f",
+            "json",
+        ])
+        .output()?;
+    let json: Value = serde_json::from_slice(&output.stdout)?;
+    assert_eq!(json["description"], "List every user");
+    Ok(())
+}

@@ -1,0 +1,4 @@
+[description("Local")]
+env local {
+  host: "http://localhost:8080",
+}

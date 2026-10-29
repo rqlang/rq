@@ -1,7 +1,7 @@
 use super::{
     attributes::{
         parse_attributes, AttributeContext, AttributeParser, AuthAttributeParser,
-        TimeoutAttributeParser,
+        DescriptionAttributeParser, TimeoutAttributeParser,
     },
     parse_trait::Parse,
     request::parse_request_with_context,
@@ -152,7 +152,11 @@ pub(crate) fn parse_endpoint_with_context(
 ) -> Result<EndpointParseResult, SyntaxError> {
     let declaration_start = r.cur().map(|t| t.span.start);
     let mut ctx = AttributeContext::default();
-    let parsers: Vec<&dyn AttributeParser> = vec![&AuthAttributeParser, &TimeoutAttributeParser];
+    let parsers: Vec<&dyn AttributeParser> = vec![
+        &AuthAttributeParser,
+        &TimeoutAttributeParser,
+        &DescriptionAttributeParser,
+    ];
     parse_attributes(r, &parsers, KW_EP, &mut ctx)?;
 
     expect(
@@ -337,6 +341,7 @@ pub(crate) fn parse_endpoint_with_context(
                 auth: ctx.auth,
                 auth_location: ctx.auth_location,
                 timeout: ctx.timeout,
+                description: ctx.description,
                 variables: endpoint_variables,
                 has_requests: false,
                 is_template: true,
@@ -487,6 +492,7 @@ pub(crate) fn parse_endpoint_with_context(
         auth: ctx.auth,
         auth_location: ctx.auth_location,
         timeout: ctx.timeout,
+        description: ctx.description,
         variables: endpoint_variables,
         has_requests: !children.is_empty(),
         is_template: false,

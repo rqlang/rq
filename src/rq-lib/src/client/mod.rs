@@ -162,35 +162,15 @@ impl RqClient {
             (rq_files, parse_errors)
         };
 
-        let mut requests = Vec::new();
-        for rq_file in rq_files {
-            for req_with_vars in &rq_file.requests {
-                let (endpoint_file, endpoint_line, endpoint_character) =
-                    if let Some(ep_name) = &req_with_vars.request.endpoint {
-                        if let Some(ep) = rq_file.endpoints.get(ep_name) {
-                            let ep_file = ep
-                                .source_path
-                                .as_deref()
-                                .map(crate::paths::clean_path_str)
-                                .map(str::to_string)
-                                .unwrap_or_else(|| crate::paths::clean_path(&rq_file.path));
-                            (Some(ep_file), Some(ep.line), Some(ep.character))
-                        } else {
-                            (None, None, None)
-                        }
-                    } else {
-                        (None, None, None)
-                    };
-                requests.push(RequestInfo {
-                    name: req_with_vars.request.name.clone(),
-                    endpoint: req_with_vars.request.endpoint.clone(),
-                    file: crate::paths::clean_path(&rq_file.path),
-                    endpoint_file,
-                    endpoint_line,
-                    endpoint_character,
-                });
-            }
-        }
+        let mut requests: Vec<RequestInfo> = rq_files
+            .iter()
+            .flat_map(|rq_file| {
+                rq_file
+                    .requests
+                    .iter()
+                    .map(move |req_with_vars| Self::request_info(rq_file, &req_with_vars.request))
+            })
+            .collect();
 
         requests.sort_by(|a, b| a.name.cmp(&b.name));
 
@@ -1328,6 +1308,32 @@ impl RqClient {
             })
     }
 
+    fn request_info(rq_file: &RqFile, request: &Request) -> RequestInfo {
+        let endpoint = request
+            .endpoint
+            .as_ref()
+            .and_then(|name| rq_file.endpoints.get(name));
+        let endpoint_file = endpoint.map(|ep| {
+            ep.source_path
+                .as_deref()
+                .map(crate::paths::clean_path_str)
+                .map(str::to_string)
+                .unwrap_or_else(|| crate::paths::clean_path(&rq_file.path))
+        });
+        RequestInfo {
+            name: request.name.clone(),
+            method: request.method.as_str().to_string(),
+            url: request.url.clone(),
+            description: request.description.clone(),
+            endpoint: request.endpoint.clone(),
+            endpoint_description: endpoint.and_then(|ep| ep.description.clone()),
+            file: crate::paths::clean_path(&rq_file.path),
+            endpoint_file,
+            endpoint_line: endpoint.map(|ep| ep.line),
+            endpoint_character: endpoint.map(|ep| ep.character),
+        }
+    }
+
     fn request_details(
         request: Request,
         auth_name: Option<String>,
@@ -1345,6 +1351,7 @@ impl RqClient {
             method: request.method.as_str().to_string(),
             body: request.body,
             timeout: request.timeout,
+            description: request.description,
             required_variables: request.required_variables,
             file,
             line,
@@ -2474,6 +2481,7 @@ mod prepare_request_tests {
             auth: None,
             auth_location: None,
             timeout: None,
+            description: None,
             required_variables: Vec::new(),
             source_path: None,
             related_files: Vec::new(),
@@ -3371,6 +3379,62 @@ mod environment_color_tests {
             (positions("color"), positions("red")),
             (vec![(0, 4), (5, 13)], vec![(1, 4), (5, 22)])
         );
+    }
+}
+
+#[cfg(all(test, feature = "native"))]
+mod description_tests {
+    use super::{RequestTarget, RqClient};
+
+    #[test]
+    fn list_variable_references_ignores_the_text_of_a_description_attribute() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let file = dir.path().join("users.rq");
+        std::fs::write(
+            &file,
+            "let host = \"x\";\n\n[description(\"Users on {{host}}\")]\nrq list(\"{{host}}/users\");\n",
+        )
+        .expect("write");
+        let target: Vec<(usize, usize)> = RqClient::default()
+            .list_variable_references(&file, "host", None, None)
+            .expect("refs")
+            .into_iter()
+            .map(|r| (r.line, r.character))
+            .collect();
+        assert_eq!(target, vec![(0, 4), (3, 11)]);
+    }
+
+    #[test]
+    fn list_requests_does_not_give_a_request_the_description_of_its_endpoint() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let file = dir.path().join("users.rq");
+        std::fs::write(
+            &file,
+            "[description(\"Users\")]\nep users(\"http://x/users\") {\n    rq list();\n}\n",
+        )
+        .expect("write");
+        let (requests, _) = RqClient::default().list_requests(&file).expect("list");
+        let target: Vec<(Option<String>, Option<String>)> = requests
+            .into_iter()
+            .map(|r| (r.description, r.endpoint_description))
+            .collect();
+        assert_eq!(target, vec![(None, Some("Users".to_string()))]);
+    }
+
+    #[test]
+    fn get_request_details_unescapes_the_description() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let file = dir.path().join("users.rq");
+        std::fs::write(
+            &file,
+            "[description(\"Say \\\"hi\\\"\")]\nrq hello(\"http://x\");\n",
+        )
+        .expect("write");
+        let target = RqClient::default()
+            .get_request_details(RequestTarget::new(&file, "hello"), None, false, false, &[])
+            .expect("details")
+            .description;
+        assert_eq!(target, Some("Say \"hi\"".to_string()));
     }
 }
 

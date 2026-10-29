@@ -24,6 +24,7 @@ pub struct RequestDetails {
     pub method: String,
     pub body: Option<String>,
     pub timeout: Option<String>,
+    pub description: Option<String>,
     pub required_variables: Vec<String>,
     pub file: String,
     pub line: usize,
@@ -33,7 +34,11 @@ pub struct RequestDetails {
 #[derive(Debug, Clone, Serialize)]
 pub struct RequestInfo {
     pub name: String,
+    pub method: String,
+    pub url: String,
+    pub description: Option<String>,
     pub endpoint: Option<String>,
+    pub endpoint_description: Option<String>,
     pub file: String,
     pub endpoint_file: Option<String>,
     pub endpoint_line: Option<usize>,

@@ -15,6 +15,7 @@ use crate::syntax::{
 };
 
 pub const ATTR_UI_COLOR: &str = "ui.color";
+pub const ATTR_DESCRIPTION: &str = "description";
 
 pub struct RequiredVariable {
     pub name: String,
@@ -30,6 +31,7 @@ pub struct AttributeContext {
     pub timeout: Option<String>,
     pub required_variables: Vec<RequiredVariable>,
     pub color: Option<UiColor>,
+    pub description: Option<String>,
 }
 
 impl AttributeContext {
@@ -62,6 +64,13 @@ impl AttributeContext {
         self.color = Some(color);
         Ok(())
     }
+    pub fn set_description(&mut self, description: String) -> Result<(), String> {
+        if self.description.is_some() {
+            return Err(format!("Duplicate attribute '{ATTR_DESCRIPTION}'"));
+        }
+        self.description = Some(description);
+        Ok(())
+    }
     pub fn add_required_variable(&mut self, name: String, line: usize, character: usize) {
         self.required_variables.push(RequiredVariable {
             name,
@@ -81,6 +90,7 @@ const ATTRIBUTE_TARGETS: &[(&str, &str)] = &[
     ("required", KW_RQ),
     ("timeout", "rq or ep"),
     ("auth", "rq or ep"),
+    (ATTR_DESCRIPTION, "rq or ep"),
     (ATTR_UI_COLOR, KW_ENV),
 ];
 
@@ -483,6 +493,44 @@ impl AttributeParser for UiColorAttributeParser {
             .map_err(|msg| r.create_error_with_file(msg, name_span))?;
         Ok(())
     }
+}
+
+pub struct DescriptionAttributeParser;
+impl AttributeParser for DescriptionAttributeParser {
+    fn name(&self) -> &str {
+        ATTR_DESCRIPTION
+    }
+
+    fn parse(&self, r: &mut TokenReader, ctx: &mut AttributeContext) -> Result<(), SyntaxError> {
+        r.advance();
+        r.skip_ignorable();
+        let name_span = expect_attribute_name(r, ATTR_DESCRIPTION)?;
+        expect_punctuation(r, PUNC_LPAREN)?;
+        let description = parse_description_text(r)?;
+        expect_punctuation(r, PUNC_RPAREN)?;
+        expect_punctuation(r, PUNC_RBRACKET)?;
+
+        ctx.set_description(description)
+            .map_err(|msg| r.create_error_with_file(msg, name_span))?;
+        Ok(())
+    }
+}
+
+fn parse_description_text(r: &mut TokenReader) -> Result<String, SyntaxError> {
+    r.skip_ignorable();
+    let text_tok = expect_at_token(
+        r,
+        |t| t.token_type == TokenType::String,
+        "Expected description string literal".to_string(),
+    )?;
+    r.advance();
+    Ok(unescape_string(string_literal_content(&text_tok.value)))
+}
+
+fn string_literal_content(literal: &str) -> &str {
+    literal
+        .get(1..literal.len().saturating_sub(1))
+        .unwrap_or_default()
 }
 
 fn parse_ui_color(r: &mut TokenReader) -> Result<UiColor, SyntaxError> {

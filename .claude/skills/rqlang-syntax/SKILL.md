@@ -298,7 +298,7 @@ Arrays are not a type — `let a = ["x"];` is rejected at the declaration. `$[..
 
 Annotations in square brackets placed immediately above an `rq`, `ep` or `env` statement.
 
-Supported: `method`, `timeout`, `auth`, `required` (on `rq`/`ep`) and `ui.color` (on `env` only).
+Supported: `method`, `timeout`, `auth`, `required`, `description` (on `rq`/`ep`) and `ui.color` (on `env` only).
 
 ```rq
 [method(POST)]
@@ -341,6 +341,16 @@ Enforcement: CLI errors with a documented exit code; VS Code extension prompts t
 
 Scope: `required` declares the variable for that `rq` statement only (its attributes and arguments). A `let`, env entry or secret never satisfies it, so it shadows any outer variable of the same name inside that request; two requests declaring `[required(x)]` hold independent variables. Rename and find-references stay within the request. If the enclosing endpoint's `url`, `headers`, `qs` or attributes also use the name, find-references lists those shared uses and rename from inside the request is refused.
 
+### `description("text")`
+Documents what an `rq` or `ep` is for. The value is one string literal (double or single quotes, usual escapes); identifiers, numbers and variables are rejected. The text is literal: `{{...}}` inside it is not interpolated and is not a variable reference. At most one per statement. Not inherited: a request does not get its endpoint's description, nor an endpoint its template's. Metadata only — it never changes what a request sends. `rq request show`, the VS Code Requests view tooltip and the MCP `list_requests` tool (as `description` and `endpoint_description`) expose it, so assistants can match a request to what the user asks for.
+```rq
+[description("Users of the platform")]
+ep users("http://localhost:8080/users") {
+  [description("List every user, newest first")]
+  rq list();
+}
+```
+
 ### `ui.color(color)`
 Marks an `env` with a color from a fixed palette: `red`, `orange`, `yellow`, `green`, `blue`, `purple` (bare lowercase identifier, no quotes, no interpolation). It is UI metadata only: it defines no variable and does not change what any request sends. The VS Code extension paints the selected environment in the Requests view with it, typically to flag `production`. At most one per `env`.
 ```rq
@@ -358,6 +368,7 @@ env production {
 | `auth` | yes | yes | **no** |
 | `method` | **no** | yes | **no** |
 | `required` | **no** | yes | **no** |
+| `description` | yes | yes | **no** |
 | `ui.color` | **no** | **no** | yes |
 
 Using an attribute where the table says **no** is a parse error.
@@ -452,7 +463,7 @@ ep api("http://localhost:8080/api", qs: "api-version=1") {
 ```
 
 ### Attributes inside endpoints
-`timeout` and `auth` on `ep` apply as defaults to all child requests; child `rq` can override.
+`timeout` and `auth` on `ep` apply as defaults to all child requests; child `rq` can override. `description` is not inherited.
 
 ```rq
 [timeout(20)]

@@ -78,7 +78,11 @@ export interface AuthShowOutput {
 
 export interface RequestInfo {
     name: string;
+    method?: string;
+    url?: string;
+    description?: string | null;
     endpoint: string | null;
+    endpoint_description?: string | null;
     file: string;
     endpoint_file?: string;
     endpoint_line?: number;

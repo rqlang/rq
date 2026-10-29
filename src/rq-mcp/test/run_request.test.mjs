@@ -48,7 +48,8 @@ function apiSource(port) {
         'rq keyed("{{base_url}}/keyed?key={{api_key}}", $["X-Key": "{{api_key}}"]);',
         '',
         'rq slow("{{base_url}}/slow");',
-
+        '',
+        'rq endless("{{base_url}}/endless");',
         ''
     ].join('\n');
 }
@@ -56,6 +57,10 @@ function apiSource(port) {
 before(async () => {
     api = http.createServer((req, res) => {
         received.push(`${req.method} ${req.url}`);
+        if (req.url === '/endless') {
+            res.write('x'.repeat(300_000));
+            return;
+        }
         if (req.url === '/slow') {
             res.on('close', () => received.push('closed'));
             return;
@@ -175,6 +180,11 @@ describe('run_request', () => {
             [target.request.headers.Authorization ?? target.request.headers.authorization, target.response.headers['set-cookie']],
             ['[redacted]', '[redacted]']
         );
+    });
+
+    it('stops reading a response that never ends once the body is long enough', async () => {
+        const target = await callJson(client, 'run_request', { name: 'endless', file: file(), env: 'local' });
+        assert.deepEqual([target.response.body.length, target.response.body_truncated], [50_000, true]);
     });
 
     it('rejects a variable the request does not declare as required', async () => {

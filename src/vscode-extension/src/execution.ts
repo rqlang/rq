@@ -24,6 +24,7 @@ export interface ExecuteRequestOptions {
     environment?: string;
     variables?: Record<string, string>;
     cancellation?: CancellationSignal;
+    maxResponseBytes?: number;
     acquireToken?: (auth: PreparedAuth) => Promise<string>;
     confirm?: (prepared: PreparedRequest) => Promise<boolean>;
 }
@@ -38,6 +39,7 @@ export interface RequestExecutionResult {
     request_body?: string;
     response_headers: Record<string, string>;
     body: string;
+    body_truncated?: boolean;
 }
 
 export interface ExecuteRequestResult {
@@ -112,7 +114,7 @@ export async function sendRequest(scope: RequestScope, options: ExecuteRequestOp
     const headers = toNodeHeaders(prepared.headers);
     const body = prepared.body ?? undefined;
     const startTime = Date.now();
-    const response = await nodeHttpRequest(prepared.url, prepared.method, headers, body, prepared.timeout_ms ?? undefined, options.cancellation);
+    const response = await nodeHttpRequest(prepared.url, prepared.method, headers, body, prepared.timeout_ms ?? undefined, options.cancellation, options.maxResponseBytes);
     const elapsed = Date.now() - startTime;
 
     return {
@@ -126,6 +128,7 @@ export async function sendRequest(scope: RequestScope, options: ExecuteRequestOp
             request_body: body,
             response_headers: response.headers,
             body: response.body,
+            body_truncated: response.truncated,
         }],
     };
 }
@@ -168,6 +171,7 @@ interface NodeHttpResponse {
     status: number;
     headers: Record<string, string>;
     body: string;
+    truncated: boolean;
 }
 
 function throwIfCancelled(cancellation?: CancellationSignal): void {
@@ -176,7 +180,7 @@ function throwIfCancelled(cancellation?: CancellationSignal): void {
     }
 }
 
-function nodeHttpRequest(url: string, method: string, reqHeaders: Record<string, string | string[]>, body?: string, timeoutMs?: number, cancellation?: CancellationSignal): Promise<NodeHttpResponse> {
+function nodeHttpRequest(url: string, method: string, reqHeaders: Record<string, string | string[]>, body?: string, timeoutMs?: number, cancellation?: CancellationSignal, maxBodyBytes = Infinity): Promise<NodeHttpResponse> {
     return new Promise((resolve, reject) => {
         if (cancellation?.isCancellationRequested) {
             reject(new Error(CANCELLED_MESSAGE));
@@ -218,15 +222,25 @@ function nodeHttpRequest(url: string, method: string, reqHeaders: Record<string,
                 }
             }
             const chunks: Buffer[] = [];
-            res.on('data', (chunk: Buffer) => chunks.push(chunk));
-            res.on('end', () => {
+            let received = 0;
+            const finish = (truncated: boolean) => {
                 cleanup();
                 resolve({
                     status: res.statusCode ?? 0,
                     headers: responseHeaders,
-                    body: Buffer.concat(chunks).toString('utf8'),
+                    body: Buffer.concat(chunks).subarray(0, maxBodyBytes).toString('utf8'),
+                    truncated,
                 });
+            };
+            res.on('data', (chunk: Buffer) => {
+                chunks.push(chunk);
+                received += chunk.length;
+                if (received > maxBodyBytes) {
+                    finish(true);
+                    res.destroy();
+                }
             });
+            res.on('end', () => finish(false));
             res.on('error', (err) => { cleanup(); reject(err); });
         });
 

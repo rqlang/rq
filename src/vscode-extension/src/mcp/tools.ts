@@ -154,6 +154,7 @@ export interface RunRequestArgs {
 }
 
 export const MAX_RESPONSE_BODY_LENGTH = 50_000;
+const MAX_UTF8_BYTES_PER_CHARACTER = 4;
 const AUTH_TOKEN_VARIABLE = 'auth_token';
 const CONFIRMATION_TTL_MS = 5 * 60 * 1000;
 const REDACTED = '[redacted]';
@@ -171,7 +172,8 @@ export async function runRequest(args: RunRequestArgs, confirm: ConfirmRequest, 
         sourceFile: args.file ? await fileInside(workspace, args.file) : undefined,
         environment: args.env,
         variables: args.variables,
-        cancellation: cancellationOf(signal)
+        cancellation: cancellationOf(signal),
+        maxResponseBytes: MAX_RESPONSE_BODY_LENGTH * MAX_UTF8_BYTES_PER_CHARACTER
     };
     const definition = await requestDefinition(scope, options) as { RequiredVariables?: string[] };
     rejectUndeclaredVariables(args.variables, definition.RequiredVariables ?? []);
@@ -209,7 +211,7 @@ export async function runRequest(args: RunRequestArgs, confirm: ConfirmRequest, 
             elapsed_ms: result.elapsed_ms,
             headers: redactHeaders(result.response_headers, prepared.secret_values),
             body,
-            body_truncated: body.length < result.body.length
+            body_truncated: Boolean(result.body_truncated) || body.length < result.body.length
         }
     };
 }

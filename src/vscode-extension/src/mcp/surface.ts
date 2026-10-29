@@ -28,6 +28,7 @@ export const surface = surfaceJson as {
         confirmation_timeout: string;
         invalid_confirmation_token: string;
         undeclared_variables: string;
+        file_outside_workspace: string;
     };
 };
 

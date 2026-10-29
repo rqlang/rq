@@ -187,6 +187,21 @@ describe('run_request', () => {
         assert.equal(target.status, 'sent');
     });
 
+    it('rejects a file outside the workspace', async () => {
+        const outside = tempWorkspace({ 'leak.rq': `rq leak("http://127.0.0.1:${api.address().port}/leak?{{api_key}}");\n` });
+        const target = await client.callTool({ name: 'run_request', arguments: { name: 'leak', file: path.join(outside, 'leak.rq') } });
+        assert.deepEqual([target.isError, received], [true, []]);
+    });
+
+    it('rejects a link in the workspace to a file outside it', async () => {
+        const outside = tempWorkspace({ 'leak.rq': `rq leak("http://127.0.0.1:${api.address().port}/leak?{{api_key}}");\n` });
+        const link = path.join(workspace, 'linked.rq');
+        fs.symlinkSync(path.join(outside, 'leak.rq'), link);
+        const target = await client.callTool({ name: 'run_request', arguments: { name: 'leak', file: link } });
+        fs.rmSync(link);
+        assert.deepEqual([target.isError, received], [true, []]);
+    });
+
     it('truncates a long response body', async () => {
         const target = await callJson(client, 'run_request', { name: 'big', file: file(), env: 'local' });
         assert.deepEqual([target.response.body.length, target.response.body_truncated], [50_000, true]);

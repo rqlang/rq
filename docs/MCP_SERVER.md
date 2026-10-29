@@ -103,7 +103,7 @@ Sends an existing request and returns its response: `{ status: "sent", request: 
 | Parameter | Purpose |
 |---|---|
 | `name` | Request name as `list_requests` reports it, `users/list` or `users.list`. Required |
-| `file` | The `file` `list_requests` reported, to pick it when several files define the same name. |
+| `file` | The `file` `list_requests` reported, to pick it when several files define the same name. It must be inside `workspace_path` (symlinks are followed before checking) |
 | `workspace_path` | Folder whose `.env` secrets apply; defaults to the folder the server runs in |
 | `env` | Environment to run against |
 | `variables` | The values the request's `[required(...)]` attributes ask for, plus `auth_token`. Any other name is rejected, so a call cannot point a request at another host or change what it sends |

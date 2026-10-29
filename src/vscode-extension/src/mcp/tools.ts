@@ -168,7 +168,7 @@ export async function runRequest(args: RunRequestArgs, confirm: ConfirmRequest, 
     const scope = await requestScope(workspace);
     const options: ExecuteRequestOptions = {
         requestName: args.name.replace(/\./g, '/'),
-        sourceFile: args.file ? posix(path.resolve(workspace, args.file)) : undefined,
+        sourceFile: args.file ? await fileInside(workspace, args.file) : undefined,
         environment: args.env,
         variables: args.variables,
         cancellation: cancellationOf(signal)
@@ -212,6 +212,22 @@ export async function runRequest(args: RunRequestArgs, confirm: ConfirmRequest, 
             body_truncated: body.length < result.body.length
         }
     };
+}
+
+async function fileInside(workspace: string, file: string): Promise<string> {
+    const [root, target] = await Promise.all([realPath(workspace), realPath(path.resolve(workspace, file))]);
+    if (!isInside(root, target)) {
+        throw new Error(surface.run_request.file_outside_workspace.replace('{file}', file).replace('{workspace}', workspace));
+    }
+    return posix(target);
+}
+
+async function realPath(target: string): Promise<string> {
+    try {
+        return await fs.promises.realpath(target);
+    } catch (err) {
+        throw accessError(target, err);
+    }
 }
 
 function rejectUndeclaredVariables(variables: Record<string, string> | undefined, required: string[]): void {

@@ -4,7 +4,7 @@
       "file": "{{*}}",
       "line": 1,
       "column": 2,
-      "message": "Attribute 'description' is not supported on env statements; use it on rq or ep statements instead"
+      "message": "Attribute 'doc.description' is not supported on env statements; use it on rq or ep statements instead"
     }
   ]
 }

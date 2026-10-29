@@ -3392,7 +3392,7 @@ mod description_tests {
         let file = dir.path().join("users.rq");
         std::fs::write(
             &file,
-            "let host = \"x\";\n\n[description(\"Users on {{host}}\")]\nrq list(\"{{host}}/users\");\n",
+            "let host = \"x\";\n\n[doc.description(\"Users on {{host}}\")]\nrq list(\"{{host}}/users\");\n",
         )
         .expect("write");
         let target: Vec<(usize, usize)> = RqClient::default()
@@ -3410,7 +3410,7 @@ mod description_tests {
         let file = dir.path().join("users.rq");
         std::fs::write(
             &file,
-            "[description(\"Users\")]\nep users(\"http://x/users\") {\n    rq list();\n}\n",
+            "[doc.description(\"Users\")]\nep users(\"http://x/users\") {\n    rq list();\n}\n",
         )
         .expect("write");
         let (requests, _) = RqClient::default().list_requests(&file).expect("list");
@@ -3427,7 +3427,7 @@ mod description_tests {
         let file = dir.path().join("users.rq");
         std::fs::write(
             &file,
-            "[description(\"Say \\\"hi\\\"\")]\nrq hello(\"http://x\");\n",
+            "[doc.description(\"Say \\\"hi\\\"\")]\nrq hello(\"http://x\");\n",
         )
         .expect("write");
         let target = RqClient::default()

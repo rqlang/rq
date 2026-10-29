@@ -1,7 +1,7 @@
 use rq_wasm::bindings;
 use serde_json::Value;
 
-const FILES: &str = r#"{"/workspace/users.rq": "[description(\"Users of the platform\")]\nep users(\"http://localhost:8080/users\") {\n    [description(\"List every user\")]\n    rq list();\n\n    rq count(\"count\");\n}\n"}"#;
+const FILES: &str = r#"{"/workspace/users.rq": "[doc.description(\"Users of the platform\")]\nep users(\"http://localhost:8080/users\") {\n    [doc.description(\"List every user\")]\n    rq list();\n\n    rq count(\"count\");\n}\n"}"#;
 
 fn listed_request(name: &str) -> Value {
     let output =

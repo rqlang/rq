@@ -136,7 +136,7 @@ describe('list_requests', () => {
 
     it('returns what a request does so it can be matched to the user\'s words', async () => {
         const workspace = tempWorkspace({
-            'users.rq': '[description("Users of the platform")]\nep users("http://example.test/users") {\n    [description("List every user")]\n    rq list();\n}\n'
+            'users.rq': '[doc.description("Users of the platform")]\nep users("http://example.test/users") {\n    [doc.description("List every user")]\n    rq list();\n}\n'
         });
         const [target] = (await callJson(client, 'list_requests', { path: workspace })).requests;
         assert.deepEqual(

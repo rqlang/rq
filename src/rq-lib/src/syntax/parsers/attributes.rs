@@ -15,7 +15,7 @@ use crate::syntax::{
 };
 
 pub const ATTR_UI_COLOR: &str = "ui.color";
-pub const ATTR_DESCRIPTION: &str = "description";
+pub const ATTR_DESCRIPTION: &str = "doc.description";
 
 pub struct RequiredVariable {
     pub name: String,

@@ -1,3 +1,3 @@
-[description("Health")]
-[description("Probe")]
+[doc.description("Health")]
+[doc.description("Probe")]
 rq health("http://localhost:8080/health");

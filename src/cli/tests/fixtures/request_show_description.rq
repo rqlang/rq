@@ -1,5 +1,5 @@
-[description("Users of the platform")]
+[doc.description("Users of the platform")]
 ep users("http://localhost:8080/users") {
-  [description("List every user")]
+  [doc.description("List every user")]
   rq list();
 }

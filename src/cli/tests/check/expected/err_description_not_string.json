@@ -3,7 +3,7 @@
     {
       "file": "{{*}}",
       "line": 1,
-      "column": 14,
+      "column": 18,
       "message": "Expected description string literal"
     }
   ]

@@ -3575,6 +3575,23 @@ mod confirmation_tests {
     }
 
     #[test]
+    fn an_environment_redefined_by_an_import_without_confirm_needs_no_confirmation() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            dir.path().join("envs.rq"),
+            "env production {\n    host: \"http://y\",\n}\n",
+        )
+        .expect("write");
+        let file = dir.path().join("users.rq");
+        std::fs::write(
+            &file,
+            "[confirm]\nenv production {\n    host: \"http://x\",\n}\n\nimport \"envs\";\n\nrq list(\"{{host}}/users\");\n",
+        )
+        .expect("write");
+        assert!(!prepared_in(&file, "list", Some("production")).confirmation_required);
+    }
+
+    #[test]
     fn an_agent_needs_confirmation_for_an_unmarked_write() {
         assert!(prepared("users/post", Some("local")).agent_confirmation_required);
     }

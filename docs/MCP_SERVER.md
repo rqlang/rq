@@ -116,7 +116,7 @@ Sends an existing request and returns its response: `{ status: "sent", request: 
 
 The tool is annotated as destructive, so clients that gate tools on annotations ask before calling it at all.
 
-**What comes back.** The values of `Authorization`, `Proxy-Authorization`, `Cookie`, `Set-Cookie`, `X-Api-Key` and `X-Auth-Token` are replaced by `[redacted]`, and a body longer than 50,000 characters is cut there with `body_truncated: true`. A credential written into the URL itself is not redacted.
+**What comes back.** The values of `Authorization`, `Proxy-Authorization`, `Cookie`, `Set-Cookie`, `X-Api-Key` and `X-Auth-Token` are replaced by `[redacted]`, and so is any secret value (from `.env` or an `RQ__` environment variable) found in the URL or another header, also in the confirmation question. A body longer than 50,000 characters is cut there with `body_truncated: true`. Response bodies are returned as received, so a secret an API echoes back is not redacted.
 
 **Auth.** Bearer tokens and OAuth2 client credentials (with a secret or a certificate) work. Flows that need a browser login (authorization code, implicit) are not supported yet: such a request fails with an error, and can still be run by passing a token as the `auth_token` variable.
 

@@ -66,6 +66,7 @@ export interface PreparedRequest {
     auth?: PreparedAuth | null;
     confirmation_required: boolean;
     agent_confirmation_required: boolean;
+    secret_values: string[];
 }
 
 export interface RequestScope {

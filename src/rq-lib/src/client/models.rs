@@ -6,7 +6,7 @@ use serde::Serialize;
 
 use crate::syntax::auth::Config;
 use crate::syntax::ui_color::UiColor;
-use crate::syntax::variable_context::VariableContext;
+use crate::syntax::variable_context::{VariableContext, VariableValue};
 use crate::syntax::Request;
 
 #[derive(Debug, Serialize, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -103,6 +103,25 @@ pub struct PreparedRequest {
     pub confirmation_required: bool,
     pub agent_confirmation_required: bool,
     pub(crate) context: VariableContext,
+}
+
+impl PreparedRequest {
+    pub fn secret_values(&self) -> Vec<String> {
+        let mut values: Vec<String> = self
+            .context
+            .secret_variables
+            .iter()
+            .filter_map(|variable| match &variable.value {
+                VariableValue::String(value) | VariableValue::Json(value) if !value.is_empty() => {
+                    Some(value.clone())
+                }
+                _ => None,
+            })
+            .collect();
+        values.sort_by(|a, b| b.len().cmp(&a.len()).then_with(|| a.cmp(b)));
+        values.dedup();
+        values
+    }
 }
 
 #[derive(Debug, Clone)]

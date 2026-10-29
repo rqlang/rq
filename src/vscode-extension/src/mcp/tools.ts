@@ -198,11 +198,11 @@ export async function runRequest(args: RunRequestArgs, confirm: ConfirmRequest):
     return {
         status: 'sent',
         sent: true,
-        request: { ...summary, headers: redactHeaders(result.request_headers) },
+        request: { ...summary, headers: redactHeaders(result.request_headers, prepared.secret_values) },
         response: {
             status: result.status,
             elapsed_ms: result.elapsed_ms,
-            headers: redactHeaders(result.response_headers),
+            headers: redactHeaders(result.response_headers, prepared.secret_values),
             body,
             body_truncated: body.length < result.body.length
         }
@@ -210,7 +210,8 @@ export async function runRequest(args: RunRequestArgs, confirm: ConfirmRequest):
 }
 
 function summaryOf(prepared: PreparedRequest, environment?: string): RequestSummary {
-    return { request: prepared.name, method: prepared.method, url: prepared.url, environment: environment ?? null };
+    const url = redactSecrets(prepared.url, prepared.secret_values);
+    return { request: prepared.name, method: prepared.method, url, environment: environment ?? null };
 }
 
 function fingerprintOf(summary: RequestSummary, variables?: Record<string, string>): string {
@@ -233,8 +234,12 @@ function redeemConfirmation(token: string, fingerprint: string): ConfirmationOut
     return 'accepted';
 }
 
-function redactHeaders(headers: Record<string, string>): Record<string, string> {
+function redactHeaders(headers: Record<string, string>, secrets: string[]): Record<string, string> {
     return Object.fromEntries(
-        Object.entries(headers).map(([name, value]) => [name, SENSITIVE_HEADERS.has(name.toLowerCase()) ? REDACTED : value])
+        Object.entries(headers).map(([name, value]) => [name, SENSITIVE_HEADERS.has(name.toLowerCase()) ? REDACTED : redactSecrets(value, secrets)])
     );
+}
+
+function redactSecrets(text: string, secrets: string[]): string {
+    return secrets.reduce((redacted, secret) => redacted.split(secret).join(REDACTED), text);
 }

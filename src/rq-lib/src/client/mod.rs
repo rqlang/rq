@@ -3258,6 +3258,22 @@ mod prepare_tests {
     }
 
     #[test]
+    fn prepared_request_lists_the_secret_values_longest_first() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write(
+            dir.path(),
+            ".env",
+            "SHORT=abc\nLONG=abcdef\nSAME=abc\nEMPTY=\n",
+        );
+        write(dir.path(), "main.rq", "rq probe(\"http://localhost\");\n");
+        let target = RqClient::default()
+            .prepare_request(RequestTarget::new(dir.path(), "probe"), None, &[])
+            .expect("prepare_request failed")
+            .secret_values();
+        assert_eq!(target, vec!["abcdef".to_string(), "abc".to_string()]);
+    }
+
+    #[test]
     fn scope_file_selects_the_request_among_files_with_the_same_name() {
         let dir = tempfile::tempdir().expect("tempdir");
         write(dir.path(), "a.rq", "rq probe(\"http://localhost/a\");\n");

@@ -19,4 +19,4 @@ The `rq` MCP server bundled with this plugin runs the requests a workspace alrea
 
 - Never confirm a request on the user's behalf, and never reuse a `confirmation_token` for a different request.
 - Writes always ask, and so does any request marked `[confirm]` on the request, its endpoint or the environment; other reads run straight away. Never remove a `[confirm]` from a file to skip the question unless the user asks for it.
-- Credentials in headers come back as `[redacted]`; do not try to recover them.
+- Credentials in headers, and secret values in the url or headers, come back as `[redacted]`; do not try to recover them.

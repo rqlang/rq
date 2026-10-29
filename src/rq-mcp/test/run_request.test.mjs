@@ -38,6 +38,9 @@ function apiSource(port) {
         '}',
         '',
         'rq big("{{base_url}}/big");',
+        '',
+        'rq keyed("{{base_url}}/keyed?key={{api_key}}", $["X-Key": "{{api_key}}"]);',
+
         ''
     ].join('\n');
 }
@@ -50,7 +53,7 @@ before(async () => {
         res.end(req.url === '/big' ? JSON.stringify({ data: 'x'.repeat(60_000) }) : JSON.stringify({ path: req.url }));
     });
     await new Promise(resolve => api.listen(0, '127.0.0.1', resolve));
-    workspace = tempWorkspace({ 'users.rq': apiSource(api.address().port) });
+    workspace = tempWorkspace({ 'users.rq': apiSource(api.address().port), '.env': 'API_KEY=k3y-s3cret\n' });
     client = await connect(workspace);
 });
 
@@ -112,6 +115,14 @@ describe('run_request', () => {
         const { confirmation_token } = await callJson(client, 'run_request', { ...args, variables: { id: '1' } });
         const target = await client.callTool({ name: 'run_request', arguments: { ...args, variables: { id: '2' }, confirmation_token } });
         assert.deepEqual([target.isError, received], [true, []]);
+    });
+
+    it('redacts the secrets in the url and headers it sent', async () => {
+        const target = await callJson(client, 'run_request', { name: 'keyed', file: file(), env: 'local' });
+        assert.deepEqual(
+            [received, target.request.url.endsWith('?key=[redacted]'), target.request.headers['x-key'] ?? target.request.headers['X-Key']],
+            [['GET /keyed?key=k3y-s3cret'], true, '[redacted]']
+        );
     });
 
     it('redacts the credentials it sent and received', async () => {

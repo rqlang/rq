@@ -154,3 +154,17 @@ fn the_prepare_request_binding_asks_nobody_about_an_unmarked_read() {
         )
     );
 }
+
+#[test]
+fn the_prepare_request_binding_lists_the_secret_values_of_the_context() {
+    let files = r#"{"/workspace/users.rq": "rq list(\"http://x/users?key={{api_key}}\");\n"}"#;
+    let secrets = r#"{"env_file": "API_KEY=from-context-env\n"}"#;
+    let output =
+        rq_wasm::bindings::prepare_request(files, secrets, WORKSPACE, "list", None, None, None)
+            .unwrap_or_else(|_| String::from("{}"));
+    let target: serde_json::Value = serde_json::from_str(&output).unwrap_or_default();
+    assert_eq!(
+        target["secret_values"],
+        serde_json::json!(["from-context-env"])
+    );
+}

@@ -131,6 +131,7 @@ struct PreparedRequestJson {
     auth: Option<PreparedAuthJson>,
     confirmation_required: bool,
     agent_confirmation_required: bool,
+    secret_values: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -433,6 +434,7 @@ pub fn prepare_request(
         &variables,
     )
     .map_err(rq_err)?;
+    let secret_values = prepared.secret_values();
     let timeout_ms = prepared
         .timeout
         .map(|timeout| u64::try_from(timeout.as_millis()).unwrap_or(u64::MAX));
@@ -463,6 +465,7 @@ pub fn prepare_request(
         auth,
         confirmation_required,
         agent_confirmation_required,
+        secret_values,
     };
     serde_json::to_string(&view).map_err(|e| JsError::new(&e.to_string()))
 }

@@ -1,8 +1,10 @@
+import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { setWasmTransport, wasmCall } from '../wasmHost';
 import { buildSecretsMap, draftsJson, isDirectory, normalizePath } from '../utils';
+import { ExecuteRequestOptions, PreparedRequest, prepareRequest, requestScope, sendRequest } from '../execution';
 import { RESOURCE_BODIES, surface } from './surface';
 
 const DRAFT_FILE_NAME = 'draft.rq';
@@ -129,4 +131,110 @@ export function getRqReference(args: { doc: ReferenceDoc }): string {
         throw new Error(`Unknown rqlang document \`${args.doc}\`. Available: ${referenceDocIds().join(', ')}.`);
     }
     return RESOURCE_BODIES[definition.uri];
+}
+
+export interface RequestSummary {
+    request: string;
+    method: string;
+    url: string;
+    environment: string | null;
+}
+
+export type ConfirmationOutcome = 'accepted' | 'declined' | 'unanswered' | 'unavailable';
+
+export type ConfirmRequest = (summary: RequestSummary) => Promise<ConfirmationOutcome>;
+
+export interface RunRequestArgs {
+    name: string;
+    file?: string;
+    workspace_path?: string;
+    env?: string;
+    variables?: Record<string, string>;
+    confirmation_token?: string;
+}
+
+export const MAX_RESPONSE_BODY_LENGTH = 50_000;
+const CONFIRMATION_TTL_MS = 5 * 60 * 1000;
+const REDACTED = '[redacted]';
+const SENSITIVE_HEADERS = new Set(['authorization', 'proxy-authorization', 'cookie', 'set-cookie', 'x-api-key', 'x-auth-token']);
+const pendingConfirmations = new Map<string, { fingerprint: string; expiresAt: number }>();
+
+export async function runRequest(args: RunRequestArgs, confirm: ConfirmRequest): Promise<unknown> {
+    const workspace = await workspaceFor(args.workspace_path);
+    if (!args.file && isUnscoped(workspace)) {
+        throw new Error(`Refusing to search every file under ${workspace}: pass the project folder as \`workspace_path\` or the request's \`file\`.`);
+    }
+    const scope = await requestScope(workspace);
+    const options: ExecuteRequestOptions = {
+        requestName: args.name.replace(/\./g, '/'),
+        sourceFile: args.file ? posix(path.resolve(workspace, args.file)) : undefined,
+        environment: args.env,
+        variables: args.variables
+    };
+    const prepared = await prepareRequest(scope, options);
+    const summary = summaryOf(prepared, args.env);
+    if (prepared.agent_confirmation_required) {
+        const outcome = args.confirmation_token
+            ? redeemConfirmation(args.confirmation_token, fingerprintOf(summary, args.variables))
+            : await confirm(summary);
+        if (outcome === 'declined') {
+            return { status: 'declined', sent: false, request: summary };
+        }
+        if (outcome === 'unanswered') {
+            return { status: 'confirmation_timeout', sent: false, request: summary, message: surface.run_request.confirmation_timeout };
+        }
+        if (outcome === 'unavailable') {
+            return {
+                status: 'confirmation_required',
+                sent: false,
+                request: summary,
+                confirmation_token: issueConfirmation(fingerprintOf(summary, args.variables)),
+                message: surface.run_request.confirmation_required
+            };
+        }
+    }
+    const [result] = (await sendRequest(scope, options, prepared)).results;
+    const body = result.body.length > MAX_RESPONSE_BODY_LENGTH ? result.body.slice(0, MAX_RESPONSE_BODY_LENGTH) : result.body;
+    return {
+        status: 'sent',
+        sent: true,
+        request: { ...summary, headers: redactHeaders(result.request_headers) },
+        response: {
+            status: result.status,
+            elapsed_ms: result.elapsed_ms,
+            headers: redactHeaders(result.response_headers),
+            body,
+            body_truncated: body.length < result.body.length
+        }
+    };
+}
+
+function summaryOf(prepared: PreparedRequest, environment?: string): RequestSummary {
+    return { request: prepared.name, method: prepared.method, url: prepared.url, environment: environment ?? null };
+}
+
+function fingerprintOf(summary: RequestSummary, variables?: Record<string, string>): string {
+    const sortedVariables = Object.entries(variables ?? {}).sort(([a], [b]) => a.localeCompare(b));
+    return JSON.stringify([summary.request, summary.method, summary.url, summary.environment, sortedVariables]);
+}
+
+function issueConfirmation(fingerprint: string): string {
+    const token = crypto.randomUUID();
+    pendingConfirmations.set(token, { fingerprint, expiresAt: Date.now() + CONFIRMATION_TTL_MS });
+    return token;
+}
+
+function redeemConfirmation(token: string, fingerprint: string): ConfirmationOutcome {
+    const pending = pendingConfirmations.get(token);
+    pendingConfirmations.delete(token);
+    if (!pending || pending.expiresAt < Date.now() || pending.fingerprint !== fingerprint) {
+        throw new Error(surface.run_request.invalid_confirmation_token);
+    }
+    return 'accepted';
+}
+
+function redactHeaders(headers: Record<string, string>): Record<string, string> {
+    return Object.fromEntries(
+        Object.entries(headers).map(([name, value]) => [name, SENSITIVE_HEADERS.has(name.toLowerCase()) ? REDACTED : value])
+    );
 }

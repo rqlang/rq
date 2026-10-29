@@ -23,6 +23,7 @@ pub enum ExitCode {
     AuthError = 7,
     /// Variable resolution error
     VariableError = 8,
+    NotConfirmed = 9,
 }
 
 impl ExitCode {
@@ -46,6 +47,7 @@ impl From<&Box<dyn std::error::Error>> for ExitCode {
                 RqError::RequestNotFound(_) => ExitCode::NotFoundError,
                 RqError::EnvironmentNotFound(_) => ExitCode::ConfigError,
                 RqError::Network(_) => ExitCode::NetworkError,
+                RqError::NotConfirmed(_) => ExitCode::NotConfirmed,
                 RqError::Generic(_) => ExitCode::GeneralError,
             }
         } else {

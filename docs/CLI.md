@@ -173,8 +173,8 @@ Options:
 Behavior:
 
 - Resolves the specified request (including endpoint context if applicable).
-- In `text` mode, prints `name`, the optional `description`, `method`, `url`, `headers`, the optional `body`, `timeout` and `auth` (as `name (type)`), and `location` as `file:line:column`.
-- In `json` mode, prints the same fields as an object: `name`, optional `description`, `method`, `url`, `headers`, optional `body`, `timeout` and `auth` (`{"name", "type"}`), plus `file`, `line` and `column`.
+- In `text` mode, prints `name`, the optional `description`, `method`, `url`, `headers`, the optional `body`, `timeout` and `auth` (as `name (type)`), `confirmation_required` (`true` or `false`: whether running it in the chosen environment asks first, see [`confirm`](LANGUAGE_DEFINITION.md#confirm-attribute)), and `location` as `file:line:column`.
+- In `json` mode, prints the same fields as an object: `name`, optional `description`, `method`, `url`, `headers`, optional `body`, `timeout` and `auth` (`{"name", "type"}`), `confirmation_required`, plus `file`, `line` and `column`.
 
 Example:
 
@@ -200,6 +200,7 @@ Options:
 - `-f, --format <FORMAT>` – Output format: `text` or `json` (default: `text`).
 - `-p, --print <PARTS>` – Response parts to print, as any combination of `m` (meta: request name, method, URL, status and elapsed time), `h` (response headers) and `b` (response body). Letters combine in a single value, in any order: `-p hb` prints the headers and the body, `-p mhb` prints everything. Defaults to `mb`. The same parts are printed in `text` and `json` mode.
 - `--no-lint` – Skip the lint summary printed before running.
+- `-y, --yes` – Send requests marked [`[confirm]`](LANGUAGE_DEFINITION.md#confirm-attribute) without asking.
 
 Behavior:
 
@@ -241,6 +242,22 @@ Error handling:
 
 - If `--source` points to a non-existent path, the command exits with code `2` and prints `Path does not exist`.
 - If a variable override does not follow `NAME=VALUE`, or the variable name is invalid, the command fails with clear validation messages.
+
+#### Requests that need confirmation
+
+A request marked `[confirm]` — on the request, its endpoint or the environment it runs against (see [`confirm` attribute](LANGUAGE_DEFINITION.md#confirm-attribute)) — is not sent until you agree. The CLI asks on stderr before each such request:
+
+```
+Run DELETE https://api.example.com/users/1 against the `production` environment? [y/N]
+```
+
+Only `y` or `yes` (in any case) sends it; anything else stops the run there with exit code `9`, and the requests before it have already been sent. When stdin or stderr is not a terminal, as in a script or CI, nothing is asked: the run stops at the first marked request with exit code `9` and
+
+```
+Error: Request 'users/delete' is marked [confirm] and was not sent: run it from a terminal to be asked, or pass --yes to send it without asking
+```
+
+Pass `-y`/`--yes` to send marked requests without asking. Unmarked requests never ask, whatever their method.
 
 #### Required variables
 

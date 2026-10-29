@@ -36,6 +36,7 @@ const BASE_PREPARED = {
     body: null as string | null,
     timeout_ms: null as number | null,
     auth: null as unknown,
+    confirmation_required: false,
 };
 
 const PENDING_AUTH = {
@@ -82,6 +83,44 @@ beforeEach(() => {
 });
 
 describe('executeRequest', () => {
+    describe('confirmation', () => {
+        test('sends a request marked [confirm] once the user confirms it', async () => {
+            mockPrepareRequest.mockReturnValue(prepared({ confirmation_required: true }));
+            makeHttpsMock();
+
+            await executeRequest({ requestName: 'test-req', sourceDirectory: '/tmp/project', confirm: async () => true });
+
+            expect(https.request).toHaveBeenCalledTimes(1);
+        });
+
+        test('sends nothing when the user does not confirm a request marked [confirm]', async () => {
+            mockPrepareRequest.mockReturnValue(prepared({ confirmation_required: true }));
+            makeHttpsMock();
+
+            await expect(executeRequest({ requestName: 'test-req', sourceDirectory: '/tmp/project', confirm: async () => false }))
+                .rejects.toThrow('Cancelled by user');
+            expect(https.request).not.toHaveBeenCalled();
+        });
+
+        test('sends nothing for a request marked [confirm] when there is no one to ask', async () => {
+            mockPrepareRequest.mockReturnValue(prepared({ confirmation_required: true }));
+            makeHttpsMock();
+
+            await expect(executeRequest({ requestName: 'test-req', sourceDirectory: '/tmp/project' })).rejects.toThrow('Cancelled by user');
+            expect(https.request).not.toHaveBeenCalled();
+        });
+
+        test('does not ask about an unmarked request', async () => {
+            mockPrepareRequest.mockReturnValue(prepared());
+            makeHttpsMock();
+            const confirm = jest.fn(async () => true);
+
+            await executeRequest({ requestName: 'test-req', sourceDirectory: '/tmp/project', confirm });
+
+            expect(confirm).not.toHaveBeenCalled();
+        });
+    });
+
     describe('cancellation', () => {
         test('rejects without sending when cancellation was already requested', async () => {
             mockPrepareRequest.mockReturnValue(prepared());

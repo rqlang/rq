@@ -296,9 +296,9 @@ Arrays are not a type — `let a = ["x"];` is rejected at the declaration. `$[..
 
 ## 6. Attributes
 
-Annotations in square brackets placed immediately above an `rq`, `ep` or `env` statement.
+Annotations in square brackets placed immediately above an `rq`, `ep` or `env` statement. All take one argument in parentheses except `confirm`, which is written bare: `[confirm]`.
 
-Supported: `method`, `timeout`, `auth`, `required`, `doc.description` (on `rq`/`ep`) and `ui.color` (on `env` only).
+Supported: `method`, `timeout`, `auth`, `required`, `doc.description` (on `rq`/`ep`), `confirm` (on `rq`/`ep`/`env`) and `ui.color` (on `env` only).
 
 ```rq
 [method(POST)]
@@ -351,6 +351,23 @@ ep users("http://localhost:8080/users") {
 }
 ```
 
+### `confirm`
+Marks requests that must not be sent without someone saying yes. Bare, no parentheses (`[confirm()]` is a parse error); at most once per statement; valid on `rq`, `ep` and `env`; inherited from `ep` and templates, with no opt-out. A request needs confirmation when `confirm` is on the `rq`, its `ep` (or template) or the `env` it runs against. It never changes what a request sends. The CLI asks on the terminal (without one it exits with code 9 unless `--yes`), the VS Code extension shows a modal, and the MCP server asks the user before marked requests **and before every write**. `rq request show` reports `confirmation_required`.
+```rq
+[confirm]
+env production {
+  base_url: "https://api.example.com",
+}
+
+ep users("{{base_url}}/users") {
+  rq list();                          // asks only against production
+
+  [confirm]
+  [required(id)]
+  rq delete(id);                      // always asks
+}
+```
+
 ### `ui.color(color)`
 Marks an `env` with a color from a fixed palette: `red`, `orange`, `yellow`, `green`, `blue`, `purple` (bare lowercase identifier, no quotes, no interpolation). It is UI metadata only: it defines no variable and does not change what any request sends. The VS Code extension paints the selected environment in the Requests view with it, typically to flag `production`. At most one per `env`.
 ```rq
@@ -369,6 +386,7 @@ env production {
 | `method` | **no** | yes | **no** |
 | `required` | **no** | yes | **no** |
 | `doc.description` | yes | yes | **no** |
+| `confirm` | yes | yes | yes |
 | `ui.color` | **no** | **no** | yes |
 
 Using an attribute where the table says **no** is a parse error.
@@ -463,7 +481,7 @@ ep api("http://localhost:8080/api", qs: "api-version=1") {
 ```
 
 ### Attributes inside endpoints
-`timeout` and `auth` on `ep` apply as defaults to all child requests; child `rq` can override. `doc.description` is not inherited.
+`timeout` and `auth` on `ep` apply as defaults to all child requests; child `rq` can override. `doc.description` is not inherited; `confirm` is.
 
 ```rq
 [timeout(20)]

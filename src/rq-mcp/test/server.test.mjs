@@ -26,9 +26,9 @@ describe('server', () => {
         assert.match(client.getInstructions(), /get_rq_reference/);
     });
 
-    it('serves the authoring tools', async () => {
+    it('serves the authoring and running tools', async () => {
         const target = (await client.listTools()).tools.map(t => t.name).sort();
-        assert.deepEqual(target, ['get_rq_reference', 'lint_rq', 'list_requests', 'validate_rq']);
+        assert.deepEqual(target, ['get_rq_reference', 'lint_rq', 'list_requests', 'run_request', 'validate_rq']);
     });
 });
 

@@ -63,6 +63,7 @@ mod tests {
             auth_location: None,
             timeout: timeout.map(str::to_string),
             description: None,
+            confirm: false,
             required_variables: Vec::new(),
             source_path: None,
             related_files: Vec::new(),

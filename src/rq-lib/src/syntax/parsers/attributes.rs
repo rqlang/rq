@@ -16,6 +16,7 @@ use crate::syntax::{
 
 pub const ATTR_UI_COLOR: &str = "ui.color";
 pub const ATTR_DESCRIPTION: &str = "doc.description";
+pub const ATTR_CONFIRM: &str = "confirm";
 
 pub struct RequiredVariable {
     pub name: String,
@@ -32,6 +33,7 @@ pub struct AttributeContext {
     pub required_variables: Vec<RequiredVariable>,
     pub color: Option<UiColor>,
     pub description: Option<String>,
+    pub confirm: bool,
 }
 
 impl AttributeContext {
@@ -69,6 +71,13 @@ impl AttributeContext {
             return Err(format!("Duplicate attribute '{ATTR_DESCRIPTION}'"));
         }
         self.description = Some(description);
+        Ok(())
+    }
+    pub fn set_confirm(&mut self) -> Result<(), String> {
+        if self.confirm {
+            return Err(format!("Duplicate attribute '{ATTR_CONFIRM}'"));
+        }
+        self.confirm = true;
         Ok(())
     }
     pub fn add_required_variable(&mut self, name: String, line: usize, character: usize) {
@@ -511,6 +520,30 @@ impl AttributeParser for DescriptionAttributeParser {
         expect_punctuation(r, PUNC_RBRACKET)?;
 
         ctx.set_description(description)
+            .map_err(|msg| r.create_error_with_file(msg, name_span))?;
+        Ok(())
+    }
+}
+
+pub struct ConfirmAttributeParser;
+impl AttributeParser for ConfirmAttributeParser {
+    fn name(&self) -> &str {
+        ATTR_CONFIRM
+    }
+
+    fn parse(&self, r: &mut TokenReader, ctx: &mut AttributeContext) -> Result<(), SyntaxError> {
+        r.advance();
+        r.skip_ignorable();
+        let name_span = expect_attribute_name(r, ATTR_CONFIRM)?;
+        r.skip_ignorable();
+        expect_at_token(
+            r,
+            |t| t.token_type == TokenType::Punctuation && t.value == PUNC_RBRACKET,
+            format!("Expected ']'; '{ATTR_CONFIRM}' takes no arguments"),
+        )?;
+        r.advance();
+
+        ctx.set_confirm()
             .map_err(|msg| r.create_error_with_file(msg, name_span))?;
         Ok(())
     }

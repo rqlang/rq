@@ -113,6 +113,8 @@ struct RequestDetailsJson {
     auth: Option<AuthRef>,
     #[serde(rename = "RequiredVariables", skip_serializing_if = "Vec::is_empty")]
     required_variables: Vec<String>,
+    #[serde(rename = "ConfirmationRequired")]
+    confirmation_required: bool,
     file: String,
     line: usize,
     character: usize,
@@ -127,6 +129,8 @@ struct PreparedRequestJson {
     body: Option<String>,
     timeout_ms: Option<u64>,
     auth: Option<PreparedAuthJson>,
+    confirmation_required: bool,
+    agent_confirmation_required: bool,
 }
 
 #[derive(Serialize)]
@@ -399,6 +403,7 @@ pub fn get_request_details(
         timeout: details.timeout,
         auth,
         required_variables: details.required_variables,
+        confirmation_required: details.confirmation_required,
         file: details.file,
         line: details.line,
         character: details.character,
@@ -445,6 +450,8 @@ pub fn prepare_request(
         character: auth.config.character,
         token_required: auth.token_required,
     });
+    let confirmation_required = prepared.confirmation_required;
+    let agent_confirmation_required = prepared.agent_confirmation_required;
     let request = prepared.request;
     let view = PreparedRequestJson {
         name: request.name,
@@ -454,6 +461,8 @@ pub fn prepare_request(
         body: request.body,
         timeout_ms,
         auth,
+        confirmation_required,
+        agent_confirmation_required,
     };
     serde_json::to_string(&view).map_err(|e| JsError::new(&e.to_string()))
 }

@@ -21,4 +21,4 @@ When the output spans several files, run steps 4 and 5 once per file.
 
 - Some lint rules are cleared by moving code into another file; never delete content the user asked for just to silence a diagnostic.
 - Never add an `rq-lint-ignore` comment unless the user asks for that suppression.
-- The server authors and checks files; it never sends requests. Do not suggest `rq` CLI commands to run them unless the user asks how.
+- To run a request, follow the `rq-running` skill and use `run_request`. Do not suggest `rq` CLI commands to run one unless the user asks how to run it from a terminal.

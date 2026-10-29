@@ -1,0 +1,12 @@
+env local {
+  host: "http://localhost:8080",
+}
+
+[confirm]
+env production {
+  host: "https://api.example.com",
+}
+
+ep users("{{host}}/users") {
+  rq list();
+}

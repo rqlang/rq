@@ -21,6 +21,13 @@ export const surface = surfaceJson as {
         steps: Record<string, string>;
         constraints: string;
     };
+    run_request: {
+        confirmation_message: string;
+        environment_clause: string;
+        confirmation_required: string;
+        confirmation_timeout: string;
+        invalid_confirmation_token: string;
+    };
 };
 
 export const RESOURCE_BODIES: Record<string, string> = {

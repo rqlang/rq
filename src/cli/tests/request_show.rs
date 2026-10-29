@@ -706,3 +706,46 @@ fn test_request_show_description_json() -> Result<(), Box<dyn std::error::Error>
     assert_eq!(json["description"], "List every user");
     Ok(())
 }
+
+#[test]
+fn test_request_show_confirmation_text() -> Result<(), Box<dyn std::error::Error>> {
+    let output = rq_cmd()
+        .args([
+            "request",
+            "show",
+            "-s",
+            "tests/fixtures/request_show_confirm.rq",
+            "-n",
+            "users.list",
+            "-e",
+            "local",
+        ])
+        .output()?;
+    let stdout = String::from_utf8(output.stdout)?;
+    assert!(
+        stdout.contains("confirmation_required: false\n"),
+        "{stdout}"
+    );
+    Ok(())
+}
+
+#[test]
+fn test_request_show_confirmation_json() -> Result<(), Box<dyn std::error::Error>> {
+    let output = rq_cmd()
+        .args([
+            "request",
+            "show",
+            "-s",
+            "tests/fixtures/request_show_confirm.rq",
+            "-n",
+            "users.list",
+            "-e",
+            "production",
+            "-f",
+            "json",
+        ])
+        .output()?;
+    let json: Value = serde_json::from_slice(&output.stdout)?;
+    assert_eq!(json["confirmation_required"], true);
+    Ok(())
+}

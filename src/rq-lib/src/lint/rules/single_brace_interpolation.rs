@@ -119,7 +119,8 @@ mod tests {
 
     #[test]
     fn does_not_flag_single_braces_inside_a_description() {
-        let src = "[doc.description(\"Get the widget {widget_id}\")]\nrq get(\"http://x/widgets\");\n";
+        let src =
+            "[doc.description(\"Get the widget {widget_id}\")]\nrq get(\"http://x/widgets\");\n";
         assert!(!has_rule(src));
     }
 

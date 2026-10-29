@@ -113,3 +113,44 @@ fn prepared_body_reads_a_file_outside_the_workspace() {
     );
     assert_eq!(target.request.body.as_deref(), Some("shared fixture"));
 }
+
+fn confirmation_flags(name: &str) -> (serde_json::Value, serde_json::Value) {
+    let files = r#"{"/workspace/users.rq": "[confirm]\nrq purge(\"http://x/users\");\n\nrq list(\"http://x/users\");\n\n[method(POST)]\nrq create(\"http://x/users\", body: ${});\n"}"#;
+    let output = rq_wasm::bindings::prepare_request(files, "{}", WORKSPACE, name, None, None, None)
+        .unwrap_or_else(|_| String::from("{}"));
+    let target: serde_json::Value = serde_json::from_str(&output).unwrap_or_default();
+    (
+        target["confirmation_required"].clone(),
+        target["agent_confirmation_required"].clone(),
+    )
+}
+
+#[test]
+fn the_prepare_request_binding_asks_everyone_about_a_request_marked_confirm() {
+    assert_eq!(
+        confirmation_flags("purge"),
+        (serde_json::Value::Bool(true), serde_json::Value::Bool(true))
+    );
+}
+
+#[test]
+fn the_prepare_request_binding_asks_only_agents_about_an_unmarked_write() {
+    assert_eq!(
+        confirmation_flags("create"),
+        (
+            serde_json::Value::Bool(false),
+            serde_json::Value::Bool(true)
+        )
+    );
+}
+
+#[test]
+fn the_prepare_request_binding_asks_nobody_about_an_unmarked_read() {
+    assert_eq!(
+        confirmation_flags("list"),
+        (
+            serde_json::Value::Bool(false),
+            serde_json::Value::Bool(false)
+        )
+    );
+}

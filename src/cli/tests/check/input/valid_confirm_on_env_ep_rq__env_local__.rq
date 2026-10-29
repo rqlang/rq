@@ -1,0 +1,12 @@
+[confirm]
+env local {
+  base_url: "http://localhost:8080",
+}
+
+[confirm]
+ep users("{{base_url}}/users") {
+  rq list();
+}
+
+[confirm]
+rq health("{{base_url}}/health");

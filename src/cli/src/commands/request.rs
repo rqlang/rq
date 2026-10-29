@@ -5,11 +5,12 @@ use crate::commands::validators;
 use crate::core::error::RqError;
 use crate::core::formatter::{pretty_body, render, to_json, OutputFormat, TextBlock};
 use clap::{Args, Subcommand};
-use rq_lib::client::models::{RequestDetails, RequestTarget};
+use rq_lib::client::models::{PreparedRequest, RequestDetails, RequestTarget};
 use rq_lib::lint::LintScope;
 use rq_lib::{RequestExecutionResult, RqClient};
 use serde::Serialize;
 use std::collections::{BTreeMap, HashMap};
+use std::io::{IsTerminal, Write};
 use std::path::Path;
 use std::str::FromStr;
 
@@ -34,6 +35,7 @@ struct RequestDetailsView {
     timeout: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     auth: Option<AuthConfigView>,
+    confirmation_required: bool,
     #[serde(flatten)]
     location: Location,
 }
@@ -53,6 +55,7 @@ impl From<RequestDetails> for RequestDetailsView {
             body: details.body,
             timeout: details.timeout,
             auth,
+            confirmation_required: details.confirmation_required,
             location: Location::from_zero_based(details.file, details.line, details.character),
         }
     }
@@ -146,6 +149,7 @@ impl RequestDetailsView {
             .optional("body", self.body.as_deref())
             .optional("timeout", self.timeout.as_deref())
             .optional("auth", auth)
+            .field("confirmation_required", self.confirmation_required)
             .field("location", &self.location)
             .build()
     }
@@ -271,6 +275,13 @@ pub struct RunArgs {
         help = "Skip the lint summary printed before running"
     )]
     pub no_lint: bool,
+
+    #[arg(
+        short = 'y',
+        long = "yes",
+        help = "Send requests marked [confirm] without asking"
+    )]
+    pub yes: bool,
 }
 
 pub fn execute_list(args: &ListArgs) -> Result<(), Box<dyn std::error::Error>> {
@@ -337,6 +348,7 @@ pub async fn execute_run(args: &RunArgs) -> Result<(), Box<dyn std::error::Error
             request_name.as_deref(),
             args.env_args.environment.as_deref(),
             &args.variable,
+            &|prepared| confirm_request(prepared, args.env_args.environment.as_deref(), args.yes),
         )
         .await
         .map_err(|e| with_typed_request_name(e, args.request_name_args.name.as_deref()))?;
@@ -426,4 +438,66 @@ fn render_headers(headers: &HashMap<String, String>) -> String {
         .map(|(name, value)| format!("{name}: {value}"))
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+fn confirm_request(
+    prepared: &PreparedRequest,
+    environment: Option<&str>,
+    assume_yes: bool,
+) -> Result<(), RqError> {
+    if assume_yes {
+        return Ok(());
+    }
+    let name = &prepared.request.name;
+    if !(std::io::stdin().is_terminal() && std::io::stderr().is_terminal()) {
+        return Err(RqError::NotConfirmed(format!(
+            "Request '{name}' is marked [confirm] and was not sent: run it from a terminal to be asked, or pass --yes to send it without asking"
+        )));
+    }
+    eprint!("{} [y/N] ", confirmation_question(prepared, environment));
+    std::io::stderr().flush()?;
+    let mut answer = String::new();
+    std::io::stdin().read_line(&mut answer)?;
+    if is_yes(&answer) {
+        Ok(())
+    } else {
+        Err(RqError::NotConfirmed(format!(
+            "Request '{name}' was not sent: not confirmed"
+        )))
+    }
+}
+
+fn confirmation_question(prepared: &PreparedRequest, environment: Option<&str>) -> String {
+    let target = format!(
+        "{} {}",
+        prepared.request.method.as_str(),
+        prepared.request.url
+    );
+    match environment {
+        Some(environment) => format!("Run {target} against the `{environment}` environment?"),
+        None => format!("Run {target}?"),
+    }
+}
+
+fn is_yes(answer: &str) -> bool {
+    matches!(answer.trim().to_lowercase().as_str(), "y" | "yes")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_yes;
+
+    #[test]
+    fn accepts_y_and_yes_in_any_case() {
+        assert!(["y\n", "Y", " yes ", "YES\r\n"]
+            .iter()
+            .all(|answer| is_yes(answer)));
+    }
+
+    #[test]
+    fn treats_anything_else_as_no() {
+        assert!(!["", "\n", "n", "no", "yep", "sí"]
+            .iter()
+            .any(|answer| is_yes(answer)));
+    }
 }

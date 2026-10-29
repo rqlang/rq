@@ -1,6 +1,7 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { createServer } from '../../src/mcp/server';
+import { ElicitRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+import { confirmWithUser, createServer } from '../../src/mcp/server';
 import { RESOURCE_BODIES, surface } from '../../src/mcp/surface';
 
 async function connectedClient(): Promise<Client> {
@@ -46,7 +47,7 @@ describe('createServer', () => {
         const target = await connectedClient();
         const { tools } = await target.listTools();
         expect(tools.map(t => t.name).sort()).toEqual(
-            ['get_rq_reference', 'lint_rq', 'list_requests', 'validate_rq']
+            ['get_rq_reference', 'lint_rq', 'list_requests', 'run_request', 'validate_rq']
         );
     });
 
@@ -72,5 +73,91 @@ describe('createServer', () => {
         const target = await connectedClient();
         const result = await target.callTool({ name: 'get_rq_reference', arguments: { doc: 'nope' } });
         expect(result.isError).toBe(true);
+    });
+});
+
+const SUMMARY = { request: 'users/delete', method: 'DELETE', url: 'http://x/users/1', environment: 'production' };
+
+type Answer = { action: 'accept' | 'decline' | 'cancel' };
+
+async function serverWithClient(answer?: (message: string) => Answer | Promise<Answer>, schemas: unknown[] = []) {
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const server = createServer();
+    const client = new Client({ name: 'test', version: '0.0.0' }, { capabilities: answer ? { elicitation: { form: {} } } : {} });
+    const asked: string[] = [];
+    if (answer) {
+        client.setRequestHandler(ElicitRequestSchema, request => {
+            asked.push(request.params.message);
+            schemas.push('requestedSchema' in request.params ? request.params.requestedSchema : undefined);
+            return answer(request.params.message);
+        });
+    }
+    await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+    return { server, asked };
+}
+
+describe('confirmWithUser', () => {
+    it('reports confirmation as unavailable when the client cannot elicit', async () => {
+        const { server } = await serverWithClient();
+        expect(await confirmWithUser(server, SUMMARY)).toBe('unavailable');
+    });
+
+    it('accepts when the user accepts', async () => {
+        const { server } = await serverWithClient(() => ({ action: 'accept' }));
+        expect(await confirmWithUser(server, SUMMARY)).toBe('accepted');
+    });
+
+    it('declines when the user declines', async () => {
+        const { server } = await serverWithClient(() => ({ action: 'decline' }));
+        expect(await confirmWithUser(server, SUMMARY)).toBe('declined');
+    });
+
+    it('asks with no fields, so the client shows only accept and decline', async () => {
+        const schemas: unknown[] = [];
+        const { server } = await serverWithClient(() => ({ action: 'accept' }), schemas);
+        await confirmWithUser(server, SUMMARY);
+        expect(schemas).toEqual([{ type: 'object', properties: {} }]);
+    });
+
+    it('declines when the user dismisses the question', async () => {
+        const { server } = await serverWithClient(() => ({ action: 'cancel' }));
+        expect(await confirmWithUser(server, SUMMARY)).toBe('declined');
+    });
+
+    it('reports the question as unanswered once it times out', async () => {
+        const { server } = await serverWithClient(() => new Promise<Answer>(() => undefined));
+        expect(await confirmWithUser(server, SUMMARY, undefined, 20)).toBe('unanswered');
+    });
+
+    it('declines once the tool call is cancelled while the question is pending', async () => {
+        const cancellation = new AbortController();
+        const { server } = await serverWithClient(() => {
+            cancellation.abort();
+            return new Promise<Answer>(() => undefined);
+        });
+        expect(await confirmWithUser(server, SUMMARY, cancellation.signal)).toBe('declined');
+    });
+
+    it('declines a yes given after the tool call was cancelled', async () => {
+        const cancellation = new AbortController();
+        const { server } = await serverWithClient(() => {
+            cancellation.abort();
+            return { action: 'accept' };
+        });
+        expect(await confirmWithUser(server, SUMMARY, cancellation.signal)).toBe('declined');
+    });
+
+    it('shows the user the method, url and environment', async () => {
+        const { server, asked } = await serverWithClient(() => ({ action: 'decline' }));
+        await confirmWithUser(server, SUMMARY);
+        expect(asked).toEqual(['Run DELETE http://x/users/1 against the `production` environment?']);
+    });
+});
+
+describe('run_request', () => {
+    it('is annotated as a destructive, open-world tool', async () => {
+        const target = await connectedClient();
+        const { tools } = await target.listTools();
+        expect(tools.find(t => t.name === 'run_request')?.annotations).toMatchObject({ destructiveHint: true, readOnlyHint: false, openWorldHint: true });
     });
 });

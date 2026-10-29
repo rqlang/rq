@@ -7,6 +7,8 @@ import { ResultsMessage, ResultsPanels, ResultsSession, readResultsTabMode } fro
 import { Logger } from '../logger';
 import { CANCELLED_MESSAGE } from '../utils';
 
+const RUN_CONFIRMATION = 'Run';
+
 const RUNNING_CONTEXT_KEY = 'rq.requestRunning';
 
 interface RequestExecutionContext {
@@ -287,7 +289,8 @@ export class RequestRunner {
                     environment,
                     variables,
                     cancellation: execution.cancellationSource.token,
-                    acquireToken: (auth) => this.acquireInteractiveToken(auth)
+                    acquireToken: (auth) => this.acquireInteractiveToken(auth),
+                    confirm: (prepared) => confirmRequest(prepared, environment)
                 });
 
                 if (result.results.length > 0) {
@@ -451,4 +454,11 @@ export class RequestRunner {
 
         return lines.length > 0 ? lines.join('\n') : stderr;
     }
+}
+
+export async function confirmRequest(prepared: rqClient.PreparedRequest, environment?: string): Promise<boolean> {
+    const target = `${prepared.method} ${prepared.url}`;
+    const question = environment ? `Run ${target} against the '${environment}' environment?` : `Run ${target}?`;
+    const choice = await vscode.window.showWarningMessage(question, { modal: true, detail: 'The request is marked [confirm].' }, RUN_CONFIRMATION);
+    return choice === RUN_CONFIRMATION;
 }

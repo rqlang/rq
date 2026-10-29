@@ -1,0 +1,10 @@
+{
+  "errors": [
+    {
+      "file": "{{*}}",
+      "line": 1,
+      "column": 9,
+      "message": "Expected ']'; 'confirm' takes no arguments"
+    }
+  ]
+}

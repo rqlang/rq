@@ -8,7 +8,7 @@ nav_order: 9
 
 # MCP Server
 
-`rq-mcp` is an [MCP](https://modelcontextprotocol.io) server that teaches AI assistants to write `.rq` files correctly. The VS Code extension registers it automatically for Copilot, and any other MCP client — Claude Code, Claude Desktop, Cursor, Windsurf, Codex, Gemini CLI, Zed — runs it from npm as [`@rqlang/mcp`](https://www.npmjs.com/package/@rqlang/mcp).
+`rq-mcp` is an [MCP](https://modelcontextprotocol.io) server that teaches AI assistants to write `.rq` files correctly, and lets them run the requests a workspace already has. The VS Code extension registers it automatically for Copilot, and any other MCP client — Claude Code, Claude Desktop, Cursor, Windsurf, Codex, Gemini CLI, Zed — runs it from npm as [`@rqlang/mcp`](https://www.npmjs.com/package/@rqlang/mcp).
 
 For a hands-on walkthrough, start with [AI-Assisted Authoring](AI_ASSISTED_AUTHORING.md). This page is the reference: what each tool does, what the checks enforce, and what they do not.
 
@@ -94,7 +94,31 @@ Given a `workspace_path` the lint also sees the *other* `.rq` files in the works
 
 ### `list_requests`
 
-Enumerates every named request reachable from `path` (defaulting to the workspace folder), returning each request's name, endpoint and file. An assistant calls this before generating so new names don't collide — and so it can tell a genuinely new entity from one that already has requests elsewhere.
+Enumerates every named request reachable from `path` (defaulting to the workspace folder), returning each request's name, method, URL (not interpolated), endpoint and file, plus the text of its [`doc.description`](LANGUAGE_DEFINITION.md#docdescription-attribute) and of its endpoint's. An assistant calls this before generating so new names don't collide — and so it can tell a genuinely new entity from one that already has requests elsewhere. It is also how it finds the request to run: asked to "show me all the users", it matches those words against the descriptions, names and URLs.
+
+### `run_request`
+
+Sends an existing request and returns its response: `{ status: "sent", request: {request, method, url, environment, headers}, response: {status, elapsed_ms, headers, body, body_truncated} }`. The request goes through the same pipeline as `rq request run` and the extension's **Run**, so it carries the same URL, headers, body, auth and timeout.
+
+| Parameter | Purpose |
+|---|---|
+| `name` | Request name as `list_requests` reports it, `users/list` or `users.list`. Required |
+| `file` | The `file` `list_requests` reported, to pick it when several files define the same name |
+| `workspace_path` | Folder whose `.env` secrets apply; defaults to the folder the server runs in |
+| `env` | Environment to run against |
+| `variables` | Runtime values, such as the ones `[required(...)]` asks for |
+| `confirmation_token` | The token from a held request, once the user has agreed to run it |
+
+**Confirmation.** A request marked [`[confirm]`](LANGUAGE_DEFINITION.md#confirm-attribute) — on the request, its endpoint or the environment — needs the user's consent, as it does in the CLI and the extension. So does every write (`POST`, `PUT`, `PATCH`, `DELETE`), marked or not, because nobody is watching the assistant pick it. Unmarked reads run straight away:
+
+- When the client supports [elicitation](https://modelcontextprotocol.io/specification/2025-11-25/client/elicitation), the server asks the user directly ("Run POST http://… against the `production` environment?") and sends the request only on a yes. A no returns `{ status: "declined", sent: false }`. A question left unanswered for five minutes returns `{ status: "confirmation_timeout", sent: false }`, and a tool call the client cancels sends nothing, even if the user says yes afterwards.
+- Otherwise nothing is sent and the tool returns `{ status: "confirmation_required", sent: false, request, confirmation_token }`. The assistant must ask the user and call again with the same arguments plus the token. A token works once, for that exact request (same method, URL, environment and variables), within five minutes.
+
+The tool is annotated as destructive, so clients that gate tools on annotations ask before calling it at all.
+
+**What comes back.** The values of `Authorization`, `Proxy-Authorization`, `Cookie`, `Set-Cookie`, `X-Api-Key` and `X-Auth-Token` are replaced by `[redacted]`, and a body longer than 50,000 characters is cut there with `body_truncated: true`. A credential written into the URL itself is not redacted.
+
+**Auth.** Bearer tokens and OAuth2 client credentials (with a secret or a certificate) work. Flows that need a browser login (authorization code, implicit) are not supported yet: such a request fails with an error, and can still be run by passing a token as the `auth_token` variable.
 
 ### `get_rq_reference`
 
@@ -183,7 +207,7 @@ These are the same findings the editor shows in the Problems panel as warnings u
 
 ## Guarantees and limits
 
-- **It authors, it does not execute.** No tool fires a request, and the server will not propose CLI commands for running one unless you ask how. See the [CLI](CLI.md) for that.
+- **It runs only what is already written.** `run_request` sends a request that exists in a `.rq` file; the assistant cannot make one up on the fly. It asks the user before every write and before every request marked `[confirm]`.
 - **It validates rqlang, not your API.** A file that passes both tools is well-formed and idiomatic. Whether the path exists, the payload matches the schema, or the token carries the right scope is still yours to verify — run the request and read the response.
 - **It does not import formats.** There is no OpenAPI, Swagger or Postman importer anywhere in rq. Generating requests from a spec works because the *assistant* reads the file and the server checks the result, which is why it works for any format the assistant can read.
 - **It does not make an assistant deterministic.** The rules constrain the shape of the output, not the naming or the reasoning behind it. Read what lands before you commit it.

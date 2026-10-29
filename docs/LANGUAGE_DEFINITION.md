@@ -461,7 +461,7 @@ Arrays are not a type: `let a = ["x"];` is rejected at the declaration. A list o
 
 ## Attributes
 
-Attributes are annotations written in square brackets that modify how a request behaves. They are placed immediately above an `rq` or `ep` statement (and, for `ui.color`, above an `env` statement):
+Attributes are annotations written in square brackets that modify how a request behaves. They are placed immediately above an `rq` or `ep` statement (and, for `ui.color` and `confirm`, above an `env` statement). Most take one argument in parentheses; `confirm` is written bare, with no parentheses:
 
 ```
 [method(POST)]
@@ -481,6 +481,7 @@ The following attributes are currently supported:
 - `auth`
 - `required`
 - `doc.description`
+- `confirm` (on `rq`, `ep` and `env`, see [`confirm` attribute](#confirm-attribute))
 - `ui.color` (only on `env`, see [Marking an environment with a color](#marking-an-environment-with-a-color))
 
 ### `method` attribute
@@ -583,6 +584,39 @@ ep users("http://localhost:8080/users") {
 - It is metadata only: it does not define a variable and never changes what a request sends.
 - Tools show it next to the request: `rq request show` prints it, the VS Code extension uses it in the Requests view tooltip, and the MCP server's `list_requests` returns it (with the endpoint's as `endpoint_description`) so that an assistant can find the request a user describes in their own words.
 
+### `confirm` attribute
+
+`confirm` marks requests that must not go out without someone saying yes, typically everything that touches production or deletes data. Every tool that runs requests asks before sending one:
+
+```
+env local {
+  base_url: "http://localhost:8080",
+}
+
+[confirm]
+env production {
+  base_url: "https://api.example.com",
+}
+
+ep users("{{base_url}}/users") {
+  rq list();
+
+  [confirm]
+  [required(id)]
+  rq delete(id);
+}
+```
+
+- It is written bare: `[confirm]`. It takes no arguments, so `[confirm()]` is a parse error.
+- It is valid on `rq`, `ep` and `env` statements, at most once per statement.
+- A request needs confirmation when `confirm` is on the request itself, on its endpoint (or a template the endpoint extends), or on the environment it is run against. In the example, `users.delete` always asks and `users.list` asks only against `production`.
+- It is inherited: an endpoint passes it to its requests and a template to the endpoints that extend it. A request cannot opt out of a `confirm` it inherits.
+- It never changes what a request sends. It only decides whether a tool asks first:
+  - **CLI** — `rq request run` asks on the terminal before each marked request and sends it only on `y`/`yes`. Without a terminal (a script, CI) it does not send it and exits with code 9, unless `--yes` is passed. See [`rq request run`](CLI.md#rq-request-run).
+  - **VS Code extension** — a modal dialog asks before the request is sent, on every run and on **Run again**.
+  - **MCP server** — an assistant asks the user before a marked request, and also before every write (`POST`, `PUT`, `PATCH`, `DELETE`) whether marked or not, since nobody is watching it type. See [`run_request`](MCP_SERVER.md#run_request).
+- `rq request show` reports the outcome for the chosen environment as `confirmation_required`.
+
 ## Environments
 
 Environments allow you to group variable values under a named context (such as `local`, `dev`, or `production`) and then run the same `.rq` file against different backends or settings without changing the file itself.
@@ -640,7 +674,7 @@ env production {
 
 The value is one of a fixed palette, written as a bare lowercase identifier: `red`, `orange`, `yellow`, `green`, `blue` or `purple`. Strings, variables and interpolation are not accepted.
 
-- `ui.color` is valid only on `env` statements; using it on `rq` or `ep` is a parse error, and so is using `method`, `timeout`, `auth`, `required` or `doc.description` on an `env`.
+- `ui.color` is valid only on `env` statements; using it on `rq` or `ep` is a parse error, and so is using `method`, `timeout`, `auth`, `required` or `doc.description` on an `env`. `confirm` is the only other attribute an `env` accepts.
 - It may appear at most once per environment.
 - It is UI metadata only: it does not define a variable and never changes what a request sends.
 - The VS Code extension paints the selected environment in the Requests view with this color (see [Environment color](VSCODE_EXTENSION.md#environment-color)).
@@ -792,9 +826,10 @@ Not all attributes are valid on both `ep` and `rq` statements. The table below s
 | `method`  | no   | yes  |
 | `required`| no   | yes  |
 | `doc.description` | yes | yes |
+| `confirm` | yes | yes |
 | `ui.color`| no   | no   |
 
-When an attribute is placed on an `ep` statement, it applies as a default to all `rq` requests inside that endpoint block (except `doc.description`, which only describes the endpoint itself). An `rq` statement can override or extend those defaults with its own attributes.
+When an attribute is placed on an `ep` statement, it applies as a default to all `rq` requests inside that endpoint block (except `doc.description`, which only describes the endpoint itself; `confirm` is inherited too). An `rq` statement can override or extend those defaults with its own attributes.
 
 ```
 [timeout(20)]

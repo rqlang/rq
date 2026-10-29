@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { RequestRunner } from '../../src/commands/runRequest';
+import { confirmRequest, RequestRunner } from '../../src/commands/runRequest';
 import { RequestExplorerProvider } from '../../src/requestExplorer';
 import { createExplorerState } from '../memento-mock';
 import * as cliService from '../../src/rqClient';
@@ -724,5 +724,33 @@ describe('runRequest Commands', () => {
             expect(panels[1].title).toBe('RQ: b');
             expect(panels[1].webview.html).toBe('<html>error</html>');
         });
+    });
+});
+
+describe('confirmRequest', () => {
+    const PREPARED = { name: 'users/delete', method: 'DELETE', url: 'https://api.example.com/users/1', headers: [], confirmation_required: true, agent_confirmation_required: true };
+
+    beforeEach(() => jest.clearAllMocks());
+
+    test('asks with a modal naming the method, url and environment', async () => {
+        (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(undefined);
+
+        await confirmRequest(PREPARED, 'production');
+
+        expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+            "Run DELETE https://api.example.com/users/1 against the 'production' environment?",
+            expect.objectContaining({ modal: true }),
+            'Run'
+        );
+    });
+
+    test('confirms when the user picks Run', async () => {
+        (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue('Run');
+        expect(await confirmRequest(PREPARED)).toBe(true);
+    });
+
+    test('does not confirm when the user dismisses the modal', async () => {
+        (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(undefined);
+        expect(await confirmRequest(PREPARED)).toBe(false);
     });
 });

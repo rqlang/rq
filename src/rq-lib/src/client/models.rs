@@ -26,6 +26,7 @@ pub struct RequestDetails {
     pub timeout: Option<String>,
     pub description: Option<String>,
     pub required_variables: Vec<String>,
+    pub confirmation_required: bool,
     pub file: String,
     pub line: usize,
     pub character: usize,
@@ -99,6 +100,8 @@ pub struct PreparedRequest {
     pub request: Request,
     pub timeout: Option<Duration>,
     pub auth: Option<PreparedAuth>,
+    pub confirmation_required: bool,
+    pub agent_confirmation_required: bool,
     pub(crate) context: VariableContext,
 }
 

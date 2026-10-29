@@ -23,6 +23,9 @@ impl HttpMethod {
             _ => None,
         }
     }
+    pub fn is_safe(&self) -> bool {
+        matches!(self, Self::GET | Self::HEAD | Self::OPTIONS)
+    }
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::GET => "GET",

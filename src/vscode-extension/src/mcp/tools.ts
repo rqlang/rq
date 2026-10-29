@@ -4,7 +4,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { setWasmTransport, wasmCall } from '../wasmHost';
 import { buildSecretsMap, draftsJson, isDirectory, normalizePath } from '../utils';
-import { ExecuteRequestOptions, PreparedRequest, prepareRequest, requestDefinition, requestScope, sendRequest } from '../execution';
+import { CancellationSignal, ExecuteRequestOptions, PreparedRequest, prepareRequest, requestDefinition, requestScope, sendRequest } from '../execution';
 import { RESOURCE_BODIES, surface } from './surface';
 
 const DRAFT_FILE_NAME = 'draft.rq';
@@ -159,7 +159,7 @@ const REDACTED = '[redacted]';
 const SENSITIVE_HEADERS = new Set(['authorization', 'proxy-authorization', 'cookie', 'set-cookie', 'x-api-key', 'x-auth-token']);
 const pendingConfirmations = new Map<string, { fingerprint: string; expiresAt: number }>();
 
-export async function runRequest(args: RunRequestArgs, confirm: ConfirmRequest): Promise<unknown> {
+export async function runRequest(args: RunRequestArgs, confirm: ConfirmRequest, signal?: AbortSignal): Promise<unknown> {
     const workspace = await workspaceFor(args.workspace_path);
     if (!args.file && isUnscoped(workspace)) {
         throw new Error(`Refusing to search every file under ${workspace}: pass the project folder as \`workspace_path\` or the request's \`file\`.`);
@@ -169,7 +169,8 @@ export async function runRequest(args: RunRequestArgs, confirm: ConfirmRequest):
         requestName: args.name.replace(/\./g, '/'),
         sourceFile: args.file ? posix(path.resolve(workspace, args.file)) : undefined,
         environment: args.env,
-        variables: args.variables
+        variables: args.variables,
+        cancellation: cancellationOf(signal)
     };
     const prepared = await prepareRequest(scope, options);
     const summary = summaryOf(prepared, args.env);
@@ -213,6 +214,19 @@ export async function runRequest(args: RunRequestArgs, confirm: ConfirmRequest):
 function summaryOf(prepared: PreparedRequest, environment?: string): RequestSummary {
     const url = redactSecrets(prepared.url, prepared.secret_values);
     return { request: prepared.name, method: prepared.method, url, environment: environment ?? null };
+}
+
+function cancellationOf(signal?: AbortSignal): CancellationSignal | undefined {
+    if (!signal) {
+        return undefined;
+    }
+    return {
+        get isCancellationRequested() { return signal.aborted; },
+        onCancellationRequested(listener: () => void) {
+            signal.addEventListener('abort', listener);
+            return { dispose: () => signal.removeEventListener('abort', listener) };
+        }
+    };
 }
 
 async function fingerprintOf(args: RunRequestArgs, workspace: string, definition: Promise<unknown>): Promise<string> {

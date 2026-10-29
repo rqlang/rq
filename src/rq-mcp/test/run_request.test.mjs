@@ -46,7 +46,8 @@ function apiSource(port) {
         'rq stamped("{{base_url}}/stamped/{{stamp}}", body: ${});',
         '',
         'rq keyed("{{base_url}}/keyed?key={{api_key}}", $["X-Key": "{{api_key}}"]);',
-
+        '',
+        'rq slow("{{base_url}}/slow");',
         ''
     ].join('\n');
 }
@@ -54,6 +55,10 @@ function apiSource(port) {
 before(async () => {
     api = http.createServer((req, res) => {
         received.push(`${req.method} ${req.url}`);
+        if (req.url === '/slow') {
+            res.on('close', () => received.push('closed'));
+            return;
+        }
         res.setHeader('content-type', 'application/json');
         res.setHeader('set-cookie', 'session=abc');
         res.end(req.url === '/big' ? JSON.stringify({ data: 'x'.repeat(60_000) }) : JSON.stringify({ path: req.url }));
@@ -147,6 +152,20 @@ describe('run_request', () => {
             [received, target.request.url.endsWith('?key=[redacted]'), target.request.headers['x-key'] ?? target.request.headers['X-Key']],
             [['GET /keyed?key=k3y-s3cret'], true, '[redacted]']
         );
+    });
+
+    it('stops sending once the tool call is cancelled', async () => {
+        const cancellation = new AbortController();
+        const call = client.callTool({ name: 'run_request', arguments: { name: 'slow', file: file(), env: 'local' } }, undefined, { signal: cancellation.signal });
+        while (received.length === 0) {
+            await new Promise(resolve => setTimeout(resolve, 10));
+        }
+        cancellation.abort();
+        await assert.rejects(call);
+        while (received.length < 2) {
+            await new Promise(resolve => setTimeout(resolve, 10));
+        }
+        assert.deepEqual(received, ['GET /slow', 'closed']);
     });
 
     it('redacts the credentials it sent and received', async () => {

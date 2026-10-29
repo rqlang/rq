@@ -89,7 +89,7 @@ export function createServer(): McpServer {
         annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true }
     }, async (args, extra) => {
         try {
-            return jsonResult(await runRequest(args, summary => confirmWithUser(server, summary, extra.signal)));
+            return jsonResult(await runRequest(args, summary => confirmWithUser(server, summary, extra.signal), extra.signal));
         } catch (err) {
             return errorResult(err instanceof Error ? err.message : String(err));
         }

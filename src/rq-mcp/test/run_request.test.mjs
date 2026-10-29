@@ -48,6 +48,7 @@ function apiSource(port) {
         'rq keyed("{{base_url}}/keyed?key={{api_key}}", $["X-Key": "{{api_key}}"]);',
         '',
         'rq slow("{{base_url}}/slow");',
+
         ''
     ].join('\n');
 }
@@ -174,6 +175,16 @@ describe('run_request', () => {
             [target.request.headers.Authorization ?? target.request.headers.authorization, target.response.headers['set-cookie']],
             ['[redacted]', '[redacted]']
         );
+    });
+
+    it('rejects a variable the request does not declare as required', async () => {
+        const target = await client.callTool({ name: 'run_request', arguments: { name: 'users/list', file: file(), env: 'local', variables: { base_url: 'http://127.0.0.1:1' } } });
+        assert.deepEqual([target.isError, target.content[0].text.includes('`base_url`'), received], [true, true, []]);
+    });
+
+    it('accepts the auth_token variable', async () => {
+        const target = await callJson(client, 'run_request', { name: 'users/list', file: file(), env: 'local', variables: { auth_token: 'given' } });
+        assert.equal(target.status, 'sent');
     });
 
     it('truncates a long response body', async () => {

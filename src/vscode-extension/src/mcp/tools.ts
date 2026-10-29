@@ -154,6 +154,7 @@ export interface RunRequestArgs {
 }
 
 export const MAX_RESPONSE_BODY_LENGTH = 50_000;
+const AUTH_TOKEN_VARIABLE = 'auth_token';
 const CONFIRMATION_TTL_MS = 5 * 60 * 1000;
 const REDACTED = '[redacted]';
 const SENSITIVE_HEADERS = new Set(['authorization', 'proxy-authorization', 'cookie', 'set-cookie', 'x-api-key', 'x-auth-token']);
@@ -172,12 +173,14 @@ export async function runRequest(args: RunRequestArgs, confirm: ConfirmRequest, 
         variables: args.variables,
         cancellation: cancellationOf(signal)
     };
+    const definition = await requestDefinition(scope, options) as { RequiredVariables?: string[] };
+    rejectUndeclaredVariables(args.variables, definition.RequiredVariables ?? []);
     const prepared = await prepareRequest(scope, options);
     const summary = summaryOf(prepared, args.env);
     if (prepared.agent_confirmation_required) {
-        const fingerprint = () => fingerprintOf(args, workspace, requestDefinition(scope, options));
+        const fingerprint = () => fingerprintOf(args, workspace, definition);
         const outcome = args.confirmation_token
-            ? redeemConfirmation(args.confirmation_token, await fingerprint())
+            ? redeemConfirmation(args.confirmation_token, fingerprint())
             : await confirm(summary);
         if (outcome === 'declined') {
             return { status: 'declined', sent: false, request: summary };
@@ -190,7 +193,7 @@ export async function runRequest(args: RunRequestArgs, confirm: ConfirmRequest, 
                 status: 'confirmation_required',
                 sent: false,
                 request: summary,
-                confirmation_token: issueConfirmation(await fingerprint()),
+                confirmation_token: issueConfirmation(fingerprint()),
                 message: surface.run_request.confirmation_required
             };
         }
@@ -211,6 +214,16 @@ export async function runRequest(args: RunRequestArgs, confirm: ConfirmRequest, 
     };
 }
 
+function rejectUndeclaredVariables(variables: Record<string, string> | undefined, required: string[]): void {
+    const allowed = new Set([...required, AUTH_TOKEN_VARIABLE]);
+    const undeclared = Object.keys(variables ?? {}).filter(name => !allowed.has(name));
+    if (undeclared.length > 0) {
+        throw new Error(surface.run_request.undeclared_variables
+            .replace('{variables}', undeclared.map(name => `\`${name}\``).join(', '))
+            .replace('{required}', required.length > 0 ? required.map(name => `\`${name}\``).join(', ') : 'none'));
+    }
+}
+
 function summaryOf(prepared: PreparedRequest, environment?: string): RequestSummary {
     const url = redactSecrets(prepared.url, prepared.secret_values);
     return { request: prepared.name, method: prepared.method, url, environment: environment ?? null };
@@ -229,9 +242,9 @@ function cancellationOf(signal?: AbortSignal): CancellationSignal | undefined {
     };
 }
 
-async function fingerprintOf(args: RunRequestArgs, workspace: string, definition: Promise<unknown>): Promise<string> {
+function fingerprintOf(args: RunRequestArgs, workspace: string, definition: unknown): string {
     const variables = Object.entries(args.variables ?? {}).sort(([a], [b]) => a.localeCompare(b));
-    return canonicalJson([args.name, args.file ?? null, workspace, args.env ?? null, variables, await definition]);
+    return canonicalJson([args.name, args.file ?? null, workspace, args.env ?? null, variables, definition]);
 }
 
 function canonicalJson(value: unknown): string {

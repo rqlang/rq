@@ -103,10 +103,10 @@ Sends an existing request and returns its response: `{ status: "sent", request: 
 | Parameter | Purpose |
 |---|---|
 | `name` | Request name as `list_requests` reports it, `users/list` or `users.list`. Required |
-| `file` | The `file` `list_requests` reported, to pick it when several files define the same name |
+| `file` | The `file` `list_requests` reported, to pick it when several files define the same name. |
 | `workspace_path` | Folder whose `.env` secrets apply; defaults to the folder the server runs in |
 | `env` | Environment to run against |
-| `variables` | Runtime values, such as the ones `[required(...)]` asks for |
+| `variables` | The values the request's `[required(...)]` attributes ask for, plus `auth_token`. Any other name is rejected, so a call cannot point a request at another host or change what it sends |
 | `confirmation_token` | The token from a held request, once the user has agreed to run it |
 
 **Confirmation.** A request marked [`[confirm]`](LANGUAGE_DEFINITION.md#confirm-attribute) — on the request, its endpoint or the environment — needs the user's consent, as it does in the CLI and the extension. So does every write (`POST`, `PUT`, `PATCH`, `DELETE`), marked or not, because nobody is watching the assistant pick it. Unmarked reads run straight away:

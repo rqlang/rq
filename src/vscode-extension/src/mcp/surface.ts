@@ -27,6 +27,7 @@ export const surface = surfaceJson as {
         confirmation_required: string;
         confirmation_timeout: string;
         invalid_confirmation_token: string;
+        undeclared_variables: string;
     };
 };
 

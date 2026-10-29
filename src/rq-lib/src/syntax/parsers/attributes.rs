@@ -1,6 +1,6 @@
 use std::ops::Range;
 
-use super::utils::unescape_string;
+use super::utils::{normalize_multiline_string, unescape_string};
 use crate::syntax::{
     error::SyntaxError,
     http_method::HttpMethod,
@@ -557,7 +557,10 @@ fn parse_description_text(r: &mut TokenReader) -> Result<String, SyntaxError> {
         "Expected description string literal".to_string(),
     )?;
     r.advance();
-    Ok(unescape_string(string_literal_content(&text_tok.value)))
+    Ok(unescape_string(&normalize_multiline_string(
+        string_literal_content(&text_tok.value),
+        " ",
+    )))
 }
 
 fn string_literal_content(literal: &str) -> &str {

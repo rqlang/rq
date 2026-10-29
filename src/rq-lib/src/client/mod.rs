@@ -3494,6 +3494,22 @@ mod description_tests {
     }
 
     #[test]
+    fn get_request_details_joins_the_lines_of_a_multiline_description() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let file = dir.path().join("users.rq");
+        std::fs::write(
+            &file,
+            "[doc.description(\"List users\n        newest first\")]\nrq list(\"http://x\");\n",
+        )
+        .expect("write");
+        let target = RqClient::default()
+            .get_request_details(RequestTarget::new(&file, "list"), None, false, false, &[])
+            .expect("details")
+            .description;
+        assert_eq!(target, Some("List users newest first".to_string()));
+    }
+
+    #[test]
     fn get_request_details_unescapes_the_description() {
         let dir = tempfile::tempdir().expect("tempdir");
         let file = dir.path().join("users.rq");

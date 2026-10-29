@@ -4,7 +4,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { setWasmTransport, wasmCall } from '../wasmHost';
 import { buildSecretsMap, draftsJson, isDirectory, normalizePath } from '../utils';
-import { ExecuteRequestOptions, PreparedRequest, prepareRequest, requestScope, sendRequest } from '../execution';
+import { ExecuteRequestOptions, PreparedRequest, prepareRequest, requestDefinition, requestScope, sendRequest } from '../execution';
 import { RESOURCE_BODIES, surface } from './surface';
 
 const DRAFT_FILE_NAME = 'draft.rq';
@@ -174,8 +174,9 @@ export async function runRequest(args: RunRequestArgs, confirm: ConfirmRequest):
     const prepared = await prepareRequest(scope, options);
     const summary = summaryOf(prepared, args.env);
     if (prepared.agent_confirmation_required) {
+        const fingerprint = () => fingerprintOf(args, workspace, requestDefinition(scope, options));
         const outcome = args.confirmation_token
-            ? redeemConfirmation(args.confirmation_token, fingerprintOf(summary, args.variables))
+            ? redeemConfirmation(args.confirmation_token, await fingerprint())
             : await confirm(summary);
         if (outcome === 'declined') {
             return { status: 'declined', sent: false, request: summary };
@@ -188,7 +189,7 @@ export async function runRequest(args: RunRequestArgs, confirm: ConfirmRequest):
                 status: 'confirmation_required',
                 sent: false,
                 request: summary,
-                confirmation_token: issueConfirmation(fingerprintOf(summary, args.variables)),
+                confirmation_token: issueConfirmation(await fingerprint()),
                 message: surface.run_request.confirmation_required
             };
         }
@@ -214,14 +215,31 @@ function summaryOf(prepared: PreparedRequest, environment?: string): RequestSumm
     return { request: prepared.name, method: prepared.method, url, environment: environment ?? null };
 }
 
-function fingerprintOf(summary: RequestSummary, variables?: Record<string, string>): string {
-    const sortedVariables = Object.entries(variables ?? {}).sort(([a], [b]) => a.localeCompare(b));
-    return JSON.stringify([summary.request, summary.method, summary.url, summary.environment, sortedVariables]);
+async function fingerprintOf(args: RunRequestArgs, workspace: string, definition: Promise<unknown>): Promise<string> {
+    const variables = Object.entries(args.variables ?? {}).sort(([a], [b]) => a.localeCompare(b));
+    return canonicalJson([args.name, args.file ?? null, workspace, args.env ?? null, variables, await definition]);
+}
+
+function canonicalJson(value: unknown): string {
+    if (Array.isArray(value)) {
+        return `[${value.map(canonicalJson).join(',')}]`;
+    }
+    if (value !== null && typeof value === 'object') {
+        const entries = Object.entries(value).sort(([a], [b]) => a.localeCompare(b));
+        return `{${entries.map(([key, entry]) => `${JSON.stringify(key)}:${canonicalJson(entry)}`).join(',')}}`;
+    }
+    return JSON.stringify(value) ?? 'null';
 }
 
 function issueConfirmation(fingerprint: string): string {
+    const now = Date.now();
+    for (const [token, pending] of pendingConfirmations) {
+        if (pending.expiresAt < now) {
+            pendingConfirmations.delete(token);
+        }
+    }
     const token = crypto.randomUUID();
-    pendingConfirmations.set(token, { fingerprint, expiresAt: Date.now() + CONFIRMATION_TTL_MS });
+    pendingConfirmations.set(token, { fingerprint, expiresAt: now + CONFIRMATION_TTL_MS });
     return token;
 }
 

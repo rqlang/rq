@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import { after, before, beforeEach, describe, it } from 'node:test';
@@ -38,6 +39,11 @@ function apiSource(port) {
         '}',
         '',
         'rq big("{{base_url}}/big");',
+        '',
+        'let stamp = random.guid();',
+        '',
+        '[method(POST)]',
+        'rq stamped("{{base_url}}/stamped/{{stamp}}", body: ${});',
         '',
         'rq keyed("{{base_url}}/keyed?key={{api_key}}", $["X-Key": "{{api_key}}"]);',
 
@@ -115,6 +121,24 @@ describe('run_request', () => {
         const { confirmation_token } = await callJson(client, 'run_request', { ...args, variables: { id: '1' } });
         const target = await client.callTool({ name: 'run_request', arguments: { ...args, variables: { id: '2' }, confirmation_token } });
         assert.deepEqual([target.isError, received], [true, []]);
+    });
+
+    it('sends a held request whose url changes on every call once it is confirmed', async () => {
+        const args = { name: 'stamped', file: file(), env: 'local' };
+        const { confirmation_token } = await callJson(client, 'run_request', args);
+        const target = await callJson(client, 'run_request', { ...args, confirmation_token });
+        assert.deepEqual([target.status, received.length], ['sent', 1]);
+    });
+
+    it('refuses a confirmation token once the request was edited', async () => {
+        const orders = path.join(workspace, 'orders.rq');
+        fs.writeFileSync(orders, '[method(POST)]\nrq create("http://127.0.0.1:1/orders", body: ${"total": 1});\n');
+        const args = { name: 'create', file: orders };
+        const { confirmation_token } = await callJson(client, 'run_request', args);
+        fs.writeFileSync(orders, '[method(POST)]\nrq create("http://127.0.0.1:1/orders", body: ${"total": 1000});\n');
+        const target = await client.callTool({ name: 'run_request', arguments: { ...args, confirmation_token } });
+        fs.rmSync(orders);
+        assert.equal(target.isError, true);
     });
 
     it('redacts the secrets in the url and headers it sent', async () => {

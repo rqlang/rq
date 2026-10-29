@@ -95,6 +95,12 @@ export async function prepareRequest(scope: RequestScope, options: ExecuteReques
     ) as PreparedRequest;
 }
 
+export async function requestDefinition(scope: RequestScope, options: ExecuteRequestOptions): Promise<unknown> {
+    return JSON.parse(
+        await wasmCall('get_request_details', [scope.filesJson, scope.secretsJson, scope.source, options.requestName, options.environment, false, true, toVariablesJson(options.variables), resolveScopeFile(options.sourceFile)])
+    );
+}
+
 export async function sendRequest(scope: RequestScope, options: ExecuteRequestOptions, preparedRequest: PreparedRequest): Promise<ExecuteRequestResult> {
     let prepared = preparedRequest;
     if (prepared.auth?.token_required) {

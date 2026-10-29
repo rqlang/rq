@@ -112,7 +112,7 @@ Sends an existing request and returns its response: `{ status: "sent", request: 
 **Confirmation.** A request marked [`[confirm]`](LANGUAGE_DEFINITION.md#confirm-attribute) — on the request, its endpoint or the environment — needs the user's consent, as it does in the CLI and the extension. So does every write (`POST`, `PUT`, `PATCH`, `DELETE`), marked or not, because nobody is watching the assistant pick it. Unmarked reads run straight away:
 
 - When the client supports [elicitation](https://modelcontextprotocol.io/specification/2025-11-25/client/elicitation), the server asks the user directly ("Run POST http://… against the `production` environment?") and sends the request only on a yes. A no returns `{ status: "declined", sent: false }`. A question left unanswered for five minutes returns `{ status: "confirmation_timeout", sent: false }`, and a tool call the client cancels sends nothing, even if the user says yes afterwards.
-- Otherwise nothing is sent and the tool returns `{ status: "confirmation_required", sent: false, request, confirmation_token }`. The assistant must ask the user and call again with the same arguments plus the token. A token works once, for that exact request (same method, URL, environment and variables), within five minutes.
+- Otherwise nothing is sent and the tool returns `{ status: "confirmation_required", sent: false, request, confirmation_token }`. The assistant must ask the user and call again with the same arguments plus the token. A token works once, for that exact request (same name, file, workspace, environment and variables, and the request unchanged in its file), within five minutes.
 
 The tool is annotated as destructive, so clients that gate tools on annotations ask before calling it at all.
 

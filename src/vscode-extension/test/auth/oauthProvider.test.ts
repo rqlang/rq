@@ -66,6 +66,18 @@ describe('OAuthProvider', () => {
         expect([result.accessToken, (callbackHandlers.handleLocalServerCallback as jest.Mock).mock.calls.length]).toEqual(['refreshed', 0]);
     });
 
+    test('keeps a token another provider stored while its own flow was running', async () => {
+        fetchMock.mockResponse({ access_token: 'fresh', token_type: 'Bearer', expires_in: 3600 });
+        const store = memoryStore();
+        const target = new OAuthProvider(store, ui);
+        (callbackHandlers.handleLocalServerCallback as jest.Mock).mockImplementationOnce(async (_ui: AuthUi, authUrl: string) => {
+            store.value = cached('other', Date.now() + 3_600_000);
+            return { code: 'code', state: new URL(authUrl).searchParams.get('state') };
+        });
+        await target.executeOAuth2Flow(CONFIG, 'authorization_code_pkce', 'mine');
+        expect([store.value?.includes('"other"'), store.value?.includes('"fresh"')]).toEqual([true, true]);
+    });
+
     test('clears the store', async () => {
         const store = memoryStore(cached('stored', Date.now() + 3_600_000));
         await new OAuthProvider(store, ui).clearTokenCache();

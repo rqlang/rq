@@ -76,7 +76,12 @@ export async function handleLocalServerCallback(ui: AuthUi, authUrl: string, red
     const redirectUrl = new URL(redirectUri);
     return new Promise((resolve, reject) => {
         let timer: ReturnType<typeof setTimeout> | undefined;
+        let finished = false;
         const finish = (outcome: () => void) => {
+            if (finished) {
+                return;
+            }
+            finished = true;
             clearTimeout(timer);
             server.close();
             outcome();

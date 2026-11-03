@@ -118,7 +118,13 @@ The tool is annotated as destructive, so clients that gate tools on annotations 
 
 **What comes back.** The values of `Authorization`, `Proxy-Authorization`, `Cookie`, `Set-Cookie`, `X-Api-Key` and `X-Auth-Token` are replaced by `[redacted]`, and so is any secret value (from `.env` or an `RQ__` environment variable) found in the URL or another header, also in the confirmation question. A body longer than 50,000 characters is cut there with `body_truncated: true`, and the server stops reading the response at that point. The instructions tell the assistant to treat the body as untrusted data, never as instructions. Response bodies are returned as received, so a secret an API echoes back is not redacted.
 
-**Auth.** Bearer tokens and OAuth2 client credentials (with a secret or a certificate) work. Flows that need a browser login (authorization code, implicit) are not supported yet: such a request fails with an error, and can still be run by passing a token as the `auth_token` variable.
+**Auth.** Bearer tokens and OAuth2 client credentials (with a secret or a certificate) work as they do everywhere else. The authorization code flow, which needs the user to sign in in a browser, works when the auth's `redirect_uri` is a loopback address (`http://localhost:PORT/…` or `http://127.0.0.1:PORT/…`) registered for the app. The server never opens a browser itself. When it needs a token:
+
+- It waits for the browser's redirect on a local server on that port, for five minutes.
+- When the client supports URL [elicitation](https://modelcontextprotocol.io/specification/2025-11-25/client/elicitation), the server asks it to show the user the sign-in page, and tells it when the sign-in finished so it can close that page. Once they sign in, the same call sends the request. A user who refuses gets `{ status: "declined", sent: false }`.
+- Otherwise nothing is sent and the tool returns `{ status: "authorization_required", sent: false, request, authorization_url }`. The assistant shows the URL to the user and calls again with the same arguments once they say they signed in. A call made while the sign-in is still pending returns the same URL.
+
+The sign-in comes before the confirmation, so a write that needs both asks to sign in first. The server keeps tokens in memory only, per auth and environment, refreshes them when the provider issued a refresh token, and forgets them when it stops. It shares no tokens with the VS Code extension. Tokens are redacted from the headers it reports. A `vscode://` redirect (the default when `redirect_uri` is missing) or any other address, and the implicit flow, are not supported: such a request fails with an error, and can still be run by passing a token as the `auth_token` variable.
 
 ### `get_rq_reference`
 

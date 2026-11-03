@@ -127,6 +127,14 @@ describe('handleLocalServerCallback', () => {
         expect([target, (ui.openUrl as jest.Mock).mock.calls[0][0]]).toEqual([{ code: 'foo', state: 'bar' }, AUTH_URL]);
     });
 
+    it('keeps the code it received when opening the url fails afterwards', async () => {
+        const ui = fakeUi({ openUrl: jest.fn(async () => {
+            await visit(`${redirectUri}?code=foo&state=bar`);
+            throw new Error('declined late');
+        }) });
+        expect(await handleLocalServerCallback(ui, AUTH_URL, redirectUri)).toEqual({ code: 'foo', state: 'bar' });
+    });
+
     it('escapes the error it shows on the callback page', async () => {
         let page: Promise<{ status: number; body: string }> | undefined;
         const ui = fakeUi({ openUrl: jest.fn(async () => { page = visit(`${redirectUri}?error=%3Cscript%3E`); }) });

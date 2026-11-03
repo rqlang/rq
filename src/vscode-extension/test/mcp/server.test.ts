@@ -1,7 +1,7 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { ElicitRequestSchema } from '@modelcontextprotocol/sdk/types.js';
-import { confirmWithUser, createServer } from '../../src/mcp/server';
+import { ElicitationCompleteNotificationSchema, ElicitRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+import { confirmWithUser, createServer, openAuthorizationUrl } from '../../src/mcp/server';
 import { RESOURCE_BODIES, surface } from '../../src/mcp/surface';
 
 async function connectedClient(): Promise<Client> {
@@ -151,6 +151,68 @@ describe('confirmWithUser', () => {
         const { server, asked } = await serverWithClient(() => ({ action: 'decline' }));
         await confirmWithUser(server, SUMMARY);
         expect(asked).toEqual(['Run DELETE http://x/users/1 against the `production` environment?']);
+    });
+});
+
+async function serverWithUrlClient(elicitation: Record<string, unknown>, answer: () => Answer | Promise<Answer> = () => ({ action: 'accept' })) {
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const server = createServer();
+    const client = new Client({ name: 'test', version: '0.0.0' }, { capabilities: { elicitation } });
+    const asked: unknown[] = [];
+    client.setRequestHandler(ElicitRequestSchema, request => {
+        asked.push(request.params);
+        return answer();
+    });
+    await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+    return { server, client, asked };
+}
+
+const AUTHORIZATION_URL = 'https://auth.example.com/authorize?client_id=app';
+const FINISHED = Promise.resolve();
+
+describe('openAuthorizationUrl', () => {
+    it('reports the url as unavailable when the client cannot open urls', async () => {
+        const { server } = await serverWithUrlClient({ form: {} });
+        expect(await openAuthorizationUrl(server, AUTHORIZATION_URL, 'login', FINISHED)).toBe('unavailable');
+    });
+
+    it('accepts when the user agrees to open the url', async () => {
+        const { server } = await serverWithUrlClient({ url: {} });
+        expect(await openAuthorizationUrl(server, AUTHORIZATION_URL, 'login', FINISHED)).toBe('accepted');
+    });
+
+    it('declines when the user refuses to open the url', async () => {
+        const { server } = await serverWithUrlClient({ url: {} }, () => ({ action: 'decline' }));
+        expect(await openAuthorizationUrl(server, AUTHORIZATION_URL, 'login', FINISHED)).toBe('declined');
+    });
+
+    it('declines once the question times out', async () => {
+        const { server } = await serverWithUrlClient({ url: {} }, () => new Promise<Answer>(() => undefined));
+        expect(await openAuthorizationUrl(server, AUTHORIZATION_URL, 'login', FINISHED, undefined, 20)).toBe('declined');
+    });
+
+    it('tells the client the sign-in finished, with the id it asked with', async () => {
+        let finish: () => void = () => undefined;
+        const finished = new Promise<void>(resolve => { finish = resolve; });
+        const { server, client, asked } = await serverWithUrlClient({ url: {} }, () => {
+            finish();
+            return new Promise<Answer>(() => undefined);
+        });
+        const completed = new Promise<unknown>(resolve => {
+            client.setNotificationHandler(ElicitationCompleteNotificationSchema, notification => resolve(notification.params.elicitationId));
+        });
+        openAuthorizationUrl(server, AUTHORIZATION_URL, 'login', finished, undefined, 1000).catch(() => undefined);
+        expect(await completed).toBe((asked[0] as { elicitationId: string }).elicitationId);
+    });
+
+    it('asks the client to open the url and names the auth', async () => {
+        const { server, asked } = await serverWithUrlClient({ url: {} });
+        await openAuthorizationUrl(server, AUTHORIZATION_URL, 'login', FINISHED);
+        expect(asked).toEqual([expect.objectContaining({
+            mode: 'url',
+            url: AUTHORIZATION_URL,
+            message: 'Open this page and sign in to authorize `login`, so rq can send the request'
+        })]);
     });
 });
 

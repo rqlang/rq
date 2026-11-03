@@ -1,7 +1,9 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
+import * as crypto from 'crypto';
 import { z } from 'zod';
+import { AuthorizationUrlOutcome, Authorizer } from './authorization';
 import { buildGenerateRqPrompt, render, RESOURCE_BODIES, surface } from './surface';
 import { ConfirmationOutcome, getRqReference, listRequests, lintRq, ReferenceDoc, referenceDocIds, RequestSummary, runRequest, useDirectWasm, validateRq } from './tools';
 
@@ -21,6 +23,11 @@ export function createServer(): McpServer {
     const server = new McpServer(
         { name: SERVER_NAME, version: SERVER_VERSION },
         { instructions: render(surface.instructions), capabilities: { tools: {}, resources: {}, prompts: {} } }
+    );
+
+    const authorizer = new Authorizer(
+        (url, auth, finished, signal) => openAuthorizationUrl(server, url, auth.name, finished, signal),
+        message => process.stderr.write(`[OAuth] ${message}\n`)
     );
 
     server.registerTool('validate_rq', {
@@ -89,7 +96,10 @@ export function createServer(): McpServer {
         annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true }
     }, async (args, extra) => {
         try {
-            return jsonResult(await runRequest(args, summary => confirmWithUser(server, summary, extra.signal), extra.signal));
+            return jsonResult(await runRequest(args, {
+                confirm: summary => confirmWithUser(server, summary, extra.signal),
+                authorize: (auth, signal) => authorizer.authorize(auth, signal)
+            }, extra.signal));
         } catch (err) {
             return errorResult(err instanceof Error ? err.message : String(err));
         }
@@ -142,6 +152,36 @@ export async function confirmWithUser(
         }
         if (err instanceof McpError && err.code === ErrorCode.RequestTimeout) {
             return 'unanswered';
+        }
+        throw err;
+    }
+}
+
+export async function openAuthorizationUrl(
+    server: McpServer,
+    url: string,
+    authName: string,
+    finished: Promise<void>,
+    signal?: AbortSignal,
+    timeout = CONFIRMATION_TIMEOUT_MS
+): Promise<AuthorizationUrlOutcome> {
+    if (!server.server.getClientCapabilities()?.elicitation?.url) {
+        return 'unavailable';
+    }
+    const elicitationId = crypto.randomUUID();
+    const notifyCompletion = server.server.createElicitationCompletionNotifier(elicitationId);
+    finished.then(() => notifyCompletion()).catch(() => undefined);
+    try {
+        const result = await server.server.elicitInput({
+            mode: 'url',
+            message: surface.run_request.authorization_message.replace('{auth}', authName),
+            url,
+            elicitationId
+        }, { signal, timeout });
+        return result.action === 'accept' && !signal?.aborted ? 'accepted' : 'declined';
+    } catch (err) {
+        if (signal?.aborted || (err instanceof McpError && err.code === ErrorCode.RequestTimeout)) {
+            return 'declined';
         }
         throw err;
     }

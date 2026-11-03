@@ -5,6 +5,7 @@ import * as path from 'path';
 import { setWasmTransport, wasmCall } from '../wasmHost';
 import { buildSecretsMap, draftsJson, isDirectory, normalizePath } from '../utils';
 import { CancellationSignal, ExecuteRequestOptions, PreparedRequest, prepareRequest, requestDefinition, requestScope, sendRequest } from '../execution';
+import { Authorize, isInteractiveAuth } from './authorization';
 import { RESOURCE_BODIES, surface } from './surface';
 
 const DRAFT_FILE_NAME = 'draft.rq';
@@ -144,6 +145,11 @@ export type ConfirmationOutcome = 'accepted' | 'declined' | 'unanswered' | 'unav
 
 export type ConfirmRequest = (summary: RequestSummary) => Promise<ConfirmationOutcome>;
 
+export interface RunRequestPrompts {
+    confirm: ConfirmRequest;
+    authorize: Authorize;
+}
+
 export interface RunRequestArgs {
     name: string;
     file?: string;
@@ -161,13 +167,13 @@ const REDACTED = '[redacted]';
 const SENSITIVE_HEADERS = new Set(['authorization', 'proxy-authorization', 'cookie', 'set-cookie', 'x-api-key', 'x-auth-token']);
 const pendingConfirmations = new Map<string, { fingerprint: string; expiresAt: number }>();
 
-export async function runRequest(args: RunRequestArgs, confirm: ConfirmRequest, signal?: AbortSignal): Promise<unknown> {
+export async function runRequest(args: RunRequestArgs, prompts: RunRequestPrompts, signal?: AbortSignal): Promise<unknown> {
     const workspace = await workspaceFor(args.workspace_path);
     if (!args.file && isUnscoped(workspace)) {
         throw new Error(`Refusing to search every file under ${workspace}: pass the project folder as \`workspace_path\` or the request's \`file\`.`);
     }
     const scope = await requestScope(workspace);
-    const options: ExecuteRequestOptions = {
+    let options: ExecuteRequestOptions = {
         requestName: args.name.replace(/\./g, '/'),
         sourceFile: args.file ? await fileInside(workspace, args.file) : undefined,
         environment: args.env,
@@ -177,13 +183,32 @@ export async function runRequest(args: RunRequestArgs, confirm: ConfirmRequest, 
     };
     const definition = await requestDefinition(scope, options) as { RequiredVariables?: string[] };
     rejectUndeclaredVariables(args.variables, definition.RequiredVariables ?? []);
-    const prepared = await prepareRequest(scope, options);
+    let prepared = await prepareRequest(scope, options);
     const summary = summaryOf(prepared, args.env);
+    const secrets = [...prepared.secret_values];
+    if (prepared.auth?.token_required && isInteractiveAuth(prepared.auth.auth_type)) {
+        const authorization = await prompts.authorize({ ...prepared.auth, environment: args.env }, signal);
+        if (authorization.status === 'declined') {
+            return { status: 'declined', sent: false, request: summary };
+        }
+        if (authorization.status === 'authorization_required') {
+            return {
+                status: 'authorization_required',
+                sent: false,
+                request: summary,
+                authorization_url: authorization.authorizationUrl,
+                message: surface.run_request.authorization_required.replace('{auth}', prepared.auth.name)
+            };
+        }
+        options = { ...options, variables: { ...args.variables, [AUTH_TOKEN_VARIABLE]: authorization.token } };
+        prepared = await prepareRequest(scope, options);
+        secrets.push(authorization.token);
+    }
     if (prepared.agent_confirmation_required) {
         const fingerprint = () => fingerprintOf(args, workspace, definition);
         const outcome = args.confirmation_token
             ? redeemConfirmation(args.confirmation_token, fingerprint())
-            : await confirm(summary);
+            : await prompts.confirm(summary);
         if (outcome === 'declined') {
             return { status: 'declined', sent: false, request: summary };
         }
@@ -205,11 +230,11 @@ export async function runRequest(args: RunRequestArgs, confirm: ConfirmRequest, 
     return {
         status: 'sent',
         sent: true,
-        request: { ...summary, headers: redactHeaders(result.request_headers, prepared.secret_values) },
+        request: { ...summary, headers: redactHeaders(result.request_headers, secrets) },
         response: {
             status: result.status,
             elapsed_ms: result.elapsed_ms,
-            headers: redactHeaders(result.response_headers, prepared.secret_values),
+            headers: redactHeaders(result.response_headers, secrets),
             body,
             body_truncated: Boolean(result.body_truncated) || body.length < result.body.length
         }

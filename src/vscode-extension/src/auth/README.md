@@ -46,7 +46,7 @@ import { vscodeOAuthProvider } from './auth/vscodeAuth';
 const token = await performOAuth2Flow(preparedAuth, vscodeOAuthProvider(context, outputChannel));
 ```
 
-Another host builds its own `OAuthProvider` from an `AuthUi` and a `TokenStore`. One provider instance keeps the cache it loaded, so a host that keeps the instance alive avoids rereading the store.
+Another host builds its own `OAuthProvider` from an `AuthUi` and a `TokenStore`, as the MCP server does in `mcp/authorization.ts` with a store kept in memory. One provider instance keeps the cache it loaded, so a host that keeps the instance alive avoids rereading the store.
 
 ## Security
 

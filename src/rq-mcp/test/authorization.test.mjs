@@ -1,0 +1,235 @@
+import assert from 'node:assert/strict';
+import http from 'node:http';
+import net from 'node:net';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { after, afterEach, before, beforeEach, describe, it } from 'node:test';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { ElicitationCompleteNotificationSchema, ElicitRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+import { callJson, connect, tempWorkspace } from './client.mjs';
+
+const serverEntry = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'dist', 'server.js');
+
+let api;
+let received;
+let tokens;
+let workspace;
+let redirectPort;
+
+function freePort() {
+    return new Promise((resolve, reject) => {
+        const probe = net.createServer();
+        probe.on('error', reject);
+        probe.listen(0, '127.0.0.1', () => {
+            const { port } = probe.address();
+            probe.close(() => resolve(port));
+        });
+    });
+}
+
+function apiSource(apiPort) {
+    return [
+        `auth login(auth_type.oauth2_authorization_code) {`,
+        '    client_id: "app",',
+        `    authorization_url: "http://127.0.0.1:${apiPort}/authorize",`,
+        `    token_url: "http://127.0.0.1:${apiPort}/token",`,
+        `    redirect_uri: "http://127.0.0.1:${redirectPort}/callback",`,
+        '}',
+        '',
+        `auth vscode_login(auth_type.oauth2_authorization_code) {`,
+        '    client_id: "app",',
+        `    authorization_url: "http://127.0.0.1:${apiPort}/authorize",`,
+        `    token_url: "http://127.0.0.1:${apiPort}/token",`,
+        '}',
+        '',
+        '[auth("login")]',
+        `rq me("http://127.0.0.1:${apiPort}/me");`,
+        '',
+        '[auth("login")]',
+        '[method(POST)]',
+        `rq rename("http://127.0.0.1:${apiPort}/me", body: \${"name": "ada"});`,
+        '',
+        '[auth("vscode_login")]',
+        `rq other("http://127.0.0.1:${apiPort}/other");`,
+        ''
+    ].join('\n');
+}
+
+function signIn(authorizationUrl) {
+    const url = new URL(authorizationUrl);
+    const redirect = `${url.searchParams.get('redirect_uri')}?code=granted&state=${url.searchParams.get('state')}`;
+    return new Promise((resolve, reject) => {
+        http.get(redirect, res => {
+            res.resume();
+            res.on('end', resolve);
+        }).on('error', reject);
+    });
+}
+
+async function connectOpeningUrls(answer, onComplete = () => undefined) {
+    const client = new Client({ name: 'rq-mcp-test', version: '0.0.0' }, { capabilities: { elicitation: { url: {}, form: {} } } });
+    client.setRequestHandler(ElicitRequestSchema, request => answer(request.params));
+    client.setNotificationHandler(ElicitationCompleteNotificationSchema, notification => onComplete(notification.params.elicitationId));
+    await client.connect(new StdioClientTransport({ command: process.execPath, args: [serverEntry], cwd: workspace, stderr: 'ignore' }));
+    return client;
+}
+
+before(async () => {
+    api = http.createServer((req, res) => {
+        if (req.url === '/token') {
+            tokens += 1;
+            res.setHeader('content-type', 'application/json');
+            res.end(JSON.stringify({ access_token: `issued-token-${tokens}`, token_type: 'Bearer', expires_in: 3600 }));
+            return;
+        }
+        received.push(`${req.method} ${req.url} ${req.headers.authorization ?? ''}`);
+        res.setHeader('content-type', 'application/json');
+        res.end(JSON.stringify({ path: req.url }));
+    });
+    await new Promise(resolve => api.listen(0, '127.0.0.1', resolve));
+    redirectPort = await freePort();
+    workspace = tempWorkspace({ 'api.rq': apiSource(api.address().port) });
+});
+
+after(async () => {
+    await new Promise(resolve => api.close(resolve));
+});
+
+beforeEach(() => {
+    received = [];
+    tokens = 0;
+});
+
+const file = () => path.join(workspace, 'api.rq');
+
+describe('run_request with a sign-in, on a client that cannot open urls', () => {
+    let client;
+
+    beforeEach(async () => {
+        client = await connect(workspace);
+    });
+
+    afterEach(async () => {
+        await client.close();
+    });
+
+    it('returns the authorization url and sends nothing', async () => {
+        const target = await callJson(client, 'run_request', { name: 'me', file: file() });
+        await signIn(target.authorization_url);
+        assert.deepEqual([target.status, target.sent, new URL(target.authorization_url).pathname, received], ['authorization_required', false, '/authorize', []]);
+    });
+
+    it('sends the request with the token once the user signed in', async () => {
+        const { authorization_url } = await callJson(client, 'run_request', { name: 'me', file: file() });
+        await signIn(authorization_url);
+        const target = await callJson(client, 'run_request', { name: 'me', file: file() });
+        assert.deepEqual([target.status, received], ['sent', ['GET /me Bearer issued-token-1']]);
+    });
+
+    it('redacts the token in the headers it reports', async () => {
+        const { authorization_url } = await callJson(client, 'run_request', { name: 'me', file: file() });
+        await signIn(authorization_url);
+        const target = await callJson(client, 'run_request', { name: 'me', file: file() });
+        assert.equal(JSON.stringify(target).includes('issued-token'), false);
+    });
+
+    it('keeps the token for the next request without another sign-in', async () => {
+        const { authorization_url } = await callJson(client, 'run_request', { name: 'me', file: file() });
+        await signIn(authorization_url);
+        await callJson(client, 'run_request', { name: 'me', file: file() });
+        const target = await callJson(client, 'run_request', { name: 'me', file: file() });
+        assert.deepEqual([target.status, tokens], ['sent', 1]);
+    });
+
+    it('signs in before asking to confirm a write', async () => {
+        const args = { name: 'rename', file: file() };
+        const { authorization_url } = await callJson(client, 'run_request', args);
+        await signIn(authorization_url);
+        const target = await callJson(client, 'run_request', args);
+        assert.deepEqual([target.status, received], ['confirmation_required', []]);
+    });
+
+    it('refuses an auth whose redirect only VS Code can receive', async () => {
+        const target = await client.callTool({ name: 'run_request', arguments: { name: 'other', file: file() } });
+        assert.deepEqual([target.isError, target.content[0].text.includes('the VS Code default'), received], [true, true, []]);
+    });
+});
+
+describe('run_request with a sign-in, on a client that opens urls', () => {
+    let client;
+    let asked;
+
+    before(async () => {
+        client = await connectOpeningUrls(async params => {
+            asked.push(params.mode);
+            if (params.mode === 'url') {
+                await signIn(params.url);
+            }
+            return { action: 'accept' };
+        });
+    });
+
+    beforeEach(() => {
+        asked = [];
+    });
+
+    after(async () => {
+        await client.close();
+    });
+
+    it('asks the client to open the url and sends the request in the same call', async () => {
+        const target = await callJson(client, 'run_request', { name: 'me', file: file() });
+        assert.deepEqual([target.status, asked, received], ['sent', ['url'], ['GET /me Bearer issued-token-1']]);
+    });
+});
+
+describe('run_request with a sign-in, on a client that keeps the page open until told the sign-in finished', () => {
+    let client;
+    const completions = new Map();
+    const opened = [];
+    const closed = [];
+
+    before(async () => {
+        client = await connectOpeningUrls(async params => {
+            opened.push(params.elicitationId);
+            const completed = new Promise(resolve => completions.set(params.elicitationId, resolve));
+            await signIn(params.url);
+            await completed;
+            return { action: 'accept' };
+        }, id => {
+            closed.push(id);
+            completions.get(id)?.();
+        });
+    });
+
+    after(async () => {
+        await client.close();
+    });
+
+    it('sends the request', async () => {
+        const target = await callJson(client, 'run_request', { name: 'me', file: file() });
+        assert.deepEqual([target.status, received], ['sent', ['GET /me Bearer issued-token-1']]);
+    });
+
+    it('tells the client the sign-in finished, so it closes the page', async () => {
+        assert.deepEqual([opened.length, closed], [1, opened]);
+    });
+});
+
+describe('run_request with a sign-in the user declines', () => {
+    let client;
+
+    before(async () => {
+        client = await connectOpeningUrls(async () => ({ action: 'decline' }));
+    });
+
+    after(async () => {
+        await client.close();
+    });
+
+    it('sends nothing', async () => {
+        const target = await callJson(client, 'run_request', { name: 'me', file: file() });
+        assert.deepEqual([target.status, target.sent, received], ['declined', false, []]);
+    });
+});

@@ -72,6 +72,11 @@ export class OAuthProvider {
     private async cacheToken(cacheKey: string, config: OAuth2Config, result: OAuth2Result): Promise<void> {
         const expiresIn = result.expiresIn || DEFAULT_EXPIRES_IN_SECONDS;
         const expiresAt = Date.now() + expiresIn * 1000;
+        try {
+            this.tokenCache = new Map([...this.tokenCache, ...await this.storedTokens()]);
+        } catch (error) {
+            this.ui.log(`Error loading token cache: ${error instanceof Error ? error.message : String(error)}`);
+        }
         this.tokenCache.set(cacheKey, { accessToken: result.accessToken, expiresAt, refreshToken: result.refreshToken, config });
         try {
             await this.store.write(JSON.stringify(Array.from(this.tokenCache.entries())));
@@ -87,16 +92,19 @@ export class OAuthProvider {
         }
         this.tokenCacheLoaded = true;
         try {
-            const cacheJson = await this.store.read();
-            if (!cacheJson) {
-                return;
-            }
-            const entries = (JSON.parse(cacheJson) as [string, CachedToken][]).filter(([, token]) => isTokenValid(token) || token.refreshToken);
-            this.tokenCache = new Map(entries);
+            this.tokenCache = await this.storedTokens();
         } catch (error) {
             this.ui.log(`Error loading token cache: ${error instanceof Error ? error.message : String(error)}`);
             this.tokenCache = new Map();
         }
+    }
+
+    private async storedTokens(): Promise<Map<string, CachedToken>> {
+        const cacheJson = await this.store.read();
+        if (!cacheJson) {
+            return new Map();
+        }
+        return new Map((JSON.parse(cacheJson) as [string, CachedToken][]).filter(([, token]) => isTokenValid(token) || token.refreshToken));
     }
 }
 

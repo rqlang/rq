@@ -36,6 +36,9 @@ interface AwaitedRedirectUrl {
 interface PendingAuthorization {
     token: Promise<string>;
     published: Promise<PublishedAuthorization>;
+    prompts: AbortController;
+    prompting: boolean;
+    waiters: number;
     awaitedRedirectUrl?: AwaitedRedirectUrl;
 }
 
@@ -78,23 +81,48 @@ export class Authorizer {
         if (redirectUrl && existing?.awaitedRedirectUrl) {
             supplyRedirectUrl(existing.awaitedRedirectUrl, redirectUrl);
             existing.awaitedRedirectUrl = undefined;
-            return Promise.race([outcomeOf(existing.token), cancellation(signal)]);
+            return this.wait(key, existing, outcomeOf(existing.token), signal);
         }
-        const pending = existing ?? this.start(key, auth, signal);
+        const pending = existing ?? this.start(key, auth);
         const published = existing ? delay(this.retryGraceMs).then(() => pending.published) : pending.published;
-        return Promise.race<Authorization>([
+        return this.wait(key, pending, Promise.race<Authorization>([
             outcomeOf(pending.token),
-            published.then(({ url, redirectUrlRequired }) => ({ status: 'authorization_required', authorizationUrl: url, redirectUrlRequired })),
-            cancellation(signal)
-        ]);
+            published.then(({ url, redirectUrlRequired }) => ({ status: 'authorization_required', authorizationUrl: url, redirectUrlRequired }))
+        ]), signal);
     }
 
-    private start(key: string, auth: OAuthAuthConfig, signal?: AbortSignal): PendingAuthorization {
+    private async wait(key: string, pending: PendingAuthorization, outcome: Promise<Authorization>, signal?: AbortSignal): Promise<Authorization> {
+        pending.waiters += 1;
+        try {
+            return await Promise.race([outcome, cancellation(signal)]);
+        } finally {
+            pending.waiters -= 1;
+            if (signal?.aborted && pending.waiters === 0 && pending.prompting) {
+                this.forget(key, pending);
+                pending.prompts.abort();
+            }
+        }
+    }
+
+    private forget(key: string, pending: PendingAuthorization): void {
+        if (this.pending.get(key) === pending) {
+            this.pending.delete(key);
+        }
+    }
+
+    private start(key: string, auth: OAuthAuthConfig): PendingAuthorization {
         let publish: (published: PublishedAuthorization) => void = () => undefined;
         const published = new Promise<PublishedAuthorization>(resolve => { publish = resolve; });
         let finish: () => void = () => undefined;
         const finished = new Promise<void>(resolve => { finish = resolve; });
-        const pending: PendingAuthorization = { token: new Promise<string>(() => undefined), published };
+        const pending: PendingAuthorization = { token: new Promise<string>(() => undefined), published, prompts: new AbortController(), prompting: false, waiters: 0 };
+        const signal = pending.prompts.signal;
+        const prompt = async <T>(ask: () => Promise<T>): Promise<T> => {
+            pending.prompting = true;
+            const outcome = await ask().finally(() => { pending.prompting = false; });
+            throwIfCancelled(signal);
+            return outcome;
+        };
         let link: Promise<ShortLink> | undefined;
         const shortLink = async (url: string) => {
             link ??= openShortLink(url, this.redirectUrlTimeoutMs);
@@ -105,7 +133,7 @@ export class Authorizer {
                 if (!receivesRedirect(auth)) {
                     return;
                 }
-                const outcome = await this.prompts.openUrl(url, auth, finished, signal);
+                const outcome = await prompt(() => this.prompts.openUrl(url, auth, finished, signal));
                 if (outcome === 'declined') {
                     throw new AuthorizationDeclinedError(`The user declined to authorize ${auth.name}`);
                 }
@@ -114,7 +142,8 @@ export class Authorizer {
                 }
             },
             askForRedirectUrl: async request => {
-                const outcome = await this.prompts.askForRedirectUrl(await shortLink(request.authorizationUrl), auth, signal);
+                const shown = await shortLink(request.authorizationUrl);
+                const outcome = await prompt(() => this.prompts.askForRedirectUrl(shown, auth, signal));
                 if (outcome.status === 'declined') {
                     throw new AuthorizationDeclinedError(`The user declined to authorize ${auth.name}`);
                 }
@@ -129,14 +158,14 @@ export class Authorizer {
                     throw new McpAuthorizationError(redirectUrlNeedsDialog(auth));
                 }
                 const pasted = this.awaitRedirectUrl(pending, request);
-                publish({ url: await shortLink(request.authorizationUrl), redirectUrlRequired: true });
+                publish({ url: shown, redirectUrlRequired: true });
                 return pasted;
             },
             showError: message => this.log(message),
             log: message => this.log(message)
         };
         pending.token = performOAuth2Flow(auth, new OAuthProvider(this.store, ui)).finally(() => {
-            this.pending.delete(key);
+            this.forget(key, pending);
             link?.then(opened => opened.close(), () => undefined);
             finish();
         });
@@ -207,6 +236,12 @@ function redirectUrlNeedsDialog(auth: OAuthAuthConfig): string {
 
 function delay(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms).unref());
+}
+
+function throwIfCancelled(signal: AbortSignal): void {
+    if (signal.aborted) {
+        throw new Error(CANCELLED_MESSAGE);
+    }
 }
 
 function cancellation(signal?: AbortSignal): Promise<never> {

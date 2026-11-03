@@ -154,12 +154,68 @@ describe('Authorizer', () => {
         let url = '';
         const target = withOpener(opener('accepted', async opened => {
             url = opened;
-            cancellation.abort();
+            setTimeout(() => cancellation.abort(), 0);
         }));
         await expect(target.authorize(authConfig(), cancellation.signal)).rejects.toThrow(CANCELLED_MESSAGE);
         await signIn(url);
     });
+
+    it('keeps the dialog open for a call still waiting on it when another is cancelled', async () => {
+        const dialog = openDialog();
+        const target = withOpener(dialog.openUrl);
+        const cancellation = new AbortController();
+        const first = target.authorize(authConfig(), cancellation.signal).catch(() => undefined);
+        const second = target.authorize(authConfig());
+        cancellation.abort();
+        await first;
+        await signIn(await dialog.opened);
+        dialog.answer('accepted');
+        expect([await second, dialog.signal()?.aborted]).toEqual([{ status: 'authorized', token: 'granted-token' }, false]);
+    });
+
+    it('closes the dialog once every call waiting on it is cancelled', async () => {
+        const dialog = openDialog();
+        const cancellation = new AbortController();
+        const call = withOpener(dialog.openUrl).authorize(authConfig(), cancellation.signal);
+        await dialog.opened;
+        cancellation.abort();
+        await expect(call).rejects.toThrow(CANCELLED_MESSAGE);
+        expect(dialog.signal()?.aborted).toBe(true);
+    });
+
+    it('asks again on the next call after the only one waiting on the dialog was cancelled', async () => {
+        const dialog = openDialog();
+        const target = withOpener(dialog.openUrl);
+        const cancellation = new AbortController();
+        const call = target.authorize(authConfig(), cancellation.signal);
+        await dialog.opened;
+        cancellation.abort();
+        await expect(call).rejects.toThrow(CANCELLED_MESSAGE);
+        target.authorize(authConfig()).catch(() => undefined);
+        await new Promise(resolve => setTimeout(resolve, 20));
+        expect(dialog.openUrl).toHaveBeenCalledTimes(2);
+    });
 });
+
+function openDialog() {
+    let answer: (outcome: AuthorizationUrlOutcome) => void = () => undefined;
+    let opened: (url: string) => void = () => undefined;
+    let signal: AbortSignal | undefined;
+    const openUrl = jest.fn((url: string, _auth: OAuthAuthConfig, _finished: Promise<void>, received?: AbortSignal) => {
+        signal = received;
+        opened(url);
+        return new Promise<AuthorizationUrlOutcome>(resolve => {
+            answer = resolve;
+            received?.addEventListener('abort', () => resolve('declined'));
+        });
+    });
+    return {
+        openUrl,
+        opened: new Promise<string>(resolve => { opened = resolve; }),
+        answer: (outcome: AuthorizationUrlOutcome) => answer(outcome),
+        signal: () => signal
+    };
+}
 
 const PASTED_REDIRECT_URI = 'https://app.example.com/callback';
 

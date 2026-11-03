@@ -344,10 +344,15 @@ describe('Authorizer with a redirect address the user pastes', () => {
         await expect(target.authorize(pastedAuth({}, 'oauth2_implicit'))).rejects.toThrow('implicit flow');
     });
 
-    it('treats an address when no sign-in waits for one as a normal call', async () => {
+    it('explains that no sign-in waits for an address passed when none was asked for', async () => {
         const target = withOpener(opener('accepted'));
-        const first = await target.authorize(pastedAuth(), undefined, `${PASTED_REDIRECT_URI}?code=old`);
-        expect([first.status, fetchMock.jestMock.mock.calls.length]).toEqual(['authorization_required', 0]);
+        await expect(target.authorize(pastedAuth(), undefined, `${PASTED_REDIRECT_URI}?code=old`)).rejects.toThrow('no sign-in to login is waiting for an address any more');
+    });
+
+    it('starts no sign-in for an address passed when none was asked for', async () => {
+        const open = opener('accepted');
+        await withOpener(open).authorize(pastedAuth(), undefined, `${PASTED_REDIRECT_URI}?code=old`).catch(() => undefined);
+        expect([open.mock.calls.length, fetchMock.jestMock.mock.calls.length]).toEqual([0, 0]);
     });
 
     it('starts a new sign-in once nobody passed the address in time', async () => {

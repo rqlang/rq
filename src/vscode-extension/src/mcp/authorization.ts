@@ -78,7 +78,10 @@ export class Authorizer {
         requireSupportedRedirect(auth);
         const key = tokenCacheKey({ authName: auth.name, environment: auth.environment, file: auth.file });
         const existing = this.pending.get(key);
-        if (redirectUrl && existing?.awaitedRedirectUrl) {
+        if (redirectUrl) {
+            if (!existing?.awaitedRedirectUrl) {
+                throw new McpAuthorizationError(surface.run_request.unexpected_redirect_url.replace('{auth}', auth.name));
+            }
             supplyRedirectUrl(existing.awaitedRedirectUrl, redirectUrl);
             existing.awaitedRedirectUrl = undefined;
             return this.wait(key, existing, outcomeOf(existing.token), signal);

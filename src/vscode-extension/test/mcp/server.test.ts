@@ -1,7 +1,7 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { ElicitationCompleteNotificationSchema, ElicitRequestSchema } from '@modelcontextprotocol/sdk/types.js';
-import { confirmWithUser, createServer, openAuthorizationUrl } from '../../src/mcp/server';
+import { askForRedirectUrl, confirmWithUser, createServer, openAuthorizationUrl } from '../../src/mcp/server';
 import { RESOURCE_BODIES, surface } from '../../src/mcp/surface';
 
 async function connectedClient(): Promise<Client> {
@@ -78,7 +78,7 @@ describe('createServer', () => {
 
 const SUMMARY = { request: 'users/delete', method: 'DELETE', url: 'http://x/users/1', environment: 'production' };
 
-type Answer = { action: 'accept' | 'decline' | 'cancel' };
+type Answer = { action: 'accept' | 'decline' | 'cancel'; content?: Record<string, string> };
 
 async function serverWithClient(answer?: (message: string) => Answer | Promise<Answer>, schemas: unknown[] = []) {
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
@@ -213,6 +213,47 @@ describe('openAuthorizationUrl', () => {
             url: AUTHORIZATION_URL,
             message: 'Open this page and sign in to authorize `login`, so rq can send the request'
         })]);
+    });
+});
+
+const PASTE_AUTH = {
+    name: 'login',
+    auth_type: 'oauth2_authorization_code',
+    fields: { redirect_uri: 'https://app.example.com/callback' }
+};
+
+describe('askForRedirectUrl', () => {
+    it('reports the dialog as unavailable when the client cannot show forms', async () => {
+        const { server } = await serverWithClient();
+        expect(await askForRedirectUrl(server, AUTHORIZATION_URL, PASTE_AUTH)).toEqual({ status: 'unavailable' });
+    });
+
+    it('returns the address the user pasted, without surrounding spaces', async () => {
+        const { server } = await serverWithClient(() => ({ action: 'accept', content: { redirect_url: '  https://app.example.com/callback?code=x  ' } }));
+        expect(await askForRedirectUrl(server, AUTHORIZATION_URL, PASTE_AUTH)).toEqual({ status: 'pasted', url: 'https://app.example.com/callback?code=x' });
+    });
+
+    it('declines when the user dismisses the dialog', async () => {
+        const { server } = await serverWithClient(() => ({ action: 'cancel' }));
+        expect(await askForRedirectUrl(server, AUTHORIZATION_URL, PASTE_AUTH)).toEqual({ status: 'declined' });
+    });
+
+    it('declines once the dialog times out', async () => {
+        const { server } = await serverWithClient(() => new Promise<Answer>(() => undefined));
+        expect(await askForRedirectUrl(server, AUTHORIZATION_URL, PASTE_AUTH, undefined, 20)).toEqual({ status: 'declined' });
+    });
+
+    it('asks for one required text field', async () => {
+        const schemas: unknown[] = [];
+        const { server } = await serverWithClient(() => ({ action: 'cancel' }), schemas);
+        await askForRedirectUrl(server, AUTHORIZATION_URL, PASTE_AUTH);
+        expect(schemas).toEqual([{ type: 'object', properties: { redirect_url: { type: 'string', title: 'Redirect URL' } }, required: ['redirect_url'] }]);
+    });
+
+    it('shows the sign-in url and the address the browser will end on', async () => {
+        const { server, asked } = await serverWithClient(() => ({ action: 'cancel' }));
+        await askForRedirectUrl(server, AUTHORIZATION_URL, PASTE_AUTH);
+        expect([asked[0].includes(AUTHORIZATION_URL), asked[0].includes('it starts with https://app.example.com/callback')]).toEqual([true, true]);
     });
 });
 

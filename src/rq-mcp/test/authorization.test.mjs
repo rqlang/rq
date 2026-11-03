@@ -43,6 +43,25 @@ function apiSource(apiPort) {
         `    token_url: "http://127.0.0.1:${apiPort}/token",`,
         '}',
         '',
+        `auth paste_login(auth_type.oauth2_authorization_code) {`,
+        '    client_id: "app",',
+        `    authorization_url: "http://127.0.0.1:${apiPort}/authorize",`,
+        `    token_url: "http://127.0.0.1:${apiPort}/token",`,
+        `    redirect_uri: "${PASTED_REDIRECT_URI}",`,
+        '}',
+        '',
+        `auth implicit_login(auth_type.oauth2_implicit) {`,
+        '    client_id: "app",',
+        `    authorization_url: "http://127.0.0.1:${apiPort}/authorize",`,
+        `    redirect_uri: "${PASTED_REDIRECT_URI}",`,
+        '}',
+        '',
+        '[auth("paste_login")]',
+        `rq pasted("http://127.0.0.1:${apiPort}/pasted");`,
+        '',
+        '[auth("implicit_login")]',
+        `rq implicit("http://127.0.0.1:${apiPort}/implicit");`,
+        '',
         '[auth("login")]',
         `rq me("http://127.0.0.1:${apiPort}/me");`,
         '',
@@ -56,8 +75,24 @@ function apiSource(apiPort) {
     ].join('\n');
 }
 
-function signIn(authorizationUrl) {
-    const url = new URL(authorizationUrl);
+const PASTED_REDIRECT_URI = 'https://app.example.com/callback';
+
+function followLink(link) {
+    return new Promise((resolve, reject) => {
+        http.get(link, res => {
+            res.resume();
+            res.on('end', () => resolve(res.headers.location ?? link));
+        }).on('error', reject);
+    });
+}
+
+async function landedOn(link) {
+    const authorizationUrl = await followLink(link);
+    return `${PASTED_REDIRECT_URI}?code=granted&state=${new URL(authorizationUrl).searchParams.get('state')}`;
+}
+
+async function signIn(link) {
+    const url = new URL(link.includes('/authorize') ? link : await followLink(link));
     const redirect = `${url.searchParams.get('redirect_uri')}?code=granted&state=${url.searchParams.get('state')}`;
     return new Promise((resolve, reject) => {
         http.get(redirect, res => {
@@ -116,8 +151,9 @@ describe('run_request with a sign-in, on a client that cannot open urls', () => 
 
     it('returns the authorization url and sends nothing', async () => {
         const target = await callJson(client, 'run_request', { name: 'me', file: file() });
-        await signIn(target.authorization_url);
-        assert.deepEqual([target.status, target.sent, new URL(target.authorization_url).pathname, received], ['authorization_required', false, '/authorize', []]);
+        const authorizationUrl = await followLink(target.authorization_url);
+        await signIn(authorizationUrl);
+        assert.deepEqual([target.status, target.sent, new URL(authorizationUrl).pathname, received], ['authorization_required', false, '/authorize', []]);
     });
 
     it('sends the request with the token once the user signed in', async () => {
@@ -153,6 +189,64 @@ describe('run_request with a sign-in, on a client that cannot open urls', () => 
     it('refuses an auth whose redirect only VS Code can receive', async () => {
         const target = await client.callTool({ name: 'run_request', arguments: { name: 'other', file: file() } });
         assert.deepEqual([target.isError, target.content[0].text.includes('the VS Code default'), received], [true, true, []]);
+    });
+});
+
+describe('run_request with a pasted redirect address, on a client without dialogs', () => {
+    let client;
+
+    before(async () => {
+        client = await connect(workspace);
+    });
+
+    after(async () => {
+        await client.close();
+    });
+
+    it('asks for the address the browser ends on and sends nothing', async () => {
+        const target = await callJson(client, 'run_request', { name: 'pasted', file: file() });
+        assert.deepEqual([target.status, target.redirect_url_required, target.message.includes('redirect_url'), received], ['authorization_required', true, true, []]);
+    });
+
+    it('sends the request with the token once called with the address the user pasted', async () => {
+        const args = { name: 'pasted', file: file() };
+        const { authorization_url } = await callJson(client, 'run_request', args);
+        const target = await callJson(client, 'run_request', { ...args, redirect_url: await landedOn(authorization_url) });
+        assert.deepEqual([target.status, received], ['sent', ['GET /pasted Bearer issued-token-1']]);
+    });
+
+    it('refuses the implicit flow, whose token would reach the agent', async () => {
+        const target = await client.callTool({ name: 'run_request', arguments: { name: 'implicit', file: file() } });
+        assert.deepEqual([target.isError, target.content[0].text.includes('implicit flow'), received], [true, true, []]);
+    });
+});
+
+describe('run_request with a pasted redirect address, on a client with dialogs', () => {
+    let client;
+
+    before(async () => {
+        client = await connect(workspace, async message => {
+            const authorizationUrl = await followLink(message.match(/http:\/\/127\.0\.0\.1:\d+\/[0-9a-f]{32}/)[0]);
+            const state = new URL(authorizationUrl).searchParams.get('state');
+            const redirect_url = message.includes('implicit_login')
+                ? `${PASTED_REDIRECT_URI}#access_token=implicit-token&state=${state}`
+                : `${PASTED_REDIRECT_URI}?code=granted&state=${state}`;
+            return { action: 'accept', content: { redirect_url } };
+        });
+    });
+
+    after(async () => {
+        await client.close();
+    });
+
+    it('takes the address from the dialog and sends the request in the same call', async () => {
+        const target = await callJson(client, 'run_request', { name: 'pasted', file: file() });
+        assert.deepEqual([target.status, received], ['sent', ['GET /pasted Bearer issued-token-1']]);
+    });
+
+    it('takes the token of the implicit flow from the dialog', async () => {
+        const target = await callJson(client, 'run_request', { name: 'implicit', file: file() });
+        assert.deepEqual([target.status, received], ['sent', ['GET /implicit Bearer implicit-token']]);
     });
 });
 

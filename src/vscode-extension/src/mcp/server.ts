@@ -3,7 +3,8 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
 import * as crypto from 'crypto';
 import { z } from 'zod';
-import { AuthorizationUrlOutcome, Authorizer } from './authorization';
+import { OAuthAuthConfig } from '../auth/types';
+import { AuthorizationUrlOutcome, Authorizer, RedirectUrlOutcome } from './authorization';
 import { buildGenerateRqPrompt, render, RESOURCE_BODIES, surface } from './surface';
 import { ConfirmationOutcome, getRqReference, listRequests, lintRq, ReferenceDoc, referenceDocIds, RequestSummary, runRequest, useDirectWasm, validateRq } from './tools';
 
@@ -25,10 +26,10 @@ export function createServer(): McpServer {
         { instructions: render(surface.instructions), capabilities: { tools: {}, resources: {}, prompts: {} } }
     );
 
-    const authorizer = new Authorizer(
-        (url, auth, finished, signal) => openAuthorizationUrl(server, url, auth.name, finished, signal),
-        message => process.stderr.write(`[OAuth] ${message}\n`)
-    );
+    const authorizer = new Authorizer({
+        openUrl: (url, auth, finished, signal) => openAuthorizationUrl(server, url, auth.name, finished, signal),
+        askForRedirectUrl: (url, auth, signal) => askForRedirectUrl(server, url, auth, signal)
+    }, message => process.stderr.write(`[OAuth] ${message}\n`));
 
     server.registerTool('validate_rq', {
         description: surface.tools.validate_rq.description,
@@ -91,14 +92,15 @@ export function createServer(): McpServer {
             workspace_path: z.string().optional(),
             env: z.string().optional(),
             variables: z.record(z.string(), z.string()).optional(),
-            confirmation_token: z.string().optional()
+            confirmation_token: z.string().optional(),
+            redirect_url: z.string().optional()
         },
         annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true }
     }, async (args, extra) => {
         try {
             return jsonResult(await runRequest(args, {
                 confirm: summary => confirmWithUser(server, summary, extra.signal),
-                authorize: (auth, signal) => authorizer.authorize(auth, signal)
+                authorize: (auth, signal, redirectUrl) => authorizer.authorize(auth, signal, redirectUrl)
             }, extra.signal));
         } catch (err) {
             return errorResult(err instanceof Error ? err.message : String(err));
@@ -135,8 +137,7 @@ export async function confirmWithUser(
     signal?: AbortSignal,
     timeout = CONFIRMATION_TIMEOUT_MS
 ): Promise<ConfirmationOutcome> {
-    const elicitation = server.server.getClientCapabilities()?.elicitation;
-    if (!elicitation || (elicitation.url && !elicitation.form)) {
+    if (!canAskWithForm(server)) {
         return 'unavailable';
     }
     try {
@@ -185,6 +186,47 @@ export async function openAuthorizationUrl(
         }
         throw err;
     }
+}
+
+export async function askForRedirectUrl(
+    server: McpServer,
+    authorizationUrl: string,
+    auth: OAuthAuthConfig,
+    signal?: AbortSignal,
+    timeout = CONFIRMATION_TIMEOUT_MS
+): Promise<RedirectUrlOutcome> {
+    if (!canAskWithForm(server)) {
+        return { status: 'unavailable' };
+    }
+    try {
+        const result = await server.server.elicitInput({
+            mode: 'form',
+            message: surface.run_request.redirect_url_message
+                .replace('{auth}', auth.name)
+                .replace('{url}', authorizationUrl)
+                .replace('{redirect_uri}', auth.fields.redirect_uri ?? ''),
+            requestedSchema: {
+                type: 'object',
+                properties: { redirect_url: { type: 'string', title: 'Redirect URL' } },
+                required: ['redirect_url']
+            }
+        }, { signal, timeout });
+        const url = result.content?.redirect_url;
+        if (result.action !== 'accept' || typeof url !== 'string' || signal?.aborted) {
+            return { status: 'declined' };
+        }
+        return { status: 'pasted', url: url.trim() };
+    } catch (err) {
+        if (signal?.aborted || (err instanceof McpError && err.code === ErrorCode.RequestTimeout)) {
+            return { status: 'declined' };
+        }
+        throw err;
+    }
+}
+
+function canAskWithForm(server: McpServer): boolean {
+    const elicitation = server.server.getClientCapabilities()?.elicitation;
+    return Boolean(elicitation) && !(elicitation?.url && !elicitation.form);
 }
 
 function confirmationMessage(summary: RequestSummary): string {

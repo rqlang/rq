@@ -157,6 +157,7 @@ export interface RunRequestArgs {
     env?: string;
     variables?: Record<string, string>;
     confirmation_token?: string;
+    redirect_url?: string;
 }
 
 export const MAX_RESPONSE_BODY_LENGTH = 50_000;
@@ -187,17 +188,21 @@ export async function runRequest(args: RunRequestArgs, prompts: RunRequestPrompt
     const summary = summaryOf(prepared, args.env);
     const secrets = [...prepared.secret_values];
     if (prepared.auth?.token_required && isInteractiveAuth(prepared.auth.auth_type)) {
-        const authorization = await prompts.authorize({ ...prepared.auth, environment: args.env }, signal);
+        const authorization = await prompts.authorize({ ...prepared.auth, environment: args.env }, signal, args.redirect_url);
         if (authorization.status === 'declined') {
             return { status: 'declined', sent: false, request: summary };
         }
         if (authorization.status === 'authorization_required') {
+            const message = authorization.redirectUrlRequired
+                ? surface.run_request.authorization_redirect_url_required.replace('{redirect_uri}', prepared.auth.fields.redirect_uri ?? '')
+                : surface.run_request.authorization_required;
             return {
                 status: 'authorization_required',
                 sent: false,
                 request: summary,
                 authorization_url: authorization.authorizationUrl,
-                message: surface.run_request.authorization_required.replace('{auth}', prepared.auth.name)
+                redirect_url_required: authorization.redirectUrlRequired,
+                message: message.replace('{auth}', prepared.auth.name)
             };
         }
         options = { ...options, variables: { ...args.variables, [AUTH_TOKEN_VARIABLE]: authorization.token } };

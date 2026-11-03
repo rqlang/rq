@@ -351,6 +351,8 @@ function redactHeaders(headers: Record<string, string>, secrets: string[]): Reco
     );
 }
 
-function redactSecrets(text: string, secrets: string[]): string {
-    return secrets.reduce((redacted, secret) => redacted.split(secret).join(REDACTED), text);
+export function redactSecrets(text: string, secrets: string[]): string {
+    return [...secrets]
+        .sort((a, b) => b.length - a.length)
+        .reduce((redacted, secret) => redacted.split(secret).join(REDACTED), text);
 }

@@ -12,7 +12,7 @@ jest.mock('../../src/wasm/rq_wasm', () => ({
     list_requests: mockListRequests
 }), { virtual: true });
 
-import { Diagnostic, lintRq, validateRq, listRequests, draftPath, workspaceFor, isUnscoped } from '../../src/mcp/tools';
+import { Diagnostic, lintRq, validateRq, listRequests, draftPath, workspaceFor, isUnscoped, redactSecrets } from '../../src/mcp/tools';
 
 let workspace: string;
 
@@ -24,6 +24,12 @@ beforeAll(() => {
 afterAll(() => fs.rmSync(workspace, { recursive: true, force: true }));
 
 beforeEach(() => jest.clearAllMocks());
+
+describe('redactSecrets', () => {
+    it('redacts a whole secret that contains a shorter one listed before it', () => {
+        expect(redactSecrets('token=issued-token-1', ['token-1', 'issued-token-1'])).toBe('token=[redacted]');
+    });
+});
 
 describe('draftPath', () => {
     it('places a bare filename inside the workspace', () => {

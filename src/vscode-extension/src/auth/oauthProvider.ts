@@ -1,4 +1,5 @@
-import { AuthUi, OAuth2Config, OAuth2Result, IOAuth2Flow, TokenStore } from './types';
+import { AuthUi, OAuth2Config, OAuth2Result, IOAuth2Flow, TokenCacheScope, TokenStore } from './types';
+import { normalizePath } from '../utils';
 import { AuthorizationCodePKCEFlow } from './authorizationCodePKCEFlow';
 import { ImplicitFlow } from './implicitFlow';
 import { RefreshTokenFlow } from './refreshTokenFlow';
@@ -29,9 +30,10 @@ export class OAuthProvider {
         this.refreshTokenFlow = new RefreshTokenFlow(message => ui.log(message));
     }
 
-    async executeOAuth2Flow(config: OAuth2Config, flowType: OAuth2FlowType = 'authorization_code_pkce', authName?: string, environment?: string): Promise<OAuth2Result> {
+    async executeOAuth2Flow(config: OAuth2Config, flowType: OAuth2FlowType = 'authorization_code_pkce', scope: TokenCacheScope = {}): Promise<OAuth2Result> {
         await this.loadTokenCache();
-        const cacheKey = JSON.stringify({ authName: authName || '', environment: environment || '' });
+        const cacheKey = tokenCacheKey(scope);
+        const { authName, environment } = scope;
         const cacheContext = environment ? `${authName} (env: ${environment})` : (authName || config.clientId);
         this.ui.log(`Checking token cache for ${cacheContext}`);
 
@@ -106,6 +108,14 @@ export class OAuthProvider {
         }
         return new Map((JSON.parse(cacheJson) as [string, CachedToken][]).filter(([, token]) => isTokenValid(token) || token.refreshToken));
     }
+}
+
+export function tokenCacheKey(scope: TokenCacheScope): string {
+    return JSON.stringify({
+        authName: scope.authName || '',
+        environment: scope.environment || '',
+        file: scope.file ? normalizePath(scope.file) : ''
+    });
 }
 
 function isTokenValid(token: CachedToken): boolean {

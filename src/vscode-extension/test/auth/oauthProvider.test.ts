@@ -1,4 +1,4 @@
-import { OAuthProvider } from '../../src/auth/oauthProvider';
+import { OAuthProvider, tokenCacheKey } from '../../src/auth/oauthProvider';
 import { AuthUi, OAuth2Config, TokenStore } from '../../src/auth/types';
 import { FetchMock } from '../fetch-mock';
 import * as callbackHandlers from '../../src/auth/callbackHandlers';
@@ -27,8 +27,10 @@ function memoryStore(initial?: string): TokenStore & { value?: string } {
     return store;
 }
 
-function cached(accessToken: string, expiresAt: number, refreshToken?: string): string {
-    return JSON.stringify([[JSON.stringify({ authName: 'login', environment: '' }), { accessToken, expiresAt, refreshToken, config: CONFIG }]]);
+const SCOPE = { authName: 'login', file: '/workspace/api/shared.rq' };
+
+function cached(accessToken: string, expiresAt: number, refreshToken?: string, scope = SCOPE): string {
+    return JSON.stringify([[tokenCacheKey(scope), { accessToken, expiresAt, refreshToken, config: CONFIG }]]);
 }
 
 describe('OAuthProvider', () => {
@@ -48,21 +50,21 @@ describe('OAuthProvider', () => {
 
     test('reuses a valid token from the store without running the flow', async () => {
         const target = new OAuthProvider(memoryStore(cached('stored', Date.now() + 3_600_000)), ui);
-        const result = await target.executeOAuth2Flow(CONFIG, 'authorization_code_pkce', 'login');
+        const result = await target.executeOAuth2Flow(CONFIG, 'authorization_code_pkce', SCOPE);
         expect([result.accessToken, fetchMock.jestMock.mock.calls.length]).toEqual(['stored', 0]);
     });
 
     test('runs the flow and writes the token to the store when none is cached', async () => {
         fetchMock.mockResponse({ access_token: 'fresh', token_type: 'Bearer', expires_in: 3600 });
         const store = memoryStore();
-        await new OAuthProvider(store, ui).executeOAuth2Flow(CONFIG, 'authorization_code_pkce', 'login');
+        await new OAuthProvider(store, ui).executeOAuth2Flow(CONFIG, 'authorization_code_pkce', SCOPE);
         expect(store.value).toContain('"fresh"');
     });
 
     test('refreshes an expired token kept in the store', async () => {
         fetchMock.mockResponse({ access_token: 'refreshed', token_type: 'Bearer', expires_in: 3600 });
         const target = new OAuthProvider(memoryStore(cached('expired', Date.now() - 1000, 'refresh-me')), ui);
-        const result = await target.executeOAuth2Flow(CONFIG, 'authorization_code_pkce', 'login');
+        const result = await target.executeOAuth2Flow(CONFIG, 'authorization_code_pkce', SCOPE);
         expect([result.accessToken, (callbackHandlers.handleLocalServerCallback as jest.Mock).mock.calls.length]).toEqual(['refreshed', 0]);
     });
 
@@ -74,13 +76,34 @@ describe('OAuthProvider', () => {
             store.value = cached('other', Date.now() + 3_600_000);
             return { code: 'code', state: new URL(authUrl).searchParams.get('state') };
         });
-        await target.executeOAuth2Flow(CONFIG, 'authorization_code_pkce', 'mine');
+        await target.executeOAuth2Flow(CONFIG, 'authorization_code_pkce', { ...SCOPE, authName: 'mine' });
         expect([store.value?.includes('"other"'), store.value?.includes('"fresh"')]).toEqual([true, true]);
+    });
+
+    test('does not reuse a token cached for an auth of the same name in another file', async () => {
+        fetchMock.mockResponse({ access_token: 'fresh', token_type: 'Bearer', expires_in: 3600 });
+        const target = new OAuthProvider(memoryStore(cached('stored', Date.now() + 3_600_000)), ui);
+        const result = await target.executeOAuth2Flow(CONFIG, 'authorization_code_pkce', { ...SCOPE, file: '/other/api/shared.rq' });
+        expect(result.accessToken).toBe('fresh');
     });
 
     test('clears the store', async () => {
         const store = memoryStore(cached('stored', Date.now() + 3_600_000));
         await new OAuthProvider(store, ui).clearTokenCache();
         expect(store.value).toBeUndefined();
+    });
+});
+
+describe('tokenCacheKey', () => {
+    test('tells apart auths of the same name and environment in different files', () => {
+        expect(tokenCacheKey({ ...SCOPE, file: '/a/shared.rq' })).not.toBe(tokenCacheKey({ ...SCOPE, file: '/b/shared.rq' }));
+    });
+
+    test('tells apart environments of the same auth', () => {
+        expect(tokenCacheKey({ ...SCOPE, environment: 'dev' })).not.toBe(tokenCacheKey({ ...SCOPE, environment: 'prod' }));
+    });
+
+    test('gives the same key to two spellings of the same file', () => {
+        expect(tokenCacheKey({ ...SCOPE, file: '/workspace/api/../api/shared.rq' })).toBe(tokenCacheKey(SCOPE));
     });
 });

@@ -1,5 +1,5 @@
 import { isLoopbackRedirect } from '../auth/callbackHandlers';
-import { OAuthProvider } from '../auth/oauthProvider';
+import { OAuthProvider, tokenCacheKey } from '../auth/oauthProvider';
 import { performOAuth2Flow } from '../auth/oauthService';
 import { AuthUi, OAuthAuthConfig, TokenStore } from '../auth/types';
 import { CANCELLED_MESSAGE } from '../utils';
@@ -51,7 +51,7 @@ export class Authorizer {
 
     async authorize(auth: OAuthAuthConfig, signal?: AbortSignal): Promise<Authorization> {
         requireReachableRedirect(auth);
-        const key = JSON.stringify([auth.name, auth.environment ?? null]);
+        const key = tokenCacheKey({ authName: auth.name, environment: auth.environment, file: auth.file });
         const existing = this.pending.get(key);
         const pending = existing ?? this.start(key, auth, signal);
         const published = existing ? delay(this.retryGraceMs).then(() => pending.published) : pending.published;

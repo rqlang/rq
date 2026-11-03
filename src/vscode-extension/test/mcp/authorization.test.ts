@@ -6,10 +6,11 @@ import { FetchMock } from '../fetch-mock';
 
 const REDIRECT_URI = 'http://127.0.0.1:47392/callback';
 
-function authConfig(fields: Record<string, string> = {}, authType = 'oauth2_authorization_code'): OAuthAuthConfig {
+function authConfig(fields: Record<string, string> = {}, authType = 'oauth2_authorization_code', file = '/workspace/shared.rq'): OAuthAuthConfig {
     return {
         name: 'login',
         auth_type: authType,
+        file,
         fields: {
             client_id: 'app',
             authorization_url: 'https://auth.example.com/authorize',
@@ -99,6 +100,14 @@ describe('Authorizer', () => {
         await target.authorize(authConfig());
         await target.authorize(authConfig());
         expect(open).toHaveBeenCalledTimes(1);
+    });
+
+    it('asks to sign in again for an auth of the same name in another workspace', async () => {
+        const open = opener('accepted', signIn);
+        const target = new Authorizer(open);
+        await target.authorize(authConfig());
+        await target.authorize(authConfig({}, 'oauth2_authorization_code', '/other/shared.rq'));
+        expect(open).toHaveBeenCalledTimes(2);
     });
 
     it('reports a declined sign-in', async () => {

@@ -42,7 +42,7 @@ export async function performOAuth2Flow(authConfig: OAuthAuthConfig, provider: O
         useState: fields.use_state !== 'false',
         usePkce: fields.use_pkce !== 'false',
     };
-    const result = await provider.executeOAuth2Flow(config, flowType, authConfig.name, authConfig.environment);
+    const result = await provider.executeOAuth2Flow(config, flowType, { authName: authConfig.name, environment: authConfig.environment, file: authConfig.file });
     return result.accessToken;
 }
 

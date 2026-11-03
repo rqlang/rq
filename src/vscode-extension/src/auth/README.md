@@ -13,7 +13,7 @@ The module has no dependency on VS Code. Everything that touches a user interfac
 auth/
 ├── types.ts                      # OAuth2Config, OAuth2Result, AuthUi, TokenStore, OAuthAuthConfig
 ├── oauthService.ts               # performOAuth2Flow: auth fields from rq-lib → OAuth2Config → token
-├── oauthProvider.ts              # Token cache per auth name and environment, refresh, flow dispatch
+├── oauthProvider.ts              # Token cache per auth name, defining file and environment, refresh, flow dispatch
 ├── authorizationCodePKCEFlow.ts  # Authorization code flow, PKCE and state, code exchange
 ├── implicitFlow.ts               # Implicit flow
 ├── refreshTokenFlow.ts           # Refresh token grant

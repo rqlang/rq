@@ -56,4 +56,11 @@ export interface OAuthAuthConfig {
     auth_type: string;
     fields: Record<string, string>;
     environment?: string;
+    file?: string;
+}
+
+export interface TokenCacheScope {
+    authName?: string;
+    environment?: string;
+    file?: string;
 }

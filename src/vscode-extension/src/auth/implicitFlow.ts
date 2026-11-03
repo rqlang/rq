@@ -1,6 +1,7 @@
 import { URLSearchParams, URL } from 'url';
 import * as crypto from 'crypto';
 import { AuthUi, OAuth2Config, OAuth2Result, IOAuth2Flow } from './types';
+import { verifyState } from './signInErrors';
 import { handleAppRedirectImplicitCallback, handleManualPasteImplicitCallback, isAppRedirect, ImplicitCallbackResult } from './callbackHandlers';
 
 export class ImplicitFlow implements IOAuth2Flow {
@@ -30,12 +31,7 @@ export class ImplicitFlow implements IOAuth2Flow {
 
             const result = await this.getAccessToken(`${config.authorizationUrl}?${authParams.toString()}`, config.redirectUri);
             if (config.useState !== false) {
-                if (!result.state) {
-                    throw new Error('State parameter missing in callback');
-                }
-                if (result.state !== state) {
-                    throw new Error('State parameter mismatch');
-                }
+                verifyState(state, result.state);
             }
 
             return {

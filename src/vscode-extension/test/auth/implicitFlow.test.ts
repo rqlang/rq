@@ -66,7 +66,7 @@ describe('ImplicitFlow', () => {
             });
         });
 
-        await expect(implicitFlow.execute(mockConfig)).rejects.toThrow('State parameter mismatch');
+        await expect(implicitFlow.execute(mockConfig)).rejects.toThrow('comes from another sign-in');
     });
 
     test('should throw error if invalid authorization URL', async () => {

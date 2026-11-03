@@ -1,6 +1,7 @@
 import { isAppRedirect, isLoopbackRedirect } from '../auth/callbackHandlers';
 import { OAuthProvider, tokenCacheKey } from '../auth/oauthProvider';
 import { performOAuth2Flow } from '../auth/oauthService';
+import { signInTimeoutError } from '../auth/signInErrors';
 import { AuthUi, OAuthAuthConfig, RedirectUrlRequest, TokenStore } from '../auth/types';
 import { CANCELLED_MESSAGE } from '../utils';
 import { openShortLink, ShortLink } from './shortLink';
@@ -43,6 +44,8 @@ const REDIRECT_URL_TIMEOUT_MS = 5 * 60 * 1000;
 const INTERACTIVE_AUTH_TYPES = new Set(['oauth2_authorization_code', 'oauth2_implicit']);
 
 class AuthorizationDeclinedError extends Error {}
+
+export class McpAuthorizationError extends Error {}
 
 export function isInteractiveAuth(authType: string): boolean {
     return INTERACTIVE_AUTH_TYPES.has(authType);
@@ -116,11 +119,14 @@ export class Authorizer {
                     throw new AuthorizationDeclinedError(`The user declined to authorize ${auth.name}`);
                 }
                 if (outcome.status === 'pasted') {
-                    supplyRedirectUrl({ validate: request.validate, resolve: () => undefined }, outcome.url);
+                    const invalid = request.validate?.(outcome.url);
+                    if (invalid) {
+                        throw new Error(invalid);
+                    }
                     return outcome.url;
                 }
                 if (!acceptsRedirectUrlFromAgent(auth)) {
-                    throw new Error(redirectUrlNeedsDialog(auth));
+                    throw new McpAuthorizationError(redirectUrlNeedsDialog(auth));
                 }
                 const pasted = this.awaitRedirectUrl(pending, request);
                 publish({ url: await shortLink(request.authorizationUrl), redirectUrlRequired: true });
@@ -143,7 +149,7 @@ export class Authorizer {
         return new Promise((resolve, reject) => {
             const timer = setTimeout(() => {
                 pending.awaitedRedirectUrl = undefined;
-                reject(new Error('Authentication timeout - no redirect url received within 5 minutes'));
+                reject(signInTimeoutError());
             }, this.redirectUrlTimeoutMs);
             timer.unref();
             pending.awaitedRedirectUrl = {
@@ -160,7 +166,7 @@ export class Authorizer {
 function supplyRedirectUrl(awaited: AwaitedRedirectUrl, redirectUrl: string): void {
     const invalid = awaited.validate?.(redirectUrl);
     if (invalid) {
-        throw new Error(surface.run_request.invalid_redirect_url.replace('{reason}', invalid));
+        throw new McpAuthorizationError(surface.run_request.invalid_redirect_url.replace('{reason}', invalid));
     }
     awaited.resolve(redirectUrl);
 }
@@ -188,7 +194,7 @@ function acceptsRedirectUrlFromAgent(auth: OAuthAuthConfig): boolean {
 function requireSupportedRedirect(auth: OAuthAuthConfig): void {
     const redirectUri = auth.fields.redirect_uri;
     if (!redirectUri || isAppRedirect(redirectUri)) {
-        throw new Error(surface.run_request.unsupported_redirect
+        throw new McpAuthorizationError(surface.run_request.unsupported_redirect
             .replace('{auth}', auth.name)
             .replace('{redirect_uri}', redirectUri || 'the VS Code default'));
     }

@@ -187,8 +187,8 @@ describe('run_request with a sign-in, on a client that cannot open urls', () => 
     });
 
     it('refuses an auth whose redirect only VS Code can receive', async () => {
-        const target = await client.callTool({ name: 'run_request', arguments: { name: 'other', file: file() } });
-        assert.deepEqual([target.isError, target.content[0].text.includes('the VS Code default'), received], [true, true, []]);
+        const target = await callJson(client, 'run_request', { name: 'other', file: file() });
+        assert.deepEqual([target.status, target.sent, target.message.includes('the VS Code default'), received], ['authorization_failed', false, true, []]);
     });
 });
 
@@ -216,8 +216,18 @@ describe('run_request with a pasted redirect address, on a client without dialog
     });
 
     it('refuses the implicit flow, whose token would reach the agent', async () => {
-        const target = await client.callTool({ name: 'run_request', arguments: { name: 'implicit', file: file() } });
-        assert.deepEqual([target.isError, target.content[0].text.includes('implicit flow'), received], [true, true, []]);
+        const target = await callJson(client, 'run_request', { name: 'implicit', file: file() });
+        assert.deepEqual([target.status, target.message.includes('implicit flow'), received], ['authorization_failed', true, []]);
+    });
+
+    it('keeps waiting after an address that is not the redirect uri, and explains why', async () => {
+        const fresh = await connect(workspace);
+        const args = { name: 'pasted', file: file() };
+        const { authorization_url } = await callJson(fresh, 'run_request', args);
+        const wrong = await callJson(fresh, 'run_request', { ...args, redirect_url: 'https://evil.example.com/callback?code=stolen' });
+        const target = await callJson(fresh, 'run_request', { ...args, redirect_url: await landedOn(authorization_url) });
+        await fresh.close();
+        assert.deepEqual([wrong.status, wrong.message.includes('still waiting for the right address'), target.status], ['authorization_failed', true, 'sent']);
     });
 });
 
@@ -247,6 +257,26 @@ describe('run_request with a pasted redirect address, on a client with dialogs',
     it('takes the token of the implicit flow from the dialog', async () => {
         const target = await callJson(client, 'run_request', { name: 'implicit', file: file() });
         assert.deepEqual([target.status, received], ['sent', ['GET /implicit Bearer implicit-token']]);
+    });
+});
+
+describe('run_request with an address pasted without its state', () => {
+    let client;
+
+    before(async () => {
+        client = await connect(workspace, () => ({ action: 'accept', content: { redirect_url: `${PASTED_REDIRECT_URI}?code=granted` } }));
+    });
+
+    after(async () => {
+        await client.close();
+    });
+
+    it('sends nothing and explains that the sign-in link was most likely cut off', async () => {
+        const target = await callJson(client, 'run_request', { name: 'pasted', file: file() });
+        assert.deepEqual(
+            [target.status, target.sent, target.message.startsWith('Nothing was sent: signing in to `paste_login` failed.'), target.message.includes('cut off before its state'), tokens, received],
+            ['authorization_failed', false, true, true, 0, []]
+        );
     });
 });
 

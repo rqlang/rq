@@ -5,7 +5,7 @@ import * as path from 'path';
 import { setWasmTransport, wasmCall } from '../wasmHost';
 import { buildSecretsMap, draftsJson, isDirectory, normalizePath } from '../utils';
 import { CancellationSignal, ExecuteRequestOptions, PreparedRequest, prepareRequest, requestDefinition, requestScope, sendRequest } from '../execution';
-import { Authorize, isInteractiveAuth } from './authorization';
+import { Authorization, Authorize, isInteractiveAuth, McpAuthorizationError } from './authorization';
 import { RESOURCE_BODIES, surface } from './surface';
 
 const DRAFT_FILE_NAME = 'draft.rq';
@@ -188,7 +188,15 @@ export async function runRequest(args: RunRequestArgs, prompts: RunRequestPrompt
     const summary = summaryOf(prepared, args.env);
     const secrets = [...prepared.secret_values];
     if (prepared.auth?.token_required && isInteractiveAuth(prepared.auth.auth_type)) {
-        const authorization = await prompts.authorize({ ...prepared.auth, environment: args.env }, signal, args.redirect_url);
+        let authorization: Authorization;
+        try {
+            authorization = await prompts.authorize({ ...prepared.auth, environment: args.env }, signal, args.redirect_url);
+        } catch (err) {
+            if (signal?.aborted) {
+                throw err;
+            }
+            return { status: 'authorization_failed', sent: false, request: summary, message: authorizationFailure(prepared.auth.name, err) };
+        }
         if (authorization.status === 'declined') {
             return { status: 'declined', sent: false, request: summary };
         }
@@ -244,6 +252,15 @@ export async function runRequest(args: RunRequestArgs, prompts: RunRequestPrompt
             body_truncated: Boolean(result.body_truncated) || body.length < result.body.length
         }
     };
+}
+
+function authorizationFailure(authName: string, err: unknown): string {
+    if (err instanceof McpAuthorizationError) {
+        return err.message;
+    }
+    return surface.run_request.authorization_failed
+        .replace('{auth}', authName)
+        .replace('{reason}', err instanceof Error ? err.message : String(err));
 }
 
 async function fileInside(workspace: string, file: string): Promise<string> {

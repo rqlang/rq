@@ -1,6 +1,7 @@
 import { URL, URLSearchParams } from 'url';
 import * as http from 'http';
 import { AuthUi } from './types';
+import { callbackListenError, missingAccessTokenError, missingCodeError, notAnAddressError, providerRefusedError, SIGN_IN_TIMEOUT_MS, signInTimeoutError, wrongRedirectMessage } from './signInErrors';
 
 export interface CallbackResult {
     code: string;
@@ -14,7 +15,6 @@ export interface ImplicitCallbackResult {
     state: string | null;
 }
 
-const CALLBACK_TIMEOUT_MS = 5 * 60 * 1000;
 const DEFAULT_CALLBACK_PORT = 3000;
 const MIN_PASTED_TOKEN_LENGTH = 20;
 
@@ -31,45 +31,20 @@ export function isLoopbackRedirect(redirectUri: string): boolean {
 export async function handleAppRedirectCallback(ui: AuthUi, authUrl: string, redirectUri: string): Promise<CallbackResult> {
     const waitForAppRedirect = appRedirectWaiter(ui, redirectUri);
     await ui.openUrl(authUrl);
-    try {
-        const url = await waitForAppRedirect(candidate => candidate.searchParams.has('code') || candidate.searchParams.has('error'));
-        ui.log('Received the authorization redirect');
-        return codeFrom(ui, url.searchParams);
-    } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        throw new Error(`Failed to handle callback URI: ${errorMessage}`);
-    }
+    const url = await waitForAppRedirect(candidate => candidate.searchParams.has('code') || candidate.searchParams.has('error'));
+    ui.log('Received the authorization redirect');
+    return codeFrom(ui, url.searchParams);
 }
 
 export async function handleAppRedirectImplicitCallback(ui: AuthUi, authUrl: string, redirectUri: string): Promise<ImplicitCallbackResult> {
     const waitForAppRedirect = appRedirectWaiter(ui, redirectUri);
     await ui.openUrl(authUrl);
-    try {
-        const url = await waitForAppRedirect(candidate => {
-            const params = implicitParams(candidate);
-            return params('access_token') !== null || params('error') !== null;
-        });
-        ui.log('Received the authorization redirect (implicit)');
-        const params = implicitParams(url);
-        const error = params('error');
-        if (error) {
-            throw new Error(`OAuth error: ${error} - ${params('error_description')}`);
-        }
-        const accessToken = params('access_token');
-        if (!accessToken) {
-            throw new Error('No access token in callback URI');
-        }
-        const expiresIn = params('expires_in');
-        return {
-            accessToken,
-            tokenType: params('token_type') || 'Bearer',
-            expiresIn: expiresIn ? parseInt(expiresIn, 10) : undefined,
-            state: params('state')
-        };
-    } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        throw new Error(`Failed to handle callback URI: ${errorMessage}`);
-    }
+    const url = await waitForAppRedirect(candidate => {
+        const params = implicitParams(candidate);
+        return params('access_token') !== null || params('error') !== null;
+    });
+    ui.log('Received the authorization redirect (implicit)');
+    return implicitResultFrom(url);
 }
 
 export async function handleLocalServerCallback(ui: AuthUi, authUrl: string, redirectUri: string): Promise<CallbackResult> {
@@ -96,7 +71,7 @@ export async function handleLocalServerCallback(ui: AuthUi, authUrl: string, red
             if (error) {
                 const description = url.searchParams.get('error_description');
                 respond(res, 400, 'Authentication Error', `<p><strong>Error:</strong> ${escapeHtml(error)}</p><p>${escapeHtml(description || '')}</p>`);
-                finish(() => reject(new Error(`OAuth error: ${error} - ${description}`)));
+                finish(() => reject(providerRefusedError(error, description)));
                 return;
             }
             if (code) {
@@ -106,16 +81,17 @@ export async function handleLocalServerCallback(ui: AuthUi, authUrl: string, red
                 return;
             }
             respond(res, 400, 'Invalid Response', '<p>No authorization code received.</p>');
-            finish(() => reject(new Error('No authorization code in callback')));
+            finish(() => reject(missingCodeError()));
         });
-        server.on('error', err => finish(() => reject(err)));
-        server.listen(parseInt(redirectUrl.port) || DEFAULT_CALLBACK_PORT, () => {
+        const port = parseInt(redirectUrl.port) || DEFAULT_CALLBACK_PORT;
+        server.on('error', err => finish(() => reject(callbackListenError(redirectUri, port, err))));
+        server.listen(port, () => {
             ui.log(`Local callback server started on ${redirectUri}`);
             ui.openUrl(authUrl).catch(err => finish(() => reject(err)));
         });
         timer = setTimeout(() => {
-            finish(() => reject(new Error('Authentication timeout - no response received within 5 minutes')));
-        }, CALLBACK_TIMEOUT_MS);
+            finish(() => reject(signInTimeoutError()));
+        }, SIGN_IN_TIMEOUT_MS);
     });
 }
 
@@ -129,14 +105,14 @@ export async function handleManualPasteCallback(ui: AuthUi, authUrl: string, red
             if (!value) {
                 return 'Please paste the callback URL';
             }
-            return value.startsWith(redirectUri) ? undefined : `URL must start with ${redirectUri}`;
+            return value.startsWith(redirectUri) ? undefined : wrongRedirectMessage(redirectUri);
         }
     });
     if (!callbackUrl) {
         throw new Error('Authentication cancelled - no callback URL provided');
     }
     ui.log('Authorization code received via manual paste');
-    return codeFrom(ui, new URL(callbackUrl).searchParams, 'No authorization code found in callback URL');
+    return codeFrom(ui, parsedAddress(callbackUrl, redirectUri).searchParams);
 }
 
 export async function handleManualPasteImplicitCallback(ui: AuthUi, authUrl: string): Promise<ImplicitCallbackResult> {
@@ -155,12 +131,41 @@ export async function handleManualPasteImplicitCallback(ui: AuthUi, authUrl: str
         if (callbackUrl.length > MIN_PASTED_TOKEN_LENGTH && !callbackUrl.includes(' ')) {
             return { accessToken: callbackUrl, tokenType: 'Bearer', state: null };
         }
-        throw new Error('Invalid URL or Token pasted');
+        throw new Error('The pasted text is neither an address nor an access token. Paste the whole address the browser ends on after signing in.');
     }
+    return implicitResultFrom(url);
+}
+
+function appRedirectWaiter(ui: AuthUi, redirectUri: string): (accepts: (url: URL) => boolean) => Promise<URL> {
+    if (!ui.waitForAppRedirect) {
+        throw new Error(`The redirect_uri ${redirectUri} only works inside VS Code. Register an http://localhost:PORT redirect for the app and use it as redirect_uri.`);
+    }
+    return accepts => ui.waitForAppRedirect!(accepts);
+}
+
+function codeFrom(ui: AuthUi, params: URLSearchParams): CallbackResult {
+    const error = params.get('error');
+    if (error) {
+        const refused = providerRefusedError(error, params.get('error_description'));
+        ui.showError(refused.message);
+        throw refused;
+    }
+    const code = params.get('code');
+    if (!code) {
+        throw missingCodeError();
+    }
+    return { code, state: params.get('state') };
+}
+
+function implicitResultFrom(url: URL): ImplicitCallbackResult {
     const params = implicitParams(url);
+    const error = params('error');
+    if (error) {
+        throw providerRefusedError(error, params('error_description'));
+    }
     const accessToken = params('access_token');
     if (!accessToken) {
-        throw new Error('No access_token found in pasted URL');
+        throw missingAccessTokenError();
     }
     const expiresIn = params('expires_in');
     return {
@@ -171,25 +176,12 @@ export async function handleManualPasteImplicitCallback(ui: AuthUi, authUrl: str
     };
 }
 
-function appRedirectWaiter(ui: AuthUi, redirectUri: string): (accepts: (url: URL) => boolean) => Promise<URL> {
-    if (!ui.waitForAppRedirect) {
-        throw new Error(`The redirect_uri ${redirectUri} only works inside VS Code. Register an http://localhost:PORT redirect for the app and use it as redirect_uri.`);
+function parsedAddress(text: string, redirectUri: string): URL {
+    try {
+        return new URL(text);
+    } catch {
+        throw notAnAddressError(redirectUri);
     }
-    return accepts => ui.waitForAppRedirect!(accepts);
-}
-
-function codeFrom(ui: AuthUi, params: URLSearchParams, missingCodeMessage = 'No authorization code in callback URI'): CallbackResult {
-    const error = params.get('error');
-    if (error) {
-        const description = params.get('error_description');
-        ui.showError(`Authentication error: ${error} - ${description || ''}`);
-        throw new Error(`OAuth error: ${error} - ${description}`);
-    }
-    const code = params.get('code');
-    if (!code) {
-        throw new Error(missingCodeMessage);
-    }
-    return { code, state: params.get('state') };
 }
 
 function implicitParams(url: URL): (key: string) => string | null {

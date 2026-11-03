@@ -48,7 +48,7 @@ describe('handleAppRedirectImplicitCallback', () => {
 
     it('reports an error in the fragment', async () => {
         const ui = fakeUi({ waitForAppRedirect: redirectingTo(`${APP_REDIRECT}#error=access_denied&error_description=bad`) });
-        await expect(handleAppRedirectImplicitCallback(ui, AUTH_URL, APP_REDIRECT)).rejects.toThrow('OAuth error: access_denied - bad');
+        await expect(handleAppRedirectImplicitCallback(ui, AUTH_URL, APP_REDIRECT)).rejects.toThrow('The authorization server refused the sign-in: access_denied (bad).');
     });
 });
 
@@ -60,7 +60,7 @@ describe('handleAppRedirectCallback', () => {
 
     it('reports an error in the query', async () => {
         const ui = fakeUi({ waitForAppRedirect: redirectingTo(`${APP_REDIRECT}?error=invalid_request`) });
-        await expect(handleAppRedirectCallback(ui, AUTH_URL, APP_REDIRECT)).rejects.toThrow('OAuth error: invalid_request - null');
+        await expect(handleAppRedirectCallback(ui, AUTH_URL, APP_REDIRECT)).rejects.toThrow(/refused the sign-in: invalid_request\.$/);
     });
 
     it('refuses an app redirect when the ui cannot receive one, before opening the browser', async () => {
@@ -81,7 +81,17 @@ describe('handleManualPasteCallback', () => {
     it('rejects a pasted url that does not start with the redirect uri', async () => {
         const askForRedirectUrl = jest.fn().mockResolvedValue(`${redirectUri}?code=foo`);
         await handleManualPasteCallback(fakeUi({ askForRedirectUrl }), AUTH_URL, redirectUri);
-        expect(askForRedirectUrl.mock.calls[0][0].validate('https://evil.example.com/?code=foo')).toBe(`URL must start with ${redirectUri}`);
+        expect(askForRedirectUrl.mock.calls[0][0].validate('https://evil.example.com/?code=foo')).toBe(`The pasted address does not start with the redirect_uri ${redirectUri}, so it is not where this sign-in ends. Paste the whole address the browser ends on after signing in.`);
+    });
+
+    it('explains that pasted text which is not an address cannot be used', async () => {
+        const ui = fakeUi({ askForRedirectUrl: jest.fn().mockResolvedValue('just some text') });
+        await expect(handleManualPasteCallback(ui, AUTH_URL, redirectUri)).rejects.toThrow(`The pasted text is not an address. Paste the whole address the browser ends on after signing in, which starts with ${redirectUri}.`);
+    });
+
+    it('explains that a pasted address without a code cannot be used', async () => {
+        const ui = fakeUi({ askForRedirectUrl: jest.fn().mockResolvedValue(`${redirectUri}?state=bar`) });
+        await expect(handleManualPasteCallback(ui, AUTH_URL, redirectUri)).rejects.toThrow('has no authorization code');
     });
 
     it('reports a cancelled paste', async () => {
@@ -135,10 +145,20 @@ describe('handleLocalServerCallback', () => {
         expect(await handleLocalServerCallback(ui, AUTH_URL, redirectUri)).toEqual({ code: 'foo', state: 'bar' });
     });
 
+    it('explains that the port of the redirect uri is taken', async () => {
+        const blocker = http.createServer();
+        await new Promise<void>(resolve => blocker.listen(47391, resolve));
+        try {
+            await expect(handleLocalServerCallback(fakeUi(), AUTH_URL, redirectUri)).rejects.toThrow(`Port 47391 of the redirect_uri ${redirectUri} is in use by another program`);
+        } finally {
+            await new Promise(resolve => blocker.close(resolve));
+        }
+    });
+
     it('escapes the error it shows on the callback page', async () => {
         let page: Promise<{ status: number; body: string }> | undefined;
         const ui = fakeUi({ openUrl: jest.fn(async () => { page = visit(`${redirectUri}?error=%3Cscript%3E`); }) });
-        await expect(handleLocalServerCallback(ui, AUTH_URL, redirectUri)).rejects.toThrow('OAuth error: <script>');
+        await expect(handleLocalServerCallback(ui, AUTH_URL, redirectUri)).rejects.toThrow('refused the sign-in: <script>');
         const { body } = await page!;
         expect([body.includes('&lt;script&gt;'), body.includes('<script>')]).toEqual([true, false]);
     });

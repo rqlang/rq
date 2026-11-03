@@ -130,7 +130,20 @@ describe('AuthorizationCodePKCEFlow', () => {
             state: 'wrong-state' 
         });
 
-        await expect(pkceFlow.execute(mockConfig)).rejects.toThrow('State parameter mismatch');
+        await expect(pkceFlow.execute(mockConfig)).rejects.toThrow('comes from another sign-in');
+    });
+
+    test('explains a callback without state, the sign of a cut-off sign-in link', async () => {
+        (callbackHandlers.handleLocalServerCallback as jest.Mock).mockResolvedValue({ code: 'test-auth-code', state: null });
+        await expect(pkceFlow.execute(mockConfig)).rejects.toThrow('cut off before its state');
+    });
+
+    test('explains a rejected code exchange', async () => {
+        (callbackHandlers.handleLocalServerCallback as jest.Mock).mockImplementation((_ui: unknown, authUrl: string) =>
+            Promise.resolve({ code: 'test-auth-code', state: new URL(authUrl).searchParams.get('state') })
+        );
+        fetchMock.mockResponse({ error: 'invalid_grant', error_description: 'Code not valid' }, 400, false);
+        await expect(pkceFlow.execute(mockConfig)).rejects.toThrow('rejected the authorization code at https://auth.example.com/token (HTTP 400: Code not valid)');
     });
 
     test('should NOT include code_challenge when usePkce is false', async () => {

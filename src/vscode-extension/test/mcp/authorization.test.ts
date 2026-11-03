@@ -213,7 +213,7 @@ describe('Authorizer with a redirect address the user pastes', () => {
 
     it('rejects an address from the dialog that is not the redirect uri', async () => {
         const target = withDialog(url => ({ status: 'pasted', url: landedOn(url).replace(PASTED_REDIRECT_URI, 'https://evil.example.com/callback') }));
-        await expect(target.authorize(pastedAuth())).rejects.toThrow(`URL must start with ${PASTED_REDIRECT_URI}`);
+        await expect(target.authorize(pastedAuth())).rejects.toThrow(`does not start with the redirect_uri ${PASTED_REDIRECT_URI}`);
     });
 
     it('takes the token straight from the address pasted in the dialog for the implicit flow', async () => {
@@ -261,13 +261,13 @@ describe('Authorizer with a redirect address the user pastes', () => {
         const target = withOpener(opener('accepted'));
         const first = await target.authorize(pastedAuth());
         const url = first.status === 'authorization_required' ? await followLink(first.authorizationUrl) : '';
-        await expect(target.authorize(pastedAuth(), undefined, 'https://evil.example.com/callback?code=stolen')).rejects.toThrow('not the address the sign-in ends on');
+        await expect(target.authorize(pastedAuth(), undefined, 'https://evil.example.com/callback?code=stolen')).rejects.toThrow('still waiting for the right address');
         expect(await target.authorize(pastedAuth(), undefined, landedOn(url))).toEqual({ status: 'authorized', token: 'granted-token' });
     });
 
     it('rejects an address whose state belongs to another sign-in', async () => {
         const target = withOpener(opener('accepted'));
-        await expect(pastedInChat(target, pastedAuth(), () => `${PASTED_REDIRECT_URI}?code=granted&state=forged`)).rejects.toThrow('State parameter mismatch');
+        await expect(pastedInChat(target, pastedAuth(), () => `${PASTED_REDIRECT_URI}?code=granted&state=forged`)).rejects.toThrow('comes from another sign-in');
     });
 
     it('refuses an address from the agent for an auth with neither PKCE nor state', async () => {

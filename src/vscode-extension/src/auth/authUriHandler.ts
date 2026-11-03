@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { SIGN_IN_TIMEOUT_MS, signInTimeoutError } from './signInErrors';
 
 export interface UriHandlerCallback {
     (uri: vscode.Uri): void;
@@ -23,7 +24,7 @@ export function registerAuthUriHandler(context: vscode.ExtensionContext) {
     );
 }
 
-export function waitForUri(predicate: (uri: vscode.Uri) => boolean, timeoutMs: number = 300000): Promise<vscode.Uri> {
+export function waitForUri(predicate: (uri: vscode.Uri) => boolean, timeoutMs: number = SIGN_IN_TIMEOUT_MS): Promise<vscode.Uri> {
     return new Promise((resolve, reject) => {
         const disposable = authUriHandler.onDidHandleUri(uri => {
             if (predicate(uri)) {
@@ -35,7 +36,7 @@ export function waitForUri(predicate: (uri: vscode.Uri) => boolean, timeoutMs: n
 
         const timeoutHandle = setTimeout(() => {
             disposable.dispose();
-            reject(new Error('Authentication timeout - no response received from callback'));
+            reject(signInTimeoutError());
         }, timeoutMs);
     });
 }

@@ -2,6 +2,7 @@ import { URLSearchParams, URL } from 'url';
 import * as crypto from 'crypto';
 import { AuthUi, OAuth2Config, OAuth2Result, IOAuth2Flow, TokenResponse } from './types';
 import { generateCodeVerifier, generateCodeChallenge } from './pkceUtils';
+import { tokenExchangeError, verifyState } from './signInErrors';
 import { handleAppRedirectCallback, handleLocalServerCallback, handleManualPasteCallback, isAppRedirect, isLoopbackRedirect, CallbackResult } from './callbackHandlers';
 
 export class AuthorizationCodePKCEFlow implements IOAuth2Flow {
@@ -42,12 +43,7 @@ export class AuthorizationCodePKCEFlow implements IOAuth2Flow {
 
             const result = await this.getAuthorizationCode(`${config.authorizationUrl}?${authParams.toString()}`, config.redirectUri);
             if (config.useState !== false) {
-                if (!result.state) {
-                    throw new Error('State parameter missing in callback');
-                }
-                if (result.state !== state) {
-                    throw new Error('State parameter mismatch');
-                }
+                verifyState(state, result.state);
             }
 
             const tokenResponse = await this.exchangeCodeForToken(result.code, codeVerifier, config);
@@ -107,7 +103,7 @@ export class AuthorizationCodePKCEFlow implements IOAuth2Flow {
         });
         if (!response.ok) {
             const errorText = await response.text();
-            throw new Error(`Token exchange failed: ${response.status} (${config.tokenUrl}) - ${errorDetail(errorText)}`);
+            throw tokenExchangeError(config.tokenUrl, response.status, errorDetail(errorText));
         }
         this.ui.log('Token exchange successful');
         return await response.json() as TokenResponse;

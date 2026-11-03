@@ -17,6 +17,7 @@ export interface ImplicitCallbackResult {
 
 const DEFAULT_CALLBACK_PORT = 3000;
 const MIN_PASTED_TOKEN_LENGTH = 20;
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1']);
 
 export function isAppRedirect(redirectUri: string): boolean {
     const lower = redirectUri.toLowerCase();
@@ -24,8 +25,12 @@ export function isAppRedirect(redirectUri: string): boolean {
 }
 
 export function isLoopbackRedirect(redirectUri: string): boolean {
-    const lower = redirectUri.toLowerCase();
-    return lower.startsWith('http://localhost') || lower.startsWith('http://127.0.0.1');
+    try {
+        const url = new URL(redirectUri);
+        return url.protocol === 'http:' && LOOPBACK_HOSTS.has(url.hostname);
+    } catch {
+        return false;
+    }
 }
 
 export async function handleAppRedirectCallback(ui: AuthUi, authUrl: string, redirectUri: string): Promise<CallbackResult> {
@@ -64,6 +69,8 @@ export async function handleLocalServerCallback(ui: AuthUi, authUrl: string, red
         const server = http.createServer((req, res) => {
             const url = new URL(req.url || '', redirectUri);
             if (url.pathname !== redirectUrl.pathname) {
+                res.writeHead(404, { 'Connection': 'close' });
+                res.end();
                 return;
             }
             const code = url.searchParams.get('code');
@@ -85,7 +92,7 @@ export async function handleLocalServerCallback(ui: AuthUi, authUrl: string, red
         });
         const port = parseInt(redirectUrl.port) || DEFAULT_CALLBACK_PORT;
         server.on('error', err => finish(() => reject(callbackListenError(redirectUri, port, err))));
-        server.listen(port, () => {
+        server.listen(port, redirectUrl.hostname, () => {
             ui.log(`Local callback server started on ${redirectUri}`);
             ui.openUrl(authUrl).catch(err => finish(() => reject(err)));
         });

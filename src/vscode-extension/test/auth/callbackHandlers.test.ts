@@ -4,7 +4,8 @@ import {
     handleAppRedirectImplicitCallback,
     handleLocalServerCallback,
     handleManualPasteCallback,
-    handleManualPasteImplicitCallback
+    handleManualPasteImplicitCallback,
+    isLoopbackRedirect
 } from '../../src/auth/callbackHandlers';
 import { AuthUi } from '../../src/auth/types';
 
@@ -118,6 +119,16 @@ describe('handleManualPasteImplicitCallback', () => {
     });
 });
 
+describe('isLoopbackRedirect', () => {
+    it.each(['http://localhost:3000/callback', 'http://127.0.0.1:47391/cb', 'http://LOCALHOST/cb'])('accepts %s', redirectUri => {
+        expect(isLoopbackRedirect(redirectUri)).toBe(true);
+    });
+
+    it.each(['http://localhost.example.com/cb', 'http://127.0.0.1.example.com/cb', 'https://localhost/cb', 'not an address'])('rejects %s', redirectUri => {
+        expect(isLoopbackRedirect(redirectUri)).toBe(false);
+    });
+});
+
 describe('handleLocalServerCallback', () => {
     const redirectUri = 'http://127.0.0.1:47391/callback';
 
@@ -145,9 +156,28 @@ describe('handleLocalServerCallback', () => {
         expect(await handleLocalServerCallback(ui, AUTH_URL, redirectUri)).toEqual({ code: 'foo', state: 'bar' });
     });
 
+    it('listens only on the host of the redirect uri', async () => {
+        const listen = jest.spyOn(http.Server.prototype, 'listen');
+        const ui = fakeUi({ openUrl: jest.fn(async () => { await visit(`${redirectUri}?code=foo`); }) });
+        await handleLocalServerCallback(ui, AUTH_URL, redirectUri);
+        expect(listen.mock.calls[0].slice(0, 2)).toEqual([47391, '127.0.0.1']);
+        listen.mockRestore();
+    });
+
+    it('answers a request for another path without ending the sign-in', async () => {
+        let other: Promise<{ status: number; body: string }> | undefined;
+        const ui = fakeUi({ openUrl: jest.fn(async () => {
+            other = visit('http://127.0.0.1:47391/favicon.ico');
+            await other;
+            await visit(`${redirectUri}?code=foo&state=bar`);
+        }) });
+        const target = await handleLocalServerCallback(ui, AUTH_URL, redirectUri);
+        expect([(await other!).status, target]).toEqual([404, { code: 'foo', state: 'bar' }]);
+    });
+
     it('explains that the port of the redirect uri is taken', async () => {
         const blocker = http.createServer();
-        await new Promise<void>(resolve => blocker.listen(47391, resolve));
+        await new Promise<void>(resolve => blocker.listen(47391, '127.0.0.1', resolve));
         try {
             await expect(handleLocalServerCallback(fakeUi(), AUTH_URL, redirectUri)).rejects.toThrow(`Port 47391 of the redirect_uri ${redirectUri} is in use by another program`);
         } finally {

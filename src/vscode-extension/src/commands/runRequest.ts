@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as rqClient from '../rqClient';
 import { RequestExplorerProvider, RequestTreeItem } from '../requestExplorer';
 import { performOAuth2Flow } from '../auth';
+import { vscodeOAuthProvider } from '../auth/vscodeAuth';
 import { getWebviewContent, getErrorWebviewContent } from '../ui/webviewGenerator';
 import { ResultsMessage, ResultsPanels, ResultsSession, readResultsTabMode } from '../ui/resultsPanels';
 import { Logger } from '../logger';
@@ -196,7 +197,7 @@ export class RequestRunner {
         this.logger.debug(`Detected OAuth2 auth: ${auth.name} (${auth.auth_type})`);
         this.logger.log(`Performing OAuth2 flow...`);
         try {
-            const accessToken = await performOAuth2Flow(auth, this.context, this.outputChannel);
+            const accessToken = await performOAuth2Flow(auth, vscodeOAuthProvider(this.context, this.outputChannel));
             this.logger.log(`OAuth2 token obtained, injecting as auth_token variable`);
             return accessToken;
         } catch (error) {

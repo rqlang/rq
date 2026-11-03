@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as rqClient from '../rqClient';
 import { performOAuth2Flow } from '../auth';
+import { vscodeOAuthProvider } from '../auth/vscodeAuth';
 import { EnvironmentProvider } from '../language/completionContext';
 import { pickEnvironment } from '../vscodeUtils';
 
@@ -76,7 +77,7 @@ export function registerGetTokenCommand(
                     location: vscode.ProgressLocation.Notification,
                     title: 'Getting OAuth2 access token...',
                     cancellable: false
-                }, () => performOAuth2Flow(authConfig, context, outputChannel));
+                }, () => performOAuth2Flow(authConfig, vscodeOAuthProvider(context, outputChannel)));
             } catch (error) {
                 const errorMessage = error instanceof Error ? error.message : 'Unknown error';
                 console.error('OAuth2 flow failed:', errorMessage);

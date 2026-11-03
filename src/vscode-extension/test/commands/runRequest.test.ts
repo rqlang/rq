@@ -4,6 +4,7 @@ import { RequestExplorerProvider } from '../../src/requestExplorer';
 import { createExplorerState } from '../memento-mock';
 import * as cliService from '../../src/rqClient';
 import * as auth from '../../src/auth';
+import { OAuthProvider } from '../../src/auth/oauthProvider';
 import * as webviewGenerator from '../../src/ui/webviewGenerator';
 
 // Mock dependencies
@@ -168,7 +169,7 @@ describe('runRequest Commands', () => {
 
             await requestRunner.runRequest(item, provider);
 
-            expect(auth.performOAuth2Flow).toHaveBeenCalledWith(pendingAuth, context, outputChannel);
+            expect(auth.performOAuth2Flow).toHaveBeenCalledWith(pendingAuth, expect.any(OAuthProvider));
             expect(acquired).toBe('mock-token');
             expect(provider.setItemRunning).toHaveBeenCalledTimes(2);
             expect(provider.setItemRunning).toHaveBeenNthCalledWith(1, item, true);

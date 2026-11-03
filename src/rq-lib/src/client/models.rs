@@ -95,6 +95,8 @@ pub struct ReferenceLocation {
     pub shared: bool,
 }
 
+const MIN_REDACTED_SECRET_LENGTH: usize = 6;
+
 #[derive(Debug, Clone)]
 pub struct PreparedRequest {
     pub request: Request,
@@ -112,7 +114,9 @@ impl PreparedRequest {
             .secret_variables
             .iter()
             .filter_map(|variable| match &variable.value {
-                VariableValue::String(value) | VariableValue::Json(value) if !value.is_empty() => {
+                VariableValue::String(value) | VariableValue::Json(value)
+                    if value.chars().count() >= MIN_REDACTED_SECRET_LENGTH =>
+                {
                     Some(value.clone())
                 }
                 _ => None,

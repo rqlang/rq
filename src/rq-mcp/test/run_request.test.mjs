@@ -252,6 +252,11 @@ describe('run_request with a client that can ask the user', () => {
         assert.deepEqual([target.status, target.sent, received], ['declined', false, []]);
     });
 
+    it('shows the user the whole url while redacting it for the agent', async () => {
+        const target = await callJson(asking, 'run_request', { name: 'keyed', file: file(), env: 'production' });
+        assert.deepEqual([questions[0].includes('?key=k3y-s3cret'), target.request.url.endsWith('?key=[redacted]')], [true, true]);
+    });
+
     it('does not ask about an unmarked read', async () => {
         await callJson(asking, 'run_request', { name: 'users/list', file: file(), env: 'local' });
         assert.deepEqual(questions, []);

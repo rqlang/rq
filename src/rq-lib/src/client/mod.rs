@@ -3263,14 +3263,26 @@ mod prepare_tests {
         write(
             dir.path(),
             ".env",
-            "SHORT=abc\nLONG=abcdef\nSAME=abc\nEMPTY=\n",
+            "SHORT=abcdef\nLONG=abcdefgh\nSAME=abcdef\nEMPTY=\n",
         );
         write(dir.path(), "main.rq", "rq probe(\"http://localhost\");\n");
         let target = RqClient::default()
             .prepare_request(RequestTarget::new(dir.path(), "probe"), None, &[])
             .expect("prepare_request failed")
             .secret_values();
-        assert_eq!(target, vec!["abcdef".to_string(), "abc".to_string()]);
+        assert_eq!(target, vec!["abcdefgh".to_string(), "abcdef".to_string()]);
+    }
+
+    #[test]
+    fn prepared_request_leaves_values_too_short_to_be_secrets_out_of_the_secret_values() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write(dir.path(), ".env", "PORT=8080\nRETRIES=1\nREGION=éééééé\n");
+        write(dir.path(), "main.rq", "rq probe(\"http://localhost\");\n");
+        let target = RqClient::default()
+            .prepare_request(RequestTarget::new(dir.path(), "probe"), None, &[])
+            .expect("prepare_request failed")
+            .secret_values();
+        assert_eq!(target, vec!["éééééé".to_string()]);
     }
 
     #[test]

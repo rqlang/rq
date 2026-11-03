@@ -186,6 +186,7 @@ export async function runRequest(args: RunRequestArgs, prompts: RunRequestPrompt
     rejectUndeclaredVariables(args.variables, definition.RequiredVariables ?? []);
     let prepared = await prepareRequest(scope, options);
     const summary = summaryOf(prepared, args.env);
+    const question = { ...summary, url: prepared.url };
     const secrets = [...prepared.secret_values];
     if (prepared.auth?.token_required && isInteractiveAuth(prepared.auth.auth_type)) {
         let authorization: Authorization;
@@ -221,7 +222,7 @@ export async function runRequest(args: RunRequestArgs, prompts: RunRequestPrompt
         const fingerprint = () => fingerprintOf(args, workspace, definition);
         const outcome = args.confirmation_token
             ? redeemConfirmation(args.confirmation_token, fingerprint())
-            : await prompts.confirm(summary);
+            : await prompts.confirm(question);
         if (outcome === 'declined') {
             return { status: 'declined', sent: false, request: summary };
         }

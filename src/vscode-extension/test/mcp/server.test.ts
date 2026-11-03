@@ -186,9 +186,9 @@ describe('openAuthorizationUrl', () => {
         expect(await openAuthorizationUrl(server, AUTHORIZATION_URL, 'login', FINISHED)).toBe('declined');
     });
 
-    it('declines once the question times out', async () => {
+    it('reports the question as unanswered once it times out', async () => {
         const { server } = await serverWithUrlClient({ url: {} }, () => new Promise<Answer>(() => undefined));
-        expect(await openAuthorizationUrl(server, AUTHORIZATION_URL, 'login', FINISHED, undefined, 20)).toBe('declined');
+        expect(await openAuthorizationUrl(server, AUTHORIZATION_URL, 'login', FINISHED, undefined, 20)).toBe('unanswered');
     });
 
     it('tells the client the sign-in finished, with the id it asked with', async () => {
@@ -238,9 +238,9 @@ describe('askForRedirectUrl', () => {
         expect(await askForRedirectUrl(server, AUTHORIZATION_URL, PASTE_AUTH)).toEqual({ status: 'declined' });
     });
 
-    it('declines once the dialog times out', async () => {
+    it('reports the dialog as unanswered once it times out', async () => {
         const { server } = await serverWithClient(() => new Promise<Answer>(() => undefined));
-        expect(await askForRedirectUrl(server, AUTHORIZATION_URL, PASTE_AUTH, undefined, 20)).toEqual({ status: 'declined' });
+        expect(await askForRedirectUrl(server, AUTHORIZATION_URL, PASTE_AUTH, undefined, 20)).toEqual({ status: 'unanswered' });
     });
 
     it('asks for one required text field', async () => {

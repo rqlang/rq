@@ -151,7 +151,7 @@ export async function confirmWithUser(
         if (signal?.aborted) {
             return 'declined';
         }
-        if (err instanceof McpError && err.code === ErrorCode.RequestTimeout) {
+        if (isTimeout(err)) {
             return 'unanswered';
         }
         throw err;
@@ -181,8 +181,11 @@ export async function openAuthorizationUrl(
         }, { signal, timeout });
         return result.action === 'accept' && !signal?.aborted ? 'accepted' : 'declined';
     } catch (err) {
-        if (signal?.aborted || (err instanceof McpError && err.code === ErrorCode.RequestTimeout)) {
+        if (signal?.aborted) {
             return 'declined';
+        }
+        if (isTimeout(err)) {
+            return 'unanswered';
         }
         throw err;
     }
@@ -217,11 +220,18 @@ export async function askForRedirectUrl(
         }
         return { status: 'pasted', url: url.trim() };
     } catch (err) {
-        if (signal?.aborted || (err instanceof McpError && err.code === ErrorCode.RequestTimeout)) {
+        if (signal?.aborted) {
             return { status: 'declined' };
+        }
+        if (isTimeout(err)) {
+            return { status: 'unanswered' };
         }
         throw err;
     }
+}
+
+function isTimeout(err: unknown): boolean {
+    return err instanceof McpError && err.code === ErrorCode.RequestTimeout;
 }
 
 function canAskWithForm(server: McpServer): boolean {

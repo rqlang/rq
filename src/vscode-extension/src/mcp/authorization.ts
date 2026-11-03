@@ -7,9 +7,9 @@ import { CANCELLED_MESSAGE } from '../utils';
 import { openShortLink, ShortLink } from './shortLink';
 import { surface } from './surface';
 
-export type AuthorizationUrlOutcome = 'accepted' | 'declined' | 'unavailable';
+export type AuthorizationUrlOutcome = 'accepted' | 'declined' | 'unanswered' | 'unavailable';
 
-export type RedirectUrlOutcome = { status: 'pasted'; url: string } | { status: 'declined' } | { status: 'unavailable' };
+export type RedirectUrlOutcome = { status: 'pasted'; url: string } | { status: 'declined' } | { status: 'unanswered' } | { status: 'unavailable' };
 
 export interface AuthorizationPrompts {
     openUrl(url: string, auth: OAuthAuthConfig, finished: Promise<void>, signal?: AbortSignal): Promise<AuthorizationUrlOutcome>;
@@ -137,6 +137,9 @@ export class Authorizer {
                 if (outcome === 'declined') {
                     throw new AuthorizationDeclinedError(`The user declined to authorize ${auth.name}`);
                 }
+                if (outcome === 'unanswered') {
+                    throw signInTimeoutError();
+                }
                 if (outcome === 'unavailable') {
                     publish({ url: await shortLink(url), redirectUrlRequired: false });
                 }
@@ -146,6 +149,9 @@ export class Authorizer {
                 const outcome = await prompt(() => this.prompts.askForRedirectUrl(shown, auth, signal));
                 if (outcome.status === 'declined') {
                     throw new AuthorizationDeclinedError(`The user declined to authorize ${auth.name}`);
+                }
+                if (outcome.status === 'unanswered') {
+                    throw signInTimeoutError();
                 }
                 if (outcome.status === 'pasted') {
                     const invalid = request.validate?.(outcome.url);

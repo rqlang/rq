@@ -129,6 +129,10 @@ describe('Authorizer', () => {
         expect(await target.authorize(authConfig())).toEqual({ status: 'declined' });
     });
 
+    it('reports a sign-in dialog nobody answered in time as a timeout, not a refusal', async () => {
+        await expect(withOpener(opener('unanswered')).authorize(authConfig())).rejects.toThrow('No sign-in finished within 5 minutes');
+    });
+
     it('starts a new sign-in after the user declined one', async () => {
         const open = opener('declined');
         const target = withOpener(open);
@@ -265,6 +269,10 @@ describe('Authorizer with a redirect address the user pastes', () => {
 
     it('reports a dialog the user dismissed as declined', async () => {
         expect(await withDialog(() => ({ status: 'declined' })).authorize(pastedAuth())).toEqual({ status: 'declined' });
+    });
+
+    it('reports a paste dialog nobody answered in time as a timeout, not a refusal', async () => {
+        await expect(withDialog(() => ({ status: 'unanswered' })).authorize(pastedAuth())).rejects.toThrow('No sign-in finished within 5 minutes');
     });
 
     it('rejects an address from the dialog that is not the redirect uri', async () => {

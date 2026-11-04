@@ -755,7 +755,7 @@ describe('runRequest Commands', () => {
 });
 
 describe('confirmRequest', () => {
-    const PREPARED = { name: 'users/delete', method: 'DELETE', url: 'https://api.example.com/users/1', headers: [], confirmation_required: true, agent_confirmation_required: true, secret_values: [], variables: [] };
+    const PREPARED = { name: 'users/delete', method: 'DELETE', url: 'https://api.example.com/users/1', headers: [], confirmation_required: true, agent_confirmation_required: true, secret_values: [] };
 
     beforeEach(() => jest.clearAllMocks());
 

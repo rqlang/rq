@@ -70,7 +70,12 @@ export interface PreparedRequest {
     confirmation_required: boolean;
     agent_confirmation_required: boolean;
     secret_values: string[];
-    variables: string[];
+}
+
+export interface OverrideCheck {
+    used: string[];
+    unused: string[];
+    needs_consent: boolean;
 }
 
 export interface RequestScope {
@@ -97,6 +102,12 @@ export async function prepareRequest(scope: RequestScope, options: ExecuteReques
     return JSON.parse(
         await wasmCall('prepare_request', [scope.filesJson, scope.secretsJson, scope.source, options.requestName, options.environment, toVariablesJson(variables), resolveScopeFile(options.sourceFile)])
     ) as PreparedRequest;
+}
+
+export async function checkOverrides(scope: RequestScope, options: ExecuteRequestOptions): Promise<OverrideCheck> {
+    return JSON.parse(
+        await wasmCall('check_overrides', [scope.filesJson, scope.secretsJson, scope.source, options.requestName, options.environment, toVariablesJson(options.variables), resolveScopeFile(options.sourceFile)])
+    ) as OverrideCheck;
 }
 
 export async function requestDefinition(scope: RequestScope, options: ExecuteRequestOptions): Promise<unknown> {

@@ -255,6 +255,22 @@ describe('run_request', () => {
         assert.deepEqual([target.isError, target.content[0].text.includes('`tpo`'), received], [true, true, []]);
     });
 
+    it('rejects a value that calls a function', async () => {
+        const target = await client.callTool({ name: 'run_request', arguments: { name: 'paged', file: file(), env: 'local', variables: { top: '{{io.read_file("users.rq")}}' } } });
+        assert.deepEqual([target.isError, target.content[0].text.includes('plain text'), received], [true, true, []]);
+    });
+
+    it('rejects a value that reads a secret', async () => {
+        const target = await client.callTool({ name: 'run_request', arguments: { name: 'paged', file: file(), env: 'local', variables: { top: '{{api_key}}' } } });
+        assert.deepEqual([target.isError, received], [true, []]);
+    });
+
+    it('sends a required variable that moves the request without asking', async () => {
+        const moved = tempWorkspace({ 'moved.rq': '[required(base_url)]\nrq list("{{base_url}}/moved");\n' });
+        const target = await callJson(client, 'run_request', { name: 'list', file: path.join(moved, 'moved.rq'), workspace_path: moved, variables: { base_url: `http://127.0.0.1:${api.address().port}` } });
+        assert.deepEqual([target.status, received], ['sent', ['GET /moved']]);
+    });
+
     it('holds an override that sends the request to another host', async () => {
         const target = await callJson(client, 'run_request', { name: 'users/list', file: file(), env: 'local', variables: { base_url: 'http://127.0.0.1:1' } });
         assert.deepEqual([target.status, typeof target.confirmation_token, received], ['confirmation_required', 'string', []]);

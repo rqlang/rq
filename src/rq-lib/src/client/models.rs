@@ -104,7 +104,6 @@ pub struct PreparedRequest {
     pub auth: Option<PreparedAuth>,
     pub confirmation_required: bool,
     pub agent_confirmation_required: bool,
-    pub variables: Vec<String>,
     pub(crate) context: VariableContext,
 }
 
@@ -133,6 +132,13 @@ impl PreparedRequest {
 pub struct PreparedAuth {
     pub config: Config,
     pub token_required: bool,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct OverrideCheck {
+    pub used: Vec<String>,
+    pub unused: Vec<String>,
+    pub needs_consent: bool,
 }
 
 #[derive(Debug, Clone, Copy)]

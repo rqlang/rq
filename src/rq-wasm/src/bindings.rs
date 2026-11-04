@@ -132,7 +132,6 @@ struct PreparedRequestJson {
     confirmation_required: bool,
     agent_confirmation_required: bool,
     secret_values: Vec<String>,
-    variables: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -455,7 +454,6 @@ pub fn prepare_request(
     });
     let confirmation_required = prepared.confirmation_required;
     let agent_confirmation_required = prepared.agent_confirmation_required;
-    let variables = prepared.variables;
     let request = prepared.request;
     let view = PreparedRequestJson {
         name: request.name,
@@ -468,9 +466,33 @@ pub fn prepare_request(
         confirmation_required,
         agent_confirmation_required,
         secret_values,
-        variables,
     };
     serde_json::to_string(&view).map_err(|e| JsError::new(&e.to_string()))
+}
+
+#[wasm_bindgen]
+pub fn check_overrides(
+    files_json: &str,
+    secrets_json: &str,
+    source: &str,
+    name: &str,
+    env: Option<String>,
+    variables_json: Option<String>,
+    scope_file: Option<String>,
+) -> Result<String, JsError> {
+    let variables = parse_variables(variables_json.as_deref())?;
+    let check = make_client(
+        parse_files(files_json)?,
+        parse_secrets(secrets_json),
+        source,
+    )
+    .check_overrides(
+        RequestTarget::new(Path::new(source), name).in_file(scope_file.as_deref().map(Path::new)),
+        env.as_deref(),
+        &variables,
+    )
+    .map_err(rq_err)?;
+    serde_json::to_string(&check).map_err(|e| JsError::new(&e.to_string()))
 }
 
 #[wasm_bindgen]

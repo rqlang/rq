@@ -4,8 +4,8 @@ use crate::native;
 
 use crate::client::models::ReferenceLocation;
 use crate::client::models::{
-    PreparedAuth, PreparedRequest, RequestDetails, RequestExecutionResult, RequestInfo,
-    RequestTarget, VariableEntry,
+    OverrideCheck, PreparedAuth, PreparedRequest, RequestDetails, RequestExecutionResult,
+    RequestInfo, RequestTarget, VariableEntry,
 };
 use crate::error::RqError;
 use crate::http::HttpClient;
@@ -13,7 +13,11 @@ use crate::lint::{lint_rq_file, LintDiagnostic, LintScope, WorkspaceCollector, W
 use crate::logger::Logger;
 use crate::syntax::auth::Config as AuthConfig;
 use crate::syntax::parse_result::{AuthLocation, RequestWithVariables};
-use crate::syntax::resolve::{find_request_scoped_references, SourcePosition};
+use crate::syntax::resolve::{
+    find_request_scoped_references, referenced_variable_names, variable_dependencies,
+    SourcePosition,
+};
+use crate::syntax::types::SlotValue;
 use crate::syntax::variable_context::{VariableContext, VariableContextBuilder};
 use crate::syntax::{Fs, Request, RqFile, SecretProvider, Variable, VariableValue};
 
@@ -30,6 +34,8 @@ type AuthDetails = (
     usize,
     usize,
 );
+
+const AUTH_TOKEN_VARIABLE: &str = "auth_token";
 
 pub struct RqClient {
     fs: Arc<dyn Fs>,
@@ -283,6 +289,44 @@ impl RqClient {
             source_path,
             environment,
         )
+    }
+
+    pub fn check_overrides(
+        &self,
+        target: RequestTarget,
+        environment: Option<&str>,
+        variables: &[String],
+    ) -> Result<OverrideCheck, RqError> {
+        let cli_vars = Self::parse_cli_variables(variables)?;
+        Self::reject_templated_values(&cli_vars)?;
+        let (rq_file, req_with_vars) = self.load_request(target)?;
+        let request = req_with_vars.request;
+        let (kept, overrides): (Vec<_>, Vec<_>) = variables
+            .iter()
+            .zip(&cli_vars)
+            .partition(|(_, variable)| Self::is_runtime_input(&request, &variable.name));
+        let kept: Vec<String> = kept.into_iter().map(|(kv, _)| kv.clone()).collect();
+        let prepared = self.prepare_request(target, environment, variables)?;
+        let used = Self::variables_used(&rq_file, &request, &prepared);
+        let unused = overrides
+            .iter()
+            .map(|(_, variable)| variable.name.clone())
+            .filter(|name| !used.contains(name))
+            .filter(|name| {
+                !self.override_changes_request(target, environment, variables, name, &prepared)
+            })
+            .collect();
+        let needs_consent = !overrides.is_empty()
+            && self
+                .prepare_request(target, environment, &kept)
+                .map_or(true, |baseline| {
+                    Self::redirects_or_reauthorizes(&baseline, &prepared)
+                });
+        Ok(OverrideCheck {
+            used,
+            unused,
+            needs_consent,
+        })
     }
 
     pub fn list_auth(
@@ -818,7 +862,7 @@ impl RqClient {
         }
         let mut pending: Vec<String> = Self::request_texts(request)
             .iter()
-            .flat_map(|text| crate::syntax::resolve::referenced_variable_names(text))
+            .flat_map(|text| referenced_variable_names(text))
             .chain(request.headers_var.clone())
             .collect();
         let values = context.as_map();
@@ -1170,12 +1214,7 @@ impl RqClient {
             &rq_file.imported_files,
             &self.env_file_path(source_path),
         );
-        let mut roots = Self::variable_roots(&request);
         let resolved = self.resolve_request(request, &context, &search_paths, environment)?;
-        if let Some(declared) = Self::auth_config_of(rq_file, &resolved)? {
-            roots.extend(Self::auth_variable_roots(declared));
-        }
-        let variables = crate::syntax::resolve::variable_dependencies(roots, &context);
         let (authorized, auth) = self.apply_auth(rq_file, resolved, &context, &search_paths)?;
         let request = Self::apply_request_defaults(authorized)?;
         let timeout = crate::http::request_timeout(&request)?;
@@ -1183,12 +1222,92 @@ impl RqClient {
         Ok(PreparedRequest {
             agent_confirmation_required: confirmation_required || !request.method.is_safe(),
             confirmation_required,
-            variables,
             request,
             timeout,
             auth,
             context,
         })
+    }
+
+    fn reject_templated_values(variables: &[Variable]) -> Result<(), RqError> {
+        let templated: Vec<&str> = variables
+            .iter()
+            .filter(|variable| {
+                matches!(&variable.value, VariableValue::String(value) if value.contains(['{', '}']))
+            })
+            .map(|variable| variable.name.as_str())
+            .collect();
+        if templated.is_empty() {
+            return Ok(());
+        }
+        Err(RqError::Validation(format!(
+            "Variable(s) {} contain '{{' or '}}': a runtime value is plain text, so it cannot reference variables or call functions",
+            templated.join(", ")
+        )))
+    }
+
+    fn is_runtime_input(request: &Request, name: &str) -> bool {
+        name == AUTH_TOKEN_VARIABLE
+            || request
+                .required_variables
+                .iter()
+                .any(|required| required == name)
+    }
+
+    fn variables_used(
+        rq_file: &RqFile,
+        request: &Request,
+        prepared: &PreparedRequest,
+    ) -> Vec<String> {
+        let mut roots = Self::variable_roots(request);
+        let declared_auth = prepared
+            .auth
+            .as_ref()
+            .and_then(|auth| rq_file.auth_providers.get(&auth.config.name));
+        if let Some(declared) = declared_auth {
+            roots.extend(Self::auth_variable_roots(declared));
+        }
+        variable_dependencies(roots, &prepared.context)
+    }
+
+    fn override_changes_request(
+        &self,
+        target: RequestTarget,
+        environment: Option<&str>,
+        variables: &[String],
+        name: &str,
+        prepared: &PreparedRequest,
+    ) -> bool {
+        let without: Vec<String> = variables
+            .iter()
+            .filter(|kv| kv.split_once('=').map(|(key, _)| key.trim()) != Some(name))
+            .cloned()
+            .collect();
+        self.prepare_request(target, environment, &without)
+            .map_or(true, |other| !Self::sends_the_same(&other, prepared))
+    }
+
+    fn sends_the_same(a: &PreparedRequest, b: &PreparedRequest) -> bool {
+        a.request == b.request && Self::auth_of(a) == Self::auth_of(b)
+    }
+
+    fn redirects_or_reauthorizes(baseline: &PreparedRequest, prepared: &PreparedRequest) -> bool {
+        Self::origin_of(&baseline.request.url) != Self::origin_of(&prepared.request.url)
+            || Self::auth_of(baseline) != Self::auth_of(prepared)
+    }
+
+    fn auth_of(prepared: &PreparedRequest) -> Option<&AuthConfig> {
+        prepared.auth.as_ref().map(|auth| &auth.config)
+    }
+
+    fn origin_of(url: &str) -> String {
+        let (scheme, rest) = url.split_once("://").unwrap_or(("", url));
+        let authority = rest.split(['/', '?', '#']).next().unwrap_or(rest);
+        format!(
+            "{}://{}",
+            scheme.to_ascii_lowercase(),
+            authority.to_ascii_lowercase()
+        )
     }
 
     fn variable_roots(request: &Request) -> Vec<String> {
@@ -1208,7 +1327,7 @@ impl RqClient {
                 .slot_bindings
                 .iter()
                 .filter_map(|binding| match &binding.value {
-                    crate::syntax::types::SlotValue::Variable(name) => Some(name.clone()),
+                    SlotValue::Variable(name) => Some(name.clone()),
                     _ => None,
                 });
         texts
@@ -1222,7 +1341,7 @@ impl RqClient {
         config
             .fields
             .values()
-            .flat_map(|field| crate::syntax::resolve::referenced_variable_names(&field.value))
+            .flat_map(|field| referenced_variable_names(&field.value))
             .collect()
     }
 
@@ -3357,57 +3476,114 @@ mod prepare_tests {
         );
         assert!(target.is_err_and(|e| e.to_string().contains("Required variable(s) not set")));
     }
+}
 
-    #[test]
-    fn prepared_request_lists_the_variables_it_uses_through_other_variables() {
+#[cfg(all(test, feature = "native"))]
+mod override_tests {
+    use super::{RequestTarget, RqClient};
+    use crate::client::models::OverrideCheck;
+    use crate::error::RqError;
+
+    const SOURCE: &str = "let host = \"localhost\";\nlet base_url = \"http://{{host}}\";\nlet top = \"1\";\nlet unused = \"x\";\nlet key = \"k\";\nlet client = \"app\";\n\nrq probe(\"{{base_url}}/items?top={{top}}\", $[\"X-Key\": \"{{key}}\"]);\n\n[required(id)]\nrq item(\"{{base_url}}/items/{{id}}\");\n\nauth service(auth_type.oauth2_client_credentials) {\n    client_id: \"{{client}}\",\n    client_secret: \"secret\",\n    token_url: \"http://localhost/token\",\n}\n\n[auth(\"service\")]\nrq guarded(\"{{base_url}}/guarded\");\n\n[method(POST)]\nrq upload(\"{{base_url}}/upload\", body: io.read_file(\"payload.json\"));\n";
+
+    fn check(name: &str, variables: &[&str]) -> Result<OverrideCheck, RqError> {
         let dir = tempfile::tempdir().expect("tempdir");
-        write(
-            dir.path(),
-            "main.rq",
-            "let host = \"localhost\";\nlet base_url = \"http://{{host}}\";\nlet top = \"1\";\nlet unused = \"x\";\n\nrq probe(\"{{base_url}}/items?top={{top}}\");\n",
-        );
-        let target = prepare(&dir.path().join("main.rq"), "probe", &[]);
-        assert_eq!(target.variables, vec!["base_url", "host", "top"]);
+        std::fs::write(dir.path().join("api.rq"), SOURCE).expect("write");
+        std::fs::write(dir.path().join("payload.json"), "{\"name\": \"{{name}}\"}").expect("write");
+        std::fs::write(dir.path().join(".env"), "NAME=ada\n").expect("write");
+        let variables: Vec<String> = variables.iter().map(|v| v.to_string()).collect();
+        RqClient::default().check_overrides(
+            RequestTarget::new(&dir.path().join("api.rq"), name),
+            None,
+            &variables,
+        )
+    }
+
+    fn checked(name: &str, variables: &[&str]) -> OverrideCheck {
+        check(name, variables).expect("check_overrides")
     }
 
     #[test]
-    fn prepared_request_lists_the_variables_its_headers_and_body_use() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        write(
-            dir.path(),
-            "main.rq",
-            "let key = \"k\";\nlet name = \"ada\";\n\n[method(POST)]\nrq probe(\"http://localhost/items\", $[\"X-Key\": \"{{key}}\"], body: ${\"name\": \"{{name}}\"});\n",
+    fn lists_the_variables_the_request_uses_through_other_variables() {
+        assert_eq!(
+            checked("probe", &[]).used,
+            vec!["base_url", "host", "key", "top"]
         );
-        let target = prepare(&dir.path().join("main.rq"), "probe", &[]);
-        assert_eq!(target.variables, vec!["key", "name"]);
     }
 
     #[test]
-    fn prepared_request_lists_the_variables_its_auth_uses() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        write(
-            dir.path(),
-            "main.rq",
-            "let client = \"app\";\n\nauth service(auth_type.oauth2_client_credentials) {\n    client_id: \"{{client}}\",\n    client_secret: \"secret\",\n    token_url: \"http://localhost/token\",\n}\n\n[auth(\"service\")]\nrq probe(\"http://localhost/probe\");\n",
-        );
-        let target = prepare(&dir.path().join("main.rq"), "probe", &[]);
-        assert_eq!(target.variables, vec!["client"]);
+    fn lists_the_variables_the_auth_uses() {
+        assert!(checked("guarded", &[]).used.contains(&"client".to_string()));
     }
 
     #[test]
-    fn prepared_request_drops_the_variables_an_overridden_value_used() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        write(
-            dir.path(),
-            "main.rq",
-            "let host = \"localhost\";\nlet base_url = \"http://{{host}}\";\n\nrq probe(\"{{base_url}}/items\");\n",
+    fn drops_the_variables_an_overridden_value_used() {
+        let target = checked("probe", &["base_url=http://other"]);
+        assert!(!target.used.contains(&"host".to_string()));
+    }
+
+    #[test]
+    fn reports_an_override_the_request_does_not_use() {
+        assert_eq!(checked("probe", &["unused=y"]).unused, vec!["unused"]);
+    }
+
+    #[test]
+    fn accepts_an_override_used_inside_a_file_the_request_reads() {
+        assert!(checked("upload", &["name=grace"]).unused.is_empty());
+    }
+
+    #[test]
+    fn sends_an_override_that_keeps_the_host_without_consent() {
+        assert!(!checked("probe", &["top=10"]).needs_consent);
+    }
+
+    #[test]
+    fn asks_for_consent_when_an_override_moves_the_request_to_another_host() {
+        assert!(checked("probe", &["host=attacker.example"]).needs_consent);
+    }
+
+    #[test]
+    fn asks_for_consent_when_an_override_moves_the_request_to_another_port() {
+        assert!(checked("probe", &["host=localhost:8443"]).needs_consent);
+    }
+
+    #[test]
+    fn asks_for_consent_when_an_override_changes_the_auth() {
+        assert!(checked("guarded", &["client=other"]).needs_consent);
+    }
+
+    #[test]
+    fn asks_no_consent_for_a_required_variable() {
+        assert!(!checked("item", &["id=7"]).needs_consent);
+    }
+
+    #[test]
+    fn rejects_a_value_that_calls_a_function() {
+        let target = check("probe", &["top={{io.read_file(\"api.rq\")}}"]);
+        assert!(target.is_err_and(|e| e.to_string().contains("plain text")));
+    }
+
+    #[test]
+    fn rejects_a_value_that_references_a_variable() {
+        assert!(check("probe", &["top={{key}}"]).is_err());
+    }
+
+    #[test]
+    fn rejects_a_brace_that_could_build_a_function_call_with_another_value() {
+        assert!(check("probe", &["top={"]).is_err());
+    }
+
+    #[test]
+    fn rejects_a_templated_required_variable() {
+        assert!(check("item", &["id={{key}}"]).is_err());
+    }
+
+    #[test]
+    fn origin_ignores_the_path_query_and_case() {
+        assert_eq!(
+            RqClient::origin_of("HTTP://Example.com:80/a?b=c#d"),
+            RqClient::origin_of("http://example.com:80")
         );
-        let target = prepare(
-            &dir.path().join("main.rq"),
-            "probe",
-            &["base_url=http://other"],
-        );
-        assert_eq!(target.variables, vec!["base_url"]);
     }
 }
 

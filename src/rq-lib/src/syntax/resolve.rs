@@ -18,6 +18,7 @@ use super::{
     variable_context::{VariableContext, VariableValue},
 };
 use lazy_static::lazy_static;
+use std::collections::BTreeSet;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 
@@ -1181,7 +1182,7 @@ pub fn referenced_variable_names(text: &str) -> Vec<String> {
 
 pub fn variable_dependencies(roots: Vec<String>, context: &VariableContext) -> Vec<String> {
     let map = context.as_map();
-    let mut found = std::collections::BTreeSet::new();
+    let mut found = BTreeSet::new();
     let mut pending = roots;
     while let Some(name) = pending.pop() {
         if let Some(value) = map.get(name.as_str()) {

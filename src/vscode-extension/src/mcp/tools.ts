@@ -4,7 +4,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { setWasmTransport, wasmCall } from '../wasmHost';
 import { buildSecretsMap, draftsJson, isDirectory, normalizePath } from '../utils';
-import { CancellationSignal, ExecuteRequestOptions, ExecuteRequestResult, PreparedRequest, prepareRequest, requestDefinition, RequestScope, requestScope, sendRequest, withAcquiredToken } from '../execution';
+import { CancellationSignal, ExecuteRequestOptions, ExecuteRequestResult, PreparedRequest, checkOverrides, OverrideCheck, prepareRequest, requestDefinition, RequestScope, requestScope, sendRequest, withAcquiredToken } from '../execution';
 import { Authorization, Authorize, isInteractiveAuth, McpAuthorizationError } from './authorization';
 import { RESOURCE_BODIES, surface } from './surface';
 
@@ -172,7 +172,27 @@ interface ApprovableRequest {
     secrets: string[];
 }
 
-const pendingConfirmations = new Map<string, { fingerprint: string; expiresAt: number; request?: ApprovableRequest }>();
+interface PendingConfirmation {
+    fingerprint: string;
+    expiresAt: number;
+    request?: ApprovableRequest;
+    approved: RequestSummary;
+    inFlight: boolean;
+}
+
+interface Run {
+    args: RunRequestArgs;
+    prompts: RunRequestPrompts;
+    signal?: AbortSignal;
+    scope: RequestScope;
+    options: ExecuteRequestOptions;
+    fingerprint: string;
+    overrides: Record<string, string>;
+    overridesNeedConsent: boolean;
+}
+
+const NO_OVERRIDES: OverrideCheck = { used: [], unused: [], needs_consent: false };
+const pendingConfirmations = new Map<string, PendingConfirmation>();
 
 export async function runRequest(args: RunRequestArgs, prompts: RunRequestPrompts, signal?: AbortSignal): Promise<unknown> {
     const workspace = await workspaceFor(args.workspace_path);
@@ -192,19 +212,41 @@ export async function runRequest(args: RunRequestArgs, prompts: RunRequestPrompt
     if (definition.file) {
         options = { ...options, sourceFile: await fileInside(workspace, definition.file) };
     }
-    const required = definition.RequiredVariables ?? [];
-    const fingerprint = fingerprintOf(args, workspace, definition);
-    const consent = args.confirmation_token ? redeemConfirmation(args.confirmation_token, fingerprint) : undefined;
-    if (consent?.request) {
-        return sentResult(await sendRequest(scope, options, consent.request.prepared), consent.request);
+    const check = Object.keys(args.variables ?? {}).length > 0 ? await checkOverrides(scope, options) : NO_OVERRIDES;
+    rejectUnusedVariables(check);
+    const run: Run = {
+        args,
+        prompts,
+        signal,
+        scope,
+        options,
+        fingerprint: fingerprintOf(args, workspace, definition),
+        overrides: overridesOf(args.variables, new Set([...(definition.RequiredVariables ?? []), AUTH_TOKEN_VARIABLE])),
+        overridesNeedConsent: check.needs_consent
+    };
+    if (!args.confirmation_token) {
+        return runWithConsent(run);
     }
+    const pending = redeemConfirmation(args.confirmation_token, run.fingerprint);
+    if (pending.request) {
+        return sentResult(await sendRequest(scope, options, pending.request.prepared), pending.request);
+    }
+    pending.inFlight = true;
+    try {
+        return await runWithConsent(run, pending);
+    } finally {
+        pending.inFlight = false;
+    }
+}
+
+async function runWithConsent(run: Run, pending?: PendingConfirmation): Promise<unknown> {
+    const { args, prompts, signal, scope } = run;
+    let options = run.options;
     let prepared = await prepareRequest(scope, options);
-    rejectUnusedVariables(args.variables, prepared.variables, required);
-    const overrides = overridesOf(args.variables, required);
-    let summary = summaryOf(prepared, args.env, overrides);
-    let consented = consent !== undefined;
-    if (!consented && await overridesNeedConsent(scope, options, prepared, required)) {
-        const held = await askConsent(prompts, prepared, summary, fingerprint);
+    let summary = summaryOf(prepared, args.env, run.overrides);
+    let consented = pending !== undefined;
+    if (!consented && run.overridesNeedConsent && prepared.auth?.token_required) {
+        const held = await askConsent(run, prepared, summary);
         if (held) {
             return held;
         }
@@ -242,10 +284,13 @@ export async function runRequest(args: RunRequestArgs, prompts: RunRequestPrompt
         prepared = await prepareRequest(scope, options);
     }
     prepared = await withAcquiredToken(scope, options, prepared);
-    summary = summaryOf(prepared, args.env, overrides);
+    summary = summaryOf(prepared, args.env, run.overrides);
+    if (pending && !sameTarget(pending.approved, summary)) {
+        throw new Error(surface.run_request.invalid_confirmation_token);
+    }
     const request: ApprovableRequest = { prepared, summary, secrets: token ? [...prepared.secret_values, token] : prepared.secret_values };
-    if (prepared.agent_confirmation_required && !consented) {
-        const held = await askConsent(prompts, prepared, summary, fingerprint, request);
+    if (!consented && (prepared.agent_confirmation_required || run.overridesNeedConsent)) {
+        const held = await askConsent(run, prepared, summary, request);
         if (held) {
             return held;
         }
@@ -256,8 +301,8 @@ export async function runRequest(args: RunRequestArgs, prompts: RunRequestPrompt
     return sentResult(await sendRequest(scope, options, prepared), request);
 }
 
-async function askConsent(prompts: RunRequestPrompts, prepared: PreparedRequest, summary: RequestSummary, fingerprint: string, request?: ApprovableRequest): Promise<unknown> {
-    const outcome = await prompts.confirm({ ...summary, url: prepared.url });
+async function askConsent(run: Run, prepared: PreparedRequest, summary: RequestSummary, request?: ApprovableRequest): Promise<unknown> {
+    const outcome = await run.prompts.confirm({ ...summary, url: prepared.url });
     if (outcome === 'accepted') {
         return undefined;
     }
@@ -271,42 +316,17 @@ async function askConsent(prompts: RunRequestPrompts, prepared: PreparedRequest,
         status: 'confirmation_required',
         sent: false,
         request: summary,
-        confirmation_token: issueConfirmation(fingerprint, request),
+        confirmation_token: issueConfirmation(run.fingerprint, summary, request),
         message: surface.run_request.confirmation_required
     };
 }
 
-async function overridesNeedConsent(scope: RequestScope, options: ExecuteRequestOptions, prepared: PreparedRequest, required: string[]): Promise<boolean> {
-    const kept = new Set([...required, AUTH_TOKEN_VARIABLE]);
-    const entries = Object.entries(options.variables ?? {});
-    if (entries.every(([name]) => kept.has(name))) {
-        return false;
-    }
-    let baseline: PreparedRequest;
-    try {
-        baseline = await prepareRequest(scope, options, Object.fromEntries(entries.filter(([name]) => kept.has(name))));
-    } catch {
-        return true;
-    }
-    return originOf(baseline.url) !== originOf(prepared.url) || canonicalJson(authOf(baseline)) !== canonicalJson(authOf(prepared));
+function sameTarget(approved: RequestSummary, summary: RequestSummary): boolean {
+    return approved.method === summary.method && approved.url === summary.url;
 }
 
-function originOf(url: string): string {
-    try {
-        const parsed = new URL(url);
-        return `${parsed.protocol}//${parsed.host}`;
-    } catch {
-        return url;
-    }
-}
-
-function authOf(prepared: PreparedRequest): unknown {
-    return prepared.auth ? { name: prepared.auth.name, auth_type: prepared.auth.auth_type, fields: prepared.auth.fields } : null;
-}
-
-function overridesOf(variables: Record<string, string> | undefined, required: string[]): Record<string, string> {
-    const kept = new Set([...required, AUTH_TOKEN_VARIABLE]);
-    return Object.fromEntries(Object.entries(variables ?? {}).filter(([name]) => !kept.has(name)));
+function overridesOf(variables: Record<string, string> | undefined, runtimeInputs: Set<string>): Record<string, string> {
+    return Object.fromEntries(Object.entries(variables ?? {}).filter(([name]) => !runtimeInputs.has(name)));
 }
 
 function sentResult(sent: ExecuteRequestResult, { summary, secrets }: ApprovableRequest): unknown {
@@ -356,13 +376,11 @@ async function realPath(target: string): Promise<string> {
     }
 }
 
-function rejectUnusedVariables(variables: Record<string, string> | undefined, used: string[], required: string[]): void {
-    const allowed = new Set([...used, ...required, AUTH_TOKEN_VARIABLE]);
-    const unused = Object.keys(variables ?? {}).filter(name => !allowed.has(name));
-    if (unused.length > 0) {
+function rejectUnusedVariables(check: OverrideCheck): void {
+    if (check.unused.length > 0) {
         throw new Error(surface.run_request.unused_variables
-            .replace('{variables}', unused.map(name => `\`${name}\``).join(', '))
-            .replace('{used}', used.length > 0 ? used.map(name => `\`${name}\``).join(', ') : 'none'));
+            .replace('{variables}', check.unused.map(name => `\`${name}\``).join(', '))
+            .replace('{used}', check.used.length > 0 ? check.used.map(name => `\`${name}\``).join(', ') : 'none'));
     }
 }
 
@@ -401,7 +419,7 @@ function canonicalJson(value: unknown): string {
     return JSON.stringify(value) ?? 'null';
 }
 
-function issueConfirmation(fingerprint: string, request?: ApprovableRequest): string {
+function issueConfirmation(fingerprint: string, approved: RequestSummary, request?: ApprovableRequest): string {
     const now = Date.now();
     for (const [token, pending] of pendingConfirmations) {
         if (pending.expiresAt < now) {
@@ -409,14 +427,16 @@ function issueConfirmation(fingerprint: string, request?: ApprovableRequest): st
         }
     }
     const token = crypto.randomUUID();
-    pendingConfirmations.set(token, { fingerprint, expiresAt: now + CONFIRMATION_TTL_MS, request });
+    pendingConfirmations.set(token, { fingerprint, expiresAt: now + CONFIRMATION_TTL_MS, request, approved, inFlight: false });
     return token;
 }
 
-function redeemConfirmation(token: string, fingerprint: string): { request?: ApprovableRequest } {
+function redeemConfirmation(token: string, fingerprint: string): PendingConfirmation {
     const pending = pendingConfirmations.get(token);
-    if (!pending || pending.expiresAt < Date.now() || pending.fingerprint !== fingerprint) {
-        pendingConfirmations.delete(token);
+    if (!pending || pending.inFlight || pending.expiresAt < Date.now() || pending.fingerprint !== fingerprint) {
+        if (!pending?.inFlight) {
+            pendingConfirmations.delete(token);
+        }
         throw new Error(surface.run_request.invalid_confirmation_token);
     }
     if (pending.request) {

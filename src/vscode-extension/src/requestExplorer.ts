@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import * as rqClient from './rqClient';
+import { RequestInfo } from './rqClient';
 import * as path from 'path';
 import { normalizePath } from './utils';
 import { applyTreeItemLoading } from './vscodeUtils';
@@ -24,17 +25,6 @@ function environmentThemeColor(color: UiColor): vscode.ThemeColor {
 function environmentLabel(value: string): string {
     return `Environment: ${value}`;
 }
-
-export interface RequestInfo {
-    name: string;
-    endpoint: string | null;
-    file: string;
-    endpoint_file?: string;
-    endpoint_line?: number;
-    endpoint_character?: number;
-}
-
-
 
 /**
  * Tree data provider for RQ requests explorer
@@ -432,6 +422,7 @@ export class RequestExplorerProvider implements RestorableTreeDataProvider<Reque
             endpointItem.id = endpointId;
             endpointItem.iconPath = new vscode.ThemeIcon('globe');
             const epRef = endpointRequests[0];
+            endpointItem.tooltip = withDescription(`Endpoint: ${endpointName}`, epRef.endpoint_description);
             if (epRef.endpoint_file) {
                 endpointItem.command = {
                     command: 'rq.openEndpoint',
@@ -455,6 +446,10 @@ export class RequestExplorerProvider implements RestorableTreeDataProvider<Reque
         item.id = ids.next(`request:${normalizePath(request.file)}#${request.name}`);
         return item;
     }
+}
+
+function withDescription(title: string, description?: string | null, ...details: string[]): string {
+    return [title, description, ...details].filter(line => line).join('\n');
 }
 
 function findItemById(items: RequestTreeItem[], id: string): RequestTreeItem | undefined {
@@ -485,7 +480,7 @@ export class RequestTreeItem extends vscode.TreeItem {
         if (request) {
             // This is a request item
             this.contextValue = 'request';
-            this.tooltip = `${request.name}\nFile: ${request.file}`;
+            this.tooltip = withDescription(request.name, request.description, `File: ${request.file}`);
             this.description = undefined;
             
             // Set icon

@@ -415,6 +415,46 @@
           ]
         },
         {
+          "name": "meta.attribute.description.rq",
+          "begin": "\\b(doc\\.description)\\s*(\\()",
+          "beginCaptures": {
+            "1": {
+              "name": "entity.name.function.attribute.rq"
+            },
+            "2": {
+              "name": "punctuation.definition.arguments.rq"
+            }
+          },
+          "end": "\\)",
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.definition.arguments.rq"
+            }
+          },
+          "patterns": [
+            {
+              "name": "string.quoted.double.rq",
+              "begin": "\"",
+              "end": "\"",
+              "patterns": [
+                {
+                  "name": "constant.character.escape.rq",
+                  "match": "\\\\."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "meta.attribute.confirm.rq",
+          "match": "\\b(confirm)\\b",
+          "captures": {
+            "1": {
+              "name": "entity.name.function.attribute.rq"
+            }
+          }
+        },
+        {
           "name": "meta.attribute.required.rq",
           "begin": "\\b(required)\\s*(\\()",
           "beginCaptures": {

@@ -1,0 +1,2 @@
+[doc.description("Calls {{host}}")]
+rq health("{{host}}/health");

@@ -1,8 +1,8 @@
 # @rqlang/mcp
 
-An [MCP](https://modelcontextprotocol.io) server that teaches AI assistants to write [rqlang](https://www.rqlang.com) `.rq` files correctly. It works with any MCP client that can launch a local server: Claude Code, Claude Desktop, Cursor, Windsurf, VS Code, Codex, Gemini CLI, Zed and others.
+An [MCP](https://modelcontextprotocol.io) server that teaches AI assistants to write [rqlang](https://www.rqlang.com) `.rq` files correctly and to run the requests a workspace already has. It works with any MCP client that can launch a local server: Claude Code, Claude Desktop, Cursor, Windsurf, VS Code, Codex, Gemini CLI, Zed and others.
 
-It authors and checks `.rq` files; it never sends a request. Everything runs locally on Node.js 18 or newer, with the rqlang parser compiled to WebAssembly, so there is no native binary to install.
+It authors and checks `.rq` files, and runs existing requests. It asks the user before every write and before every request marked `[confirm]`; other reads run straight away. Everything runs locally on Node.js 18 or newer, with the rqlang parser compiled to WebAssembly, so there is no native binary to install.
 
 ## Setup
 
@@ -47,7 +47,8 @@ codex mcp add rq -- npx -y @rqlang/mcp
 |---|---|---|
 | Tool | `validate_rq` | Parses and analyzes a snippet against the files around it; returns syntax and semantic diagnostics with line and column |
 | Tool | `lint_rq` | Checks a snippet against the rqlang idioms; returns rule-tagged diagnostics with a suggested fix |
-| Tool | `list_requests` | Lists the requests already defined under a path, so new ones do not collide |
+| Tool | `list_requests` | Lists the requests already defined under a path, with their method, URL and description, so new ones do not collide and existing ones can be found |
+| Tool | `run_request` | Sends an existing request and returns its response; asks the user first for writes and for requests marked `[confirm]` |
 | Tool | `get_rq_reference` | Returns the rqlang grammar reference or the idioms guide |
 | Resource | `rqlang://docs/language-definition` | The rqlang grammar reference |
 | Resource | `rqlang://docs/idioms` | The rqlang idioms guide |

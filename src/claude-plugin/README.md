@@ -11,7 +11,7 @@ rq get("https://rqlang.com");
 - **Writes requests from a description**: one request, a whole endpoint, or a full suite from an OpenAPI spec.
 - **Checks them with rq itself**: the same parser and linter as the CLI and the VS Code extension, so what Claude hands you is valid.
 - **Fits your project**: new files are checked against your existing imports, secrets and request names.
-- **Never sends anything**: it writes and checks files locally. You run them with the [CLI](https://www.rqlang.com/docs/INSTALLATION.html) or the [VS Code extension](https://marketplace.visualstudio.com/items?itemName=rq-lang.rq-language).
+- **Runs your requests**: ask *"show me all the users"* and Claude finds the matching request and runs it. It asks you before every write, and before every request the file marks as `[confirm]`.
 
 Just ask Claude, for example *"add requests to list, create and delete users"*.
 

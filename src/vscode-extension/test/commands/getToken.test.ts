@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { registerGetTokenCommand } from '../../src/commands/getToken';
 import * as cliService from '../../src/rqClient';
 import { FetchMock } from '../fetch-mock';
+import { tokenCacheKey } from '../../src/auth/oauthProvider';
 import { authUriHandler } from '../../src/auth/authUriHandler';
 import { mockQuickPick } from '../quickPick-mock';
 
@@ -158,8 +159,7 @@ describe('getToken Command (Integration)', () => {
             expiresAt: Date.now() + 3600000, // 1 hour in future
             config: { clientId: 'test-client' }
         };
-        // Cache key format: JSON.stringify({ authName: 'auth1', environment: 'dev' })
-        const cacheKey = JSON.stringify({ authName: 'auth1', environment: 'dev' });
+        const cacheKey = tokenCacheKey({ authName: 'auth1', environment: 'dev', file: '/workspace/auth.rq' });
         mockSecrets.set('oauth-token-cache', JSON.stringify([[cacheKey, cachedToken]]));
 
         // 2. Setup CLI mocks
@@ -171,6 +171,7 @@ describe('getToken Command (Integration)', () => {
             name: 'auth1',
             auth_type: 'oauth2_authorization_code',
             environment: 'dev',
+            file: '/workspace/auth.rq',
             fields: {
                 client_id: 'test-client',
                 authorization_url: 'https://auth.example.com/authorize',

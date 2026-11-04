@@ -89,6 +89,7 @@ impl Parse for ImportParser {
         result.file_variables.extend(imported_result.file_variables);
         for name in imported_result.environments.keys() {
             result.environment_colors.remove(name);
+            result.confirm_environments.remove(name);
         }
         result.environments.extend(imported_result.environments);
         result
@@ -97,6 +98,9 @@ impl Parse for ImportParser {
         result
             .environment_colors
             .extend(imported_result.environment_colors);
+        result
+            .confirm_environments
+            .extend(imported_result.confirm_environments);
         result.auth_providers.extend(imported_result.auth_providers);
         result.endpoints.extend(imported_result.endpoints);
         result

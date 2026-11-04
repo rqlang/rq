@@ -29,3 +29,39 @@ export interface TokenResponse {
     refresh_token?: string;
     scope?: string;
 }
+
+export interface RedirectUrlRequest {
+    authorizationUrl: string;
+    prompt: string;
+    placeholder?: string;
+    validate?: (value: string) => string | undefined;
+}
+
+export interface AuthUi {
+    openUrl(url: string): Promise<void>;
+    askForRedirectUrl(request: RedirectUrlRequest): Promise<string | undefined>;
+    waitForAppRedirect?(accepts: (url: URL) => boolean): Promise<URL>;
+    showError(message: string): void;
+    log(message: string): void;
+    signal?: AbortSignal;
+}
+
+export interface TokenStore {
+    read(): Promise<string | undefined>;
+    write(value: string): Promise<void>;
+    clear(): Promise<void>;
+}
+
+export interface OAuthAuthConfig {
+    name: string;
+    auth_type: string;
+    fields: Record<string, string>;
+    environment?: string;
+    file?: string;
+}
+
+export interface TokenCacheScope {
+    authName?: string;
+    environment?: string;
+    file?: string;
+}

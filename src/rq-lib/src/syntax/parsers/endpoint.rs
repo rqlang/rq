@@ -1,7 +1,7 @@
 use super::{
     attributes::{
         parse_attributes, AttributeContext, AttributeParser, AuthAttributeParser,
-        TimeoutAttributeParser,
+        ConfirmAttributeParser, DescriptionAttributeParser, TimeoutAttributeParser,
     },
     parse_trait::Parse,
     request::parse_request_with_context,
@@ -152,7 +152,12 @@ pub(crate) fn parse_endpoint_with_context(
 ) -> Result<EndpointParseResult, SyntaxError> {
     let declaration_start = r.cur().map(|t| t.span.start);
     let mut ctx = AttributeContext::default();
-    let parsers: Vec<&dyn AttributeParser> = vec![&AuthAttributeParser, &TimeoutAttributeParser];
+    let parsers: Vec<&dyn AttributeParser> = vec![
+        &AuthAttributeParser,
+        &TimeoutAttributeParser,
+        &DescriptionAttributeParser,
+        &ConfirmAttributeParser,
+    ];
     parse_attributes(r, &parsers, KW_EP, &mut ctx)?;
 
     expect(
@@ -301,6 +306,7 @@ pub(crate) fn parse_endpoint_with_context(
         if ctx.timeout.is_none() {
             ctx.timeout = parent.timeout;
         }
+        ctx.confirm |= parent.confirm;
         endpoint_variables = parent.variables.clone();
 
         if let Some(src) = &parent.source_path {
@@ -337,6 +343,8 @@ pub(crate) fn parse_endpoint_with_context(
                 auth: ctx.auth,
                 auth_location: ctx.auth_location,
                 timeout: ctx.timeout,
+                description: ctx.description,
+                confirm: ctx.confirm,
                 variables: endpoint_variables,
                 has_requests: false,
                 is_template: true,
@@ -447,6 +455,7 @@ pub(crate) fn parse_endpoint_with_context(
                     req.timeout = Some(et.clone());
                 }
             }
+            req.confirm |= ctx.confirm;
 
             let current_src = r.file_path.to_string_lossy().to_string();
             if !req.related_files.contains(&current_src) {
@@ -487,6 +496,8 @@ pub(crate) fn parse_endpoint_with_context(
         auth: ctx.auth,
         auth_location: ctx.auth_location,
         timeout: ctx.timeout,
+        description: ctx.description,
+        confirm: ctx.confirm,
         variables: endpoint_variables,
         has_requests: !children.is_empty(),
         is_template: false,

@@ -6,7 +6,7 @@ use serde::Serialize;
 
 use crate::syntax::auth::Config;
 use crate::syntax::ui_color::UiColor;
-use crate::syntax::variable_context::VariableContext;
+use crate::syntax::variable_context::{VariableContext, VariableValue};
 use crate::syntax::Request;
 
 #[derive(Debug, Serialize, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -24,7 +24,9 @@ pub struct RequestDetails {
     pub method: String,
     pub body: Option<String>,
     pub timeout: Option<String>,
+    pub description: Option<String>,
     pub required_variables: Vec<String>,
+    pub confirmation_required: bool,
     pub file: String,
     pub line: usize,
     pub character: usize,
@@ -33,7 +35,11 @@ pub struct RequestDetails {
 #[derive(Debug, Clone, Serialize)]
 pub struct RequestInfo {
     pub name: String,
+    pub method: String,
+    pub url: String,
+    pub description: Option<String>,
     pub endpoint: Option<String>,
+    pub endpoint_description: Option<String>,
     pub file: String,
     pub endpoint_file: Option<String>,
     pub endpoint_line: Option<usize>,
@@ -89,12 +95,37 @@ pub struct ReferenceLocation {
     pub shared: bool,
 }
 
+const MIN_REDACTED_SECRET_LENGTH: usize = 6;
+
 #[derive(Debug, Clone)]
 pub struct PreparedRequest {
     pub request: Request,
     pub timeout: Option<Duration>,
     pub auth: Option<PreparedAuth>,
+    pub confirmation_required: bool,
+    pub agent_confirmation_required: bool,
     pub(crate) context: VariableContext,
+}
+
+impl PreparedRequest {
+    pub fn secret_values(&self) -> Vec<String> {
+        let mut values: Vec<String> = self
+            .context
+            .secret_variables
+            .iter()
+            .filter_map(|variable| match &variable.value {
+                VariableValue::String(value) | VariableValue::Json(value)
+                    if value.chars().count() >= MIN_REDACTED_SECRET_LENGTH =>
+                {
+                    Some(value.clone())
+                }
+                _ => None,
+            })
+            .collect();
+        values.sort_by(|a, b| b.len().cmp(&a.len()).then_with(|| a.cmp(b)));
+        values.dedup();
+        values
+    }
 }
 
 #[derive(Debug, Clone)]

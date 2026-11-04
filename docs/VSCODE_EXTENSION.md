@@ -61,6 +61,10 @@ Each palette color follows the active theme. To change the exact shade, override
 
 If a request declares one or more `[required(var_name)]` attributes (see [Language Definition — `required` attribute](LANGUAGE_DEFINITION.md#required-attribute)), the extension checks for missing required variables **before** execution. For each missing variable, an input prompt appears so you can supply the value inline — no need to use "Run with Variables" separately. If you cancel any prompt, the execution is aborted.
 
+#### Requests that need confirmation
+
+A request marked `[confirm]` — on the request, its endpoint or the selected environment (see [`confirm` attribute](LANGUAGE_DEFINITION.md#confirm-attribute)) — opens a modal dialog such as *Run DELETE https://api.example.com/users/1 against the 'production' environment?* before it is sent. Only **Run** sends it; closing the dialog cancels the run. It asks every time, **Run again** included. Unmarked requests run without asking, whatever their method.
+
 3. **Navigation & browsing**
 
 	- The tree groups requests by folder and endpoint structure (for example, endpoint-based requests appear under their `ep` name).

@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { ElicitRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 
 const serverEntry = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'dist', 'server.js');
 
@@ -16,8 +17,12 @@ export function tempWorkspace(files = {}) {
     return dir;
 }
 
-export async function connect(cwd = tempWorkspace()) {
-    const client = new Client({ name: 'rq-mcp-test', version: '0.0.0' });
+export async function connect(cwd = tempWorkspace(), answer = undefined) {
+    const capabilities = answer ? { elicitation: { form: {} } } : {};
+    const client = new Client({ name: 'rq-mcp-test', version: '0.0.0' }, { capabilities });
+    if (answer) {
+        client.setRequestHandler(ElicitRequestSchema, request => answer(request.params.message));
+    }
     await client.connect(new StdioClientTransport({ command: process.execPath, args: [serverEntry], cwd, stderr: 'ignore' }));
     return client;
 }

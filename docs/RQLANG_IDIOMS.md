@@ -14,6 +14,7 @@ Style preferences (apply unless the user asks otherwise):
 - **One endpoint per file, named after the endpoint.** `ep users` lives in `users.rq`, `ep widgets` in `widgets.rq`. When a file ends up with two or more `ep` blocks, split it: move each endpoint into its own file and `import` shared definitions from a common file. This keeps each domain easy to find and stops a single file from growing into the whole API.
 - When two or more `.rq` files would share the same `env`, `auth`, or `let` definitions, extract the shared pieces into a dedicated file (e.g. `shared.rq` or `envs.rq`) and `import` it from each consumer. Do not duplicate `env` or `auth` blocks across files. **Always use relative import paths** (e.g. `import "shared";`, `import "common/envs";`, `import "../shared";`) — never absolute paths like `"/Users/..."` or `"/etc/..."`, even though the parser accepts them. Absolute paths make the file non-portable across machines and break the project as soon as someone else checks it out. The `.rq` extension is optional.
 - Inside an `ep` block, name requests after the verb alone — `list` for GET on the collection, `get` for GET on a single resource, plus `post`, `put`, `patch`, `delete`. The endpoint name already supplies the noun, so do not repeat it: write `rq list()`, not `rq get_widgets()`. Add a descriptive name (with `[method(VERB)]` if needed) only when two requests under the same `ep` share a verb (e.g. `rq create_one` next to `rq create_from_csv`, both POSTing). Outside of an `ep`, use a descriptive name (the noun belongs in the request name).
+- **Give every `rq` and every `ep` a `[doc.description("...")]`** saying in plain words what it does — `[doc.description("List every user")]`, `[doc.description("Users of the platform")]`. Write it for someone who does not know the request name: the description is how an assistant (through `list_requests`) or a teammate (in the VS Code tooltip) finds the request that matches "show me all the users". Describe the effect, not the syntax — never restate the method or the URL — and keep it to one sentence. The text is literal: do not put `{{...}}` in it expecting a value.
 - For a path parameter that the caller supplies at runtime, pass it as a bare identifier in URL position with `[required(name)]`, rather than declaring a `let` and interpolating with `{{name}}` in a string URL.
 - **Interpolation is always double-braced: `{{name}}`.** A single-braced `{name}` is not interpolation — rqlang sends it as literal text, so `rq get("/{widget_id}")` really requests the path `/{widget_id}` and fails against the API. Nothing about single braces is a syntax error, so the parser will not catch it for you. For a URL path parameter prefer the `[required(name)]` + bare identifier form above; use `{{name}}` elsewhere.
 - **A query string shared by every request in an `ep` goes on the `ep`, not on each `rq`.** `ep` takes a third parameter, `qs`: `ep users<base>("/users", qs: "v=1")` appends `?v=1` to every child, including the ones whose URL is a path parameter (`/users/1?v=1`). Do not write `rq list("?v=1")` on request after request — and note that **`rq` has no `qs` parameter at all**: its positional arguments are `url`, `headers`, `body`. Passing `rq get(user_id, $["v": "1"])` sends the HTTP header `v: 1` and no query string, which parses cleanly and silently hits the wrong URL. A query parameter that genuinely belongs to one request only is the exception — write it into that request's URL string.
@@ -27,26 +28,34 @@ Style preferences (apply unless the user asks otherwise):
 Single request for an entity — no `ep` needed, descriptive name carries the noun:
 
 ```
+[doc.description("Get the first widget")]
 rq get_widget("http://localhost:8080/widgets/1");
 ```
 
 Multiple requests for the same entity — refactor into a shared `ep` with verb-only names and bodies on write actions:
 
 ```
+[doc.description("Users of the platform")]
 ep users("http://localhost:8080/users") {
+    [doc.description("List every user")]
     rq list();
 
+    [doc.description("Get one user by id")]
     [required(user_id)]
     rq get(user_id);
 
+    [doc.description("Create a user")]
     rq post(body: io.read_json("users-post.json"));
 
+    [doc.description("Replace a user")]
     [required(user_id)]
     rq put(user_id, body: io.read_json("users-put.json"));
 
+    [doc.description("Update some fields of a user")]
     [required(user_id)]
     rq patch(user_id, body: io.read_json("users-patch.json"));
 
+    [doc.description("Delete a user")]
     [required(user_id)]
     rq delete(user_id);
 }
@@ -69,9 +78,12 @@ users.rq:
 ```
 import "shared";
 
+[doc.description("Users of the platform")]
 ep users<base>("/users") {
+    [doc.description("List every user")]
     rq list();
 
+    [doc.description("Get one user by id")]
     [required(user_id)]
     rq get(user_id);
 }
@@ -82,9 +94,12 @@ widgets.rq:
 ```
 import "shared";
 
+[doc.description("Widgets in the catalog")]
 ep widgets<base>("/widgets") {
+    [doc.description("List every widget")]
     rq list();
 
+    [doc.description("Get one widget by id")]
     [required(widget_id)]
     rq get(widget_id);
 }

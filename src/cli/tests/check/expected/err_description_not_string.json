@@ -1,0 +1,10 @@
+{
+  "errors": [
+    {
+      "file": "{{*}}",
+      "line": 1,
+      "column": 18,
+      "message": "Expected description string literal"
+    }
+  ]
+}

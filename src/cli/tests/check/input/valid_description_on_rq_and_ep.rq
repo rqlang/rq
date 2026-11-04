@@ -1,0 +1,8 @@
+[doc.description("Users of the platform")]
+ep users("http://localhost:8080/users") {
+  [doc.description('List every user, {{not_a_variable}} included')]
+  rq list();
+}
+
+[doc.description("Health probe")]
+rq health("http://localhost:8080/health");

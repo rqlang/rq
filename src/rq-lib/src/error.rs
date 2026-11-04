@@ -122,6 +122,13 @@ fn json_error_detail(error: &(dyn std::error::Error + 'static)) -> JsonErrorDeta
                 line: None,
                 column: None,
             },
+            RqError::NotConfirmed(msg) => JsonErrorDetail {
+                error_type: "not_confirmed".to_string(),
+                message: msg.clone(),
+                file: None,
+                line: None,
+                column: None,
+            },
             RqError::Generic(msg) => JsonErrorDetail {
                 error_type: "generic".to_string(),
                 message: msg.clone(),
@@ -152,6 +159,7 @@ pub enum RqError {
     RequestNotFound(String),
     EnvironmentNotFound(String),
     Network(String),
+    NotConfirmed(String),
     Generic(String),
 }
 
@@ -173,6 +181,7 @@ impl fmt::Display for RqError {
             RqError::RequestNotFound(name) => write!(f, "Request not found: {name}"),
             RqError::EnvironmentNotFound(name) => write!(f, "Environment not found: {name}"),
             RqError::Network(msg) => write!(f, "{msg}"),
+            RqError::NotConfirmed(msg) => write!(f, "{msg}"),
             RqError::Generic(msg) => write!(f, "{msg}"),
         }
     }

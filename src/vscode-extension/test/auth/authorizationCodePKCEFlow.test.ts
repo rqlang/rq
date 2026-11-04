@@ -1,15 +1,22 @@
 import { AuthorizationCodePKCEFlow } from '../../src/auth/authorizationCodePKCEFlow';
-import { OAuth2Config } from '../../src/auth/types';
+import { AuthUi, OAuth2Config } from '../../src/auth/types';
 import { FetchMock } from '../fetch-mock';
 import * as callbackHandlers from '../../src/auth/callbackHandlers';
 import { URL } from 'url';
 
-// Mock the callback handlers
 jest.mock('../../src/auth/callbackHandlers', () => ({
-    handleVSCodeUriCallback: jest.fn(),
+    ...jest.requireActual('../../src/auth/callbackHandlers'),
+    handleAppRedirectCallback: jest.fn(),
     handleLocalServerCallback: jest.fn(),
     handleManualPasteCallback: jest.fn()
 }));
+
+const ui: AuthUi = {
+    openUrl: jest.fn(),
+    askForRedirectUrl: jest.fn(),
+    showError: jest.fn(),
+    log: jest.fn()
+};
 
 describe('AuthorizationCodePKCEFlow', () => {
     let pkceFlow: AuthorizationCodePKCEFlow;
@@ -24,11 +31,10 @@ describe('AuthorizationCodePKCEFlow', () => {
     };
 
     beforeEach(() => {
-        pkceFlow = new AuthorizationCodePKCEFlow();
+        pkceFlow = new AuthorizationCodePKCEFlow(ui);
         fetchMock = new FetchMock();
         
-        // Setup default mock for callback handler to echo back the state from the URL
-        (callbackHandlers.handleLocalServerCallback as jest.Mock).mockImplementation((authUrl: string) => {
+        (callbackHandlers.handleLocalServerCallback as jest.Mock).mockImplementation((_ui: AuthUi, authUrl: string) => {
             const url = new URL(authUrl);
             const state = url.searchParams.get('state');
             return Promise.resolve({ code: 'test-auth-code', state });
@@ -94,7 +100,7 @@ describe('AuthorizationCodePKCEFlow', () => {
         await pkceFlow.execute(mockConfig);
 
         // Check that handleLocalServerCallback was called with a URL containing state
-        const authUrl = (callbackHandlers.handleLocalServerCallback as jest.Mock).mock.calls[0][0];
+        const authUrl = (callbackHandlers.handleLocalServerCallback as jest.Mock).mock.calls[0][1];
         const url = new URL(authUrl);
         expect(url.searchParams.has('state')).toBe(true);
     });
@@ -112,7 +118,7 @@ describe('AuthorizationCodePKCEFlow', () => {
         await pkceFlow.execute(configNoState);
 
         // Check that handleLocalServerCallback was called with a URL NOT containing state
-        const authUrl = (callbackHandlers.handleLocalServerCallback as jest.Mock).mock.calls[0][0];
+        const authUrl = (callbackHandlers.handleLocalServerCallback as jest.Mock).mock.calls[0][1];
         const url = new URL(authUrl);
         expect(url.searchParams.has('state')).toBe(false);
     });
@@ -124,7 +130,20 @@ describe('AuthorizationCodePKCEFlow', () => {
             state: 'wrong-state' 
         });
 
-        await expect(pkceFlow.execute(mockConfig)).rejects.toThrow('State parameter mismatch');
+        await expect(pkceFlow.execute(mockConfig)).rejects.toThrow('comes from another sign-in');
+    });
+
+    test('explains a callback without state, the sign of a cut-off sign-in link', async () => {
+        (callbackHandlers.handleLocalServerCallback as jest.Mock).mockResolvedValue({ code: 'test-auth-code', state: null });
+        await expect(pkceFlow.execute(mockConfig)).rejects.toThrow('cut off before its state');
+    });
+
+    test('explains a rejected code exchange', async () => {
+        (callbackHandlers.handleLocalServerCallback as jest.Mock).mockImplementation((_ui: unknown, authUrl: string) =>
+            Promise.resolve({ code: 'test-auth-code', state: new URL(authUrl).searchParams.get('state') })
+        );
+        fetchMock.mockResponse({ error: 'invalid_grant', error_description: 'Code not valid' }, 400, false);
+        await expect(pkceFlow.execute(mockConfig)).rejects.toThrow('rejected the authorization code at https://auth.example.com/token (HTTP 400: Code not valid)');
     });
 
     test('should NOT include code_challenge when usePkce is false', async () => {
@@ -140,7 +159,7 @@ describe('AuthorizationCodePKCEFlow', () => {
         await pkceFlow.execute(configNoPkce);
 
         // Check auth URL
-        const authUrl = (callbackHandlers.handleLocalServerCallback as jest.Mock).mock.calls[0][0];
+        const authUrl = (callbackHandlers.handleLocalServerCallback as jest.Mock).mock.calls[0][1];
         const url = new URL(authUrl);
         expect(url.searchParams.has('code_challenge')).toBe(false);
         expect(url.searchParams.has('code_challenge_method')).toBe(false);

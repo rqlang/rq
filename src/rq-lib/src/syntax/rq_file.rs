@@ -7,7 +7,7 @@ use super::{
     variable_context::Variable,
 };
 use crate::syntax::auth::Config as AuthConfig;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
 pub struct RqFile {
@@ -16,6 +16,7 @@ pub struct RqFile {
     pub environments: HashMap<String, Vec<Variable>>,
     pub environment_locations: HashMap<String, (String, usize, usize)>,
     pub environment_colors: HashMap<String, UiColor>,
+    pub confirm_environments: HashSet<String>,
     pub auth_providers: HashMap<String, AuthConfig>,
     pub endpoints: HashMap<String, EndpointDefinition>,
     pub file_variables: Vec<Variable>,
@@ -65,6 +66,7 @@ impl RqFile {
                 environments: HashMap::new(),
                 environment_locations: HashMap::new(),
                 environment_colors: HashMap::new(),
+                confirm_environments: HashSet::new(),
                 auth_providers: HashMap::new(),
                 endpoints: HashMap::new(),
                 file_variables: Vec::new(),
@@ -83,6 +85,7 @@ impl RqFile {
             environments: parse_result.environments,
             environment_locations: parse_result.environment_locations,
             environment_colors: parse_result.environment_colors,
+            confirm_environments: parse_result.confirm_environments,
             auth_providers: parse_result.auth_providers,
             endpoints: parse_result.endpoints,
             file_variables: parse_result.file_variables,

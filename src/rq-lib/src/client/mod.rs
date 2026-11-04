@@ -52,6 +52,7 @@ impl RqClient {
         request_name: Option<&str>,
         environment: Option<&str>,
         variables: &[String],
+        confirm: &dyn Fn(&PreparedRequest) -> Result<(), RqError>,
     ) -> Result<(Vec<RequestExecutionResult>, Vec<RqError>), RqError> {
         self.log_source(source_path);
         let (rq_files, mut warnings) = self.get_rq_files_to_process(source_path, request_name)?;
@@ -94,6 +95,9 @@ impl RqClient {
                     source_path,
                     environment,
                 )?;
+                if prepared.confirmation_required {
+                    confirm(&prepared)?;
+                }
                 let authorized = Self::authorize(prepared).await?;
                 Self::log_request(&authorized.request);
 
@@ -162,35 +166,15 @@ impl RqClient {
             (rq_files, parse_errors)
         };
 
-        let mut requests = Vec::new();
-        for rq_file in rq_files {
-            for req_with_vars in &rq_file.requests {
-                let (endpoint_file, endpoint_line, endpoint_character) =
-                    if let Some(ep_name) = &req_with_vars.request.endpoint {
-                        if let Some(ep) = rq_file.endpoints.get(ep_name) {
-                            let ep_file = ep
-                                .source_path
-                                .as_deref()
-                                .map(crate::paths::clean_path_str)
-                                .map(str::to_string)
-                                .unwrap_or_else(|| crate::paths::clean_path(&rq_file.path));
-                            (Some(ep_file), Some(ep.line), Some(ep.character))
-                        } else {
-                            (None, None, None)
-                        }
-                    } else {
-                        (None, None, None)
-                    };
-                requests.push(RequestInfo {
-                    name: req_with_vars.request.name.clone(),
-                    endpoint: req_with_vars.request.endpoint.clone(),
-                    file: crate::paths::clean_path(&rq_file.path),
-                    endpoint_file,
-                    endpoint_line,
-                    endpoint_character,
-                });
-            }
-        }
+        let mut requests: Vec<RequestInfo> = rq_files
+            .iter()
+            .flat_map(|rq_file| {
+                rq_file
+                    .requests
+                    .iter()
+                    .map(move |req_with_vars| Self::request_info(rq_file, &req_with_vars.request))
+            })
+            .collect();
 
         requests.sort_by(|a, b| a.name.cmp(&b.name));
 
@@ -211,6 +195,8 @@ impl RqClient {
         let request_file = crate::paths::clean_path(&rq_file.path);
         let request_line = req_with_vars.request.line;
         let request_character = req_with_vars.request.character;
+        let confirmation_required =
+            Self::confirmation_required(&rq_file, &req_with_vars.request, environment);
 
         Self::require_environment(&rq_file, environment)?;
         let cli_vars = Self::parse_cli_variables(variables)?;
@@ -228,6 +214,7 @@ impl RqClient {
                 request_file,
                 request_line,
                 request_character,
+                confirmation_required,
             ));
         }
 
@@ -272,6 +259,7 @@ impl RqClient {
             request_file,
             request_line,
             request_character,
+            confirmation_required,
         ))
     }
 
@@ -1186,12 +1174,24 @@ impl RqClient {
         let (authorized, auth) = self.apply_auth(rq_file, resolved, &context, &search_paths)?;
         let request = Self::apply_request_defaults(authorized)?;
         let timeout = crate::http::request_timeout(&request)?;
+        let confirmation_required = Self::confirmation_required(rq_file, &request, environment);
         Ok(PreparedRequest {
+            agent_confirmation_required: confirmation_required || !request.method.is_safe(),
+            confirmation_required,
             request,
             timeout,
             auth,
             context,
         })
+    }
+
+    fn confirmation_required(
+        rq_file: &RqFile,
+        request: &Request,
+        environment: Option<&str>,
+    ) -> bool {
+        request.confirm
+            || environment.is_some_and(|name| rq_file.confirm_environments.contains(name))
     }
 
     fn require_runtime_variables(request: &Request, cli_vars: &[Variable]) -> Result<(), RqError> {
@@ -1328,6 +1328,32 @@ impl RqClient {
             })
     }
 
+    fn request_info(rq_file: &RqFile, request: &Request) -> RequestInfo {
+        let endpoint = request
+            .endpoint
+            .as_ref()
+            .and_then(|name| rq_file.endpoints.get(name));
+        let endpoint_file = endpoint.map(|ep| {
+            ep.source_path
+                .as_deref()
+                .map(crate::paths::clean_path_str)
+                .map(str::to_string)
+                .unwrap_or_else(|| crate::paths::clean_path(&rq_file.path))
+        });
+        RequestInfo {
+            name: request.name.clone(),
+            method: request.method.as_str().to_string(),
+            url: request.url.clone(),
+            description: request.description.clone(),
+            endpoint: request.endpoint.clone(),
+            endpoint_description: endpoint.and_then(|ep| ep.description.clone()),
+            file: crate::paths::clean_path(&rq_file.path),
+            endpoint_file,
+            endpoint_line: endpoint.map(|ep| ep.line),
+            endpoint_character: endpoint.map(|ep| ep.character),
+        }
+    }
+
     fn request_details(
         request: Request,
         auth_name: Option<String>,
@@ -1335,6 +1361,7 @@ impl RqClient {
         file: String,
         line: usize,
         character: usize,
+        confirmation_required: bool,
     ) -> RequestDetails {
         RequestDetails {
             name: request.name,
@@ -1345,7 +1372,9 @@ impl RqClient {
             method: request.method.as_str().to_string(),
             body: request.body,
             timeout: request.timeout,
+            description: request.description,
             required_variables: request.required_variables,
+            confirmation_required,
             file,
             line,
             character,
@@ -2474,6 +2503,8 @@ mod prepare_request_tests {
             auth: None,
             auth_location: None,
             timeout: None,
+            description: None,
+            confirm: false,
             required_variables: Vec::new(),
             source_path: None,
             related_files: Vec::new(),
@@ -3066,12 +3097,61 @@ mod prepare_tests {
             capture.clone(),
         );
         client
-            .run(&main, Some("api/create"), None, &[])
+            .run(&main, Some("api/create"), None, &[], &|_| Ok(()))
             .await
             .expect("run failed");
         let prepared = prepare(&main, "api/create", &[]);
         let target = capture.sent.lock().expect("lock").clone();
         assert_eq!(target, vec![(prepared.request, prepared.timeout)]);
+    }
+
+    async fn confirm_run(
+        source: &str,
+        accept: bool,
+    ) -> (Result<usize, RqError>, Vec<String>, usize) {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write(dir.path(), "main.rq", source);
+        let capture = Arc::new(CapturingHttp::default());
+        let client = RqClient::new(
+            Arc::new(native::NativeFs),
+            Arc::new(native::NativeSecretProvider),
+            capture.clone(),
+        );
+        let asked = Mutex::new(Vec::new());
+        let confirm = |prepared: &crate::client::models::PreparedRequest| {
+            asked
+                .lock()
+                .expect("lock")
+                .push(prepared.request.name.clone());
+            if accept {
+                Ok(())
+            } else {
+                Err(RqError::NotConfirmed("refused".to_string()))
+            }
+        };
+        let outcome = client
+            .run(&dir.path().join("main.rq"), None, None, &[], &confirm)
+            .await
+            .map(|(results, _)| results.len());
+        let sent = capture.sent.lock().expect("lock").len();
+        let asked = asked.lock().expect("lock").clone();
+        (outcome, asked, sent)
+    }
+
+    #[tokio::test]
+    async fn run_asks_before_sending_a_request_marked_confirm() {
+        let target = confirm_run(
+            "[confirm]\nrq purge(\"http://localhost/purge\");\n\nrq list(\"http://localhost/list\");\n",
+            true,
+        )
+        .await;
+        assert_eq!((target.1, target.2), (vec!["purge".to_string()], 2));
+    }
+
+    #[tokio::test]
+    async fn run_sends_nothing_once_a_confirmation_is_refused() {
+        let target = confirm_run("[confirm]\nrq purge(\"http://localhost/purge\");\n", false).await;
+        assert!(matches!(target.0, Err(RqError::NotConfirmed(_))) && target.2 == 0);
     }
 
     #[test]
@@ -3175,6 +3255,34 @@ mod prepare_tests {
             )
             .expect("prepare_request failed");
         assert_eq!(target.request.url, "http://localhost/from-context");
+    }
+
+    #[test]
+    fn prepared_request_lists_the_secret_values_longest_first() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write(
+            dir.path(),
+            ".env",
+            "SHORT=abcdef\nLONG=abcdefgh\nSAME=abcdef\nEMPTY=\n",
+        );
+        write(dir.path(), "main.rq", "rq probe(\"http://localhost\");\n");
+        let target = RqClient::default()
+            .prepare_request(RequestTarget::new(dir.path(), "probe"), None, &[])
+            .expect("prepare_request failed")
+            .secret_values();
+        assert_eq!(target, vec!["abcdefgh".to_string(), "abcdef".to_string()]);
+    }
+
+    #[test]
+    fn prepared_request_leaves_values_too_short_to_be_secrets_out_of_the_secret_values() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write(dir.path(), ".env", "PORT=8080\nRETRIES=1\nREGION=éééééé\n");
+        write(dir.path(), "main.rq", "rq probe(\"http://localhost\");\n");
+        let target = RqClient::default()
+            .prepare_request(RequestTarget::new(dir.path(), "probe"), None, &[])
+            .expect("prepare_request failed")
+            .secret_values();
+        assert_eq!(target, vec!["éééééé".to_string()]);
     }
 
     #[test]
@@ -3370,6 +3478,195 @@ mod environment_color_tests {
         assert_eq!(
             (positions("color"), positions("red")),
             (vec![(0, 4), (5, 13)], vec![(1, 4), (5, 22)])
+        );
+    }
+}
+
+#[cfg(all(test, feature = "native"))]
+mod description_tests {
+    use super::{RequestTarget, RqClient};
+
+    #[test]
+    fn list_variable_references_ignores_the_text_of_a_description_attribute() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let file = dir.path().join("users.rq");
+        std::fs::write(
+            &file,
+            "let host = \"x\";\n\n[doc.description(\"Users on {{host}}\")]\nrq list(\"{{host}}/users\");\n",
+        )
+        .expect("write");
+        let target: Vec<(usize, usize)> = RqClient::default()
+            .list_variable_references(&file, "host", None, None)
+            .expect("refs")
+            .into_iter()
+            .map(|r| (r.line, r.character))
+            .collect();
+        assert_eq!(target, vec![(0, 4), (3, 11)]);
+    }
+
+    #[test]
+    fn list_requests_does_not_give_a_request_the_description_of_its_endpoint() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let file = dir.path().join("users.rq");
+        std::fs::write(
+            &file,
+            "[doc.description(\"Users\")]\nep users(\"http://x/users\") {\n    rq list();\n}\n",
+        )
+        .expect("write");
+        let (requests, _) = RqClient::default().list_requests(&file).expect("list");
+        let target: Vec<(Option<String>, Option<String>)> = requests
+            .into_iter()
+            .map(|r| (r.description, r.endpoint_description))
+            .collect();
+        assert_eq!(target, vec![(None, Some("Users".to_string()))]);
+    }
+
+    #[test]
+    fn get_request_details_joins_the_lines_of_a_multiline_description() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let file = dir.path().join("users.rq");
+        std::fs::write(
+            &file,
+            "[doc.description(\"List users\n        newest first\")]\nrq list(\"http://x\");\n",
+        )
+        .expect("write");
+        let target = RqClient::default()
+            .get_request_details(RequestTarget::new(&file, "list"), None, false, false, &[])
+            .expect("details")
+            .description;
+        assert_eq!(target, Some("List users newest first".to_string()));
+    }
+
+    #[test]
+    fn get_request_details_unescapes_the_description() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let file = dir.path().join("users.rq");
+        std::fs::write(
+            &file,
+            "[doc.description(\"Say \\\"hi\\\"\")]\nrq hello(\"http://x\");\n",
+        )
+        .expect("write");
+        let target = RqClient::default()
+            .get_request_details(RequestTarget::new(&file, "hello"), None, false, false, &[])
+            .expect("details")
+            .description;
+        assert_eq!(target, Some("Say \"hi\"".to_string()));
+    }
+}
+
+#[cfg(all(test, feature = "native"))]
+mod confirmation_tests {
+    use super::{RequestTarget, RqClient};
+    use crate::client::models::PreparedRequest;
+    use std::path::Path;
+
+    const SOURCE: &str = "env local {\n    host: \"http://x\",\n}\n\n[confirm]\nenv production {\n    host: \"http://y\",\n}\n\nep base(url: \"{{host}}\");\n\n[confirm]\nep guarded_base(url: \"{{host}}\");\n\nep users<base>(\"/users\") {\n    rq list();\n\n    [confirm]\n    rq purge(\"purge\");\n\n    rq post(body: ${});\n}\n\n[confirm]\nep audits<base>(\"/audits\") {\n    rq list();\n}\n\nep orders<guarded_base>(\"/orders\") {\n    rq list();\n}\n";
+
+    fn prepared(name: &str, environment: Option<&str>) -> PreparedRequest {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let file = dir.path().join("api.rq");
+        std::fs::write(&file, SOURCE).expect("write");
+        prepared_in(&file, name, environment)
+    }
+
+    fn prepared_in(file: &Path, name: &str, environment: Option<&str>) -> PreparedRequest {
+        RqClient::default()
+            .prepare_request(RequestTarget::new(file, name), environment, &[])
+            .expect("prepare")
+    }
+
+    #[test]
+    fn an_unmarked_request_needs_no_confirmation() {
+        assert!(!prepared("users/list", Some("local")).confirmation_required);
+    }
+
+    #[test]
+    fn an_unmarked_write_needs_no_confirmation_from_a_person() {
+        assert!(!prepared("users/post", Some("local")).confirmation_required);
+    }
+
+    #[test]
+    fn a_request_marked_confirm_needs_confirmation() {
+        assert!(prepared("users/purge", Some("local")).confirmation_required);
+    }
+
+    #[test]
+    fn a_request_in_an_endpoint_marked_confirm_needs_confirmation() {
+        assert!(prepared("audits/list", Some("local")).confirmation_required);
+    }
+
+    #[test]
+    fn a_request_in_an_endpoint_extending_a_template_marked_confirm_needs_confirmation() {
+        assert!(prepared("orders/list", Some("local")).confirmation_required);
+    }
+
+    #[test]
+    fn a_request_against_an_environment_marked_confirm_needs_confirmation() {
+        assert!(prepared("users/list", Some("production")).confirmation_required);
+    }
+
+    #[test]
+    fn a_request_against_an_imported_environment_marked_confirm_needs_confirmation() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            dir.path().join("envs.rq"),
+            "[confirm]\nenv production {\n    host: \"http://y\",\n}\n",
+        )
+        .expect("write");
+        let file = dir.path().join("users.rq");
+        std::fs::write(&file, "import \"envs\";\n\nrq list(\"{{host}}/users\");\n").expect("write");
+        assert!(prepared_in(&file, "list", Some("production")).confirmation_required);
+    }
+
+    #[test]
+    fn an_environment_redefined_by_an_import_without_confirm_needs_no_confirmation() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            dir.path().join("envs.rq"),
+            "env production {\n    host: \"http://y\",\n}\n",
+        )
+        .expect("write");
+        let file = dir.path().join("users.rq");
+        std::fs::write(
+            &file,
+            "[confirm]\nenv production {\n    host: \"http://x\",\n}\n\nimport \"envs\";\n\nrq list(\"{{host}}/users\");\n",
+        )
+        .expect("write");
+        assert!(!prepared_in(&file, "list", Some("production")).confirmation_required);
+    }
+
+    #[test]
+    fn an_agent_needs_confirmation_for_an_unmarked_write() {
+        assert!(prepared("users/post", Some("local")).agent_confirmation_required);
+    }
+
+    #[test]
+    fn an_agent_needs_no_confirmation_for_an_unmarked_read() {
+        assert!(!prepared("users/list", Some("local")).agent_confirmation_required);
+    }
+
+    #[test]
+    fn an_agent_needs_confirmation_for_a_read_marked_confirm() {
+        assert!(prepared("users/list", Some("production")).agent_confirmation_required);
+    }
+
+    #[test]
+    fn request_details_report_the_same_confirmation_as_prepare_request() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let file = dir.path().join("api.rq");
+        std::fs::write(&file, SOURCE).expect("write");
+        let details = RqClient::default()
+            .get_request_details(
+                RequestTarget::new(&file, "users/list"),
+                Some("production"),
+                true,
+                false,
+                &[],
+            )
+            .expect("details");
+        assert_eq!(
+            details.confirmation_required,
+            prepared_in(&file, "users/list", Some("production")).confirmation_required
         );
     }
 }

@@ -1,0 +1,5 @@
+[doc.description("Users of the platform")]
+ep users("http://localhost:8080/users") {
+  [doc.description("List every user")]
+  rq list();
+}

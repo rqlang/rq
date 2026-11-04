@@ -1,196 +1,55 @@
 # OAuth Authentication Module
 
-This module provides OAuth2 authentication capabilities for the RQ VS Code extension.
+Interactive OAuth2 token acquisition for the flows rq-lib cannot run on its own: authorization code (with or without PKCE) and implicit. rq-lib prepares the request and reports `token_required`; this module obtains the token, and the caller feeds it back as the `auth_token` variable.
 
-## Architecture
+The module has no dependency on VS Code. Everything that touches a user interface or a store goes through two interfaces in `types.ts`, so the extension and the MCP server share the same flows:
 
-The OAuth implementation follows a modular, pluggable architecture that makes it easy to add new OAuth2 flows.
+- **`AuthUi`**: open a URL, ask for a pasted redirect URL, wait for an app redirect (optional), show an error, log, and an optional `signal`: aborting it stops a sign-in that is waiting (the local callback server frees its port, the paste box closes, the token exchange stops) with `Cancelled by user`.
+- **`TokenStore`**: read, write and clear the serialized token cache.
 
-### File Structure
+## Files
 
 ```
 auth/
-├── index.ts                      # Main exports
-├── types.ts                      # Type definitions
-├── pkceUtils.ts                  # PKCE utility functions
-├── callbackHandlers.ts           # Authorization code retrieval strategies
-├── authorizationCodePKCEFlow.ts  # OAuth2 Authorization Code with PKCE flow
-├── oauthProvider.ts              # Main OAuth provider (VS Code API)
-└── README.md                     # This file
+├── types.ts                      # OAuth2Config, OAuth2Result, AuthUi, TokenStore, OAuthAuthConfig
+├── oauthService.ts               # performOAuth2Flow: auth fields from rq-lib → OAuth2Config → token
+├── oauthProvider.ts              # Token cache per auth name, defining file and environment, refresh, flow dispatch
+├── authorizationCodePKCEFlow.ts  # Authorization code flow, PKCE and state, code exchange
+├── implicitFlow.ts               # Implicit flow
+├── refreshTokenFlow.ts           # Refresh token grant
+├── callbackHandlers.ts           # How the authorization response comes back (see below)
+├── pkceUtils.ts                  # Code verifier and challenge
+├── vscodeAuth.ts                 # VS Code adapter: AuthUi, SecretStorage TokenStore, vscodeOAuthProvider
+└── authUriHandler.ts             # VS Code URI handler behind waitForAppRedirect
 ```
 
-## Core Components
+## How the authorization response comes back
 
-### 1. Types (`types.ts`)
+Chosen from `redirect_uri`:
 
-Defines the core interfaces and types:
+| `redirect_uri` | Handler | Needs |
+|---|---|---|
+| `vscode://…` (the default) | `handleAppRedirectCallback` | `AuthUi.waitForAppRedirect`; without it the flow fails before opening anything |
+| `http://localhost:N`, `http://127.0.0.1:N` | `handleLocalServerCallback` | Nothing: a local server on that port takes one response |
+| Anything else | `handleManualPasteCallback` | `AuthUi.askForRedirectUrl` |
 
-- **`OAuth2Config`**: Configuration for OAuth2 flows (clientId, authorizationUrl, tokenUrl, etc.)
-- **`OAuth2Result`**: Result from OAuth2 flow execution (accessToken, refreshToken, etc.)
-- **`IOAuth2Flow`**: Base interface that all OAuth2 flow implementations must implement
-- **`TokenResponse`**: Token endpoint response structure
-
-### 2. PKCE Utils (`pkceUtils.ts`)
-
-Utility functions for PKCE (Proof Key for Code Exchange):
-
-- **`generateCodeVerifier()`**: Generates a cryptographically random code verifier
-- **`generateCodeChallenge(verifier, method)`**: Creates a code challenge from verifier using S256 or plain method
-
-### 3. Callback Handlers (`callbackHandlers.ts`)
-
-Multiple strategies for receiving OAuth2 authorization codes:
-
-- **`handleVSCodeUriCallback()`**: Uses VS Code's URI handler for `vscode://` redirect URIs
-- **`handleLocalServerCallback()`**: Starts a local HTTP server for `localhost` redirect URIs
-- **`handleManualPasteCallback()`**: Prompts user to paste callback URL for external redirect URIs
-
-### 4. Authorization Code PKCE Flow (`authorizationCodePKCEFlow.ts`)
-
-Complete implementation of OAuth2 Authorization Code with PKCE:
-
-- Implements `IOAuth2Flow` interface
-- Generates PKCE parameters
-- Builds authorization URL
-- Retrieves authorization code (auto-detects callback method)
-- Exchanges code for access token
-
-### 5. OAuth Provider (`oauthProvider.ts`)
-
-Main provider implementing VS Code's `AuthenticationProvider` API:
-
-- Manages authentication sessions
-- Provides `executeOAuth2Flow()` method for programmatic flow execution
-- Persists sessions in VS Code's secure storage
-- Supports multiple OAuth2 flows through pluggable architecture
+The implicit flow uses the app redirect for `vscode://` and the pasted URL otherwise. Every handler times out after five minutes.
 
 ## Usage
 
-### Basic Usage
+In the extension:
 
 ```typescript
-import { OAuthProvider, OAuth2Config } from './auth';
+import { performOAuth2Flow } from './auth';
+import { vscodeOAuthProvider } from './auth/vscodeAuth';
 
-// Create provider
-const provider = new OAuthProvider(context);
-
-// Register with VS Code
-vscode.authentication.registerAuthenticationProvider(
-    'my-oauth-provider',
-    'My OAuth Provider',
-    provider
-);
+const token = await performOAuth2Flow(preparedAuth, vscodeOAuthProvider(context, outputChannel));
 ```
 
-### Execute OAuth2 Flow Programmatically
+Another host builds its own `OAuthProvider` from an `AuthUi` and a `TokenStore`, as the MCP server does in `mcp/authorization.ts` with a store kept in memory. One provider instance keeps the cache it loaded, so a host that keeps the instance alive avoids rereading the store.
 
-```typescript
-import { OAuthProvider, OAuth2Config } from './auth';
+## Security
 
-const provider = new OAuthProvider(context);
-
-const config: OAuth2Config = {
-    clientId: 'my-client-id',
-    authorizationUrl: 'https://oauth.example.com/authorize',
-    tokenUrl: 'https://oauth.example.com/token',
-    redirectUri: 'vscode://publisher.extension/callback',
-    scope: 'read write',
-    codeChallengeMethod: 'S256'
-};
-
-const result = await provider.executeOAuth2Flow(config, 'authorization_code_pkce');
-console.log('Access token:', result.accessToken);
-```
-
-### Use Individual Components
-
-```typescript
-import { AuthorizationCodePKCEFlow, OAuth2Config } from './auth';
-
-const flow = new AuthorizationCodePKCEFlow();
-const config: OAuth2Config = { /* ... */ };
-const result = await flow.execute(config);
-```
-
-## Adding New OAuth2 Flows
-
-To add a new OAuth2 flow (e.g., Implicit, Client Credentials, Device Code):
-
-### 1. Create a new flow file
-
-```typescript
-// auth/implicitFlow.ts
-import { IOAuth2Flow, OAuth2Config, OAuth2Result } from './types';
-
-export class ImplicitFlow implements IOAuth2Flow {
-    async execute(config: OAuth2Config): Promise<OAuth2Result> {
-        // Implement implicit flow logic
-        // ...
-        return {
-            accessToken: 'token',
-            tokenType: 'Bearer'
-        };
-    }
-}
-```
-
-### 2. Register in OAuthProvider
-
-```typescript
-// auth/oauthProvider.ts
-import { ImplicitFlow } from './implicitFlow';
-
-export class OAuthProvider {
-    private readonly implicitFlow: IOAuth2Flow;
-    
-    constructor(context: vscode.ExtensionContext) {
-        this.implicitFlow = new ImplicitFlow();
-        // ...
-    }
-    
-    async executeOAuth2Flow(config: OAuth2Config, flowType: string) {
-        switch (flowType) {
-            case 'implicit':
-                return await this.implicitFlow.execute(config);
-            // ...
-        }
-    }
-}
-```
-
-### 3. Export from index.ts
-
-```typescript
-// auth/index.ts
-export { ImplicitFlow } from './implicitFlow';
-```
-
-## Supported Flows
-
-Currently supported OAuth2 flows:
-
-- ✅ **Authorization Code with PKCE** (`authorization_code_pkce`)
-  - Recommended for public clients (like VS Code extensions)
-  - Implements RFC 6749 + RFC 7636
-  - Supports multiple callback strategies (URI handler, localhost server, manual paste)
-
-Planned flows:
-
-- ⏳ **Client Credentials** - For service-to-service authentication
-- ⏳ **Device Code** - For devices with limited input capabilities
-- ⏳ **Refresh Token** - For token refresh
-
-## Security Considerations
-
-- **PKCE is mandatory**: All authorization code flows use PKCE (S256 preferred, plain as fallback)
-- **Secure storage**: Sessions are stored in VS Code's secure secret storage
-- **Origin headers**: Automatically added for CORS compliance with external redirect URIs
-- **Timeout protection**: All flows have 5-minute timeout to prevent hanging
-- **Error handling**: Comprehensive error messages for debugging
-
-## References
-
-- [RFC 6749 - OAuth 2.0 Authorization Framework](https://tools.ietf.org/html/rfc6749)
-- [RFC 7636 - PKCE](https://tools.ietf.org/html/rfc7636)
-- [VS Code Authentication Provider API](https://code.visualstudio.com/api/references/vscode-api#AuthenticationProvider)
-- [OAuth 2.0 Security Best Practices](https://tools.ietf.org/html/draft-ietf-oauth-security-topics)
+- PKCE (S256 by default) and `state` are on unless the auth sets `use_pkce: false` or `use_state: false`.
+- The extension keeps tokens in VS Code's secret storage under `oauth-token-cache`.
+- The local callback page escapes what the provider sends back and closes the connection after one response.

@@ -49,6 +49,10 @@ fn main() {
             test_request_print_rejects_unknown_part,
         ),
         Trial::test(
+            "request_yes_sends_a_request_marked_confirm",
+            test_request_yes_sends_a_request_marked_confirm,
+        ),
+        Trial::test(
             "request_debug_logs_masked_request_and_response",
             test_request_debug_logs_masked_request_and_response,
         ),
@@ -355,6 +359,29 @@ fn run_basic_with(extra: &[&str]) -> Result<std::process::Output, Failed> {
         .args(extra)
         .output()
         .map_err(|e| format!("Failed to execute: {e}").into())
+}
+
+fn test_request_yes_sends_a_request_marked_confirm() -> Result<(), Failed> {
+    let output = rq_cmd()
+        .args([
+            "request",
+            "run",
+            "--no-lint",
+            "-s",
+            "tests/request/run/input/confirm/marked__code_9__.rq",
+            "--yes",
+        ])
+        .output()
+        .map_err(|e| format!("Failed to execute: {e}"))?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    if !output.status.success() || !stdout.contains("200") {
+        return Err(format!(
+            "Unexpected output: {stdout}{}",
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
+    }
+    Ok(())
 }
 
 fn test_request_print_headers_omits_meta_and_body() -> Result<(), Failed> {

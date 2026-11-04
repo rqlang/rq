@@ -1,5 +1,6 @@
 use super::attributes::{
-    parse_attributes, AttributeContext, AttributeParser, UiColorAttributeParser,
+    parse_attributes, AttributeContext, AttributeParser, ConfirmAttributeParser,
+    UiColorAttributeParser,
 };
 use super::parse_trait::Parse;
 use super::utils::{can_parse_attributed, unescape_string};
@@ -10,7 +11,6 @@ use crate::syntax::{
     parse_result::ParseResult,
     reader::{expect, TokenReader},
     token::TokenType,
-    ui_color::UiColor,
     variable_context::{Variable, VariableValue},
 };
 
@@ -22,7 +22,7 @@ type EnvDefinition = (
     usize,
     usize,
     Vec<(String, usize, usize)>,
-    Option<UiColor>,
+    AttributeContext,
 );
 
 pub struct EnvironmentParser;
@@ -36,7 +36,7 @@ impl Parse for EnvironmentParser {
         result: &mut ParseResult,
         _fs: &dyn Fs,
     ) -> Result<(), SyntaxError> {
-        let (env_name, vars, line, character, key_locs, color) =
+        let (env_name, vars, line, character, key_locs, attributes) =
             parse_environment_definition(r, &result.environments)?;
         let file = r.file_path.to_string_lossy().to_string();
         result
@@ -49,8 +49,11 @@ impl Parse for EnvironmentParser {
         for (key_name, key_line, key_char) in key_locs {
             env_var_map.insert(key_name, (file.clone(), key_line, key_char));
         }
-        if let Some(color) = color {
+        if let Some(color) = attributes.color {
             result.environment_colors.insert(env_name.clone(), color);
+        }
+        if attributes.confirm {
+            result.confirm_environments.insert(env_name.clone());
         }
         result.environments.insert(env_name, vars);
         Ok(())
@@ -62,7 +65,7 @@ pub(crate) fn parse_environment_definition(
     existing_environments: &HashMap<String, Vec<Variable>>,
 ) -> Result<EnvDefinition, SyntaxError> {
     let mut ctx = AttributeContext::default();
-    let parsers: Vec<&dyn AttributeParser> = vec![&UiColorAttributeParser];
+    let parsers: Vec<&dyn AttributeParser> = vec![&UiColorAttributeParser, &ConfirmAttributeParser];
     parse_attributes(r, &parsers, KW_ENV, &mut ctx)?;
 
     expect(
@@ -156,5 +159,5 @@ pub(crate) fn parse_environment_definition(
             value: VariableValue::String(value),
         });
     }
-    Ok((env_name, vars, line, character, key_locs, ctx.color))
+    Ok((env_name, vars, line, character, key_locs, ctx))
 }

@@ -7,7 +7,10 @@ use super::{
         PUNC_LPAREN, PUNC_RBRACE, PUNC_RBRACKET, PUNC_RPAREN, PUNC_SEMI,
     },
     parse_result::{EndpointDefinition, Request},
-    parsers::{attributes::ATTR_UI_COLOR, utils::parse_system_function},
+    parsers::{
+        attributes::{ATTR_DESCRIPTION, ATTR_UI_COLOR},
+        utils::parse_system_function,
+    },
     reader::TokenReader,
     token::{Token, TokenType},
     tokenizer::tokenize,
@@ -58,8 +61,8 @@ fn find_in_file(fs: &dyn Fs, path: &Path, var_name: &str) -> (usize, usize) {
     let re_interp = regex::Regex::new(&pattern_interp).ok();
 
     if let Some(re) = &re_interp {
-        for token in &tokens {
-            if token.token_type == TokenType::String {
+        for (index, token) in tokens.iter().enumerate() {
+            if token.token_type == TokenType::String && !is_in_literal_attribute(&tokens, index) {
                 if let Some(mat) = re.find(&token.value) {
                     return get_line_col(token.span.start + mat.start());
                 }
@@ -349,8 +352,8 @@ fn var_ref_offsets(tokens: &[Token], var_name: &str) -> Vec<usize> {
     let escaped = regex::escape(var_name);
     let pattern_interp = format!(r"\{{\{{\s*{escaped}\s*\}}\}}");
     if let Ok(re) = regex::Regex::new(&pattern_interp) {
-        for token in tokens {
-            if token.token_type == TokenType::String {
+        for (index, token) in tokens.iter().enumerate() {
+            if token.token_type == TokenType::String && !is_in_literal_attribute(tokens, index) {
                 let mut search_start = 0usize;
                 while search_start < token.value.len() {
                     let Some(mat) = re.find(&token.value[search_start..]) else {
@@ -372,7 +375,7 @@ fn var_ref_offsets(tokens: &[Token], var_name: &str) -> Vec<usize> {
         if token.token_type == TokenType::Identifier
             && token.value == var_name
             && !is_declaration_name(tokens, i)
-            && !is_in_ui_color_attribute(tokens, i)
+            && !is_in_literal_attribute(tokens, i)
         {
             let mut is_key = false;
             for next in tokens.iter().skip(i + 1) {
@@ -552,14 +555,15 @@ fn is_declaration_name(tokens: &[Token], index: usize) -> bool {
     }
 }
 
-fn is_in_ui_color_attribute(tokens: &[Token], index: usize) -> bool {
+pub(crate) fn is_in_literal_attribute(tokens: &[Token], index: usize) -> bool {
     let mut depth = 0usize;
     for open in (0..index).rev() {
         if is_punctuation(tokens, open, PUNC_RBRACKET) {
             depth += 1;
         } else if is_punctuation(tokens, open, PUNC_LBRACKET) {
             if depth == 0 {
-                return attribute_name_tokens(tokens, open) == ATTR_UI_COLOR;
+                return [ATTR_UI_COLOR, ATTR_DESCRIPTION]
+                    .contains(&attribute_name_tokens(tokens, open).as_str());
             }
             depth -= 1;
         } else if depth == 0

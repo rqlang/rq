@@ -8,7 +8,7 @@ nav_order: 9
 
 # MCP Server
 
-`rq-mcp` is an [MCP](https://modelcontextprotocol.io) server that teaches AI assistants to write `.rq` files correctly. The VS Code extension registers it automatically for Copilot, and any other MCP client — Claude Code, Claude Desktop, Cursor, Windsurf, Codex, Gemini CLI, Zed — runs it from npm as [`@rqlang/mcp`](https://www.npmjs.com/package/@rqlang/mcp).
+`rq-mcp` is an [MCP](https://modelcontextprotocol.io) server that teaches AI assistants to write `.rq` files correctly, and lets them run the requests a workspace already has. The VS Code extension registers it automatically for Copilot, and any other MCP client — Claude Code, Claude Desktop, Cursor, Windsurf, Codex, Gemini CLI, Zed — runs it from npm as [`@rqlang/mcp`](https://www.npmjs.com/package/@rqlang/mcp).
 
 For a hands-on walkthrough, start with [AI-Assisted Authoring](AI_ASSISTED_AUTHORING.md). This page is the reference: what each tool does, what the checks enforce, and what they do not.
 
@@ -94,7 +94,45 @@ Given a `workspace_path` the lint also sees the *other* `.rq` files in the works
 
 ### `list_requests`
 
-Enumerates every named request reachable from `path` (defaulting to the workspace folder), returning each request's name, endpoint and file. An assistant calls this before generating so new names don't collide — and so it can tell a genuinely new entity from one that already has requests elsewhere.
+Enumerates every named request reachable from `path` (defaulting to the workspace folder), returning each request's name, method, URL (not interpolated), endpoint and file, plus the text of its [`doc.description`](LANGUAGE_DEFINITION.md#docdescription-attribute) and of its endpoint's. An assistant calls this before generating so new names don't collide — and so it can tell a genuinely new entity from one that already has requests elsewhere. It is also how it finds the request to run: asked to "show me all the users", it matches those words against the descriptions, names and URLs.
+
+### `run_request`
+
+Sends an existing request and returns its response: `{ status: "sent", request: {request, method, url, environment, headers}, response: {status, elapsed_ms, headers, body, body_truncated} }`. The request goes through the same pipeline as `rq request run` and the extension's **Run**, so it carries the same URL, headers, body, auth and timeout.
+
+| Parameter | Purpose |
+|---|---|
+| `name` | Request name as `list_requests` reports it, `users/list` or `users.list`. Required |
+| `file` | The `file` `list_requests` reported, to pick it when several files define the same name. It must be inside `workspace_path` (symlinks are followed before checking). A request found without `file` is checked the same way, so a link in the workspace to a file outside it is refused either way |
+| `workspace_path` | Folder whose `.env` secrets apply; defaults to the folder the server runs in |
+| `env` | Environment to run against |
+| `variables` | The values the request's `[required(...)]` attributes ask for, plus `auth_token`. Any other name is rejected, so a call cannot point a request at another host or change what it sends |
+| `confirmation_token` | The token from a held request, once the user has agreed to run it |
+| `redirect_url` | The address the browser ended on after a sign-in, pasted by the user, when a previous call returned `redirect_url_required: true` |
+
+**Confirmation.** A request marked [`[confirm]`](LANGUAGE_DEFINITION.md#confirm-attribute) — on the request, its endpoint or the environment — needs the user's consent, as it does in the CLI and the extension. So does every write (`POST`, `PUT`, `PATCH`, `DELETE`), marked or not, because nobody is watching the assistant pick it. Unmarked reads run straight away:
+
+- When the client supports [elicitation](https://modelcontextprotocol.io/specification/2025-11-25/client/elicitation), the server asks the user directly ("Run POST http://… against the `production` environment?") and sends the request only on a yes. A no returns `{ status: "declined", sent: false }`. A question left unanswered for five minutes returns `{ status: "confirmation_timeout", sent: false }`, and a tool call the client cancels sends nothing, even if the user says yes afterwards.
+- Otherwise nothing is sent and the tool returns `{ status: "confirmation_required", sent: false, request, confirmation_token }`. The assistant must ask the user and call again with the same arguments plus the token. A token works once, for that exact request (same name, file, workspace, environment and variables, and the request unchanged in its file), within five minutes. The server keeps the request as it was prepared when it held it, sign-in token included, and sends exactly that, so a `let`, environment value or `.env` secret changed before the retry cannot send the approved call somewhere else. Canceling the tool call while the request is in flight aborts it.
+
+The tool is annotated as destructive, so clients that gate tools on annotations ask before calling it at all.
+
+**What comes back.** The values of `Authorization`, `Proxy-Authorization`, `Cookie`, `Set-Cookie`, `X-Api-Key` and `X-Auth-Token` are replaced by `[redacted]`, and so is any secret value (from `.env` or an `RQ__` environment variable) of six characters or more found in the URL or another header. Shorter values, such as a port or a retry count, are left alone so they do not garble every header that contains them. The confirmation question the user answers shows the whole URL, so they see where the request goes; the `request` the assistant gets back stays redacted. A body longer than 50,000 characters is cut there with `body_truncated: true`, and the server stops reading the response as soon as it holds that many characters, even if the server keeps the connection open. The instructions tell the assistant to treat the body as untrusted data, never as instructions. Response bodies are returned as received, so a secret an API echoes back is not redacted.
+
+**Auth.** Bearer tokens and OAuth2 client credentials (with a secret or a certificate) work as they do everywhere else. The flows that need the user to sign in in a browser, authorization code and implicit, depend on the auth's `redirect_uri`. The server never opens a browser itself.
+
+- **`http://localhost:PORT/…` or `http://127.0.0.1:PORT/…`** (authorization code): the server waits for the browser's redirect on a local server on that port, for five minutes.
+  - When the client supports URL [elicitation](https://modelcontextprotocol.io/specification/2025-11-25/client/elicitation), the server asks it to show the user the sign-in page, and tells it when the sign-in finished so it can close that page. Once they sign in, the same call sends the request.
+  - Otherwise nothing is sent and the tool returns `{ status: "authorization_required", sent: false, request, authorization_url, redirect_url_required: false }`. The assistant shows the URL to the user and calls again with the same arguments once they say they signed in. A call made while the sign-in is still pending returns the same URL.
+- **Any other address** (authorization code or implicit): the user signs in and pastes back the address the browser ended on, as in the VS Code extension.
+  - When the client supports form elicitation, the server shows the sign-in URL in a dialog with a field for that address, so the address never reaches the assistant. Once they paste it, the same call sends the request.
+  - Otherwise the tool returns `authorization_required` with `redirect_url_required: true`, and the assistant calls again with the address the user pasted as `redirect_url`. This route only takes the authorization code flow with PKCE or state on, so a forged or stolen address does not get a token. The implicit flow, whose address carries the token itself, and an auth that turns off both PKCE and state need the dialog.
+  - Either way the address must start with the `redirect_uri`, its `state` must match the sign-in, and the code is exchanged with that sign-in's PKCE verifier. An address passed as `redirect_url` that does not start with the `redirect_uri` is rejected and the sign-in keeps waiting for the right one, for five minutes. A `redirect_url` that no sign-in waits for, because it already finished, nobody passed the address within those five minutes or the server restarted, is not used. If the server already holds a token for that auth, as on the retry of a write confirmed after a pasted sign-in, it uses that token; otherwise the tool returns `authorization_failed` saying so, and starts no sign-in.
+- **`vscode://`**, the default when `redirect_uri` is missing, only works in the extension: such a request fails with an error.
+
+Every sign-in URL the user has to open themselves, in the dialog or through the assistant, is a short link such as `http://127.0.0.1:53817/a8f3…`, so a client that shows it on one line cannot cut off its `state` or PKCE challenge. A server on a random loopback port answers that one path, for a request to that exact host, with a redirect to the full authorization URL, and closes when the sign-in finishes or after five minutes. It receives nothing from the browser.
+
+A user who refuses a sign-in gets `{ status: "declined", sent: false }`. A sign-in that fails, or an auth the server cannot sign in to, returns `{ status: "authorization_failed", sent: false, request, message }`, where the message says what went wrong and what to do: an address without `state` (most likely a cut-off sign-in link), one from another sign-in, one without a code, a provider that refused the sign-in or the code exchange, a redirect port in use, a sign-in nobody finished within five minutes. A sign-in that fails after the tool already returned `authorization_required`, such as a provider that sends the browser back with an error, is reported by the next call for that auth, within five minutes, instead of a new sign-in link. The sign-in comes before the confirmation, so a write that needs both asks to sign in first. The server keeps tokens in memory only, per auth, the file that defines it and environment, so two workspaces never share one. It refreshes them when the provider issued a refresh token and forgets them when it stops. It shares no tokens with the VS Code extension. Tokens are redacted from the headers it reports. Any request can still be run by passing a token as the `auth_token` variable.
 
 ### `get_rq_reference`
 
@@ -183,7 +221,7 @@ These are the same findings the editor shows in the Problems panel as warnings u
 
 ## Guarantees and limits
 
-- **It authors, it does not execute.** No tool fires a request, and the server will not propose CLI commands for running one unless you ask how. See the [CLI](CLI.md) for that.
+- **It runs only what is already written.** `run_request` sends a request that exists in a `.rq` file; the assistant cannot make one up on the fly. It asks the user before every write and before every request marked `[confirm]`.
 - **It validates rqlang, not your API.** A file that passes both tools is well-formed and idiomatic. Whether the path exists, the payload matches the schema, or the token carries the right scope is still yours to verify — run the request and read the response.
 - **It does not import formats.** There is no OpenAPI, Swagger or Postman importer anywhere in rq. Generating requests from a spec works because the *assistant* reads the file and the server checks the result, which is why it works for any format the assistant can read.
 - **It does not make an assistant deterministic.** The rules constrain the shape of the output, not the naming or the reasoning behind it. Read what lands before you commit it.

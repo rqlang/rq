@@ -1,38 +1,15 @@
-/**
- * index.ts # noqa: E501
- * Main exports for OAuth authentication module
- * 
- * This file provides a single entry point for all OAuth-related
- * functionality, making imports cleaner throughout the extension.
- * 
- * Example:
- * ```typescript
- * import { OAuthProvider, OAuth2Config, AuthorizationCodePKCEFlow } from './auth';
- * ```
- */
-
-// Main OAuth provider
 export { OAuthProvider } from './oauthProvider';
-
-// OAuth2 flow implementations
+export type { OAuth2FlowType } from './oauthProvider';
 export { AuthorizationCodePKCEFlow } from './authorizationCodePKCEFlow';
-
-// Types and interfaces
-export type { 
-    OAuth2Config, 
-    OAuth2Result, 
-    IOAuth2Flow,
-    TokenResponse 
-} from './types';
-
-// Utility functions
+export { ImplicitFlow } from './implicitFlow';
+export type { AuthUi, IOAuth2Flow, OAuth2Config, OAuth2Result, OAuthAuthConfig, RedirectUrlRequest, TokenCacheScope, TokenResponse, TokenStore } from './types';
 export { generateCodeVerifier, generateCodeChallenge } from './pkceUtils';
 export * from './oauthService';
 export * from './refreshTokenFlow';
-
-// Callback handlers (exported for testing or custom implementations)
-export { 
-    handleVSCodeUriCallback, 
-    handleLocalServerCallback, 
-    handleManualPasteCallback 
+export {
+    handleAppRedirectCallback,
+    handleAppRedirectImplicitCallback,
+    handleLocalServerCallback,
+    handleManualPasteCallback,
+    handleManualPasteImplicitCallback
 } from './callbackHandlers';

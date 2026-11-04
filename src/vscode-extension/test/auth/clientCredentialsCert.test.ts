@@ -3,7 +3,7 @@ import * as forge from 'node-forge';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { parsePemCert, createJwtAssertion, extractPemFromP12, base64url } from '../../src/rqClient';
+import { parsePemCert, createJwtAssertion, extractPemFromP12, base64url } from '../../src/execution';
 
 function makeTestPem(): { certDer: Buffer; privateKeyPem: Buffer; publicKey: crypto.KeyObject; combinedPem: Buffer } {
     const { privateKey, publicKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });

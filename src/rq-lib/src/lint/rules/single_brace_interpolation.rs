@@ -1,4 +1,5 @@
 use crate::lint::{line_col, LintContext, LintDiagnostic, LintRule};
+use crate::syntax::resolve::is_in_literal_attribute;
 use crate::syntax::token::TokenType;
 
 pub struct Rule;
@@ -44,8 +45,8 @@ fn single_brace_occurrences(source: &str) -> Vec<(String, usize)> {
         return Vec::new();
     };
     let mut found = Vec::new();
-    for token in tokens {
-        if token.token_type != TokenType::String {
+    for (token_index, token) in tokens.iter().enumerate() {
+        if token.token_type != TokenType::String || is_in_literal_attribute(&tokens, token_index) {
             continue;
         }
         let bytes = token.value.as_bytes();
@@ -114,6 +115,13 @@ mod tests {
             .as_ref()
             .expect("fix")
             .contains("[required(widget_id)]"));
+    }
+
+    #[test]
+    fn does_not_flag_single_braces_inside_a_description() {
+        let src =
+            "[doc.description(\"Get the widget {widget_id}\")]\nrq get(\"http://x/widgets\");\n";
+        assert!(!has_rule(src));
     }
 
     #[test]

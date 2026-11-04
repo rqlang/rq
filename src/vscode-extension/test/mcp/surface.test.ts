@@ -1,9 +1,9 @@
 import { buildGenerateRqPrompt, render, RESOURCE_BODIES, surface } from '../../src/mcp/surface';
 
 describe('shared MCP surface', () => {
-    it('declares the authoring tools', () => {
+    it('declares the authoring and running tools', () => {
         expect(Object.keys(surface.tools).sort()).toEqual(
-            ['get_rq_reference', 'lint_rq', 'list_requests', 'validate_rq']
+            ['get_rq_reference', 'lint_rq', 'list_requests', 'run_request', 'validate_rq']
         );
     });
 
@@ -75,6 +75,14 @@ describe('server instructions', () => {
 
     it('checks each file against the folder it is written to', () => {
         expect(render(surface.instructions)).toContain('the folder it is written to as `workspace_path`');
+    });
+
+    it('tells the model never to confirm a request on the user\'s behalf', () => {
+        expect(render(surface.instructions)).toContain('Never confirm on the user\'s behalf');
+    });
+
+    it('tells the model to run an existing request rather than invent one', () => {
+        expect(render(surface.instructions)).toContain('Never invent a request to run');
     });
 
     it('re-validates after applying lint fixes', () => {

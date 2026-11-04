@@ -296,9 +296,9 @@ Arrays are not a type — `let a = ["x"];` is rejected at the declaration. `$[..
 
 ## 6. Attributes
 
-Annotations in square brackets placed immediately above an `rq`, `ep` or `env` statement.
+Annotations in square brackets placed immediately above an `rq`, `ep` or `env` statement. All take one argument in parentheses except `confirm`, which is written bare: `[confirm]`.
 
-Supported: `method`, `timeout`, `auth`, `required` (on `rq`/`ep`) and `ui.color` (on `env` only).
+Supported: `method`, `timeout`, `auth`, `required`, `doc.description` (on `rq`/`ep`), `confirm` (on `rq`/`ep`/`env`) and `ui.color` (on `env` only).
 
 ```rq
 [method(POST)]
@@ -341,6 +341,33 @@ Enforcement: CLI errors with a documented exit code; VS Code extension prompts t
 
 Scope: `required` declares the variable for that `rq` statement only (its attributes and arguments). A `let`, env entry or secret never satisfies it, so it shadows any outer variable of the same name inside that request; two requests declaring `[required(x)]` hold independent variables. Rename and find-references stay within the request. If the enclosing endpoint's `url`, `headers`, `qs` or attributes also use the name, find-references lists those shared uses and rename from inside the request is refused.
 
+### `doc.description("text")`
+Documents what an `rq` or `ep` is for. The value is one string literal (double or single quotes, usual escapes); identifiers, numbers and variables are rejected. The text is literal: `{{...}}` inside it is not interpolated and is not a variable reference. At most one per statement. Not inherited: a request does not get its endpoint's description, nor an endpoint its template's. Metadata only — it never changes what a request sends. `rq request show`, the VS Code Requests view tooltip and the MCP `list_requests` tool (as `description` and `endpoint_description`) expose it, so assistants can match a request to what the user asks for.
+```rq
+[doc.description("Users of the platform")]
+ep users("http://localhost:8080/users") {
+  [doc.description("List every user, newest first")]
+  rq list();
+}
+```
+
+### `confirm`
+Marks requests that must not be sent without someone saying yes. Bare, no parentheses (`[confirm()]` is a parse error); at most once per statement; valid on `rq`, `ep` and `env`; inherited from `ep` and templates, with no opt-out. A request needs confirmation when `confirm` is on the `rq`, its `ep` (or template) or the `env` it runs against. It never changes what a request sends. The CLI asks on the terminal (without one it exits with code 9 unless `--yes`), the VS Code extension shows a modal, and the MCP server asks the user before marked requests **and before every write**. `rq request show` reports `confirmation_required`.
+```rq
+[confirm]
+env production {
+  base_url: "https://api.example.com",
+}
+
+ep users("{{base_url}}/users") {
+  rq list();                          // asks only against production
+
+  [confirm]
+  [required(id)]
+  rq delete(id);                      // always asks
+}
+```
+
 ### `ui.color(color)`
 Marks an `env` with a color from a fixed palette: `red`, `orange`, `yellow`, `green`, `blue`, `purple` (bare lowercase identifier, no quotes, no interpolation). It is UI metadata only: it defines no variable and does not change what any request sends. The VS Code extension paints the selected environment in the Requests view with it, typically to flag `production`. At most one per `env`.
 ```rq
@@ -358,6 +385,8 @@ env production {
 | `auth` | yes | yes | **no** |
 | `method` | **no** | yes | **no** |
 | `required` | **no** | yes | **no** |
+| `doc.description` | yes | yes | **no** |
+| `confirm` | yes | yes | yes |
 | `ui.color` | **no** | **no** | yes |
 
 Using an attribute where the table says **no** is a parse error.
@@ -452,7 +481,7 @@ ep api("http://localhost:8080/api", qs: "api-version=1") {
 ```
 
 ### Attributes inside endpoints
-`timeout` and `auth` on `ep` apply as defaults to all child requests; child `rq` can override.
+`timeout` and `auth` on `ep` apply as defaults to all child requests; child `rq` can override. `doc.description` is not inherited; `confirm` is.
 
 ```rq
 [timeout(20)]

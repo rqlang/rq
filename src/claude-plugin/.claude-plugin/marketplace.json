@@ -9,7 +9,7 @@
     {
       "name": "rqlang",
       "source": "./",
-      "description": "Write, validate and lint rqlang (.rq) HTTP request files"
+      "description": "Write, validate, lint and run rqlang (.rq) HTTP request files"
     }
   ]
 }

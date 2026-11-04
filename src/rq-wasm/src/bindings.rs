@@ -97,6 +97,8 @@ struct ListEnvironmentsResult {
 struct RequestDetailsJson {
     #[serde(rename = "Request")]
     name: String,
+    #[serde(rename = "Description", skip_serializing_if = "Option::is_none")]
+    description: Option<String>,
     #[serde(rename = "URL")]
     url: String,
     #[serde(rename = "Method")]
@@ -111,6 +113,8 @@ struct RequestDetailsJson {
     auth: Option<AuthRef>,
     #[serde(rename = "RequiredVariables", skip_serializing_if = "Vec::is_empty")]
     required_variables: Vec<String>,
+    #[serde(rename = "ConfirmationRequired")]
+    confirmation_required: bool,
     file: String,
     line: usize,
     character: usize,
@@ -125,6 +129,9 @@ struct PreparedRequestJson {
     body: Option<String>,
     timeout_ms: Option<u64>,
     auth: Option<PreparedAuthJson>,
+    confirmation_required: bool,
+    agent_confirmation_required: bool,
+    secret_values: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -389,6 +396,7 @@ pub fn get_request_details(
 
     let view = RequestDetailsJson {
         name: details.name,
+        description: details.description,
         url: details.url,
         method: details.method,
         headers,
@@ -396,6 +404,7 @@ pub fn get_request_details(
         timeout: details.timeout,
         auth,
         required_variables: details.required_variables,
+        confirmation_required: details.confirmation_required,
         file: details.file,
         line: details.line,
         character: details.character,
@@ -425,6 +434,7 @@ pub fn prepare_request(
         &variables,
     )
     .map_err(rq_err)?;
+    let secret_values = prepared.secret_values();
     let timeout_ms = prepared
         .timeout
         .map(|timeout| u64::try_from(timeout.as_millis()).unwrap_or(u64::MAX));
@@ -442,6 +452,8 @@ pub fn prepare_request(
         character: auth.config.character,
         token_required: auth.token_required,
     });
+    let confirmation_required = prepared.confirmation_required;
+    let agent_confirmation_required = prepared.agent_confirmation_required;
     let request = prepared.request;
     let view = PreparedRequestJson {
         name: request.name,
@@ -451,6 +463,9 @@ pub fn prepare_request(
         body: request.body,
         timeout_ms,
         auth,
+        confirmation_required,
+        agent_confirmation_required,
+        secret_values,
     };
     serde_json::to_string(&view).map_err(|e| JsError::new(&e.to_string()))
 }

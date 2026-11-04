@@ -1,4 +1,6 @@
 import * as vscode from 'vscode';
+import { SIGN_IN_TIMEOUT_MS, signInTimeoutError } from './signInErrors';
+import { CANCELLED_MESSAGE } from '../utils';
 
 export interface UriHandlerCallback {
     (uri: vscode.Uri): void;
@@ -23,19 +25,32 @@ export function registerAuthUriHandler(context: vscode.ExtensionContext) {
     );
 }
 
-export function waitForUri(predicate: (uri: vscode.Uri) => boolean, timeoutMs: number = 300000): Promise<vscode.Uri> {
+export function waitForUri(predicate: (uri: vscode.Uri) => boolean, timeoutMs: number = SIGN_IN_TIMEOUT_MS, signal?: AbortSignal): Promise<vscode.Uri> {
     return new Promise((resolve, reject) => {
+        if (signal?.aborted) {
+            reject(new Error(CANCELLED_MESSAGE));
+            return;
+        }
+        const stop = () => {
+            disposable.dispose();
+            clearTimeout(timeoutHandle);
+            signal?.removeEventListener('abort', cancel);
+        };
+        const cancel = () => {
+            stop();
+            reject(new Error(CANCELLED_MESSAGE));
+        };
         const disposable = authUriHandler.onDidHandleUri(uri => {
             if (predicate(uri)) {
-                disposable.dispose();
-                clearTimeout(timeoutHandle);
+                stop();
                 resolve(uri);
             }
         });
 
         const timeoutHandle = setTimeout(() => {
-            disposable.dispose();
-            reject(new Error('Authentication timeout - no response received from callback'));
+            stop();
+            reject(signInTimeoutError());
         }, timeoutMs);
+        signal?.addEventListener('abort', cancel, { once: true });
     });
 }

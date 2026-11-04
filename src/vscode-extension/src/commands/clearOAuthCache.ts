@@ -1,10 +1,10 @@
 import * as vscode from 'vscode';
-import { OAuthProvider } from '../auth/oauthProvider';
+import { vscodeOAuthProvider } from '../auth/vscodeAuth';
 
 export function registerClearOAuthCacheCommand(context: vscode.ExtensionContext) {
     const command = vscode.commands.registerCommand('rq.clearOAuthCache', async () => {
         try {
-            const oauthProvider = new OAuthProvider(context);
+            const oauthProvider = vscodeOAuthProvider(context);
             await oauthProvider.clearTokenCache();
             vscode.window.showInformationMessage('RQ: OAuth cache cleared successfully.');
         } catch (error) {

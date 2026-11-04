@@ -1,9 +1,10 @@
 import * as vscode from 'vscode';
-import { RequestRunner } from '../../src/commands/runRequest';
+import { confirmRequest, RequestRunner } from '../../src/commands/runRequest';
 import { RequestExplorerProvider } from '../../src/requestExplorer';
 import { createExplorerState } from '../memento-mock';
 import * as cliService from '../../src/rqClient';
 import * as auth from '../../src/auth';
+import { OAuthProvider } from '../../src/auth/oauthProvider';
 import * as webviewGenerator from '../../src/ui/webviewGenerator';
 
 // Mock dependencies
@@ -168,7 +169,7 @@ describe('runRequest Commands', () => {
 
             await requestRunner.runRequest(item, provider);
 
-            expect(auth.performOAuth2Flow).toHaveBeenCalledWith(pendingAuth, context, outputChannel);
+            expect(auth.performOAuth2Flow).toHaveBeenCalledWith(pendingAuth, expect.any(OAuthProvider));
             expect(acquired).toBe('mock-token');
             expect(provider.setItemRunning).toHaveBeenCalledTimes(2);
             expect(provider.setItemRunning).toHaveBeenNthCalledWith(1, item, true);
@@ -441,6 +442,32 @@ describe('runRequest Commands', () => {
 
             expect(webviewGenerator.getErrorWebviewContent).not.toHaveBeenCalled();
             expect(requestRunner.isExecuting()).toBe(false);
+        });
+
+        test('aborts the OAuth sign-in once the run is cancelled', async () => {
+            const pendingAuth = { name: 'my-auth', auth_type: 'oauth2_authorization_code', fields: {}, file: 'test.rq', line: 0, character: 0, token_required: true };
+            (cliService.showRequest as jest.Mock).mockResolvedValue({ name: 'test-req', requiredVariables: [] });
+            (auth.performOAuth2Flow as jest.Mock).mockImplementation((_auth, oauthProvider: OAuthProvider) => new Promise((_, reject) => {
+                const { signal } = (oauthProvider as unknown as { ui: { signal: AbortSignal } }).ui;
+                signal.addEventListener('abort', () => reject(new Error('This operation was aborted')));
+            }));
+            let failure: unknown;
+            (cliService.executeRequest as jest.Mock).mockImplementation(async (options: cliService.ExecuteRequestOptions) => {
+                try {
+                    await options.acquireToken?.(pendingAuth);
+                } catch (err) {
+                    failure = err;
+                    throw err;
+                }
+                return { results: [{}] };
+            });
+
+            const running = requestRunner.runRequest(makeItem('test-req'), provider);
+            await new Promise(resolve => setImmediate(resolve));
+            requestRunner.cancelActiveExecution();
+            await running;
+
+            expect([(failure as Error).message, requestRunner.isExecuting()]).toEqual(['Cancelled by user', false]);
         });
 
         test('clears the running state on the tree item after cancelling', async () => {
@@ -724,5 +751,33 @@ describe('runRequest Commands', () => {
             expect(panels[1].title).toBe('RQ: b');
             expect(panels[1].webview.html).toBe('<html>error</html>');
         });
+    });
+});
+
+describe('confirmRequest', () => {
+    const PREPARED = { name: 'users/delete', method: 'DELETE', url: 'https://api.example.com/users/1', headers: [], confirmation_required: true, agent_confirmation_required: true, secret_values: [] };
+
+    beforeEach(() => jest.clearAllMocks());
+
+    test('asks with a modal naming the method, url and environment', async () => {
+        (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(undefined);
+
+        await confirmRequest(PREPARED, 'production');
+
+        expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+            "Run DELETE https://api.example.com/users/1 against the 'production' environment?",
+            expect.objectContaining({ modal: true }),
+            'Run'
+        );
+    });
+
+    test('confirms when the user picks Run', async () => {
+        (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue('Run');
+        expect(await confirmRequest(PREPARED)).toBe(true);
+    });
+
+    test('does not confirm when the user dismisses the modal', async () => {
+        (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(undefined);
+        expect(await confirmRequest(PREPARED)).toBe(false);
     });
 });

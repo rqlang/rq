@@ -12,6 +12,8 @@ describe('urlOf', () => {
 });
 
 describe('vscodeAuthUi', () => {
+    beforeEach(() => jest.clearAllMocks());
+
     test('waits for the app redirect through the uri handler', async () => {
         (authUriHandler.waitForUri as jest.Mock).mockImplementation(async (accepts: (uri: vscode.Uri) => boolean) => {
             const uri = vscode.Uri.parse('vscode://rq-lang.rq-language/oauth-callback?code=foo');
@@ -20,6 +22,24 @@ describe('vscodeAuthUi', () => {
         });
         const target = await vscodeAuthUi().waitForAppRedirect!(url => url.searchParams.has('code'));
         expect(target.searchParams.get('code')).toBe('foo');
+    });
+
+    test('stops waiting for the app redirect once the sign-in is cancelled', async () => {
+        (authUriHandler.waitForUri as jest.Mock).mockResolvedValue(vscode.Uri.parse('vscode://rq-lang.rq-language/oauth-callback?code=foo'));
+        const cancellation = new AbortController();
+        await vscodeAuthUi(undefined, cancellation.signal).waitForAppRedirect!(() => true);
+        expect((authUriHandler.waitForUri as jest.Mock).mock.calls[0][2]).toBe(cancellation.signal);
+    });
+
+    test('closes the paste box once the sign-in is cancelled', async () => {
+        (vscode.window.showInformationMessage as jest.Mock).mockResolvedValue(undefined);
+        (vscode.window.showInputBox as jest.Mock).mockResolvedValue(undefined);
+        const cancellation = new AbortController();
+        const asking = vscodeAuthUi(undefined, cancellation.signal).askForRedirectUrl({ authorizationUrl: 'https://auth', prompt: 'paste' });
+        const token = (vscode.window.showInputBox as jest.Mock).mock.calls[0][1];
+        cancellation.abort();
+        await asking;
+        expect(token.isCancellationRequested).toBe(true);
     });
 
     test('maps an accepted pasted url to no validation message', async () => {

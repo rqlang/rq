@@ -444,6 +444,32 @@ describe('runRequest Commands', () => {
             expect(requestRunner.isExecuting()).toBe(false);
         });
 
+        test('aborts the OAuth sign-in once the run is cancelled', async () => {
+            const pendingAuth = { name: 'my-auth', auth_type: 'oauth2_authorization_code', fields: {}, file: 'test.rq', line: 0, character: 0, token_required: true };
+            (cliService.showRequest as jest.Mock).mockResolvedValue({ name: 'test-req', requiredVariables: [] });
+            (auth.performOAuth2Flow as jest.Mock).mockImplementation((_auth, oauthProvider: OAuthProvider) => new Promise((_, reject) => {
+                const { signal } = (oauthProvider as unknown as { ui: { signal: AbortSignal } }).ui;
+                signal.addEventListener('abort', () => reject(new Error('This operation was aborted')));
+            }));
+            let failure: unknown;
+            (cliService.executeRequest as jest.Mock).mockImplementation(async (options: cliService.ExecuteRequestOptions) => {
+                try {
+                    await options.acquireToken?.(pendingAuth);
+                } catch (err) {
+                    failure = err;
+                    throw err;
+                }
+                return { results: [{}] };
+            });
+
+            const running = requestRunner.runRequest(makeItem('test-req'), provider);
+            await new Promise(resolve => setImmediate(resolve));
+            requestRunner.cancelActiveExecution();
+            await running;
+
+            expect([(failure as Error).message, requestRunner.isExecuting()]).toEqual(['Cancelled by user', false]);
+        });
+
         test('clears the running state on the tree item after cancelling', async () => {
             const item = makeItem('test-req');
             (cliService.showRequest as jest.Mock).mockResolvedValue({ name: 'test-req', requiredVariables: [] });

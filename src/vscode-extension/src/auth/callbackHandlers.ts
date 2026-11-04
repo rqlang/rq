@@ -1,6 +1,7 @@
 import { URL, URLSearchParams } from 'url';
 import * as http from 'http';
 import { AuthUi } from './types';
+import { CANCELLED_MESSAGE } from '../utils';
 import { callbackListenError, missingAccessTokenError, missingCodeError, notAnAddressError, providerRefusedError, SIGN_IN_TIMEOUT_MS, signInTimeoutError, wrongRedirectMessage } from './signInErrors';
 
 export interface CallbackResult {
@@ -57,12 +58,14 @@ export async function handleLocalServerCallback(ui: AuthUi, authUrl: string, red
     return new Promise((resolve, reject) => {
         let timer: ReturnType<typeof setTimeout> | undefined;
         let finished = false;
+        const cancel = () => finish(() => reject(new Error(CANCELLED_MESSAGE)));
         const finish = (outcome: () => void) => {
             if (finished) {
                 return;
             }
             finished = true;
             clearTimeout(timer);
+            ui.signal?.removeEventListener('abort', cancel);
             server.close();
             outcome();
         };
@@ -90,6 +93,11 @@ export async function handleLocalServerCallback(ui: AuthUi, authUrl: string, red
             respond(res, 400, 'Invalid Response', '<p>No authorization code received.</p>');
             finish(() => reject(missingCodeError()));
         });
+        if (ui.signal?.aborted) {
+            reject(new Error(CANCELLED_MESSAGE));
+            return;
+        }
+        ui.signal?.addEventListener('abort', cancel, { once: true });
         const port = parseInt(redirectUrl.port) || DEFAULT_CALLBACK_PORT;
         server.on('error', err => finish(() => reject(callbackListenError(redirectUri, port, err))));
         server.listen(port, redirectUrl.hostname, () => {

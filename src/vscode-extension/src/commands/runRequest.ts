@@ -190,22 +190,26 @@ export class RequestRunner {
         session.panel?.webview.postMessage({ command: 'executionState', running });
     }
 
-    private async acquireInteractiveToken(auth: rqClient.PreparedAuth): Promise<string> {
+    private async acquireInteractiveToken(auth: rqClient.PreparedAuth, cancellation: vscode.CancellationToken): Promise<string> {
         if (auth.auth_type !== 'oauth2_authorization_code' && auth.auth_type !== 'oauth2_implicit') {
             throw new Error(`Auth configuration '${auth.name}' has unsupported type '${auth.auth_type}'`);
         }
         this.logger.debug(`Detected OAuth2 auth: ${auth.name} (${auth.auth_type})`);
         this.logger.log(`Performing OAuth2 flow...`);
+        const abort = new AbortController();
+        const subscription = cancellation.onCancellationRequested(() => abort.abort());
         try {
-            const accessToken = await performOAuth2Flow(auth, vscodeOAuthProvider(this.context, this.outputChannel));
+            const accessToken = await performOAuth2Flow(auth, vscodeOAuthProvider(this.context, this.outputChannel, abort.signal));
             this.logger.log(`OAuth2 token obtained, injecting as auth_token variable`);
             return accessToken;
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
-            if (errorMessage.startsWith('Authentication cancelled')) {
+            if (abort.signal.aborted || errorMessage.startsWith('Authentication cancelled')) {
                 throw new Error(CANCELLED_MESSAGE);
             }
             throw error;
+        } finally {
+            subscription.dispose();
         }
     }
 
@@ -290,7 +294,7 @@ export class RequestRunner {
                     environment,
                     variables,
                     cancellation: execution.cancellationSource.token,
-                    acquireToken: (auth) => this.acquireInteractiveToken(auth),
+                    acquireToken: (auth) => this.acquireInteractiveToken(auth, execution.cancellationSource.token),
                     confirm: (prepared) => confirmRequest(prepared, environment)
                 });
 

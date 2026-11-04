@@ -4,7 +4,7 @@ Interactive OAuth2 token acquisition for the flows rq-lib cannot run on its own:
 
 The module has no dependency on VS Code. Everything that touches a user interface or a store goes through two interfaces in `types.ts`, so the extension and the MCP server share the same flows:
 
-- **`AuthUi`**: open a URL, ask for a pasted redirect URL, wait for an app redirect (optional), show an error, log.
+- **`AuthUi`**: open a URL, ask for a pasted redirect URL, wait for an app redirect (optional), show an error, log, and an optional `signal`: aborting it stops a sign-in that is waiting (the local callback server frees its port, the paste box closes, the token exchange stops) with `Cancelled by user`.
 - **`TokenStore`**: read, write and clear the serialized token cache.
 
 ## Files

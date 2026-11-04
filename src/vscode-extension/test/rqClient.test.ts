@@ -395,6 +395,27 @@ describe('executeRequest', () => {
             expect(acquireToken).not.toHaveBeenCalled();
         });
 
+        test('stops waiting for a token and sends nothing once the run is cancelled', async () => {
+            mockPrepareRequest.mockReturnValue(prepared({ auth: PENDING_AUTH }));
+            makeHttpsMock();
+            const listeners: (() => void)[] = [];
+            const cancellation = {
+                isCancellationRequested: false,
+                onCancellationRequested: (listener: () => void) => {
+                    listeners.push(listener);
+                    return { dispose: () => {} };
+                },
+            };
+
+            const pending = executeRequest({ requestName: 'test-req', sourceDirectory: '/tmp/project', cancellation, acquireToken: () => new Promise(() => undefined) });
+            await new Promise(resolve => setImmediate(resolve));
+            cancellation.isCancellationRequested = true;
+            listeners.forEach(listener => listener());
+
+            await expect(pending).rejects.toThrow('Cancelled by user');
+            expect(https.request).not.toHaveBeenCalled();
+        });
+
         test('refuses to send a request whose token cannot be obtained', async () => {
             mockPrepareRequest.mockReturnValue(prepared({ auth: PENDING_AUTH }));
             makeHttpsMock();

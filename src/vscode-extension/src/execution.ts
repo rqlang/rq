@@ -106,7 +106,7 @@ export async function requestDefinition(scope: RequestScope, options: ExecuteReq
 export async function sendRequest(scope: RequestScope, options: ExecuteRequestOptions, preparedRequest: PreparedRequest): Promise<ExecuteRequestResult> {
     let prepared = preparedRequest;
     if (prepared.auth?.token_required) {
-        const token = await acquireToken(prepared.auth, options);
+        const token = await untilCancelled(acquireToken(prepared.auth, options), options.cancellation);
         throwIfCancelled(options.cancellation);
         prepared = await prepareRequest(scope, options, { ...options.variables, auth_token: token });
     }
@@ -172,6 +172,18 @@ interface NodeHttpResponse {
     headers: Record<string, string>;
     body: string;
     truncated: boolean;
+}
+
+function untilCancelled<T>(work: Promise<T>, cancellation?: CancellationSignal): Promise<T> {
+    if (!cancellation) {
+        return work;
+    }
+    let subscription: { dispose(): void } | undefined;
+    const cancelled = new Promise<never>((_, reject) => {
+        subscription = cancellation.onCancellationRequested(() => reject(new Error(CANCELLED_MESSAGE)));
+    });
+    work.catch(() => undefined);
+    return Promise.race([work, cancelled]).finally(() => subscription?.dispose());
 }
 
 function throwIfCancelled(cancellation?: CancellationSignal): void {

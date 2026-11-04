@@ -43,6 +43,7 @@ export interface AuthUi {
     waitForAppRedirect?(accepts: (url: URL) => boolean): Promise<URL>;
     showError(message: string): void;
     log(message: string): void;
+    signal?: AbortSignal;
 }
 
 export interface TokenStore {

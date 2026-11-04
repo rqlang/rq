@@ -99,7 +99,8 @@ export class AuthorizationCodePKCEFlow implements IOAuth2Flow {
         const response = await fetch(config.tokenUrl, {
             method: 'POST',
             headers,
-            body: new URLSearchParams(params).toString()
+            body: new URLSearchParams(params).toString(),
+            signal: this.ui.signal
         });
         if (!response.ok) {
             const errorText = await response.text();

@@ -8,6 +8,7 @@ import {
     isLoopbackRedirect
 } from '../../src/auth/callbackHandlers';
 import { AuthUi } from '../../src/auth/types';
+import { CANCELLED_MESSAGE } from '../../src/utils';
 
 const AUTH_URL = 'https://auth.example.com/authorize';
 const APP_REDIRECT = 'vscode://rq-lang.rq-language/callback';
@@ -173,6 +174,23 @@ describe('handleLocalServerCallback', () => {
         }) });
         const target = await handleLocalServerCallback(ui, AUTH_URL, redirectUri);
         expect([(await other!).status, target]).toEqual([404, { code: 'foo', state: 'bar' }]);
+    });
+
+    it('stops waiting and frees the port once the sign-in is cancelled', async () => {
+        const cancellation = new AbortController();
+        const ui = fakeUi({ openUrl: jest.fn(async () => { cancellation.abort(); }), signal: cancellation.signal });
+        await expect(handleLocalServerCallback(ui, AUTH_URL, redirectUri)).rejects.toThrow(CANCELLED_MESSAGE);
+        const reuse = http.createServer();
+        await new Promise<void>((resolve, reject) => reuse.once('error', reject).listen(47391, '127.0.0.1', resolve));
+        await new Promise(resolve => reuse.close(resolve));
+    });
+
+    it('does not listen for a sign-in cancelled before it started', async () => {
+        const cancellation = new AbortController();
+        cancellation.abort();
+        const ui = fakeUi({ signal: cancellation.signal });
+        await expect(handleLocalServerCallback(ui, AUTH_URL, redirectUri)).rejects.toThrow(CANCELLED_MESSAGE);
+        expect(ui.openUrl).not.toHaveBeenCalled();
     });
 
     it('explains that the port of the redirect uri is taken', async () => {

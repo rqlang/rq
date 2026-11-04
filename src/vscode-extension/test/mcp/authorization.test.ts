@@ -164,6 +164,25 @@ describe('Authorizer', () => {
         await signIn(url);
     });
 
+    it('reports on the next call a sign-in that failed after the url was handed out', async () => {
+        const target = withOpener(opener('unavailable'));
+        await target.authorize(authConfig());
+        await new Promise<void>(resolve => http.get(`${REDIRECT_URI}?error=access_denied`, res => { res.resume(); res.on('end', resolve); }));
+        await expect(target.authorize(authConfig())).rejects.toThrow('refused the sign-in: access_denied');
+    });
+
+    it('starts a new sign-in once the failure was reported', async () => {
+        const target = withOpener(opener('unavailable'));
+        await target.authorize(authConfig());
+        await new Promise<void>(resolve => http.get(`${REDIRECT_URI}?error=access_denied`, res => { res.resume(); res.on('end', resolve); }));
+        await target.authorize(authConfig()).catch(() => undefined);
+        const third = await target.authorize(authConfig());
+        if (third.status === 'authorization_required') {
+            await signIn(await followLink(third.authorizationUrl));
+        }
+        expect(third.status).toBe('authorization_required');
+    });
+
     it('keeps the dialog open for a call still waiting on it when another is cancelled', async () => {
         const dialog = openDialog();
         const target = withOpener(dialog.openUrl);

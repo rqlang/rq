@@ -68,6 +68,7 @@ export function memoryTokenStore(): TokenStore {
 export class Authorizer {
     private readonly store = memoryTokenStore();
     private readonly pending = new Map<string, PendingAuthorization>();
+    private readonly failures = new Map<string, { error: unknown; expiresAt: number }>();
 
     constructor(
         private readonly prompts: AuthorizationPrompts,
@@ -79,6 +80,10 @@ export class Authorizer {
     async authorize(auth: OAuthAuthConfig, signal?: AbortSignal, redirectUrl?: string): Promise<Authorization> {
         requireSupportedRedirect(auth);
         const key = tokenCacheKey({ authName: auth.name, environment: auth.environment, file: auth.file });
+        const failure = this.takeFailure(key);
+        if (failure) {
+            return outcomeOf(Promise.reject(failure.error));
+        }
         const existing = this.pending.get(key);
         if (redirectUrl) {
             if (!existing?.awaitedRedirectUrl) {
@@ -94,6 +99,18 @@ export class Authorizer {
             outcomeOf(pending.token),
             published.then(({ url, redirectUrlRequired }) => ({ status: 'authorization_required', authorizationUrl: url, redirectUrlRequired }))
         ]), signal);
+    }
+
+    private takeFailure(key: string): { error: unknown } | undefined {
+        const now = Date.now();
+        for (const [failedKey, failure] of this.failures) {
+            if (failure.expiresAt < now) {
+                this.failures.delete(failedKey);
+            }
+        }
+        const failure = this.failures.get(key);
+        this.failures.delete(key);
+        return failure;
     }
 
     private async cachedAuthorization(auth: OAuthAuthConfig): Promise<Authorization> {
@@ -188,7 +205,12 @@ export class Authorizer {
             showError: message => this.log(message),
             log: message => this.log(message)
         };
-        pending.token = performOAuth2Flow(auth, new OAuthProvider(this.store, ui)).finally(() => {
+        pending.token = performOAuth2Flow(auth, new OAuthProvider(this.store, ui)).catch(error => {
+            if (pending.waiters === 0 && !signal.aborted) {
+                this.failures.set(key, { error, expiresAt: Date.now() + this.redirectUrlTimeoutMs });
+            }
+            throw error;
+        }).finally(() => {
             this.forget(key, pending);
             link?.then(opened => opened.close(), () => undefined);
             finish();

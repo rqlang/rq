@@ -132,6 +132,7 @@ struct PreparedRequestJson {
     confirmation_required: bool,
     agent_confirmation_required: bool,
     secret_values: Vec<String>,
+    variables: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -454,6 +455,7 @@ pub fn prepare_request(
     });
     let confirmation_required = prepared.confirmation_required;
     let agent_confirmation_required = prepared.agent_confirmation_required;
+    let variables = prepared.variables;
     let request = prepared.request;
     let view = PreparedRequestJson {
         name: request.name,
@@ -466,6 +468,7 @@ pub fn prepare_request(
         confirmation_required,
         agent_confirmation_required,
         secret_values,
+        variables,
     };
     serde_json::to_string(&view).map_err(|e| JsError::new(&e.to_string()))
 }

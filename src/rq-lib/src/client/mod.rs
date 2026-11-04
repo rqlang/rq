@@ -1170,7 +1170,12 @@ impl RqClient {
             &rq_file.imported_files,
             &self.env_file_path(source_path),
         );
+        let mut roots = Self::variable_roots(&request);
         let resolved = self.resolve_request(request, &context, &search_paths, environment)?;
+        if let Some(declared) = Self::auth_config_of(rq_file, &resolved)? {
+            roots.extend(Self::auth_variable_roots(declared));
+        }
+        let variables = crate::syntax::resolve::variable_dependencies(roots, &context);
         let (authorized, auth) = self.apply_auth(rq_file, resolved, &context, &search_paths)?;
         let request = Self::apply_request_defaults(authorized)?;
         let timeout = crate::http::request_timeout(&request)?;
@@ -1178,11 +1183,47 @@ impl RqClient {
         Ok(PreparedRequest {
             agent_confirmation_required: confirmation_required || !request.method.is_safe(),
             confirmation_required,
+            variables,
             request,
             timeout,
             auth,
             context,
         })
+    }
+
+    fn variable_roots(request: &Request) -> Vec<String> {
+        let texts = [&request.url]
+            .into_iter()
+            .chain(
+                request
+                    .headers
+                    .iter()
+                    .flat_map(|(name, value)| [name, value]),
+            )
+            .chain(&request.body)
+            .chain(&request.timeout)
+            .chain(&request.auth);
+        let slot_variables =
+            request
+                .slot_bindings
+                .iter()
+                .filter_map(|binding| match &binding.value {
+                    crate::syntax::types::SlotValue::Variable(name) => Some(name.clone()),
+                    _ => None,
+                });
+        texts
+            .flat_map(|text| crate::syntax::resolve::referenced_variable_names(text))
+            .chain(request.headers_var.clone())
+            .chain(slot_variables)
+            .collect()
+    }
+
+    fn auth_variable_roots(config: &AuthConfig) -> Vec<String> {
+        config
+            .fields
+            .values()
+            .flat_map(|field| crate::syntax::resolve::referenced_variable_names(&field.value))
+            .collect()
     }
 
     fn confirmation_required(
@@ -3315,6 +3356,58 @@ mod prepare_tests {
             &[],
         );
         assert!(target.is_err_and(|e| e.to_string().contains("Required variable(s) not set")));
+    }
+
+    #[test]
+    fn prepared_request_lists_the_variables_it_uses_through_other_variables() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write(
+            dir.path(),
+            "main.rq",
+            "let host = \"localhost\";\nlet base_url = \"http://{{host}}\";\nlet top = \"1\";\nlet unused = \"x\";\n\nrq probe(\"{{base_url}}/items?top={{top}}\");\n",
+        );
+        let target = prepare(&dir.path().join("main.rq"), "probe", &[]);
+        assert_eq!(target.variables, vec!["base_url", "host", "top"]);
+    }
+
+    #[test]
+    fn prepared_request_lists_the_variables_its_headers_and_body_use() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write(
+            dir.path(),
+            "main.rq",
+            "let key = \"k\";\nlet name = \"ada\";\n\n[method(POST)]\nrq probe(\"http://localhost/items\", $[\"X-Key\": \"{{key}}\"], body: ${\"name\": \"{{name}}\"});\n",
+        );
+        let target = prepare(&dir.path().join("main.rq"), "probe", &[]);
+        assert_eq!(target.variables, vec!["key", "name"]);
+    }
+
+    #[test]
+    fn prepared_request_lists_the_variables_its_auth_uses() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write(
+            dir.path(),
+            "main.rq",
+            "let client = \"app\";\n\nauth service(auth_type.oauth2_client_credentials) {\n    client_id: \"{{client}}\",\n    client_secret: \"secret\",\n    token_url: \"http://localhost/token\",\n}\n\n[auth(\"service\")]\nrq probe(\"http://localhost/probe\");\n",
+        );
+        let target = prepare(&dir.path().join("main.rq"), "probe", &[]);
+        assert_eq!(target.variables, vec!["client"]);
+    }
+
+    #[test]
+    fn prepared_request_drops_the_variables_an_overridden_value_used() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write(
+            dir.path(),
+            "main.rq",
+            "let host = \"localhost\";\nlet base_url = \"http://{{host}}\";\n\nrq probe(\"{{base_url}}/items\");\n",
+        );
+        let target = prepare(
+            &dir.path().join("main.rq"),
+            "probe",
+            &["base_url=http://other"],
+        );
+        assert_eq!(target.variables, vec!["base_url"]);
     }
 }
 

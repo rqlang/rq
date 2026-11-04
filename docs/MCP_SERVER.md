@@ -98,7 +98,7 @@ Enumerates every named request reachable from `path` (defaulting to the workspac
 
 ### `run_request`
 
-Sends an existing request and returns its response: `{ status: "sent", request: {request, method, url, environment, headers}, response: {status, elapsed_ms, headers, body, body_truncated} }`. The request goes through the same pipeline as `rq request run` and the extension's **Run**, so it carries the same URL, headers, body, auth and timeout.
+Sends an existing request and returns its response: `{ status: "sent", request: {request, method, url, environment, variables, headers}, response: {status, elapsed_ms, headers, body, body_truncated} }`. The request goes through the same pipeline as `rq request run` and the extension's **Run**, so it carries the same URL, headers, body, auth and timeout.
 
 | Parameter | Purpose |
 |---|---|
@@ -106,9 +106,11 @@ Sends an existing request and returns its response: `{ status: "sent", request: 
 | `file` | The `file` `list_requests` reported, to pick it when several files define the same name. It must be inside `workspace_path` (symlinks are followed before checking). A request found without `file` is checked the same way, so a link in the workspace to a file outside it is refused either way |
 | `workspace_path` | Folder whose `.env` secrets apply; defaults to the folder the server runs in |
 | `env` | Environment to run against |
-| `variables` | The values the request's `[required(...)]` attributes ask for, plus `auth_token`. Any other name is rejected, so a call cannot point a request at another host or change what it sends |
+| `variables` | Values for this call only: the ones the request's `[required(...)]` attributes ask for, `auth_token`, and overrides for any variable the request uses, directly or through another variable. An override wins over `let`, environment and `.env` values, as `-v` does in the CLI, so the assistant runs "the same with `top` = 10" without touching the file. A name the request does not use is rejected |
 | `confirmation_token` | The token from a held request, once the user has agreed to run it |
 | `redirect_url` | The address the browser ended on after a sign-in, pasted by the user, when a previous call returned `redirect_url_required: true` |
+
+**Overrides.** Changing a value such as a page size or a filter sends the request straight away (a write still asks, as below). An override that changes where the request goes or how it authenticates needs the user's consent like a write, even for a read: one whose url ends up on another scheme, host or port than without the override, and one that changes the auth the request uses or any of its fields (`token_url`, `client_id`, a bearer token…). That consent is asked before anything is sent, sign-ins and token requests included, so a value an untrusted response talked the assistant into cannot send a credential elsewhere. The question names the overridden variables ("Run GET http://… with base_url=http://…?"), and `request.variables` lists them in every result.
 
 **Confirmation.** A request marked [`[confirm]`](LANGUAGE_DEFINITION.md#confirm-attribute) — on the request, its endpoint or the environment — needs the user's consent, as it does in the CLI and the extension. So does every write (`POST`, `PUT`, `PATCH`, `DELETE`), marked or not, because nobody is watching the assistant pick it. Unmarked reads run straight away:
 
@@ -221,7 +223,7 @@ These are the same findings the editor shows in the Problems panel as warnings u
 
 ## Guarantees and limits
 
-- **It runs only what is already written.** `run_request` sends a request that exists in a `.rq` file; the assistant cannot make one up on the fly. It asks the user before every write and before every request marked `[confirm]`.
+- **It runs only what is already written.** `run_request` sends a request that exists in a `.rq` file; the assistant cannot make one up on the fly. It can override the values of the variables that request uses, never its shape. It asks the user before every write, before every request marked `[confirm]`, and before an override that moves a request to another host or changes its auth.
 - **It validates rqlang, not your API.** A file that passes both tools is well-formed and idiomatic. Whether the path exists, the payload matches the schema, or the token carries the right scope is still yours to verify — run the request and read the response.
 - **It does not import formats.** There is no OpenAPI, Swagger or Postman importer anywhere in rq. Generating requests from a spec works because the *assistant* reads the file and the server checks the result, which is why it works for any format the assistant can read.
 - **It does not make an assistant deterministic.** The rules constrain the shape of the output, not the naming or the reasoning behind it. Read what lands before you commit it.

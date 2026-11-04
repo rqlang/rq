@@ -104,6 +104,7 @@ pub struct PreparedRequest {
     pub auth: Option<PreparedAuth>,
     pub confirmation_required: bool,
     pub agent_confirmation_required: bool,
+    pub variables: Vec<String>,
     pub(crate) context: VariableContext,
 }
 

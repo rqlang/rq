@@ -70,6 +70,7 @@ export interface PreparedRequest {
     confirmation_required: boolean;
     agent_confirmation_required: boolean;
     secret_values: string[];
+    variables: string[];
 }
 
 export interface RequestScope {

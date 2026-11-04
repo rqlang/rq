@@ -24,10 +24,11 @@ export const surface = surfaceJson as {
     run_request: {
         confirmation_message: string;
         environment_clause: string;
+        variables_clause: string;
         confirmation_required: string;
         confirmation_timeout: string;
         invalid_confirmation_token: string;
-        undeclared_variables: string;
+        unused_variables: string;
         file_outside_workspace: string;
         authorization_message: string;
         authorization_required: string;

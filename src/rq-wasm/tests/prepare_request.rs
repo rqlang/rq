@@ -168,3 +168,13 @@ fn the_prepare_request_binding_lists_the_secret_values_of_the_context() {
         serde_json::json!(["from-context-env"])
     );
 }
+
+#[test]
+fn the_prepare_request_binding_lists_the_variables_the_request_uses() {
+    let files = r#"{"/workspace/users.rq": "let top = \"1\";\nlet unused = \"x\";\n\nrq list(\"http://x/users?top={{top}}\");\n"}"#;
+    let output =
+        rq_wasm::bindings::prepare_request(files, "{}", WORKSPACE, "list", None, None, None)
+            .unwrap_or_else(|_| String::from("{}"));
+    let target: serde_json::Value = serde_json::from_str(&output).unwrap_or_default();
+    assert_eq!(target["variables"], serde_json::json!(["top"]));
+}

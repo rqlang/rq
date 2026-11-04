@@ -243,10 +243,15 @@ function confirmationMessage(summary: RequestSummary): string {
     const environmentClause = summary.environment
         ? surface.run_request.environment_clause.replace('{environment}', summary.environment)
         : '';
+    const overrides = Object.entries(summary.variables ?? {});
+    const variablesClause = overrides.length > 0
+        ? surface.run_request.variables_clause.replace('{variables}', overrides.map(([name, value]) => `${name}=${value}`).join(', '))
+        : '';
     return surface.run_request.confirmation_message
         .replace('{method}', summary.method)
         .replace('{url}', summary.url)
-        .replace('{environment_clause}', environmentClause);
+        .replace('{environment_clause}', environmentClause)
+        .replace('{variables_clause}', variablesClause);
 }
 
 async function main(): Promise<void> {

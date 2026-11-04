@@ -96,6 +96,10 @@ before(async () => {
             return;
         }
         res.setHeader('content-type', 'application/json');
+        if (req.url.startsWith('/token')) {
+            res.end(JSON.stringify({ access_token: 'issued', token_type: 'bearer' }));
+            return;
+        }
         res.setHeader('set-cookie', 'session=abc');
         res.end(req.url === '/big' ? JSON.stringify({ data: 'x'.repeat(60_000) }) : JSON.stringify({ path: req.url }));
     });
@@ -114,6 +118,29 @@ beforeEach(() => {
 });
 
 const file = () => path.join(workspace, 'users.rq');
+
+function tokenWorkspace(note) {
+    const port = api.address().port;
+    const source = text => [
+        `let token_url = "http://127.0.0.1:${port}/token";`,
+        `let note = "${text}";`,
+        '',
+        'auth machine(auth_type.oauth2_client_credentials) {',
+        '    client_id: "app",',
+        '    client_secret: "machine-secret",',
+        '    token_url: "{{token_url}}",',
+        '}',
+        '',
+        '[auth("machine")]',
+        '[method(POST)]',
+        `rq notes("http://127.0.0.1:${port}/notes", body: \${"note": "{{note}}"});`,
+        ''
+    ].join('\n');
+    const dir = tempWorkspace({ 'notes.rq': source(note) });
+    const notes = path.join(dir, 'notes.rq');
+    const args = { name: 'notes', file: notes, workspace_path: dir, variables: { token_url: `http://127.0.0.1:${port}/token-other` } };
+    return { args, write: text => fs.writeFileSync(notes, source(text)) };
+}
 
 describe('run_request', () => {
     it('sends an unmarked read without asking', async () => {
@@ -284,6 +311,26 @@ describe('run_request', () => {
     it('asks before fetching a token with an overridden auth', async () => {
         const target = await callJson(client, 'run_request', { name: 'machine', file: file(), env: 'local', variables: { token_url: `http://127.0.0.1:${api.address().port}/stolen` } });
         assert.deepEqual([target.status, received], ['confirmation_required', []]);
+    });
+
+    it('redacts an override of a secret in the url it reports', async () => {
+        const target = await callJson(client, 'run_request', { name: 'keyed', file: file(), env: 'local', variables: { api_key: 'given-at-runtime' } });
+        assert.deepEqual([target.request.url.endsWith('?key=[redacted]'), target.summary.includes('given-at-runtime')], [true, false]);
+    });
+
+    it('sends a request whose token needed an approved override once it is confirmed', async () => {
+        const { args } = tokenWorkspace('first');
+        const { confirmation_token } = await callJson(client, 'run_request', args);
+        const target = await callJson(client, 'run_request', { ...args, confirmation_token });
+        assert.deepEqual([target.status, received], ['sent', ['POST /token-other', 'POST /notes']]);
+    });
+
+    it('refuses an approved override once the request it sends changed', async () => {
+        const { args, write } = tokenWorkspace('first');
+        const { confirmation_token } = await callJson(client, 'run_request', args);
+        write('second');
+        const target = await client.callTool({ name: 'run_request', arguments: { ...args, confirmation_token } });
+        assert.deepEqual([target.isError, received.includes('POST /notes')], [true, false]);
     });
 
     it('sends a request that moved to another host once the user confirms the override', async () => {

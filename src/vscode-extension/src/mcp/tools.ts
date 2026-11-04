@@ -176,7 +176,7 @@ interface PendingConfirmation {
     fingerprint: string;
     expiresAt: number;
     request?: ApprovableRequest;
-    approved: RequestSummary;
+    approved: string;
     inFlight: boolean;
 }
 
@@ -285,7 +285,7 @@ async function runWithConsent(run: Run, pending?: PendingConfirmation): Promise<
     }
     prepared = await withAcquiredToken(scope, options, prepared);
     summary = summaryOf(prepared, args.env, run.overrides);
-    if (pending && !sameTarget(pending.approved, summary)) {
+    if (pending && pending.approved !== contentOf(prepared)) {
         throw new Error(surface.run_request.invalid_confirmation_token);
     }
     const request: ApprovableRequest = { prepared, summary, secrets: token ? [...prepared.secret_values, token] : prepared.secret_values };
@@ -316,13 +316,14 @@ async function askConsent(run: Run, prepared: PreparedRequest, summary: RequestS
         status: 'confirmation_required',
         sent: false,
         request: summary,
-        confirmation_token: issueConfirmation(run.fingerprint, summary, request),
+        confirmation_token: issueConfirmation(run.fingerprint, contentOf(prepared), request),
         message: surface.run_request.confirmation_required
     };
 }
 
-function sameTarget(approved: RequestSummary, summary: RequestSummary): boolean {
-    return approved.method === summary.method && approved.url === summary.url;
+function contentOf(prepared: PreparedRequest): string {
+    const headers = prepared.headers.filter(([name]) => name.toLowerCase() !== 'authorization');
+    return canonicalJson([prepared.method, prepared.url, headers, prepared.body ?? null, prepared.timeout_ms ?? null]);
 }
 
 function overridesOf(variables: Record<string, string> | undefined, runtimeInputs: Set<string>): Record<string, string> {
@@ -421,7 +422,7 @@ function canonicalJson(value: unknown): string {
     return JSON.stringify(value) ?? 'null';
 }
 
-function issueConfirmation(fingerprint: string, approved: RequestSummary, request?: ApprovableRequest): string {
+function issueConfirmation(fingerprint: string, approved: string, request?: ApprovableRequest): string {
     const now = Date.now();
     for (const [token, pending] of pendingConfirmations) {
         if (pending.expiresAt < now) {

@@ -103,13 +103,17 @@ export async function requestDefinition(scope: RequestScope, options: ExecuteReq
     );
 }
 
-export async function sendRequest(scope: RequestScope, options: ExecuteRequestOptions, preparedRequest: PreparedRequest): Promise<ExecuteRequestResult> {
-    let prepared = preparedRequest;
-    if (prepared.auth?.token_required) {
-        const token = await untilCancelled(acquireToken(prepared.auth, options), options.cancellation);
-        throwIfCancelled(options.cancellation);
-        prepared = await prepareRequest(scope, options, { ...options.variables, auth_token: token });
+export async function withAcquiredToken(scope: RequestScope, options: ExecuteRequestOptions, prepared: PreparedRequest): Promise<PreparedRequest> {
+    if (!prepared.auth?.token_required) {
+        return prepared;
     }
+    const token = await untilCancelled(acquireToken(prepared.auth, options), options.cancellation);
+    throwIfCancelled(options.cancellation);
+    return prepareRequest(scope, options, { ...options.variables, auth_token: token });
+}
+
+export async function sendRequest(scope: RequestScope, options: ExecuteRequestOptions, preparedRequest: PreparedRequest): Promise<ExecuteRequestResult> {
+    const prepared = await withAcquiredToken(scope, options, preparedRequest);
 
     const headers = toNodeHeaders(prepared.headers);
     const body = prepared.body ?? undefined;

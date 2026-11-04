@@ -141,6 +141,19 @@ describe('run_request', () => {
         assert.deepEqual([target.status, received.length], ['sent', 1]);
     });
 
+    it('sends the request the user approved even if a variable it uses changed before the retry', async () => {
+        const port = api.address().port;
+        const source = target => `let target = "${target}";\n\n[method(POST)]\nrq moved("http://127.0.0.1:${port}/{{target}}", body: \${});\n`;
+        const moved = tempWorkspace({ 'moved.rq': source('approved') });
+        const own = await connect(moved);
+        const args = { name: 'moved', file: path.join(moved, 'moved.rq') };
+        const { confirmation_token } = await callJson(own, 'run_request', args);
+        fs.writeFileSync(args.file, source('elsewhere'));
+        const target = await callJson(own, 'run_request', { ...args, confirmation_token });
+        await own.close();
+        assert.deepEqual([target.status, received], ['sent', ['POST /approved']]);
+    });
+
     it('refuses a confirmation token once the request was edited', async () => {
         const orders = path.join(workspace, 'orders.rq');
         fs.writeFileSync(orders, '[method(POST)]\nrq create("http://127.0.0.1:1/orders", body: ${"total": 1});\n');

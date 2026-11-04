@@ -4,7 +4,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { setWasmTransport, wasmCall } from '../wasmHost';
 import { buildSecretsMap, draftsJson, isDirectory, normalizePath } from '../utils';
-import { CancellationSignal, ExecuteRequestOptions, PreparedRequest, prepareRequest, requestDefinition, requestScope, sendRequest } from '../execution';
+import { CancellationSignal, ExecuteRequestOptions, ExecuteRequestResult, PreparedRequest, prepareRequest, requestDefinition, requestScope, sendRequest, withAcquiredToken } from '../execution';
 import { Authorization, Authorize, isInteractiveAuth, McpAuthorizationError } from './authorization';
 import { RESOURCE_BODIES, surface } from './surface';
 
@@ -166,7 +166,13 @@ const AUTH_TOKEN_VARIABLE = 'auth_token';
 const CONFIRMATION_TTL_MS = 5 * 60 * 1000;
 const REDACTED = '[redacted]';
 const SENSITIVE_HEADERS = new Set(['authorization', 'proxy-authorization', 'cookie', 'set-cookie', 'x-api-key', 'x-auth-token']);
-const pendingConfirmations = new Map<string, { fingerprint: string; expiresAt: number }>();
+interface ApprovableRequest {
+    prepared: PreparedRequest;
+    summary: RequestSummary;
+    secrets: string[];
+}
+
+const pendingConfirmations = new Map<string, { fingerprint: string; expiresAt: number; request: ApprovableRequest }>();
 
 export async function runRequest(args: RunRequestArgs, prompts: RunRequestPrompts, signal?: AbortSignal): Promise<unknown> {
     const workspace = await workspaceFor(args.workspace_path);
@@ -184,6 +190,11 @@ export async function runRequest(args: RunRequestArgs, prompts: RunRequestPrompt
     };
     const definition = await requestDefinition(scope, options) as { RequiredVariables?: string[] };
     rejectUndeclaredVariables(args.variables, definition.RequiredVariables ?? []);
+    const fingerprint = fingerprintOf(args, workspace, definition);
+    if (args.confirmation_token) {
+        const approved = redeemConfirmation(args.confirmation_token, fingerprint);
+        return sentResult(await sendRequest(scope, options, approved.prepared), approved);
+    }
     let prepared = await prepareRequest(scope, options);
     let summary = summaryOf(prepared, args.env);
     let token: string | undefined;
@@ -216,15 +227,12 @@ export async function runRequest(args: RunRequestArgs, prompts: RunRequestPrompt
         token = authorization.token;
         options = { ...options, variables: { ...args.variables, [AUTH_TOKEN_VARIABLE]: token } };
         prepared = await prepareRequest(scope, options);
-        summary = summaryOf(prepared, args.env);
     }
-    const question = { ...summary, url: prepared.url };
-    const secrets = token ? [...prepared.secret_values, token] : prepared.secret_values;
+    prepared = await withAcquiredToken(scope, options, prepared);
+    summary = summaryOf(prepared, args.env);
+    const request: ApprovableRequest = { prepared, summary, secrets: token ? [...prepared.secret_values, token] : prepared.secret_values };
     if (prepared.agent_confirmation_required) {
-        const fingerprint = () => fingerprintOf(args, workspace, definition);
-        const outcome = args.confirmation_token
-            ? redeemConfirmation(args.confirmation_token, fingerprint())
-            : await prompts.confirm(question);
+        const outcome = await prompts.confirm({ ...summary, url: prepared.url });
         if (outcome === 'declined') {
             return { status: 'declined', sent: false, request: summary };
         }
@@ -236,12 +244,16 @@ export async function runRequest(args: RunRequestArgs, prompts: RunRequestPrompt
                 status: 'confirmation_required',
                 sent: false,
                 request: summary,
-                confirmation_token: issueConfirmation(fingerprint()),
+                confirmation_token: issueConfirmation(fingerprint, request),
                 message: surface.run_request.confirmation_required
             };
         }
     }
-    const [result] = (await sendRequest(scope, options, prepared)).results;
+    return sentResult(await sendRequest(scope, options, prepared), request);
+}
+
+function sentResult(sent: ExecuteRequestResult, { summary, secrets }: ApprovableRequest): unknown {
+    const [result] = sent.results;
     const body = result.body.length > MAX_RESPONSE_BODY_LENGTH ? result.body.slice(0, MAX_RESPONSE_BODY_LENGTH) : result.body;
     return {
         status: 'sent',
@@ -326,7 +338,7 @@ function canonicalJson(value: unknown): string {
     return JSON.stringify(value) ?? 'null';
 }
 
-function issueConfirmation(fingerprint: string): string {
+function issueConfirmation(fingerprint: string, request: ApprovableRequest): string {
     const now = Date.now();
     for (const [token, pending] of pendingConfirmations) {
         if (pending.expiresAt < now) {
@@ -334,17 +346,17 @@ function issueConfirmation(fingerprint: string): string {
         }
     }
     const token = crypto.randomUUID();
-    pendingConfirmations.set(token, { fingerprint, expiresAt: now + CONFIRMATION_TTL_MS });
+    pendingConfirmations.set(token, { fingerprint, expiresAt: now + CONFIRMATION_TTL_MS, request });
     return token;
 }
 
-function redeemConfirmation(token: string, fingerprint: string): ConfirmationOutcome {
+function redeemConfirmation(token: string, fingerprint: string): ApprovableRequest {
     const pending = pendingConfirmations.get(token);
     pendingConfirmations.delete(token);
     if (!pending || pending.expiresAt < Date.now() || pending.fingerprint !== fingerprint) {
         throw new Error(surface.run_request.invalid_confirmation_token);
     }
-    return 'accepted';
+    return pending.request;
 }
 
 function redactHeaders(headers: Record<string, string>, secrets: string[]): Record<string, string> {

@@ -52,6 +52,30 @@ function apiSource(port) {
         'rq endless("{{base_url}}/endless");',
         '',
         'rq stalled("{{base_url}}/stalled");',
+        '',
+        'let top = "1";',
+        '',
+        'rq paged("{{base_url}}/paged?top={{top}}");',
+        '',
+        'let service_token = "service-token";',
+        '',
+        'auth service_auth(auth_type.bearer) {',
+        '    token: "{{service_token}}",',
+        '}',
+        '',
+        '[auth("service_auth")]',
+        'rq service("{{base_url}}/service");',
+        '',
+        'let token_url = "{{base_url}}/token";',
+        '',
+        'auth machine(auth_type.oauth2_client_credentials) {',
+        '    client_id: "app",',
+        '    client_secret: "machine-secret",',
+        '    token_url: "{{token_url}}",',
+        '}',
+        '',
+        '[auth("machine")]',
+        'rq machine("{{base_url}}/machine");',
         ''
     ].join('\n');
 }
@@ -72,6 +96,10 @@ before(async () => {
             return;
         }
         res.setHeader('content-type', 'application/json');
+        if (req.url.startsWith('/token')) {
+            res.end(JSON.stringify({ access_token: 'issued', token_type: 'bearer' }));
+            return;
+        }
         res.setHeader('set-cookie', 'session=abc');
         res.end(req.url === '/big' ? JSON.stringify({ data: 'x'.repeat(60_000) }) : JSON.stringify({ path: req.url }));
     });
@@ -90,6 +118,29 @@ beforeEach(() => {
 });
 
 const file = () => path.join(workspace, 'users.rq');
+
+function tokenWorkspace(note) {
+    const port = api.address().port;
+    const source = text => [
+        `let token_url = "http://127.0.0.1:${port}/token";`,
+        `let note = "${text}";`,
+        '',
+        'auth machine(auth_type.oauth2_client_credentials) {',
+        '    client_id: "app",',
+        '    client_secret: "machine-secret",',
+        '    token_url: "{{token_url}}",',
+        '}',
+        '',
+        '[auth("machine")]',
+        '[method(POST)]',
+        `rq notes("http://127.0.0.1:${port}/notes", body: \${"note": "{{note}}"});`,
+        ''
+    ].join('\n');
+    const dir = tempWorkspace({ 'notes.rq': source(note) });
+    const notes = path.join(dir, 'notes.rq');
+    const args = { name: 'notes', file: notes, workspace_path: dir, variables: { token_url: `http://127.0.0.1:${port}/token-other` } };
+    return { args, write: text => fs.writeFileSync(notes, source(text)) };
+}
 
 describe('run_request', () => {
     it('sends an unmarked read without asking', async () => {
@@ -211,9 +262,96 @@ describe('run_request', () => {
         assert.deepEqual([target.response.body.length, target.response.body_truncated], [50_000, true]);
     });
 
-    it('rejects a variable the request does not declare as required', async () => {
-        const target = await client.callTool({ name: 'run_request', arguments: { name: 'users/list', file: file(), env: 'local', variables: { base_url: 'http://127.0.0.1:1' } } });
-        assert.deepEqual([target.isError, target.content[0].text.includes('`base_url`'), received], [true, true, []]);
+    it('sends a request with an overridden variable without asking', async () => {
+        const target = await callJson(client, 'run_request', { name: 'paged', file: file(), env: 'local', variables: { top: '10' } });
+        assert.deepEqual([target.status, received], ['sent', ['GET /paged?top=10']]);
+    });
+
+    it('lists the overridden variables in the request it sent', async () => {
+        const target = await callJson(client, 'run_request', { name: 'paged', file: file(), env: 'local', variables: { top: '10' } });
+        assert.deepEqual(target.request.variables, { top: '10' });
+    });
+
+    it('sums up the method, url, status and time of the request it sent', async () => {
+        const target = await callJson(client, 'run_request', { name: 'paged', file: file(), env: 'local' });
+        assert.match(target.summary, /^GET http:\/\/127\.0\.0\.1:\d+\/paged\?top=1 → 200 \(\d+ ms\)$/);
+    });
+
+    it('rejects a variable the request does not use', async () => {
+        const target = await client.callTool({ name: 'run_request', arguments: { name: 'paged', file: file(), env: 'local', variables: { tpo: '10' } } });
+        assert.deepEqual([target.isError, target.content[0].text.includes('`tpo`'), received], [true, true, []]);
+    });
+
+    it('rejects a value that calls a function', async () => {
+        const target = await client.callTool({ name: 'run_request', arguments: { name: 'paged', file: file(), env: 'local', variables: { top: '{{io.read_file("users.rq")}}' } } });
+        assert.deepEqual([target.isError, target.content[0].text.includes('plain text'), received], [true, true, []]);
+    });
+
+    it('rejects a value that reads a secret', async () => {
+        const target = await client.callTool({ name: 'run_request', arguments: { name: 'paged', file: file(), env: 'local', variables: { top: '{{api_key}}' } } });
+        assert.deepEqual([target.isError, received], [true, []]);
+    });
+
+    it('sends a required variable that moves the request without asking', async () => {
+        const moved = tempWorkspace({ 'moved.rq': '[required(base_url)]\nrq list("{{base_url}}/moved");\n' });
+        const target = await callJson(client, 'run_request', { name: 'list', file: path.join(moved, 'moved.rq'), workspace_path: moved, variables: { base_url: `http://127.0.0.1:${api.address().port}` } });
+        assert.deepEqual([target.status, received], ['sent', ['GET /moved']]);
+    });
+
+    it('holds an override that sends the request to another host', async () => {
+        const target = await callJson(client, 'run_request', { name: 'users/list', file: file(), env: 'local', variables: { base_url: 'http://127.0.0.1:1' } });
+        assert.deepEqual([target.status, typeof target.confirmation_token, received], ['confirmation_required', 'string', []]);
+    });
+
+    it('holds an override that changes the auth', async () => {
+        const target = await callJson(client, 'run_request', { name: 'service', file: file(), env: 'local', variables: { service_token: 'other' } });
+        assert.deepEqual([target.status, received], ['confirmation_required', []]);
+    });
+
+    it('asks before fetching a token with an overridden auth', async () => {
+        const target = await callJson(client, 'run_request', { name: 'machine', file: file(), env: 'local', variables: { token_url: `http://127.0.0.1:${api.address().port}/stolen` } });
+        assert.deepEqual([target.status, received], ['confirmation_required', []]);
+    });
+
+    it('redacts an override of a secret in the url it reports', async () => {
+        const target = await callJson(client, 'run_request', { name: 'keyed', file: file(), env: 'local', variables: { api_key: 'given-at-runtime' } });
+        assert.deepEqual([target.request.url.endsWith('?key=[redacted]'), target.summary.includes('given-at-runtime')], [true, false]);
+    });
+
+    it('sends a request whose token needed an approved override once it is confirmed', async () => {
+        const { args } = tokenWorkspace('first');
+        const { confirmation_token } = await callJson(client, 'run_request', args);
+        const target = await callJson(client, 'run_request', { ...args, confirmation_token });
+        assert.deepEqual([target.status, received], ['sent', ['POST /token-other', 'POST /notes']]);
+    });
+
+    it('refuses an approved override once the request it sends changed', async () => {
+        const { args, write } = tokenWorkspace('first');
+        const { confirmation_token } = await callJson(client, 'run_request', args);
+        write('second');
+        const target = await client.callTool({ name: 'run_request', arguments: { ...args, confirmation_token } });
+        assert.deepEqual([target.isError, received.includes('POST /notes')], [true, false]);
+    });
+
+    it('sends a request that moved to another host once the user confirms the override', async () => {
+        const other = http.createServer((req, res) => {
+            received.push(`other ${req.method} ${req.url}`);
+            res.end('{}');
+        });
+        await new Promise(resolve => other.listen(0, '127.0.0.1', resolve));
+        const args = { name: 'users/list', file: file(), env: 'local', variables: { base_url: `http://127.0.0.1:${other.address().port}` } };
+        const { confirmation_token } = await callJson(client, 'run_request', args);
+        const target = await callJson(client, 'run_request', { ...args, confirmation_token });
+        await new Promise(resolve => other.close(resolve));
+        assert.deepEqual([target.status, received], ['sent', ['other GET /users']]);
+    });
+
+    it('refuses the confirmation token of an override once its request was sent', async () => {
+        const args = { name: 'service', file: file(), env: 'local', variables: { service_token: 'other' } };
+        const { confirmation_token } = await callJson(client, 'run_request', args);
+        await callJson(client, 'run_request', { ...args, confirmation_token });
+        const target = await client.callTool({ name: 'run_request', arguments: { ...args, confirmation_token } });
+        assert.deepEqual([target.isError, received], [true, ['GET /service']]);
     });
 
     it('accepts the auth_token variable', async () => {
@@ -288,6 +426,16 @@ describe('run_request with a client that can ask the user', () => {
     it('shows the user the whole url while redacting it for the agent', async () => {
         const target = await callJson(asking, 'run_request', { name: 'keyed', file: file(), env: 'production' });
         assert.deepEqual([questions[0].includes('?key=k3y-s3cret'), target.request.url.endsWith('?key=[redacted]')], [true, true]);
+    });
+
+    it('names the overridden variables when it asks about an override', async () => {
+        await callJson(asking, 'run_request', { name: 'service', file: file(), env: 'local', variables: { service_token: 'other' } });
+        assert.deepEqual([questions.length, questions[0]?.endsWith(' with service_token=other?')], [1, true]);
+    });
+
+    it('quotes an override with a dollar sign as it is', async () => {
+        await callJson(asking, 'run_request', { name: 'service', file: file(), env: 'local', variables: { service_token: "a$'b" } });
+        assert.ok(questions[0]?.endsWith(" with service_token=a$'b?"));
     });
 
     it('does not ask about an unmarked read', async () => {

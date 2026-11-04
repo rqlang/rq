@@ -5,7 +5,7 @@ import * as crypto from 'crypto';
 import { z } from 'zod';
 import { OAuthAuthConfig } from '../auth/types';
 import { AuthorizationUrlOutcome, Authorizer, RedirectUrlOutcome } from './authorization';
-import { buildGenerateRqPrompt, render, RESOURCE_BODIES, surface } from './surface';
+import { buildGenerateRqPrompt, fill, render, RESOURCE_BODIES, surface } from './surface';
 import { ConfirmationOutcome, getRqReference, listRequests, lintRq, ReferenceDoc, referenceDocIds, RequestSummary, runRequest, useDirectWasm, validateRq } from './tools';
 
 const SERVER_NAME = 'rq-mcp';
@@ -240,13 +240,15 @@ function canAskWithForm(server: McpServer): boolean {
 }
 
 function confirmationMessage(summary: RequestSummary): string {
-    const environmentClause = summary.environment
-        ? surface.run_request.environment_clause.replace('{environment}', summary.environment)
-        : '';
-    return surface.run_request.confirmation_message
-        .replace('{method}', summary.method)
-        .replace('{url}', summary.url)
-        .replace('{environment_clause}', environmentClause);
+    const overrides = Object.entries(summary.variables ?? {});
+    return fill(surface.run_request.confirmation_message, {
+        method: summary.method,
+        url: summary.url,
+        environment_clause: summary.environment ? fill(surface.run_request.environment_clause, { environment: summary.environment }) : '',
+        variables_clause: overrides.length > 0
+            ? fill(surface.run_request.variables_clause, { variables: overrides.map(([name, value]) => `${name}=${value}`).join(', ') })
+            : ''
+    });
 }
 
 async function main(): Promise<void> {

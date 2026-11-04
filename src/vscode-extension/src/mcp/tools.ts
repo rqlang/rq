@@ -4,9 +4,9 @@ import * as os from 'os';
 import * as path from 'path';
 import { setWasmTransport, wasmCall } from '../wasmHost';
 import { buildSecretsMap, draftsJson, isDirectory, normalizePath } from '../utils';
-import { CancellationSignal, ExecuteRequestOptions, ExecuteRequestResult, PreparedRequest, prepareRequest, requestDefinition, requestScope, sendRequest, withAcquiredToken } from '../execution';
+import { CancellationSignal, ExecuteRequestOptions, ExecuteRequestResult, PreparedRequest, checkOverrides, OverrideCheck, prepareRequest, requestDefinition, RequestScope, requestScope, sendRequest, withAcquiredToken } from '../execution';
 import { Authorization, Authorize, isInteractiveAuth, McpAuthorizationError } from './authorization';
-import { RESOURCE_BODIES, surface } from './surface';
+import { fill, RESOURCE_BODIES, surface } from './surface';
 
 const DRAFT_FILE_NAME = 'draft.rq';
 
@@ -139,6 +139,7 @@ export interface RequestSummary {
     method: string;
     url: string;
     environment: string | null;
+    variables?: Record<string, string>;
 }
 
 export type ConfirmationOutcome = 'accepted' | 'declined' | 'unanswered' | 'unavailable';
@@ -171,7 +172,27 @@ interface ApprovableRequest {
     secrets: string[];
 }
 
-const pendingConfirmations = new Map<string, { fingerprint: string; expiresAt: number; request: ApprovableRequest }>();
+interface PendingConfirmation {
+    fingerprint: string;
+    expiresAt: number;
+    request?: ApprovableRequest;
+    approved: string;
+    inFlight: boolean;
+}
+
+interface Run {
+    args: RunRequestArgs;
+    prompts: RunRequestPrompts;
+    signal?: AbortSignal;
+    scope: RequestScope;
+    options: ExecuteRequestOptions;
+    fingerprint: string;
+    overrides: Record<string, string>;
+    overridesNeedConsent: boolean;
+}
+
+const NO_OVERRIDES: OverrideCheck = { used: [], unused: [], needs_consent: false };
+const pendingConfirmations = new Map<string, PendingConfirmation>();
 
 export async function runRequest(args: RunRequestArgs, prompts: RunRequestPrompts, signal?: AbortSignal): Promise<unknown> {
     const workspace = await workspaceFor(args.workspace_path);
@@ -191,14 +212,46 @@ export async function runRequest(args: RunRequestArgs, prompts: RunRequestPrompt
     if (definition.file) {
         options = { ...options, sourceFile: await fileInside(workspace, definition.file) };
     }
-    rejectUndeclaredVariables(args.variables, definition.RequiredVariables ?? []);
-    const fingerprint = fingerprintOf(args, workspace, definition);
-    if (args.confirmation_token) {
-        const approved = redeemConfirmation(args.confirmation_token, fingerprint);
-        return sentResult(await sendRequest(scope, options, approved.prepared), approved);
+    const check = Object.keys(args.variables ?? {}).length > 0 ? await checkOverrides(scope, options) : NO_OVERRIDES;
+    rejectUnusedVariables(check);
+    const run: Run = {
+        args,
+        prompts,
+        signal,
+        scope,
+        options,
+        fingerprint: fingerprintOf(args, workspace, definition),
+        overrides: overridesOf(args.variables, new Set([...(definition.RequiredVariables ?? []), AUTH_TOKEN_VARIABLE])),
+        overridesNeedConsent: check.needs_consent
+    };
+    if (!args.confirmation_token) {
+        return runWithConsent(run);
     }
+    const pending = redeemConfirmation(args.confirmation_token, run.fingerprint);
+    if (pending.request) {
+        return sentResult(await sendRequest(scope, options, pending.request.prepared), pending.request);
+    }
+    pending.inFlight = true;
+    try {
+        return await runWithConsent(run, pending);
+    } finally {
+        pending.inFlight = false;
+    }
+}
+
+async function runWithConsent(run: Run, pending?: PendingConfirmation): Promise<unknown> {
+    const { args, prompts, signal, scope } = run;
+    let options = run.options;
     let prepared = await prepareRequest(scope, options);
-    let summary = summaryOf(prepared, args.env);
+    let summary = summaryOf(prepared, args.env, run.overrides);
+    let consented = pending !== undefined;
+    if (!consented && run.overridesNeedConsent && prepared.auth?.token_required) {
+        const held = await askConsent(run, prepared, summary);
+        if (held) {
+            return held;
+        }
+        consented = true;
+    }
     let token: string | undefined;
     if (prepared.auth?.token_required && isInteractiveAuth(prepared.auth.auth_type)) {
         let authorization: Authorization;
@@ -215,7 +268,7 @@ export async function runRequest(args: RunRequestArgs, prompts: RunRequestPrompt
         }
         if (authorization.status === 'authorization_required') {
             const message = authorization.redirectUrlRequired
-                ? surface.run_request.authorization_redirect_url_required.replace('{redirect_uri}', prepared.auth.fields.redirect_uri ?? '')
+                ? surface.run_request.authorization_redirect_url_required
                 : surface.run_request.authorization_required;
             return {
                 status: 'authorization_required',
@@ -223,7 +276,7 @@ export async function runRequest(args: RunRequestArgs, prompts: RunRequestPrompt
                 request: summary,
                 authorization_url: authorization.authorizationUrl,
                 redirect_url_required: authorization.redirectUrlRequired,
-                message: message.replace('{auth}', prepared.auth.name)
+                message: fill(message, { auth: prepared.auth.name, redirect_uri: prepared.auth.fields.redirect_uri ?? '' })
             };
         }
         token = authorization.token;
@@ -231,27 +284,50 @@ export async function runRequest(args: RunRequestArgs, prompts: RunRequestPrompt
         prepared = await prepareRequest(scope, options);
     }
     prepared = await withAcquiredToken(scope, options, prepared);
-    summary = summaryOf(prepared, args.env);
+    summary = summaryOf(prepared, args.env, run.overrides);
+    if (pending && pending.approved !== contentOf(prepared)) {
+        throw new Error(surface.run_request.invalid_confirmation_token);
+    }
     const request: ApprovableRequest = { prepared, summary, secrets: token ? [...prepared.secret_values, token] : prepared.secret_values };
-    if (prepared.agent_confirmation_required) {
-        const outcome = await prompts.confirm({ ...summary, url: prepared.url });
-        if (outcome === 'declined') {
-            return { status: 'declined', sent: false, request: summary };
-        }
-        if (outcome === 'unanswered') {
-            return { status: 'confirmation_timeout', sent: false, request: summary, message: surface.run_request.confirmation_timeout };
-        }
-        if (outcome === 'unavailable') {
-            return {
-                status: 'confirmation_required',
-                sent: false,
-                request: summary,
-                confirmation_token: issueConfirmation(fingerprint, request),
-                message: surface.run_request.confirmation_required
-            };
+    if (!consented && (prepared.agent_confirmation_required || run.overridesNeedConsent)) {
+        const held = await askConsent(run, prepared, summary, request);
+        if (held) {
+            return held;
         }
     }
+    if (args.confirmation_token && !pendingConfirmations.delete(args.confirmation_token)) {
+        throw new Error(surface.run_request.invalid_confirmation_token);
+    }
     return sentResult(await sendRequest(scope, options, prepared), request);
+}
+
+async function askConsent(run: Run, prepared: PreparedRequest, summary: RequestSummary, request?: ApprovableRequest): Promise<unknown> {
+    const outcome = await run.prompts.confirm({ ...summary, url: prepared.url });
+    if (outcome === 'accepted') {
+        return undefined;
+    }
+    if (outcome === 'declined') {
+        return { status: 'declined', sent: false, request: summary };
+    }
+    if (outcome === 'unanswered') {
+        return { status: 'confirmation_timeout', sent: false, request: summary, message: surface.run_request.confirmation_timeout };
+    }
+    return {
+        status: 'confirmation_required',
+        sent: false,
+        request: summary,
+        confirmation_token: issueConfirmation(run.fingerprint, contentOf(prepared), request),
+        message: surface.run_request.confirmation_required
+    };
+}
+
+function contentOf(prepared: PreparedRequest): string {
+    const headers = prepared.headers.filter(([name]) => name.toLowerCase() !== 'authorization');
+    return canonicalJson([prepared.method, prepared.url, headers, prepared.body ?? null, prepared.timeout_ms ?? null]);
+}
+
+function overridesOf(variables: Record<string, string> | undefined, runtimeInputs: Set<string>): Record<string, string> {
+    return Object.fromEntries(Object.entries(variables ?? {}).filter(([name]) => !runtimeInputs.has(name)));
 }
 
 function sentResult(sent: ExecuteRequestResult, { summary, secrets }: ApprovableRequest): unknown {
@@ -260,6 +336,12 @@ function sentResult(sent: ExecuteRequestResult, { summary, secrets }: Approvable
     return {
         status: 'sent',
         sent: true,
+        summary: fill(surface.run_request.sent_summary, {
+            method: summary.method,
+            url: summary.url,
+            status: String(result.status),
+            elapsed_ms: String(result.elapsed_ms)
+        }),
         request: { ...summary, headers: redactHeaders(result.request_headers, secrets) },
         response: {
             status: result.status,
@@ -296,19 +378,19 @@ async function realPath(target: string): Promise<string> {
     }
 }
 
-function rejectUndeclaredVariables(variables: Record<string, string> | undefined, required: string[]): void {
-    const allowed = new Set([...required, AUTH_TOKEN_VARIABLE]);
-    const undeclared = Object.keys(variables ?? {}).filter(name => !allowed.has(name));
-    if (undeclared.length > 0) {
-        throw new Error(surface.run_request.undeclared_variables
-            .replace('{variables}', undeclared.map(name => `\`${name}\``).join(', '))
-            .replace('{required}', required.length > 0 ? required.map(name => `\`${name}\``).join(', ') : 'none'));
+function rejectUnusedVariables(check: OverrideCheck): void {
+    if (check.unused.length > 0) {
+        throw new Error(fill(surface.run_request.unused_variables, {
+            variables: check.unused.map(name => `\`${name}\``).join(', '),
+            used: check.used.length > 0 ? check.used.map(name => `\`${name}\``).join(', ') : 'none'
+        }));
     }
 }
 
-function summaryOf(prepared: PreparedRequest, environment?: string): RequestSummary {
+function summaryOf(prepared: PreparedRequest, environment?: string, variables: Record<string, string> = {}): RequestSummary {
     const url = redactSecrets(prepared.url, prepared.secret_values);
-    return { request: prepared.name, method: prepared.method, url, environment: environment ?? null };
+    const summary: RequestSummary = { request: prepared.name, method: prepared.method, url, environment: environment ?? null };
+    return Object.keys(variables).length > 0 ? { ...summary, variables } : summary;
 }
 
 function cancellationOf(signal?: AbortSignal): CancellationSignal | undefined {
@@ -340,7 +422,7 @@ function canonicalJson(value: unknown): string {
     return JSON.stringify(value) ?? 'null';
 }
 
-function issueConfirmation(fingerprint: string, request: ApprovableRequest): string {
+function issueConfirmation(fingerprint: string, approved: string, request?: ApprovableRequest): string {
     const now = Date.now();
     for (const [token, pending] of pendingConfirmations) {
         if (pending.expiresAt < now) {
@@ -348,17 +430,22 @@ function issueConfirmation(fingerprint: string, request: ApprovableRequest): str
         }
     }
     const token = crypto.randomUUID();
-    pendingConfirmations.set(token, { fingerprint, expiresAt: now + CONFIRMATION_TTL_MS, request });
+    pendingConfirmations.set(token, { fingerprint, expiresAt: now + CONFIRMATION_TTL_MS, request, approved, inFlight: false });
     return token;
 }
 
-function redeemConfirmation(token: string, fingerprint: string): ApprovableRequest {
+function redeemConfirmation(token: string, fingerprint: string): PendingConfirmation {
     const pending = pendingConfirmations.get(token);
-    pendingConfirmations.delete(token);
-    if (!pending || pending.expiresAt < Date.now() || pending.fingerprint !== fingerprint) {
+    if (!pending || pending.inFlight || pending.expiresAt < Date.now() || pending.fingerprint !== fingerprint) {
+        if (!pending?.inFlight) {
+            pendingConfirmations.delete(token);
+        }
         throw new Error(surface.run_request.invalid_confirmation_token);
     }
-    return pending.request;
+    if (pending.request) {
+        pendingConfirmations.delete(token);
+    }
+    return pending;
 }
 
 function redactHeaders(headers: Record<string, string>, secrets: string[]): Record<string, string> {

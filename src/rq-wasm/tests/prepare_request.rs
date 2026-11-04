@@ -168,3 +168,34 @@ fn the_prepare_request_binding_lists_the_secret_values_of_the_context() {
         serde_json::json!(["from-context-env"])
     );
 }
+
+fn override_check(variables: &str) -> serde_json::Value {
+    let files = r#"{"/workspace/users.rq": "let host = \"x\";\nlet top = \"1\";\n\nrq list(\"http://{{host}}/users?top={{top}}\");\n"}"#;
+    let output = rq_wasm::bindings::check_overrides(
+        files,
+        "{}",
+        WORKSPACE,
+        "list",
+        None,
+        Some(variables.to_string()),
+        None,
+    )
+    .unwrap_or_else(|_| String::from("{}"));
+    serde_json::from_str(&output).unwrap_or_default()
+}
+
+#[test]
+fn the_check_overrides_binding_lists_the_variables_the_request_uses() {
+    assert_eq!(
+        override_check("[]")["used"],
+        serde_json::json!(["host", "top"])
+    );
+}
+
+#[test]
+fn the_check_overrides_binding_asks_for_consent_when_the_host_changes() {
+    assert_eq!(
+        override_check(r#"["host=y"]"#)["needs_consent"],
+        serde_json::Value::Bool(true)
+    );
+}

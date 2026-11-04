@@ -471,6 +471,31 @@ pub fn prepare_request(
 }
 
 #[wasm_bindgen]
+pub fn check_overrides(
+    files_json: &str,
+    secrets_json: &str,
+    source: &str,
+    name: &str,
+    env: Option<String>,
+    variables_json: Option<String>,
+    scope_file: Option<String>,
+) -> Result<String, JsError> {
+    let variables = parse_variables(variables_json.as_deref())?;
+    let check = make_client(
+        parse_files(files_json)?,
+        parse_secrets(secrets_json),
+        source,
+    )
+    .check_overrides(
+        RequestTarget::new(Path::new(source), name).in_file(scope_file.as_deref().map(Path::new)),
+        env.as_deref(),
+        &variables,
+    )
+    .map_err(rq_err)?;
+    serde_json::to_string(&check).map_err(|e| JsError::new(&e.to_string()))
+}
+
+#[wasm_bindgen]
 pub fn get_auth_details(
     files_json: &str,
     secrets_json: &str,

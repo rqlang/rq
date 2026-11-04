@@ -18,6 +18,7 @@ use super::{
     variable_context::{VariableContext, VariableValue},
 };
 use lazy_static::lazy_static;
+use std::collections::BTreeSet;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 
@@ -1177,6 +1178,37 @@ pub fn referenced_variable_names(text: &str) -> Vec<String> {
         .captures_iter(text)
         .filter_map(|caps| caps.get(1).map(|m| m.as_str().to_string()))
         .collect()
+}
+
+pub fn variable_dependencies(roots: Vec<String>, context: &VariableContext) -> Vec<String> {
+    let map = context.as_map();
+    let mut found = BTreeSet::new();
+    let mut pending = roots;
+    while let Some(name) = pending.pop() {
+        if let Some(value) = map.get(name.as_str()) {
+            if !found.contains(&name) {
+                pending.extend(value_references(value));
+            }
+        }
+        found.insert(name);
+    }
+    found.into_iter().collect()
+}
+
+fn value_references(value: &VariableValue) -> Vec<String> {
+    match value {
+        VariableValue::String(text) | VariableValue::Json(text) => referenced_variable_names(text),
+        VariableValue::Reference(name) => vec![name.clone()],
+        VariableValue::Headers(pairs) => pairs
+            .iter()
+            .flat_map(|(name, value)| [name, value])
+            .flat_map(|text| referenced_variable_names(text))
+            .collect(),
+        VariableValue::SystemFunction { args, .. } => args
+            .iter()
+            .flat_map(|arg| referenced_variable_names(arg))
+            .collect(),
+    }
 }
 
 pub fn resolve_variables(

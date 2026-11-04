@@ -109,10 +109,17 @@ pub struct PreparedRequest {
 
 impl PreparedRequest {
     pub fn secret_values(&self) -> Vec<String> {
+        let overridden_secrets = self.context.cli_variables.iter().filter(|variable| {
+            self.context
+                .secret_variables
+                .iter()
+                .any(|secret| secret.name == variable.name)
+        });
         let mut values: Vec<String> = self
             .context
             .secret_variables
             .iter()
+            .chain(overridden_secrets)
             .filter_map(|variable| match &variable.value {
                 VariableValue::String(value) | VariableValue::Json(value)
                     if value.chars().count() >= MIN_REDACTED_SECRET_LENGTH =>
@@ -132,6 +139,13 @@ impl PreparedRequest {
 pub struct PreparedAuth {
     pub config: Config,
     pub token_required: bool,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct OverrideCheck {
+    pub used: Vec<String>,
+    pub unused: Vec<String>,
+    pub needs_consent: bool,
 }
 
 #[derive(Debug, Clone, Copy)]

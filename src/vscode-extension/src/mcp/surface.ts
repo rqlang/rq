@@ -24,10 +24,11 @@ export const surface = surfaceJson as {
     run_request: {
         confirmation_message: string;
         environment_clause: string;
+        variables_clause: string;
         confirmation_required: string;
         confirmation_timeout: string;
         invalid_confirmation_token: string;
-        undeclared_variables: string;
+        unused_variables: string;
         file_outside_workspace: string;
         authorization_message: string;
         authorization_required: string;
@@ -39,6 +40,7 @@ export const surface = surfaceJson as {
         unexpected_redirect_url: string;
         invalid_redirect_url: string;
         authorization_failed: string;
+        sent_summary: string;
     };
 };
 
@@ -46,6 +48,10 @@ export const RESOURCE_BODIES: Record<string, string> = {
     [surface.resources['language-definition'].uri]: languageDefinitionMd,
     [surface.resources['idioms'].uri]: idiomsMd
 };
+
+export function fill(template: string, values: Record<string, string>): string {
+    return template.replace(/\{(\w+)\}/g, (match, key: string) => values[key] ?? match);
+}
 
 export function render(template: string): string {
     return template

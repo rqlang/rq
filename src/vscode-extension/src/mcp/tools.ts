@@ -185,9 +185,8 @@ export async function runRequest(args: RunRequestArgs, prompts: RunRequestPrompt
     const definition = await requestDefinition(scope, options) as { RequiredVariables?: string[] };
     rejectUndeclaredVariables(args.variables, definition.RequiredVariables ?? []);
     let prepared = await prepareRequest(scope, options);
-    const summary = summaryOf(prepared, args.env);
-    const question = { ...summary, url: prepared.url };
-    const secrets = [...prepared.secret_values];
+    let summary = summaryOf(prepared, args.env);
+    let token: string | undefined;
     if (prepared.auth?.token_required && isInteractiveAuth(prepared.auth.auth_type)) {
         let authorization: Authorization;
         try {
@@ -214,10 +213,13 @@ export async function runRequest(args: RunRequestArgs, prompts: RunRequestPrompt
                 message: message.replace('{auth}', prepared.auth.name)
             };
         }
-        options = { ...options, variables: { ...args.variables, [AUTH_TOKEN_VARIABLE]: authorization.token } };
+        token = authorization.token;
+        options = { ...options, variables: { ...args.variables, [AUTH_TOKEN_VARIABLE]: token } };
         prepared = await prepareRequest(scope, options);
-        secrets.push(authorization.token);
+        summary = summaryOf(prepared, args.env);
     }
+    const question = { ...summary, url: prepared.url };
+    const secrets = token ? [...prepared.secret_values, token] : prepared.secret_values;
     if (prepared.agent_confirmation_required) {
         const fingerprint = () => fingerprintOf(args, workspace, definition);
         const outcome = args.confirmation_token

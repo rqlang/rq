@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import http from 'node:http';
 import net from 'node:net';
 import path from 'node:path';
@@ -353,6 +354,55 @@ describe('run_request with a sign-in, on a client that keeps the page open until
 
     it('tells the client the sign-in finished, so it closes the page', async () => {
         assert.deepEqual([opened.length, closed], [1, opened]);
+    });
+});
+
+describe('run_request with a request edited while the user signs in', () => {
+    let client;
+    let edited;
+    let questions;
+
+    function source(apiPort, callbackPort, target) {
+        return [
+            'auth login(auth_type.oauth2_authorization_code) {',
+            '    client_id: "app",',
+            `    authorization_url: "http://127.0.0.1:${apiPort}/authorize",`,
+            `    token_url: "http://127.0.0.1:${apiPort}/token",`,
+            `    redirect_uri: "http://127.0.0.1:${callbackPort}/callback",`,
+            '}',
+            '',
+            '[auth("login")]',
+            '[method(POST)]',
+            `rq edited("http://127.0.0.1:${apiPort}/${target}", body: \${});`,
+            ''
+        ].join('\n');
+    }
+
+    before(async () => {
+        const callbackPort = await freePort();
+        const apiPort = api.address().port;
+        edited = tempWorkspace({ 'edited.rq': source(apiPort, callbackPort, 'before') });
+        questions = [];
+        client = new Client({ name: 'rq-mcp-test', version: '0.0.0' }, { capabilities: { elicitation: { url: {}, form: {} } } });
+        client.setRequestHandler(ElicitRequestSchema, async request => {
+            if (request.params.mode === 'url') {
+                fs.writeFileSync(path.join(edited, 'edited.rq'), source(apiPort, callbackPort, 'after'));
+                await signIn(request.params.url);
+                return { action: 'accept' };
+            }
+            questions.push(request.params.message);
+            return { action: 'decline' };
+        });
+        await client.connect(new StdioClientTransport({ command: process.execPath, args: [serverEntry], cwd: edited, stderr: 'ignore' }));
+    });
+
+    after(async () => {
+        await client.close();
+    });
+
+    it('asks to confirm the request as it is after the sign-in', async () => {
+        const target = await callJson(client, 'run_request', { name: 'edited', file: path.join(edited, 'edited.rq') });
+        assert.deepEqual([questions.length, questions[0].includes('/after'), target.request.url.endsWith('/after')], [1, true, true]);
     });
 });
 

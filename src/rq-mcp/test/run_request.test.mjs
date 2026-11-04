@@ -386,6 +386,11 @@ describe('run_request with a client that can ask the user', () => {
         assert.deepEqual([questions.length, questions[0]?.endsWith(' with service_token=other?')], [1, true]);
     });
 
+    it('quotes an override with a dollar sign as it is', async () => {
+        await callJson(asking, 'run_request', { name: 'service', file: file(), env: 'local', variables: { service_token: "a$'b" } });
+        assert.ok(questions[0]?.endsWith(" with service_token=a$'b?"));
+    });
+
     it('does not ask about an unmarked read', async () => {
         await callJson(asking, 'run_request', { name: 'users/list', file: file(), env: 'local' });
         assert.deepEqual(questions, []);

@@ -6,7 +6,7 @@ import { setWasmTransport, wasmCall } from '../wasmHost';
 import { buildSecretsMap, draftsJson, isDirectory, normalizePath } from '../utils';
 import { CancellationSignal, ExecuteRequestOptions, ExecuteRequestResult, PreparedRequest, checkOverrides, OverrideCheck, prepareRequest, requestDefinition, RequestScope, requestScope, sendRequest, withAcquiredToken } from '../execution';
 import { Authorization, Authorize, isInteractiveAuth, McpAuthorizationError } from './authorization';
-import { RESOURCE_BODIES, surface } from './surface';
+import { fill, RESOURCE_BODIES, surface } from './surface';
 
 const DRAFT_FILE_NAME = 'draft.rq';
 
@@ -268,7 +268,7 @@ async function runWithConsent(run: Run, pending?: PendingConfirmation): Promise<
         }
         if (authorization.status === 'authorization_required') {
             const message = authorization.redirectUrlRequired
-                ? surface.run_request.authorization_redirect_url_required.replace('{redirect_uri}', prepared.auth.fields.redirect_uri ?? '')
+                ? surface.run_request.authorization_redirect_url_required
                 : surface.run_request.authorization_required;
             return {
                 status: 'authorization_required',
@@ -276,7 +276,7 @@ async function runWithConsent(run: Run, pending?: PendingConfirmation): Promise<
                 request: summary,
                 authorization_url: authorization.authorizationUrl,
                 redirect_url_required: authorization.redirectUrlRequired,
-                message: message.replace('{auth}', prepared.auth.name)
+                message: fill(message, { auth: prepared.auth.name, redirect_uri: prepared.auth.fields.redirect_uri ?? '' })
             };
         }
         token = authorization.token;
@@ -335,11 +335,12 @@ function sentResult(sent: ExecuteRequestResult, { summary, secrets }: Approvable
     return {
         status: 'sent',
         sent: true,
-        summary: surface.run_request.sent_summary
-            .replace('{method}', summary.method)
-            .replace('{url}', summary.url)
-            .replace('{status}', String(result.status))
-            .replace('{elapsed_ms}', String(result.elapsed_ms)),
+        summary: fill(surface.run_request.sent_summary, {
+            method: summary.method,
+            url: summary.url,
+            status: String(result.status),
+            elapsed_ms: String(result.elapsed_ms)
+        }),
         request: { ...summary, headers: redactHeaders(result.request_headers, secrets) },
         response: {
             status: result.status,
@@ -378,9 +379,10 @@ async function realPath(target: string): Promise<string> {
 
 function rejectUnusedVariables(check: OverrideCheck): void {
     if (check.unused.length > 0) {
-        throw new Error(surface.run_request.unused_variables
-            .replace('{variables}', check.unused.map(name => `\`${name}\``).join(', '))
-            .replace('{used}', check.used.length > 0 ? check.used.map(name => `\`${name}\``).join(', ') : 'none'));
+        throw new Error(fill(surface.run_request.unused_variables, {
+            variables: check.unused.map(name => `\`${name}\``).join(', '),
+            used: check.used.length > 0 ? check.used.map(name => `\`${name}\``).join(', ') : 'none'
+        }));
     }
 }
 

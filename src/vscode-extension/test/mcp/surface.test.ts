@@ -1,4 +1,4 @@
-import { buildGenerateRqPrompt, render, RESOURCE_BODIES, surface } from '../../src/mcp/surface';
+import { buildGenerateRqPrompt, fill, render, RESOURCE_BODIES, surface } from '../../src/mcp/surface';
 
 describe('shared MCP surface', () => {
     it('declares the authoring and running tools', () => {
@@ -169,5 +169,13 @@ describe('buildGenerateRqPrompt', () => {
     it('passes the workspace path to the validate step', () => {
         const target = buildGenerateRqPrompt('list users', '/repo').split('\n').find(line => line.includes('validate_rq'));
         expect(target).toContain('workspace_path');
+    });
+
+    it('fills a placeholder with a value that holds replacement patterns as it is', () => {
+        expect(fill('{method} {url}', { method: 'GET', url: "http://x/$'$&" })).toBe("GET http://x/$'$&");
+    });
+
+    it('leaves a placeholder written inside a value unfilled', () => {
+        expect(fill('{url} → {status}', { url: 'http://x/{status}', status: '200' })).toBe('http://x/{status} → 200');
     });
 });

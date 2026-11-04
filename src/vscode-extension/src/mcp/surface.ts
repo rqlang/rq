@@ -49,6 +49,10 @@ export const RESOURCE_BODIES: Record<string, string> = {
     [surface.resources['idioms'].uri]: idiomsMd
 };
 
+export function fill(template: string, values: Record<string, string>): string {
+    return template.replace(/\{(\w+)\}/g, (match, key: string) => values[key] ?? match);
+}
+
 export function render(template: string): string {
     return template
         .replace(/\{language_definition_uri\}/g, surface.resources['language-definition'].uri)

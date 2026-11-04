@@ -50,6 +50,8 @@ function apiSource(port) {
         'rq slow("{{base_url}}/slow");',
         '',
         'rq endless("{{base_url}}/endless");',
+        '',
+        'rq stalled("{{base_url}}/stalled");',
         ''
     ].join('\n');
 }
@@ -57,6 +59,10 @@ function apiSource(port) {
 before(async () => {
     api = http.createServer((req, res) => {
         received.push(`${req.method} ${req.url}`);
+        if (req.url === '/stalled') {
+            res.write('x'.repeat(60_000));
+            return;
+        }
         if (req.url === '/endless') {
             res.write('x'.repeat(300_000));
             return;
@@ -197,6 +203,11 @@ describe('run_request', () => {
 
     it('stops reading a response that never ends once the body is long enough', async () => {
         const target = await callJson(client, 'run_request', { name: 'endless', file: file(), env: 'local' });
+        assert.deepEqual([target.response.body.length, target.response.body_truncated], [50_000, true]);
+    });
+
+    it('returns the body once it holds enough characters, even if the server keeps the response open', async () => {
+        const target = await callJson(client, 'run_request', { name: 'stalled', file: file(), env: 'local' });
         assert.deepEqual([target.response.body.length, target.response.body_truncated], [50_000, true]);
     });
 

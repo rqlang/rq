@@ -4,6 +4,7 @@ import * as http from 'http';
 import * as https from 'https';
 import * as crypto from 'crypto';
 import * as forge from 'node-forge';
+import { StringDecoder } from 'string_decoder';
 import { buildSecretsMap, CANCELLED_MESSAGE, DraftFile, draftsJson } from './utils';
 import { wasmCall } from './wasmHost';
 import type { AuthShowOutput } from './rqClient';
@@ -24,7 +25,7 @@ export interface ExecuteRequestOptions {
     environment?: string;
     variables?: Record<string, string>;
     cancellation?: CancellationSignal;
-    maxResponseBytes?: number;
+    maxResponseLength?: number;
     acquireToken?: (auth: PreparedAuth) => Promise<string>;
     confirm?: (prepared: PreparedRequest) => Promise<boolean>;
 }
@@ -118,7 +119,7 @@ export async function sendRequest(scope: RequestScope, options: ExecuteRequestOp
     const headers = toNodeHeaders(prepared.headers);
     const body = prepared.body ?? undefined;
     const startTime = Date.now();
-    const response = await nodeHttpRequest(prepared.url, prepared.method, headers, body, prepared.timeout_ms ?? undefined, options.cancellation, options.maxResponseBytes);
+    const response = await nodeHttpRequest(prepared.url, prepared.method, headers, body, prepared.timeout_ms ?? undefined, options.cancellation, options.maxResponseLength);
     const elapsed = Date.now() - startTime;
 
     return {
@@ -196,7 +197,7 @@ function throwIfCancelled(cancellation?: CancellationSignal): void {
     }
 }
 
-function nodeHttpRequest(url: string, method: string, reqHeaders: Record<string, string | string[]>, body?: string, timeoutMs?: number, cancellation?: CancellationSignal, maxBodyBytes = Infinity): Promise<NodeHttpResponse> {
+function nodeHttpRequest(url: string, method: string, reqHeaders: Record<string, string | string[]>, body?: string, timeoutMs?: number, cancellation?: CancellationSignal, maxBodyLength = Infinity): Promise<NodeHttpResponse> {
     return new Promise((resolve, reject) => {
         if (cancellation?.isCancellationRequested) {
             reject(new Error(CANCELLED_MESSAGE));
@@ -237,26 +238,28 @@ function nodeHttpRequest(url: string, method: string, reqHeaders: Record<string,
                     responseHeaders[k] = Array.isArray(v) ? v.join(', ') : v;
                 }
             }
-            const chunks: Buffer[] = [];
-            let received = 0;
+            const decoder = new StringDecoder('utf8');
+            let text = '';
             const finish = (truncated: boolean) => {
                 cleanup();
                 resolve({
                     status: res.statusCode ?? 0,
                     headers: responseHeaders,
-                    body: Buffer.concat(chunks).subarray(0, maxBodyBytes).toString('utf8'),
+                    body: text.slice(0, maxBodyLength),
                     truncated,
                 });
             };
             res.on('data', (chunk: Buffer) => {
-                chunks.push(chunk);
-                received += chunk.length;
-                if (received > maxBodyBytes) {
+                text += decoder.write(chunk);
+                if (text.length > maxBodyLength) {
                     finish(true);
                     res.destroy();
                 }
             });
-            res.on('end', () => finish(false));
+            res.on('end', () => {
+                text += decoder.end();
+                finish(text.length > maxBodyLength);
+            });
             res.on('error', (err) => { cleanup(); reject(err); });
         });
 

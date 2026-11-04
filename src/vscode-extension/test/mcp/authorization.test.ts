@@ -349,6 +349,15 @@ describe('Authorizer with a redirect address the user pastes', () => {
         await expect(target.authorize(pastedAuth(), undefined, `${PASTED_REDIRECT_URI}?code=old`)).rejects.toThrow('no sign-in to login is waiting for an address any more');
     });
 
+    it('uses the token it holds for an address passed again after the sign-in finished', async () => {
+        const target = withOpener(opener('accepted'));
+        const auth = pastedAuth();
+        const first = await target.authorize(auth);
+        const pasted = landedOn(first.status === 'authorization_required' ? await followLink(first.authorizationUrl) : '');
+        await target.authorize(auth, undefined, pasted);
+        expect(await target.authorize(auth, undefined, pasted)).toEqual({ status: 'authorized', token: 'granted-token' });
+    });
+
     it('starts no sign-in for an address passed when none was asked for', async () => {
         const open = opener('accepted');
         await withOpener(open).authorize(pastedAuth(), undefined, `${PASTED_REDIRECT_URI}?code=old`).catch(() => undefined);

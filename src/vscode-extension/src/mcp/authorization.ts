@@ -48,6 +48,8 @@ const INTERACTIVE_AUTH_TYPES = new Set(['oauth2_authorization_code', 'oauth2_imp
 
 class AuthorizationDeclinedError extends Error {}
 
+class SignInNeededError extends Error {}
+
 export class McpAuthorizationError extends Error {}
 
 export function isInteractiveAuth(authType: string): boolean {
@@ -80,7 +82,7 @@ export class Authorizer {
         const existing = this.pending.get(key);
         if (redirectUrl) {
             if (!existing?.awaitedRedirectUrl) {
-                throw new McpAuthorizationError(surface.run_request.unexpected_redirect_url.replace('{auth}', auth.name));
+                return this.cachedAuthorization(auth);
             }
             supplyRedirectUrl(existing.awaitedRedirectUrl, redirectUrl);
             existing.awaitedRedirectUrl = undefined;
@@ -92,6 +94,19 @@ export class Authorizer {
             outcomeOf(pending.token),
             published.then(({ url, redirectUrlRequired }) => ({ status: 'authorization_required', authorizationUrl: url, redirectUrlRequired }))
         ]), signal);
+    }
+
+    private async cachedAuthorization(auth: OAuthAuthConfig): Promise<Authorization> {
+        const needsSignIn = async (): Promise<never> => { throw new SignInNeededError(); };
+        const ui: AuthUi = { openUrl: needsSignIn, askForRedirectUrl: needsSignIn, showError: message => this.log(message), log: message => this.log(message) };
+        try {
+            return { status: 'authorized', token: await performOAuth2Flow(auth, new OAuthProvider(this.store, ui)) };
+        } catch (err) {
+            if (err instanceof SignInNeededError) {
+                throw new McpAuthorizationError(surface.run_request.unexpected_redirect_url.replace('{auth}', auth.name));
+            }
+            throw err;
+        }
     }
 
     private async wait(key: string, pending: PendingAuthorization, outcome: Promise<Authorization>, signal?: AbortSignal): Promise<Authorization> {

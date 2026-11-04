@@ -59,6 +59,10 @@ function apiSource(apiPort) {
         '[auth("paste_login")]',
         `rq pasted("http://127.0.0.1:${apiPort}/pasted");`,
         '',
+        '[auth("paste_login")]',
+        '[method(POST)]',
+        `rq pasted_write("http://127.0.0.1:${apiPort}/pasted", body: \${"name": "ada"});`,
+        '',
         '[auth("implicit_login")]',
         `rq implicit("http://127.0.0.1:${apiPort}/implicit");`,
         '',
@@ -213,6 +217,17 @@ describe('run_request with a pasted redirect address, on a client without dialog
         const { authorization_url } = await callJson(client, 'run_request', args);
         const target = await callJson(client, 'run_request', { ...args, redirect_url: await landedOn(authorization_url) });
         assert.deepEqual([target.status, received], ['sent', ['GET /pasted Bearer issued-token-1']]);
+    });
+
+    it('sends a confirmed write when the retry repeats the address the user pasted', async () => {
+        const fresh = await connect(workspace);
+        const args = { name: 'pasted_write', file: file() };
+        const { authorization_url } = await callJson(fresh, 'run_request', args);
+        const redirect_url = await landedOn(authorization_url);
+        const held = await callJson(fresh, 'run_request', { ...args, redirect_url });
+        const target = await callJson(fresh, 'run_request', { ...args, redirect_url, confirmation_token: held.confirmation_token });
+        await fresh.close();
+        assert.deepEqual([held.status, target.status, received], ['confirmation_required', 'sent', ['POST /pasted Bearer issued-token-1']]);
     });
 
     it('refuses the implicit flow, whose token would reach the agent', async () => {

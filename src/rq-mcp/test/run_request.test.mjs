@@ -245,6 +245,11 @@ describe('run_request', () => {
         assert.deepEqual(target.request.variables, { top: '10' });
     });
 
+    it('sums up the method, url, status and time of the request it sent', async () => {
+        const target = await callJson(client, 'run_request', { name: 'paged', file: file(), env: 'local' });
+        assert.match(target.summary, /^GET http:\/\/127\.0\.0\.1:\d+\/paged\?top=1 → 200 \(\d+ ms\)$/);
+    });
+
     it('rejects a variable the request does not use', async () => {
         const target = await client.callTool({ name: 'run_request', arguments: { name: 'paged', file: file(), env: 'local', variables: { tpo: '10' } } });
         assert.deepEqual([target.isError, target.content[0].text.includes('`tpo`'), received], [true, true, []]);

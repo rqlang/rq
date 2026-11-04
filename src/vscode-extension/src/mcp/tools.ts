@@ -315,6 +315,11 @@ function sentResult(sent: ExecuteRequestResult, { summary, secrets }: Approvable
     return {
         status: 'sent',
         sent: true,
+        summary: surface.run_request.sent_summary
+            .replace('{method}', summary.method)
+            .replace('{url}', summary.url)
+            .replace('{status}', String(result.status))
+            .replace('{elapsed_ms}', String(result.elapsed_ms)),
         request: { ...summary, headers: redactHeaders(result.request_headers, secrets) },
         response: {
             status: result.status,

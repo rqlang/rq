@@ -40,6 +40,7 @@ export const surface = surfaceJson as {
         unexpected_redirect_url: string;
         invalid_redirect_url: string;
         authorization_failed: string;
+        sent_summary: string;
     };
 };
 

@@ -98,7 +98,7 @@ Enumerates every named request reachable from `path` (defaulting to the workspac
 
 ### `run_request`
 
-Sends an existing request and returns its response: `{ status: "sent", request: {request, method, url, environment, variables, headers}, response: {status, elapsed_ms, headers, body, body_truncated} }`. The request goes through the same pipeline as `rq request run` and the extension's **Run**, so it carries the same URL, headers, body, auth and timeout.
+Sends an existing request and returns its response: `{ status: "sent", summary, request: {request, method, url, environment, variables, headers}, response: {status, elapsed_ms, headers, body, body_truncated} }`. `summary` is one line such as `GET https://api.example.com/users?top=10 → 200 (143 ms)`, and the instructions tell the assistant to show it to the user after every run, so they always see which url was called and how long it took. The request goes through the same pipeline as `rq request run` and the extension's **Run**, so it carries the same URL, headers, body, auth and timeout.
 
 | Parameter | Purpose |
 |---|---|

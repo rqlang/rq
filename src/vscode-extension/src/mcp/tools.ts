@@ -188,7 +188,10 @@ export async function runRequest(args: RunRequestArgs, prompts: RunRequestPrompt
         cancellation: cancellationOf(signal),
         maxResponseBytes: MAX_RESPONSE_BODY_LENGTH * MAX_UTF8_BYTES_PER_CHARACTER
     };
-    const definition = await requestDefinition(scope, options) as { RequiredVariables?: string[] };
+    const definition = await requestDefinition(scope, options) as { RequiredVariables?: string[]; file?: string };
+    if (definition.file) {
+        options = { ...options, sourceFile: await fileInside(workspace, definition.file) };
+    }
     rejectUndeclaredVariables(args.variables, definition.RequiredVariables ?? []);
     const fingerprint = fingerprintOf(args, workspace, definition);
     if (args.confirmation_token) {

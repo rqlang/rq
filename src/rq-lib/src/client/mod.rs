@@ -304,14 +304,14 @@ impl RqClient {
         let (kept, overrides): (Vec<_>, Vec<_>) = variables
             .iter()
             .zip(&cli_vars)
-            .partition(|(_, variable)| Self::is_runtime_input(&request, &variable.name));
+            .partition(|(_, variable)| Self::is_required(&request, &variable.name));
         let kept: Vec<String> = kept.into_iter().map(|(kv, _)| kv.clone()).collect();
         let prepared = self.prepare_request(target, environment, variables)?;
         let used = Self::variables_used(&rq_file, &request, &prepared);
         let unused = overrides
             .iter()
             .map(|(_, variable)| variable.name.clone())
-            .filter(|name| !used.contains(name))
+            .filter(|name| name != AUTH_TOKEN_VARIABLE && !used.contains(name))
             .filter(|name| {
                 !self.override_changes_request(target, environment, variables, name, &prepared)
             })
@@ -1246,12 +1246,11 @@ impl RqClient {
         )))
     }
 
-    fn is_runtime_input(request: &Request, name: &str) -> bool {
-        name == AUTH_TOKEN_VARIABLE
-            || request
-                .required_variables
-                .iter()
-                .any(|required| required == name)
+    fn is_required(request: &Request, name: &str) -> bool {
+        request
+            .required_variables
+            .iter()
+            .any(|required| required == name)
     }
 
     fn variables_used(
@@ -1283,8 +1282,14 @@ impl RqClient {
             .filter(|kv| kv.split_once('=').map(|(key, _)| key.trim()) != Some(name))
             .cloned()
             .collect();
+        let Ok(other) = self.prepare_request(target, environment, &without) else {
+            return true;
+        };
+        if Self::sends_the_same(&other, prepared) {
+            return false;
+        }
         self.prepare_request(target, environment, &without)
-            .map_or(true, |other| !Self::sends_the_same(&other, prepared))
+            .is_ok_and(|again| Self::sends_the_same(&again, &other))
     }
 
     fn sends_the_same(a: &PreparedRequest, b: &PreparedRequest) -> bool {
@@ -3462,6 +3467,25 @@ mod prepare_tests {
     }
 
     #[test]
+    fn prepared_request_redacts_a_runtime_value_that_overrides_a_secret() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write(
+            dir.path(),
+            "main.rq",
+            "rq probe(\"http://localhost/probe?key={{api_key}}\");\n",
+        );
+        write(dir.path(), ".env", "API_KEY=from-the-env-file\n");
+        let target = prepare(
+            &dir.path().join("main.rq"),
+            "probe",
+            &["api_key=given-at-runtime"],
+        );
+        assert!(target
+            .secret_values()
+            .contains(&"given-at-runtime".to_string()));
+    }
+
+    #[test]
     fn prepared_request_rejects_a_missing_required_variable() {
         let dir = tempfile::tempdir().expect("tempdir");
         write(
@@ -3501,6 +3525,19 @@ mod override_tests {
 
     fn checked(name: &str, variables: &[&str]) -> OverrideCheck {
         check(name, variables).expect("check_overrides")
+    }
+
+    fn checked_source(source: &str, name: &str, variables: &[&str]) -> OverrideCheck {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("api.rq"), source).expect("write");
+        let variables: Vec<String> = variables.iter().map(|v| v.to_string()).collect();
+        RqClient::default()
+            .check_overrides(
+                RequestTarget::new(&dir.path().join("api.rq"), name),
+                None,
+                &variables,
+            )
+            .expect("check_overrides")
     }
 
     #[test]
@@ -3555,6 +3592,31 @@ mod override_tests {
     #[test]
     fn asks_no_consent_for_a_required_variable() {
         assert!(!checked("item", &["id=7"]).needs_consent);
+    }
+
+    #[test]
+    fn asks_for_consent_when_auth_token_moves_the_request() {
+        let target = checked_source(
+            "rq probe(\"http://{{auth_token}}/items\");\n",
+            "probe",
+            &["auth_token=attacker.example"],
+        );
+        assert!(target.needs_consent);
+    }
+
+    #[test]
+    fn never_reports_auth_token_as_unused() {
+        assert!(checked("probe", &["auth_token=t0ken"]).unused.is_empty());
+    }
+
+    #[test]
+    fn reports_an_unused_override_of_a_request_that_changes_on_every_call() {
+        let target = checked_source(
+            "rq probe(\"http://localhost/{{id}}\");\n\nlet id = random.guid();\n",
+            "probe",
+            &["typo=1"],
+        );
+        assert_eq!(target.unused, vec!["typo"]);
     }
 
     #[test]

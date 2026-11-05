@@ -205,7 +205,7 @@ pub struct RequestNameArgs {
     #[arg(
         short = 'n',
         long = "name",
-        help = "Name of the request",
+        help = "Name of the request (required)",
         value_parser = validators::validate_name
     )]
     pub name: Option<String>,
@@ -305,10 +305,16 @@ pub fn execute_list(args: &ListArgs) -> Result<(), Box<dyn std::error::Error>> {
 
 pub fn execute_show(args: &ShowArgs) -> Result<(), Box<dyn std::error::Error>> {
     let source_path = Path::new(&args.source.source);
-    let typed_name = required_request_name(&args.request_name_args, &args.source.source)?;
+    let client = RqClient::default();
+    let typed_name = required_request_name(
+        &client,
+        &args.request_name_args,
+        &args.source.source,
+        args.format.format,
+    )?;
     let name = typed_name.replace('.', "/");
 
-    let details = RqClient::default()
+    let details = client
         .get_request_details(
             RequestTarget::new(source_path, &name),
             args.env_args.environment.as_deref(),
@@ -329,9 +335,14 @@ pub fn execute_show(args: &ShowArgs) -> Result<(), Box<dyn std::error::Error>> {
 
 pub async fn execute_run(args: &RunArgs) -> Result<(), Box<dyn std::error::Error>> {
     let source_path = Path::new(&args.source.source);
-    let typed_name = required_request_name(&args.request_name_args, &args.source.source)?;
-    let request_name = typed_name.replace('.', "/");
     let client = RqClient::default();
+    let typed_name = required_request_name(
+        &client,
+        &args.request_name_args,
+        &args.source.source,
+        args.format.format,
+    )?;
+    let request_name = typed_name.replace('.', "/");
     if !args.no_lint {
         print_lint_summary(&client, &args.source.source, args.format.format);
     }
@@ -378,21 +389,22 @@ fn quoted_source(source: &str) -> String {
 
 const LISTED_NAMES_LIMIT: usize = 10;
 
-fn required_request_name<'a>(args: &'a RequestNameArgs, source: &str) -> Result<&'a str, RqError> {
+fn required_request_name<'a>(
+    client: &RqClient,
+    args: &'a RequestNameArgs,
+    source: &str,
+    output: OutputFormat,
+) -> Result<&'a str, RqError> {
     if let Some(name) = args.name.as_deref() {
         return Ok(name);
     }
-    let message = match RqClient::default().list_requests(Path::new(source)) {
-        Ok((requests, _)) => {
-            let names = requests
-                .into_iter()
-                .map(|request| request.name.replace('/', "."))
-                .collect::<BTreeSet<_>>();
-            missing_name_message(names, source)
-        }
-        Err(_) => "--name is required".to_string(),
-    };
-    Err(RqError::Generic(message))
+    let (requests, parse_errors) = client.list_requests(Path::new(source))?;
+    print_warnings(&parse_errors, output);
+    let names = requests
+        .into_iter()
+        .map(|request| request.name.replace('/', "."))
+        .collect::<BTreeSet<_>>();
+    Err(RqError::Generic(missing_name_message(names, source)))
 }
 
 fn missing_name_message(names: BTreeSet<String>, source: &str) -> String {

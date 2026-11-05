@@ -5,7 +5,7 @@ Usage: rq request show [OPTIONS]
 Options:
   -d, --debug                 Enable debug logging
   -s, --source <SOURCE>       Path to the .rq file or directory [default: .]
-  -n, --name <NAME>           Name of the request
+  -n, --name <NAME>           Name of the request (required)
   -e, --env <ENVIRONMENT>     Environment name
       --no-var-interpolation  Skip variable interpolation
   -f, --format <FORMAT>       Output format: text or json [default: text] [possible values: text, json]

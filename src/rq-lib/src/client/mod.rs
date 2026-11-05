@@ -1114,6 +1114,10 @@ impl RqClient {
             .into_iter()
             .find(|r| r.request.name == request_name)
             .ok_or_else(|| RqError::RequestNotFound(request_name.to_string()))?;
+        Logger::debug(&format!(
+            "* Request '{request_name}' from {}",
+            crate::paths::clean_path(&rq_file.path)
+        ));
         Ok((rq_file, req_with_vars))
     }
 

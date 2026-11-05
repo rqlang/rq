@@ -34,6 +34,7 @@ Every command accepts `-d, --debug`. It writes a trace to stderr, in the style o
 [    21ms] * Environment 'local' for /Users/ana/project/api/users.rq: base_url, api_key
 [    21ms] * Secrets from api/.env: api_key
 [    21ms] * Secrets from RQ__ environment variables: none
+[    22ms] * Request 'users/create' from /Users/ana/project/api/users.rq
 [    22ms] * Variable base_url from env:local
 [    22ms] * Variable token from cli
 [    23ms] * Applying auth 'tok' (bearer)
@@ -164,7 +165,7 @@ rq request show [OPTIONS]
 Options:
 
 - `-s, --source <SOURCE>` – Path to the `.rq` file or directory (default: `.`).
-- `-n, --name <NAME>` – Name of the request to show (required). If the request is defined inside an endpoint, use `<endpoint>/<request>` or `<endpoint>.<request>` (for example `users/list` or `users.list`).
+- `-n, --name <NAME>` – Name of the request to show (required). Without it, rq exits with code 1 and lists the requests in the source, as [`rq request run`](#rq-request-run) does. If the request is defined inside an endpoint, use `<endpoint>/<request>` or `<endpoint>.<request>` (for example `users/list` or `users.list`).
 - `-e, --env <ENVIRONMENT>` – Environment name to resolve variables and env-specific settings.
 - `--no-var-interpolation` – Skip variable interpolation and show raw values.
 - `-f, --format <FORMAT>` – Output format: `text` or `json` (default: `text`).
@@ -193,7 +194,7 @@ rq request run [OPTIONS]
 Options:
 
 - `-s, --source <SOURCE>` – Path to the `.rq` file or directory (default: `.`).
-- `-n, --name <NAME>` – Name of the request to run (required). Without it, rq runs nothing and exits with code 1, listing the requests in the source: `Error: --name is required. Requests in api.rq: users.create, users.list`. It lists at most 10 names, in alphabetical order, and when there are more it adds how many and points to `rq request list -s <SOURCE>` to see them all. If the request is defined inside an endpoint, use `<endpoint>/<request>` or `<endpoint>.<request>` (for example `users/list` or `users.list`).
+- `-n, --name <NAME>` – Name of the request to run (required). Without it, rq runs nothing and exits with code 1, listing the requests in the source: `Error: --name is required. Requests in api.rq: users.create, users.list`. It lists at most 10 names, in alphabetical order, and when there are more it adds how many and points to `rq request list -s <SOURCE>` to see them all. A file that does not parse reports its syntax error instead; in a directory, each file that does not parse is reported as a warning and its requests are left out of the list. If the request is defined inside an endpoint, use `<endpoint>/<request>` or `<endpoint>.<request>` (for example `users/list` or `users.list`).
 - `-e, --env <ENVIRONMENT>` – Environment name.
 - `-v, --variable <NAME=VALUE>` – Override variables at runtime (can be provided multiple times).
 - `-f, --format <FORMAT>` – Output format: `text` or `json` (default: `text`).

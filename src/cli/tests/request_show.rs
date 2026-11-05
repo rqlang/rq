@@ -749,3 +749,20 @@ fn test_request_show_confirmation_json() -> Result<(), Box<dyn std::error::Error
     assert_eq!(json["confirmation_required"], true);
     Ok(())
 }
+
+#[test]
+fn test_request_show_without_name_lists_requests() -> Result<(), Box<dyn std::error::Error>> {
+    let output = rq_cmd()
+        .args(["request", "show", "-s", "tests/request/run/input/basic.rq"])
+        .output()?;
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(
+        (output.status.code(), stderr.trim()),
+        (
+            Some(1),
+            "Error: --name is required. Requests in tests/request/run/input/basic.rq: basic"
+        )
+    );
+    Ok(())
+}

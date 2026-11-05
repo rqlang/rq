@@ -94,6 +94,18 @@ fn main() {
             test_request_run_without_name_lists_at_most_ten_requests,
         ),
         Trial::test(
+            "request_run_without_name_reports_syntax_error_of_file",
+            test_request_run_without_name_reports_syntax_error_of_file,
+        ),
+        Trial::test(
+            "request_run_without_name_warns_about_broken_directory_file",
+            test_request_run_without_name_warns_about_broken_directory_file,
+        ),
+        Trial::test(
+            "request_debug_names_file_of_request",
+            test_request_debug_names_file_of_request,
+        ),
+        Trial::test(
             "request_run_without_name_lists_each_directory_name_once",
             test_request_run_without_name_lists_each_directory_name_once,
         ),
@@ -794,6 +806,49 @@ fn test_request_run_without_name_lists_at_most_ten_requests() -> Result<(), Fail
     Ok(())
 }
 
+const MISSING_NAME_BROKEN: &str = "tests/request/run/fixtures/missing_name_broken";
+
+fn test_request_run_without_name_reports_syntax_error_of_file() -> Result<(), Failed> {
+    let target = run_without_name(&format!("{MISSING_NAME_BROKEN}/a_broken.rq"))?;
+    let expected = format!(
+        "Error: Syntax error in {MISSING_NAME_BROKEN}/a_broken.rq at line 1, column 11: Expected ')'"
+    );
+    if target != (2, expected) {
+        return Err(format!("Unexpected result: {target:?}").into());
+    }
+    Ok(())
+}
+
+fn test_request_run_without_name_warns_about_broken_directory_file() -> Result<(), Failed> {
+    let target = run_without_name(MISSING_NAME_BROKEN)?;
+    let expected = format!(
+        "Warning: Syntax error in {MISSING_NAME_BROKEN}/a_broken.rq at line 1, column 11: Expected ')'\nError: --name is required. Requests in {MISSING_NAME_BROKEN}: list"
+    );
+    if target != (1, expected) {
+        return Err(format!("Unexpected result: {target:?}").into());
+    }
+    Ok(())
+}
+
+fn test_request_debug_names_file_of_request() -> Result<(), Failed> {
+    let stderr = debug_stderr(&[
+        "request",
+        "run",
+        "-d",
+        "--no-lint",
+        "-s",
+        "tests/request/run/input/endpoint",
+        "-n",
+        "e1.get",
+    ])?;
+    if !stderr.contains("* Request 'e1/get' from ")
+        || !stderr.contains("endpoint/endpoint_variables.rq\n")
+    {
+        return Err(format!("Unexpected debug trace: {stderr}").into());
+    }
+    Ok(())
+}
+
 fn test_request_run_without_name_lists_each_directory_name_once() -> Result<(), Failed> {
     let (_, target) = run_without_name("tests/request/run/input/endpoint")?;
     if target.matches("test.get").count() != 1 {
@@ -1137,17 +1192,24 @@ fn run_directory_test(dir_name: &str, file_name: &str) -> Result<(), Failed> {
     } else {
         input_file.clone()
     };
+    let has_expectation = Path::new(&expected_json).exists()
+        || Path::new(&expected_file).exists()
+        || expected_code.is_some();
     let request_names = match request_name {
         Some(name) => vec![name],
-        None => listed_request_names(&source).unwrap_or_else(|| vec![file_name.to_string()]),
+        None => listed_request_names(&source).unwrap_or_else(|| vec![UNLISTED_REQUEST.to_string()]),
     };
     if request_names.is_empty() {
+        if has_expectation {
+            return Err("`request list` found no requests to run".into());
+        }
         println!("⚠️  Skipping {dir_name}_{file_name}: companion file without requests");
         return Ok(());
     }
     let json_output = Path::new(&expected_json).exists();
 
     let mut stdouts = Vec::new();
+    let mut outputs = Vec::new();
     let mut output = None;
     for name in &request_names {
         let mut cmd = rq_cmd();
@@ -1169,23 +1231,28 @@ fn run_directory_test(dir_name: &str, file_name: &str) -> Result<(), Failed> {
         let run = cmd
             .output()
             .map_err(|e| format!("Failed to execute command: {e}"))?;
-        stdouts.push(String::from_utf8_lossy(&run.stdout).to_string());
+        let stdout = String::from_utf8_lossy(&run.stdout).to_string();
+        let stderr = String::from_utf8_lossy(&run.stderr).to_string();
+        outputs.push(if stderr.is_empty() {
+            stdout.clone()
+        } else {
+            stderr.clone()
+        });
+        stdouts.push(stdout);
         let failed = !run.status.success();
-        output = Some(run);
+        output = Some((run, stderr));
         if failed {
             break;
         }
     }
-    let output = output.ok_or("No request to run")?;
+    let (output, stderr) = output.ok_or("No request to run")?;
 
     let stdout = merge_results(&stdouts);
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    let last_stdout = String::from_utf8_lossy(&output.stdout);
-    let actual_output = if stderr.is_empty() {
-        &last_stdout
-    } else {
-        &stderr
-    };
+    let actual_output = outputs
+        .iter()
+        .map(|output| output.trim())
+        .collect::<Vec<_>>()
+        .join("\n");
 
     if let Some(code) = expected_code {
         let actual_code = output.status.code().unwrap_or(-1);
@@ -1230,6 +1297,8 @@ fn run_directory_test(dir_name: &str, file_name: &str) -> Result<(), Failed> {
 
     Ok(())
 }
+
+const UNLISTED_REQUEST: &str = "unlisted_request";
 
 fn listed_request_names(source: &str) -> Option<Vec<String>> {
     let output = rq_cmd()

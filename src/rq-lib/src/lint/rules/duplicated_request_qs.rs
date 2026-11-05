@@ -9,7 +9,7 @@ impl LintRule for Rule {
     }
 
     fn description(&self) -> &'static str {
-        "The same query parameter written into two or more sibling requests belongs on the \
+        "The same query parameter written into every request of an endpoint belongs on the \
          endpoint. `ep` takes a `qs` parameter that applies to every child request."
     }
 
@@ -34,7 +34,7 @@ fn shared_query_params<'a>(children: &[&'a Request]) -> Vec<(&'a Request, String
                         .any(|(peer_key, peer_value)| peer_key == &key && peer_value == &value)
                 })
                 .count();
-            if carriers < 2 {
+            if carriers < 2 || carriers < children.len() {
                 continue;
             }
             found.push((*request, key, value));
@@ -58,7 +58,7 @@ fn diagnostic(
         rule: "duplicated_request_qs",
         message: format!(
             "`rq {bare}` writes the query parameter `{key}={value}` into its own URL, and so does \
-             at least one sibling under `ep {ep_name}`. An `ep` takes a `qs` parameter that is \
+             every other request under `ep {ep_name}`. An `ep` takes a `qs` parameter that is \
              appended to every child request, including the ones whose URL is a path parameter — \
              declare it once as `ep {ep_name}(..., qs: \"{merged}\")` and drop `?{key}={value}` \
              from each request."
@@ -143,6 +143,19 @@ mod tests {
         assert!(
             diagnostics_for(src).is_empty(),
             "differing values are per-request data, not shared endpoint config"
+        );
+    }
+
+    #[test]
+    fn does_not_flag_a_query_parameter_missing_from_a_sibling() {
+        let src = "ep jobs(\"http://x/jobs\") {\n    \
+                   rq list(\"?top=1\");\n\n    \
+                   rq list_by_status(\"?top=1&status=failed\");\n\n    \
+                   [required(job_id)]\n    \
+                   rq get(job_id);\n}\n";
+        assert!(
+            diagnostics_for(src).is_empty(),
+            "hoisting onto the ep would add the parameter to a request that does not send it"
         );
     }
 

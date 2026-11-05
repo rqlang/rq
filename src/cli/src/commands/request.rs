@@ -279,7 +279,7 @@ pub struct RunArgs {
     #[arg(
         short = 'y',
         long = "yes",
-        help = "Send requests marked [confirm] without asking"
+        help = "Send a request marked [confirm] without asking"
     )]
     pub yes: bool,
 }

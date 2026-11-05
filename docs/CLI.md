@@ -200,7 +200,7 @@ Options:
 - `-f, --format <FORMAT>` – Output format: `text` or `json` (default: `text`).
 - `-p, --print <PARTS>` – Response parts to print, as any combination of `m` (meta: request name, method, URL, status and elapsed time), `h` (response headers) and `b` (response body). Letters combine in a single value, in any order: `-p hb` prints the headers and the body, `-p mhb` prints everything. Defaults to `mb`. The same parts are printed in `text` and `json` mode.
 - `--no-lint` – Skip the lint summary printed before running.
-- `-y, --yes` – Send requests marked [`[confirm]`](LANGUAGE_DEFINITION.md#confirm-attribute) without asking.
+- `-y, --yes` – Send a request marked [`[confirm]`](LANGUAGE_DEFINITION.md#confirm-attribute) without asking.
 
 Behavior:
 
@@ -246,19 +246,19 @@ Error handling:
 
 #### Requests that need confirmation
 
-A request marked `[confirm]` — on the request, its endpoint or the environment it runs against (see [`confirm` attribute](LANGUAGE_DEFINITION.md#confirm-attribute)) — is not sent until you agree. The CLI asks on stderr before each such request:
+A request marked `[confirm]` — on the request, its endpoint or the environment it runs against (see [`confirm` attribute](LANGUAGE_DEFINITION.md#confirm-attribute)) — is not sent until you agree. The CLI asks on stderr before sending it:
 
 ```
 Run DELETE https://api.example.com/users/1 against the `production` environment? [y/N]
 ```
 
-Only `y` or `yes` (in any case) sends it; anything else stops the run there with exit code `9`, and the requests before it have already been sent. When stdin or stderr is not a terminal, as in a script or CI, nothing is asked: the run stops at the first marked request with exit code `9` and
+Only `y` or `yes` (in any case) sends it; anything else sends nothing and exits with code `9`. When stdin or stderr is not a terminal, as in a script or CI, nothing is asked: the request is not sent and rq exits with code `9` and
 
 ```
 Error: Request 'users/delete' is marked [confirm] and was not sent: run it from a terminal to be asked, or pass --yes to send it without asking
 ```
 
-Pass `-y`/`--yes` to send marked requests without asking. Unmarked requests never ask, whatever their method.
+Pass `-y`/`--yes` to send a marked request without asking. Unmarked requests never ask, whatever their method.
 
 #### Required variables
 

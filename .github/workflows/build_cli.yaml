@@ -61,7 +61,7 @@ jobs:
           targets: ${{ matrix.target }}
 
       - name: Install musl tools
-        if: runner.os == 'Linux'
+        if: endsWith(matrix.target, '-musl')
         env:
           TARGET: ${{ matrix.target }}
         run: |
@@ -88,24 +88,15 @@ jobs:
         run: cargo build --release -p rq --target ${{ matrix.target }}
 
       - name: Check the Linux binary is static
-        if: runner.os == 'Linux'
+        if: endsWith(matrix.target, '-musl')
         env:
           BINARY_PATH: target/${{ matrix.target }}/release/${{ matrix.binary }}
         run: |
-          if readelf -d "${BINARY_PATH}" | grep NEEDED; then
+          dynamic_section="$(readelf -d "${BINARY_PATH}")"
+          if grep NEEDED <<< "${dynamic_section}"; then
             echo "::error::${BINARY_PATH} links shared libraries"
             exit 1
           fi
-
-      - name: Run the Linux binary on older and musl distributions
-        if: runner.os == 'Linux'
-        env:
-          BINARY_PATH: target/${{ matrix.target }}/release/${{ matrix.binary }}
-        run: |
-          for image in alpine:3.20 debian:11 ubuntu:20.04 rockylinux:8 amazonlinux:2023; do
-            version="$(docker run --rm -v "${PWD}/${BINARY_PATH}:/usr/local/bin/rq:ro" "${image}" rq --version)"
-            echo "${image}: ${version}"
-          done
 
       - name: Code sign Windows binary
         if: runner.os == 'Windows'

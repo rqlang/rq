@@ -18,11 +18,19 @@ env:
 jobs:
   build:
     name: Build and test ${{ matrix.target }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        target: [x86_64-unknown-linux-gnu, x86_64-unknown-linux-musl]
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            target_flag: --target x86_64-unknown-linux-musl
+          - os: ubuntu-22.04-arm
+            target: aarch64-unknown-linux-musl
+            target_flag: --target aarch64-unknown-linux-musl
     defaults:
       run:
         working-directory: ./src/cli
@@ -61,7 +69,7 @@ jobs:
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
       - name: Build (debug)
-        run: cargo build --verbose --target ${{ matrix.target }}
+        run: cargo build --verbose ${{ matrix.target_flag }}
 
       - name: Start echo server
         run: |
@@ -88,7 +96,17 @@ jobs:
           curl -v http://localhost:8080
 
       - name: Test (all tests)
-        run: cargo test --workspace --verbose --target ${{ matrix.target }}
+        run: cargo test --workspace --verbose ${{ matrix.target_flag }}
+
+      - name: Run the musl binary on older and musl distributions
+        if: endsWith(matrix.target, '-musl')
+        env:
+          BINARY_PATH: ${{ github.workspace }}/target/${{ matrix.target }}/debug/rq
+        run: |
+          for image in alpine:3.20 debian:11 ubuntu:20.04 rockylinux/rockylinux:8 amazonlinux:2023; do
+            version="$(docker run --rm -v "${BINARY_PATH}:/usr/local/bin/rq:ro" "${image}" rq --version)"
+            echo "${image}: ${version}"
+          done
 
       - name: Stop echo server
         if: always()

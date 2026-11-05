@@ -215,7 +215,7 @@ Auto-discovered from `tests/request/run/input/`. Each `.rq` → one test. Expect
 |---|---|
 | `__code_N__` | Expect exit code N (default 0) |
 | `__env_NAME__` | Use environment NAME |
-| `__req_NAME__` | Run request NAME (dot notation for ep requests: `ep.req`) |
+| `__req_NAME__` | Run request NAME (dot notation for ep requests: `ep.req`). Without it, the harness runs each request `request list` reports for the source, one `-n` at a time in that (alphabetical) order, and merges their bodies; a source without requests is a companion fixture and is skipped |
 | `__dir__` | Use directory source |
 
 **Expected output:**

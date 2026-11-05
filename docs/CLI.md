@@ -26,7 +26,7 @@ Every command accepts `-d, --debug`. It writes a trace to stderr, in the style o
 
 ```text
 [     5ms] * rq 0.7.0 (macos aarch64)
-[     6ms] * Command: rq request run -s api -e local -v token=***
+[     6ms] * Command: rq request run -s api -n users.create -e local -v token=***
 [     6ms] * Working directory: /Users/ana/project
 [     6ms] * Source: api (directory)
 [     7ms] * Found 3 .rq file(s) in api
@@ -34,7 +34,6 @@ Every command accepts `-d, --debug`. It writes a trace to stderr, in the style o
 [    21ms] * Environment 'local' for /Users/ana/project/api/users.rq: base_url, api_key
 [    21ms] * Secrets from api/.env: api_key
 [    21ms] * Secrets from RQ__ environment variables: none
-[    22ms] * Running 1 request(s) from /Users/ana/project/api/users.rq
 [    22ms] * Variable base_url from env:local
 [    22ms] * Variable token from cli
 [    23ms] * Applying auth 'tok' (bearer)
@@ -56,7 +55,7 @@ Secret values never appear in the trace. Secrets and variables are listed by nam
 Run the failing command again with `-d` and save the trace to a file:
 
 ```bash
-rq request run -s api -e local -d 2> rq-debug.log
+rq request run -s api -n users.create -e local -d 2> rq-debug.log
 ```
 
 Attach `rq-debug.log` to the issue. It already includes the rq version, the platform and the exact command. Secret values are masked, but review the file before sharing it, since URLs, file paths and non-secret values are kept as they are.
@@ -74,7 +73,7 @@ Commands:
 - `request` – Manage requests.
 - `check` – Validate `.rq` files.
 
-If you call `rq` without a subcommand, it behaves like `rq request run` with the same arguments.
+If you call `rq` without a subcommand, it behaves like `rq request run` with the same arguments. `rq` with no arguments at all prints the help.
 
 Global options:
 
@@ -185,7 +184,7 @@ rq request show -s tests/request/run/input -n basic -e local -f json
 
 ### `rq request run`
 
-Run one or more requests from `.rq` files.
+Run one request from `.rq` files.
 
 ```bash
 rq request run [OPTIONS]
@@ -194,7 +193,7 @@ rq request run [OPTIONS]
 Options:
 
 - `-s, --source <SOURCE>` – Path to the `.rq` file or directory (default: `.`).
-- `-n, --name <NAME>` – Name of the request to run. If omitted, every request in the source runs. If the request is defined inside an endpoint, use `<endpoint>/<request>` or `<endpoint>.<request>` (for example `users/list` or `users.list`).
+- `-n, --name <NAME>` – Name of the request to run (required). Without it, rq runs nothing and exits with code 1, listing the requests in the source: `Error: --name is required. Requests in api.rq: users.create, users.list`. It lists at most 10 names, in alphabetical order, and when there are more it adds how many and points to `rq request list -s <SOURCE>` to see them all. If the request is defined inside an endpoint, use `<endpoint>/<request>` or `<endpoint>.<request>` (for example `users/list` or `users.list`).
 - `-e, --env <ENVIRONMENT>` – Environment name.
 - `-v, --variable <NAME=VALUE>` – Override variables at runtime (can be provided multiple times).
 - `-f, --format <FORMAT>` – Output format: `text` or `json` (default: `text`).
@@ -206,7 +205,7 @@ Behavior:
 
 - Before running, lints the source with the same [lint rules](LINT_RULES.md) as `rq check`. When any rule fires it prints a single line to stderr, such as `Warning: 2 lint warnings found, run \`rq check -s api.rq\` for details` (in `json` mode, a `{"warning": {...}}` object). When `--source` is a file, only that file is linted, so cross-file rules are left to `rq check`; when it is a directory, every file in it is linted against the others. Lint findings never change the exit code or stdout, and a lint failure never stops the run.
 - Uses the same variable precedence described in the language definition, with `-v NAME=VALUE` providing the highest-precedence overrides.
-- In `text` mode, prints one block per request: a line with the request name, method and URL, a status line with the reason phrase and elapsed time, and the response body. JSON bodies are indented without reordering their keys. `-p` picks which of these sections to print; `h` adds the response headers, one `name: value` per line sorted by name, between the status line and the body. Request headers are shown only with `-d`:
+- In `text` mode, prints a block with a line with the request name, method and URL, a status line with the reason phrase and elapsed time, and the response body. JSON bodies are indented without reordering their keys. `-p` picks which of these sections to print; `h` adds the response headers, one `name: value` per line sorted by name, between the status line and the body. Request headers are shown only with `-d`:
 
   ```text
   basic  GET http://localhost:8080/get
@@ -216,23 +215,23 @@ Behavior:
     "status": "ok"
   }
   ```
-- In `json` mode, prints a `results` array with one object per request, holding only the fields of the selected parts: `request_name`, `method`, `url`, `status` and `elapsed_ms` for `m`; `response_headers` for `h`; `body` for `b`. Request headers are not part of the output in either mode; use `-d` to see them.
+- In `json` mode, prints a `results` array with one object for the request, holding only the fields of the selected parts: `request_name`, `method`, `url`, `status` and `elapsed_ms` for `m`; `response_headers` for `h`; `body` for `b`. Request headers are not part of the output in either mode; use `-d` to see them.
 - `-p b` prints only the response body, so the output can be piped straight into tools such as `jq`.
 
 Examples:
 
 ```bash
-# Run a single request in a file
+# Run a request in a file
 rq request run -s tests/request/run/input/basic.rq -n basic
 
 # Print only the response headers
-rq request run -s tests/request/run/input/basic.rq -p h
+rq request run -s tests/request/run/input/basic.rq -n basic -p h
 
 # Print the meta, the response headers and the body
-rq request run -s tests/request/run/input/basic.rq -p mhb
+rq request run -s tests/request/run/input/basic.rq -n basic -p mhb
 
 # Run using an environment and a CLI variable override
-rq request run -s tests/request/run/fixtures/cli_override/override.rq -e local -v color=red
+rq request run -s tests/request/run/fixtures/cli_override/override.rq -n cli_variable_override -e local -v color=red
 
 # Default invocation (same as `rq request run`)
 rq -s tests/request/run/input/basic.rq -n basic

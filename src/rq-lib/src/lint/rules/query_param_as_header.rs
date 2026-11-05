@@ -1,6 +1,6 @@
 use crate::lint::{
-    endpoint_children, query_params, query_params_on_every_request, request_own_headers,
-    LintContext, LintDiagnostic, LintRule,
+    endpoint_children, merged_endpoint_qs, query_params, query_params_on_every_request,
+    request_own_headers, LintContext, LintDiagnostic, LintRule,
 };
 use crate::syntax::parse_result::{EndpointDefinition, Request};
 
@@ -45,8 +45,9 @@ fn known_query_keys(endpoint: &EndpointDefinition, children: &[&Request]) -> Vec
 }
 
 enum Fix {
-    AlreadyOnEndpoint,
-    HoistToEndpoint,
+    AlreadyOnEndpoint { in_own_url: bool },
+    AlreadyInUrl,
+    HoistToEndpoint { merged_qs: String },
     WriteIntoUrl,
 }
 
@@ -58,12 +59,13 @@ fn fix_for(
     value: &str,
 ) -> Fix {
     let pair_matches = |(k, v): &(String, String)| k.eq_ignore_ascii_case(key) && v == value;
+    let in_own_url = query_params(&request.raw_url).iter().any(pair_matches);
     let on_endpoint = endpoint
         .qs
         .as_deref()
         .is_some_and(|qs| query_params(&format!("?{qs}")).iter().any(pair_matches));
     if on_endpoint {
-        return Fix::AlreadyOnEndpoint;
+        return Fix::AlreadyOnEndpoint { in_own_url };
     }
     let siblings: Vec<&Request> = children
         .iter()
@@ -75,7 +77,11 @@ fn fix_for(
             .iter()
             .any(pair_matches);
     if on_every_sibling {
-        Fix::HoistToEndpoint
+        Fix::HoistToEndpoint {
+            merged_qs: merged_endpoint_qs(endpoint, key, value),
+        }
+    } else if in_own_url {
+        Fix::AlreadyInUrl
     } else {
         Fix::WriteIntoUrl
     }
@@ -112,22 +118,37 @@ fn diagnostic(
 fn advice(fix: &Fix, bare: &str, ep_name: &str, key: &str, value: &str) -> (String, String) {
     let drop_map = format!("delete the `$[\"{key}\": \"{value}\"]` argument from `rq {bare}`");
     match fix {
-        Fix::AlreadyOnEndpoint => (
+        Fix::AlreadyOnEndpoint { in_own_url: false } => (
             format!(
                 "`ep {ep_name}` already sends `{key}={value}` through its `qs`, so remove the map \
                  from `rq {bare}`."
             ),
             format!("Delete the `$[\"{key}\": \"{value}\"]` argument from `rq {bare}`."),
         ),
-        Fix::HoistToEndpoint => (
+        Fix::AlreadyOnEndpoint { in_own_url: true } => (
+            format!(
+                "`ep {ep_name}` already sends `{key}={value}` through its `qs`, so remove the map \
+                 and drop `?{key}={value}` from the URL of `rq {bare}`."
+            ),
+            format!("Drop `?{key}={value}` from the URL of `rq {bare}` and {drop_map}."),
+        ),
+        Fix::AlreadyInUrl => (
+            format!(
+                "The URL of `rq {bare}` already sends `{key}={value}`, so remove the map from \
+                 `rq {bare}`."
+            ),
+            format!("Delete the `$[\"{key}\": \"{value}\"]` argument from `rq {bare}`."),
+        ),
+        Fix::HoistToEndpoint { merged_qs } => (
             format!(
                 "Every other request under `ep {ep_name}` sends it, and only `ep` takes `qs`: \
-                 declare `ep {ep_name}(..., qs: \"{key}={value}\")` once, drop `?{key}={value}` \
-                 from the other requests and remove the map from `rq {bare}`."
+                 declare `ep {ep_name}(..., qs: \"{merged_qs}\")` once, drop `?{key}={value}` \
+                 from the URL of every request under `ep {ep_name}` and remove the map from \
+                 `rq {bare}`."
             ),
             format!(
-                "Add `qs: \"{key}={value}\"` to `ep {ep_name}(...)`, drop `?{key}={value}` from \
-                 the other requests and {drop_map}."
+                "Set `qs: \"{merged_qs}\"` on `ep {ep_name}(...)`, drop `?{key}={value}` from the \
+                 URL of every request under `ep {ep_name}` and {drop_map}."
             ),
         ),
         Fix::WriteIntoUrl => (
@@ -205,6 +226,49 @@ mod tests {
         let target = diagnostics_for(src);
         assert!(
             target[0].message.contains("already sends `v=1`"),
+            "got: {}",
+            target[0].message
+        );
+    }
+
+    #[test]
+    fn tells_a_request_whose_url_carries_the_pair_to_drop_it_when_hoisting() {
+        let src = "ep users(\"http://x/users\") {\n    \
+                   rq list(\"?v=1\");\n\n    \
+                   rq post(\"?v=1\", $[\"v\": \"1\"], body: ${});\n}\n";
+        let target = diagnostics_for(src);
+        assert!(
+            target[0].message.contains("from the URL of every request"),
+            "got: {}",
+            target[0].message
+        );
+    }
+
+    #[test]
+    fn merges_the_suggested_qs_with_the_existing_endpoint_qs() {
+        let src = "ep users(\"http://x/users\", qs: \"page=1\") {\n    \
+                   rq list(\"?v=1\");\n\n    \
+                   [required(user_id)]\n    \
+                   rq get(user_id, $[\"v\": \"1\"]);\n}\n";
+        let target = diagnostics_for(src);
+        assert!(
+            target[0].message.contains("qs: \"page=1&v=1\""),
+            "got: {}",
+            target[0].message
+        );
+    }
+
+    #[test]
+    fn only_asks_to_remove_the_map_when_the_request_url_already_sends_the_pair() {
+        let src = "ep users(\"http://x/users\") {\n    \
+                   rq list(\"?v=1\");\n\n    \
+                   rq other();\n\n    \
+                   rq post(\"?v=1\", $[\"v\": \"1\"], body: ${});\n}\n";
+        let target = diagnostics_for(src);
+        assert!(
+            target[0]
+                .message
+                .contains("already sends `v=1`, so remove the map"),
             "got: {}",
             target[0].message
         );

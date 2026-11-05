@@ -359,6 +359,17 @@ pub fn query_params_on_every_request(requests: &[&Request]) -> Vec<(String, Stri
     shared
 }
 
+pub fn merged_endpoint_qs(endpoint: &EndpointDefinition, key: &str, value: &str) -> String {
+    let pair = format!("{key}={value}");
+    match endpoint.qs.as_deref().filter(|qs| !qs.is_empty()) {
+        Some(existing) if !existing.split('&').any(|part| part.trim() == pair) => {
+            format!("{existing}&{pair}")
+        }
+        Some(existing) => existing.to_string(),
+        None => pair,
+    }
+}
+
 pub fn request_own_headers(
     request: &Request,
     endpoint: &EndpointDefinition,

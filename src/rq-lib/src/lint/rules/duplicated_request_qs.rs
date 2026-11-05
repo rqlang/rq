@@ -1,6 +1,6 @@
 use crate::lint::{
-    endpoint_children, query_params, query_params_on_every_request, LintContext, LintDiagnostic,
-    LintRule,
+    endpoint_children, merged_endpoint_qs, query_params, query_params_on_every_request,
+    LintContext, LintDiagnostic, LintRule,
 };
 use crate::syntax::parse_result::{EndpointDefinition, Request};
 
@@ -42,7 +42,13 @@ fn diagnostic(
     let (message, suggested_fix) = if endpoint_declares(endpoint, key, value) {
         already_on_endpoint(bare, ep_name, key, value)
     } else {
-        hoist_to_endpoint(bare, ep_name, &merged_qs(endpoint, key, value), key, value)
+        hoist_to_endpoint(
+            bare,
+            ep_name,
+            &merged_endpoint_qs(endpoint, key, value),
+            key,
+            value,
+        )
     };
     LintDiagnostic {
         severity: "error",
@@ -92,17 +98,6 @@ fn endpoint_declares(endpoint: &EndpointDefinition, key: &str, value: &str) -> b
     endpoint.qs.as_deref().is_some_and(|qs| {
         query_params(&format!("?{qs}")).contains(&(key.to_string(), value.to_string()))
     })
-}
-
-fn merged_qs(endpoint: &EndpointDefinition, key: &str, value: &str) -> String {
-    let pair = format!("{key}={value}");
-    match endpoint.qs.as_deref().filter(|qs| !qs.is_empty()) {
-        Some(existing) if !existing.split('&').any(|part| part.trim() == pair) => {
-            format!("{existing}&{pair}")
-        }
-        Some(existing) => existing.to_string(),
-        None => pair,
-    }
 }
 
 fn bare_request_name(qualified: &str) -> &str {

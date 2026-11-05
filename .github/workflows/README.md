@@ -32,13 +32,13 @@ GitHub Actions workflows for building, testing and releasing `rq`.
 
 | Asset | Target | Runner |
 |---|---|---|
-| `rq-linux-x86_64` | `x86_64-unknown-linux-gnu` | `ubuntu-22.04` |
-| `rq-linux-aarch64` | `aarch64-unknown-linux-gnu` | `ubuntu-22.04-arm` |
+| `rq-linux-x86_64` | `x86_64-unknown-linux-musl` | `ubuntu-22.04` |
+| `rq-linux-aarch64` | `aarch64-unknown-linux-musl` | `ubuntu-22.04-arm` |
 | `rq-windows-x86_64.exe` | `x86_64-pc-windows-msvc` | `windows-latest` |
 | `rq-macos-x86_64` | `x86_64-apple-darwin` | `macos-latest` |
 | `rq-macos-aarch64` | `aarch64-apple-darwin` | `macos-latest` |
 
-OpenSSL is vendored, so the binaries do not depend on the system `libssl`; an OpenSSL security fix reaches users only through a new release with an updated `openssl-src`. The Linux binaries are built on Ubuntu 22.04 and need glibc 2.34 or newer. The Windows binary is signed with the certificate in `CODE_SIGNING_CERT`.
+OpenSSL is vendored, so the binaries do not depend on the system `libssl`; an OpenSSL security fix reaches users only through a new release with an updated `openssl-src`. The Linux binaries are built for musl with `musl-tools`, so they are fully static: the build fails if one links a shared library. `cli_bvt.yaml` runs the test suite against the glibc build and both musl builds, and runs each musl binary on Alpine, Debian 11, Ubuntu 20.04, Rocky Linux 8 and Amazon Linux 2023. The Windows binary is signed with the certificate in `CODE_SIGNING_CERT`.
 
 ## Versioning
 

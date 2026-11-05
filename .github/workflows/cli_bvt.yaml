@@ -17,7 +17,20 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    name: Build and test ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            target_flag: --target x86_64-unknown-linux-musl
+          - os: ubuntu-22.04-arm
+            target: aarch64-unknown-linux-musl
+            target_flag: --target aarch64-unknown-linux-musl
     defaults:
       run:
         working-directory: ./src/cli
@@ -31,18 +44,32 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+          targets: ${{ matrix.target }}
+
+      - name: Install musl tools
+        if: endsWith(matrix.target, '-musl')
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+          echo "CC_${TARGET//-/_}=musl-gcc" >> "$GITHUB_ENV"
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
 
       - name: Formatting check
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
         run: cargo fmt --all -- --check
 
       - name: Clippy (deny warnings)
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
       - name: Build (debug)
-        run: cargo build --verbose
+        run: cargo build --verbose ${{ matrix.target_flag }}
 
       - name: Start echo server
         run: |
@@ -69,7 +96,17 @@ jobs:
           curl -v http://localhost:8080
 
       - name: Test (all tests)
-        run: cargo test --workspace --verbose
+        run: cargo test --workspace --verbose ${{ matrix.target_flag }}
+
+      - name: Run the musl binary on older and musl distributions
+        if: endsWith(matrix.target, '-musl')
+        env:
+          BINARY_PATH: ${{ github.workspace }}/target/${{ matrix.target }}/debug/rq
+        run: |
+          for image in alpine:3.20 debian:11 ubuntu:20.04 rockylinux/rockylinux:8 amazonlinux:2023; do
+            version="$(docker run --rm -v "${BINARY_PATH}:/usr/local/bin/rq:ro" "${image}" rq --version)"
+            echo "${image}: ${version}"
+          done
 
       - name: Stop echo server
         if: always()

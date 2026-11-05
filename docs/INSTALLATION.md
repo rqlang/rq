@@ -181,9 +181,13 @@ Releases published before 0.8.0 do not include `SHA256SUMS` or the `rq-linux-aar
 
 ### Linux requirements
 
-The Linux binaries, whichever way you install them, need glibc 2.34 or newer, which Ubuntu 22.04, Debian 12, RHEL 9 and later ship by default. OpenSSL is built into the binary, so no system `libssl` is needed; HTTPS uses the system CA certificates (the `ca-certificates` package).
+The Linux binaries, whichever way you install them, are statically linked against musl and OpenSSL, so they depend on no system library and run on any distribution: Alpine, RHEL / Rocky / Alma 8 and 9, Amazon Linux 2023, Debian 11, Ubuntu 20.04 and later, and container images without a C library. HTTPS uses the system CA certificates (the `ca-certificates` package); on an image that has none, point `SSL_CERT_FILE` at a CA bundle.
 
-Releases 0.7.0 and older were linked against the system OpenSSL and also need OpenSSL 3 (`libssl.so.3`).
+Host names are resolved from `/etc/hosts` and the DNS servers in `/etc/resolv.conf`; other `nsswitch.conf` sources, such as LDAP or mDNS, are not used.
+
+The install script runs under `bash`, which Alpine does not ship: install it first with `apk add bash curl`.
+
+Releases 0.8.1 and older were linked against glibc and need glibc 2.34 or newer. Releases 0.7.0 and older were also linked against the system OpenSSL and need OpenSSL 3 (`libssl.so.3`).
 
 ## VS Code extension
 

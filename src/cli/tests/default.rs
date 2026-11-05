@@ -19,7 +19,10 @@ async fn test_default_run_with_source() -> Result<(), Box<dyn std::error::Error>
     let rq_path = format!("{}/test_default_basic.rq", env!("CARGO_TARGET_TMPDIR"));
     std::fs::write(&rq_path, rq_content)?;
 
-    let rq_output = rq_cmd().args(["-s", &rq_path]).current_dir(".").output()?;
+    let rq_output = rq_cmd()
+        .args(["-s", &rq_path, "-n", "basic"])
+        .current_dir(".")
+        .output()?;
 
     let stdout = String::from_utf8_lossy(&rq_output.stdout);
     let stderr = String::from_utf8_lossy(&rq_output.stderr);
@@ -66,7 +69,7 @@ rq env_local_demo("{{{{base_url}}}}/api/env-test");
     std::fs::write(&rq_path, rq_content)?;
 
     let rq_output = rq_cmd()
-        .args(["-s", &rq_path, "-e", "local"])
+        .args(["-s", &rq_path, "-n", "env_local_demo", "-e", "local"])
         .current_dir(".")
         .output()?;
 
@@ -108,7 +111,14 @@ rq cli_variable_override("{}/get?color={{{{color}}}}");
     std::fs::write(&rq_path, rq_content)?;
 
     let rq_output = rq_cmd()
-        .args(["-s", &rq_path, "-v", "color=blue"])
+        .args([
+            "-s",
+            &rq_path,
+            "-n",
+            "cli_variable_override",
+            "-v",
+            "color=blue",
+        ])
         .current_dir(".")
         .output()?;
 
@@ -123,5 +133,21 @@ rq cli_variable_override("{}/get?color={{{{color}}}}");
         return Err(format!("Command failed. stderr: {stderr}, stdout: {stdout}").into());
     }
 
+    Ok(())
+}
+
+#[test]
+fn test_default_run_without_name_lists_requests() -> Result<(), Box<dyn std::error::Error>> {
+    let rq_path = format!("{}/test_default_no_name.rq", env!("CARGO_TARGET_TMPDIR"));
+    std::fs::write(&rq_path, "rq list(\"http://localhost/list\");\n")?;
+
+    let rq_output = rq_cmd().args(["-s", &rq_path]).output()?;
+
+    let stderr = String::from_utf8_lossy(&rq_output.stderr);
+    let expected = format!("Error: --name is required. Requests in {rq_path}: list");
+    assert_eq!(
+        (rq_output.status.code(), stderr.trim()),
+        (Some(1), expected.as_str())
+    );
     Ok(())
 }

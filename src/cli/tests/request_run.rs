@@ -13,10 +13,6 @@ fn main() {
         // Fixture tests (Manual setup)
         Trial::test("request_secrets_env_vars", test_request_secrets),
         Trial::test(
-            "request_json_warning_uses_warning_key",
-            test_request_json_warning_uses_warning_key,
-        ),
-        Trial::test(
             "request_json_output_ends_with_newline",
             test_request_json_output_ends_with_newline,
         ),
@@ -85,6 +81,22 @@ fn main() {
             test_request_cli_variable_override,
         ),
         Trial::test("request_dotenv_file", test_request_dotenv),
+        Trial::test(
+            "request_run_without_name_lists_requests",
+            test_request_run_without_name_lists_requests,
+        ),
+        Trial::test(
+            "request_run_without_name_reports_source_without_requests",
+            test_request_run_without_name_reports_source_without_requests,
+        ),
+        Trial::test(
+            "request_run_without_name_lists_at_most_ten_requests",
+            test_request_run_without_name_lists_at_most_ten_requests,
+        ),
+        Trial::test(
+            "request_run_without_name_lists_each_directory_name_once",
+            test_request_run_without_name_lists_each_directory_name_once,
+        ),
         Trial::test(
             "request_run_file_not_found",
             test_request_run_file_not_found,
@@ -156,27 +168,6 @@ fn main() {
 }
 
 // --- Fixture Tests ---
-
-fn test_request_json_warning_uses_warning_key() -> Result<(), Failed> {
-    let output = rq_cmd()
-        .args([
-            "request",
-            "run",
-            "-s",
-            "tests/request/run/input/foo.rq",
-            "-f",
-            "json",
-        ])
-        .output()
-        .map_err(|e| format!("Failed to execute: {e}"))?;
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    let warning: serde_json::Value = serde_json::from_str(stderr.trim())
-        .map_err(|e| format!("stderr is not valid JSON: {e}\n{stderr}"))?;
-    if warning["warning"]["message"] != "No requests found in the file" {
-        return Err(format!("Unexpected stderr: {stderr}").into());
-    }
-    Ok(())
-}
 
 const LINT_WARNING_FIXTURE: &str = "tests/request/run/fixtures/lint_warning/users.rq";
 
@@ -297,7 +288,9 @@ fn test_request_json_output_ends_with_newline() -> Result<(), Failed> {
             "request",
             "run",
             "-s",
-            "tests/request/run/input/foo.rq",
+            "tests/request/run/input/basic.rq",
+            "-n",
+            "basic",
             "-f",
             "json",
         ])
@@ -312,7 +305,14 @@ fn test_request_json_output_ends_with_newline() -> Result<(), Failed> {
 
 fn test_request_text_output_starts_with_status() -> Result<(), Failed> {
     let output = rq_cmd()
-        .args(["request", "run", "-s", "tests/request/run/input/basic.rq"])
+        .args([
+            "request",
+            "run",
+            "-s",
+            "tests/request/run/input/basic.rq",
+            "-n",
+            "basic",
+        ])
         .output()
         .map_err(|e| format!("Failed to execute: {e}"))?;
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -335,6 +335,8 @@ fn test_request_legacy_output_flag_points_to_format() -> Result<(), Failed> {
             "run",
             "-s",
             "tests/request/run/input/basic.rq",
+            "-n",
+            "basic",
             "-o",
             "json",
         ])
@@ -355,6 +357,8 @@ fn run_basic_with(extra: &[&str]) -> Result<std::process::Output, Failed> {
             "--no-lint",
             "-s",
             "tests/request/run/input/basic.rq",
+            "-n",
+            "basic",
         ])
         .args(extra)
         .output()
@@ -369,6 +373,8 @@ fn test_request_yes_sends_a_request_marked_confirm() -> Result<(), Failed> {
             "--no-lint",
             "-s",
             "tests/request/run/input/confirm/marked__code_9__.rq",
+            "-n",
+            "purge",
             "--yes",
         ])
         .output()
@@ -459,7 +465,7 @@ fn test_request_debug_logs_masked_request_and_response() -> Result<(), Failed> {
     )
     .map_err(|e| format!("Failed to write temp file: {e}"))?;
     let output = rq_cmd()
-        .args(["request", "run", "-d", "-s"])
+        .args(["request", "run", "-d", "-n", "get", "-s"])
         .arg(&file)
         .output()
         .map_err(|e| format!("Failed to execute: {e}"))?;
@@ -490,6 +496,8 @@ fn test_request_debug_header_masks_cli_variables() -> Result<(), Failed> {
         "-d",
         "-s",
         "tests/request/run/input/basic.rq",
+        "-n",
+        "basic",
         "-v",
         "token=s3cr3t",
     ])?;
@@ -510,6 +518,8 @@ fn test_request_debug_footer_reports_exit_code() -> Result<(), Failed> {
         "-d",
         "-s",
         "tests/request/run/input/basic.rq",
+        "-n",
+        "basic",
         "-e",
         "missing",
     ])?;
@@ -526,6 +536,8 @@ fn test_request_debug_traces_secret_and_variable_sources() -> Result<(), Failed>
         "-d",
         "-s",
         "tests/request/run/input/environments__env_local__.rq",
+        "-n",
+        "env_local_demo",
         "-e",
         "local",
     ])?;
@@ -547,6 +559,8 @@ fn test_request_secrets() -> Result<(), Failed> {
             "json",
             "-s",
             "tests/request/run/fixtures/secrets/secrets.rq",
+            "-n",
+            "secrets_demo",
             "--environment",
             "local",
         ])
@@ -580,6 +594,8 @@ fn test_request_secrets_uppercase_prefixes() -> Result<(), Failed> {
             "json",
             "-s",
             "tests/request/run/fixtures/secrets_uppercase_prefixes/test.rq",
+            "-n",
+            "prefix_test",
             "--environment",
             "local",
         ])
@@ -612,6 +628,8 @@ fn test_request_auth_token_backdoor() -> Result<(), Failed> {
             "json",
             "-s",
             "tests/request/run/fixtures/auth_token_backdoor/test.rq",
+            "-n",
+            "backdoor_test",
         ])
         .output()
         .map_err(|e| format!("Failed to execute command: {e}"))?;
@@ -641,6 +659,8 @@ fn test_request_auth_token_backdoor_upper() -> Result<(), Failed> {
             "json",
             "-s",
             "tests/request/run/fixtures/auth_token_backdoor_upper/test.rq",
+            "-n",
+            "backdoor_test",
         ])
         .output()
         .map_err(|e| format!("Failed to execute command: {e}"))?;
@@ -670,6 +690,8 @@ fn test_request_cli_variable_override() -> Result<(), Failed> {
             "json",
             "-s",
             "tests/request/run/fixtures/cli_override/override.rq",
+            "-n",
+            "cli_variable_override",
             "-v",
             "color=red",
         ])
@@ -701,6 +723,8 @@ fn test_request_dotenv() -> Result<(), Failed> {
             "json",
             "-s",
             "tests/request/run/fixtures/dotenv/dotenv.rq",
+            "-n",
+            "dotenv_test",
             "--environment",
             "local",
         ])
@@ -721,6 +745,61 @@ fn test_request_dotenv() -> Result<(), Failed> {
         Path::new("tests/request/run/fixtures/dotenv/dotenv.json"),
     )
     .map_err(Failed::from)
+}
+
+fn run_without_name(source: &str) -> Result<(i32, String), Failed> {
+    let output = rq_cmd()
+        .args(["request", "run", "--no-lint", "-s", source])
+        .output()
+        .map_err(|e| format!("Failed to execute: {e}"))?;
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    Ok((output.status.code().unwrap_or(-1), stderr))
+}
+
+fn test_request_run_without_name_lists_requests() -> Result<(), Failed> {
+    let target = run_without_name("tests/request/run/input/named_parameters.rq")?;
+    let expected = "Error: --name is required. Requests in tests/request/run/input/named_parameters.rq: mixed_params, named_endpoint.child_named, named_endpoint.child_request, named_params_request, named_partial";
+    if target != (1, expected.to_string()) {
+        return Err(format!("Unexpected result: {target:?}").into());
+    }
+    Ok(())
+}
+
+fn test_request_run_without_name_reports_source_without_requests() -> Result<(), Failed> {
+    let target = run_without_name("tests/request/run/input/foo.rq")?;
+    let expected = "Error: --name is required, but tests/request/run/input/foo.rq has no requests";
+    if target != (1, expected.to_string()) {
+        return Err(format!("Unexpected result: {target:?}").into());
+    }
+    Ok(())
+}
+
+fn test_request_run_without_name_lists_at_most_ten_requests() -> Result<(), Failed> {
+    let dir = std::env::temp_dir().join(format!("rq_test_many_names_{}", std::process::id()));
+    fs::create_dir_all(&dir).map_err(|e| format!("Failed to create temp dir: {e}"))?;
+    let file = dir.join("many.rq");
+    let requests: String = (1..=12)
+        .map(|i| format!("rq r{i:02}(\"http://localhost/{i}\");\n\n"))
+        .collect();
+    fs::write(&file, requests).map_err(|e| format!("Failed to write temp file: {e}"))?;
+    let source = file.to_string_lossy().to_string();
+    let target = run_without_name(&source);
+    fs::remove_dir_all(&dir).ok();
+    let expected = format!(
+        "Error: --name is required. Requests in {source}: r01, r02, r03, r04, r05, r06, r07, r08, r09, r10 and 2 more, run `rq request list -s {source}` to see them all"
+    );
+    if target? != (1, expected.clone()) {
+        return Err(format!("Expected: {expected}").into());
+    }
+    Ok(())
+}
+
+fn test_request_run_without_name_lists_each_directory_name_once() -> Result<(), Failed> {
+    let (_, target) = run_without_name("tests/request/run/input/endpoint")?;
+    if target.matches("test.get").count() != 1 {
+        return Err(format!("Unexpected result: {target}").into());
+    }
+    Ok(())
 }
 
 fn test_request_run_file_not_found() -> Result<(), Failed> {
@@ -822,7 +901,16 @@ fn test_request_run_invalid_variable_name() -> Result<(), Failed> {
 
 fn sent_content_type(source: &str) -> Result<Option<String>, Failed> {
     let output = rq_cmd()
-        .args(["request", "run", "-d", "--no-lint", "-s", source])
+        .args([
+            "request",
+            "run",
+            "-d",
+            "--no-lint",
+            "-n",
+            "post",
+            "-s",
+            source,
+        ])
         .output()
         .map_err(|e| format!("Failed to execute command: {e}"))?;
 
@@ -897,6 +985,8 @@ fn test_request_run_connection_refused() -> Result<(), Failed> {
             "run",
             "-s",
             "tests/request/run/fixtures/connection_refused/test.rq",
+            "-n",
+            "get",
             "-f",
             "json",
         ])
@@ -949,6 +1039,8 @@ fn test_request_required_variable_satisfied_by_cli() -> Result<(), Failed> {
             "run",
             "-s",
             "tests/request/run/input/required/missing__code_3__.rq",
+            "-n",
+            "get_user",
             "-v",
             "user_id=42",
         ])
@@ -1036,42 +1128,64 @@ fn run_directory_test(dir_name: &str, file_name: &str) -> Result<(), Failed> {
     let request_name = extract_request_from_name(file_name);
     let use_dir_source = file_name.contains("__dir__");
 
-    let mut cmd = rq_cmd();
+    let source = if use_dir_source {
+        Path::new(&input_file)
+            .parent()
+            .unwrap()
+            .to_string_lossy()
+            .to_string()
+    } else {
+        input_file.clone()
+    };
+    let request_names = match request_name {
+        Some(name) => vec![name],
+        None => listed_request_names(&source).unwrap_or_else(|| vec![file_name.to_string()]),
+    };
+    if request_names.is_empty() {
+        println!("⚠️  Skipping {dir_name}_{file_name}: companion file without requests");
+        return Ok(());
+    }
+    let json_output = Path::new(&expected_json).exists();
 
-    if use_dir_source {
-        let path = Path::new(&input_file);
-        let parent = path.parent().unwrap();
+    let mut stdouts = Vec::new();
+    let mut output = None;
+    for name in &request_names {
+        let mut cmd = rq_cmd();
         cmd.args([
             "request",
             "run",
             "--source",
-            parent.to_string_lossy().as_ref(), // Fixed clippy: unnecessary to_string
+            &source,
+            "--no-lint",
+            "--name",
+            name,
         ]);
-    } else {
-        cmd.args(["request", "run", "--source", &input_file]);
+        if let Some(ref env) = env_name {
+            cmd.args(["--environment", env]);
+        }
+        if json_output {
+            cmd.args(["-f", "json"]);
+        }
+        let run = cmd
+            .output()
+            .map_err(|e| format!("Failed to execute command: {e}"))?;
+        stdouts.push(String::from_utf8_lossy(&run.stdout).to_string());
+        let failed = !run.status.success();
+        output = Some(run);
+        if failed {
+            break;
+        }
     }
+    let output = output.ok_or("No request to run")?;
 
-    cmd.arg("--no-lint");
-
-    if let Some(ref env) = env_name {
-        cmd.args(["--environment", env]);
-    }
-
-    if let Some(ref req) = request_name {
-        cmd.args(["--name", req]);
-    }
-
-    if Path::new(&expected_json).exists() {
-        cmd.args(["-f", "json"]);
-    }
-
-    let output = cmd
-        .output()
-        .map_err(|e| format!("Failed to execute command: {e}"))?;
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stdout = merge_results(&stdouts);
     let stderr = String::from_utf8_lossy(&output.stderr);
-    let actual_output = if stderr.is_empty() { &stdout } else { &stderr };
+    let last_stdout = String::from_utf8_lossy(&output.stdout);
+    let actual_output = if stderr.is_empty() {
+        &last_stdout
+    } else {
+        &stderr
+    };
 
     if let Some(code) = expected_code {
         let actual_code = output.status.code().unwrap_or(-1);
@@ -1115,6 +1229,30 @@ fn run_directory_test(dir_name: &str, file_name: &str) -> Result<(), Failed> {
     }
 
     Ok(())
+}
+
+fn listed_request_names(source: &str) -> Option<Vec<String>> {
+    let output = rq_cmd()
+        .args(["request", "list", "-s", source, "-f", "json"])
+        .output()
+        .ok()?;
+    let listed: Vec<serde_json::Value> = serde_json::from_slice(&output.stdout).ok()?;
+    let names: Vec<String> = listed
+        .iter()
+        .filter_map(|request| request["name"].as_str())
+        .map(|name| name.replace('/', "."))
+        .collect();
+    Some(names)
+}
+
+fn merge_results(stdouts: &[String]) -> String {
+    let results: Vec<serde_json::Value> = stdouts
+        .iter()
+        .filter_map(|stdout| serde_json::from_str::<serde_json::Value>(stdout).ok())
+        .filter_map(|envelope| envelope["results"].as_array().cloned())
+        .flatten()
+        .collect();
+    serde_json::json!({ "results": results }).to_string()
 }
 
 fn extract_exit_code_from_name(test_name: &str) -> Option<i32> {

@@ -54,102 +54,37 @@ impl RqClient {
 
     pub async fn run(
         &self,
-        source_path: &Path,
-        request_name: Option<&str>,
+        target: RequestTarget<'_>,
         environment: Option<&str>,
         variables: &[String],
         confirm: &dyn Fn(&PreparedRequest) -> Result<(), RqError>,
-    ) -> Result<(Vec<RequestExecutionResult>, Vec<RqError>), RqError> {
-        self.log_source(source_path);
-        let (rq_files, mut warnings) = self.get_rq_files_to_process(source_path, request_name)?;
-
-        if rq_files.is_empty() {
-            return Err(RqError::RequestNotFound(format!(
-                "No .rq files found in directory: {}",
-                source_path.display()
-            )));
+    ) -> Result<RequestExecutionResult, RqError> {
+        let prepared = self.prepare_request(target, environment, variables)?;
+        if prepared.confirmation_required {
+            confirm(&prepared)?;
         }
+        let authorized = Self::authorize(prepared).await?;
+        Self::log_request(&authorized.request);
 
-        let mut all_results = Vec::new();
+        let start_time = Instant::now();
+        let response = self
+            .http
+            .execute(&authorized.request, authorized.timeout)
+            .await?;
+        let elapsed = start_time.elapsed();
+        Self::log_response(&response, elapsed.as_millis());
 
-        for mut rq_file in rq_files {
-            let filtered_requests =
-                Self::filter_requests(std::mem::take(&mut rq_file.requests), request_name);
-
-            if filtered_requests.is_empty() {
-                continue;
-            }
-
-            Self::require_environment(&rq_file, environment)?;
-            let file_context = self.file_context(&rq_file, source_path, environment);
-            let cli_vars = Self::parse_cli_variables(variables)?;
-
-            Logger::debug(&format!(
-                "* Running {} request(s) from {}",
-                filtered_requests.len(),
-                crate::paths::clean_path(&rq_file.path)
-            ));
-
-            let mut results = Vec::new();
-
-            for req_with_vars in filtered_requests {
-                let prepared = self.prepare(
-                    &rq_file,
-                    &file_context,
-                    req_with_vars,
-                    cli_vars.clone(),
-                    source_path,
-                    environment,
-                )?;
-                if prepared.confirmation_required {
-                    confirm(&prepared)?;
-                }
-                let authorized = Self::authorize(prepared).await?;
-                Self::log_request(&authorized.request);
-
-                let start_time = Instant::now();
-                match self
-                    .http
-                    .execute(&authorized.request, authorized.timeout)
-                    .await
-                {
-                    Ok(response) => {
-                        let elapsed = start_time.elapsed();
-                        Self::log_response(&response, elapsed.as_millis());
-
-                        let mut request_headers = HashMap::new();
-                        for (key, value) in &authorized.request.headers {
-                            request_headers.insert(key.clone(), value.clone());
-                        }
-
-                        results.push(RequestExecutionResult {
-                            request_name: authorized.request.name.clone(),
-                            method: authorized.request.method.as_str().to_string(),
-                            url: authorized.request.url.clone(),
-                            status: response.status,
-                            elapsed_ms: elapsed.as_millis() as u64,
-                            request_headers,
-                            response_headers: response.headers.clone(),
-                            body: response.body.clone(),
-                        });
-                    }
-                    Err(error) => {
-                        return Err(error);
-                    }
-                }
-            }
-
-            all_results.extend(results);
-        }
-
-        if all_results.is_empty() {
-            if let Some(request_name) = request_name {
-                return Err(RqError::RequestNotFound(request_name.to_string()));
-            }
-            warnings.push(self.no_requests_warning(source_path));
-        }
-
-        Ok((all_results, warnings))
+        let request = authorized.request;
+        Ok(RequestExecutionResult {
+            request_name: request.name,
+            method: request.method.as_str().to_string(),
+            url: request.url,
+            status: response.status,
+            elapsed_ms: elapsed.as_millis() as u64,
+            request_headers: request.headers.into_iter().collect(),
+            response_headers: response.headers,
+            body: response.body,
+        })
     }
 
     pub fn list_requests(
@@ -1174,16 +1109,11 @@ impl RqClient {
             .scope_file
             .filter(|file| self.fs.is_file(file))
             .unwrap_or(target.source);
-        let (rq_files, _) = self.get_rq_files_to_process(request_source, Some(request_name))?;
-        let mut rq_file = rq_files
+        let mut rq_file = self.load_rq_file_with_request(request_source, request_name)?;
+        let req_with_vars = std::mem::take(&mut rq_file.requests)
             .into_iter()
-            .next()
+            .find(|r| r.request.name == request_name)
             .ok_or_else(|| RqError::RequestNotFound(request_name.to_string()))?;
-        let req_with_vars =
-            Self::filter_requests(std::mem::take(&mut rq_file.requests), Some(request_name))
-                .into_iter()
-                .next()
-                .ok_or_else(|| RqError::RequestNotFound(request_name.to_string()))?;
         Ok((rq_file, req_with_vars))
     }
 
@@ -1628,14 +1558,13 @@ impl RqClient {
         Ok(paths)
     }
 
-    fn get_rq_files_to_process(
+    fn load_rq_file_with_request(
         &self,
         source_path: &Path,
-        request_name: Option<&str>,
-    ) -> Result<(Vec<RqFile>, Vec<RqError>), RqError> {
+        request_name: &str,
+    ) -> Result<RqFile, RqError> {
         if self.fs.is_file(source_path) {
-            let rq_file = self.load_rq_file(source_path)?;
-            return Ok((vec![rq_file], Vec::new()));
+            return self.load_rq_file(source_path);
         }
 
         if !self.fs.is_dir(source_path) {
@@ -1644,20 +1573,14 @@ impl RqClient {
             ));
         }
 
-        if let Some(request_name) = request_name {
-            match self.find_rq_file_with_request(source_path, request_name)? {
-                Some(rq_file) => Ok((vec![rq_file], Vec::new())),
-                None => Err(RqError::RequestNotFound(format!(
+        self.find_rq_file_with_request(source_path, request_name)?
+            .ok_or_else(|| {
+                RqError::RequestNotFound(format!(
                     "Request '{}' not found in directory: {}",
                     request_name,
                     source_path.display()
-                ))),
-            }
-        } else {
-            let mut rq_files = Vec::new();
-            let parse_errors = self.collect_rq_files_parsed(source_path, &mut rq_files)?;
-            Ok((rq_files, parse_errors))
-        }
+                ))
+            })
     }
 
     fn collect_rq_paths(&self, dir: &Path, paths: &mut Vec<PathBuf>) -> Result<(), RqError> {
@@ -2114,29 +2037,6 @@ impl RqClient {
                 "< {name}: {}",
                 Logger::mask_header_value(name, value)
             ));
-        }
-    }
-
-    fn no_requests_warning(&self, source_path: &Path) -> RqError {
-        let location = if self.fs.is_file(source_path) {
-            "file"
-        } else {
-            "directory"
-        };
-        RqError::Generic(format!("No requests found in the {location}"))
-    }
-
-    fn filter_requests(
-        requests: Vec<crate::syntax::parse_result::RequestWithVariables>,
-        request_name: Option<&str>,
-    ) -> Vec<crate::syntax::parse_result::RequestWithVariables> {
-        if let Some(request_name) = request_name {
-            requests
-                .into_iter()
-                .filter(|r| r.request.name == request_name)
-                .collect()
-        } else {
-            requests
         }
     }
 
@@ -3262,7 +3162,9 @@ mod prepare_tests {
             capture.clone(),
         );
         client
-            .run(&main, Some("api/create"), None, &[], &|_| Ok(()))
+            .run(RequestTarget::new(&main, "api/create"), None, &[], &|_| {
+                Ok(())
+            })
             .await
             .expect("run failed");
         let prepared = prepare(&main, "api/create", &[]);
@@ -3272,8 +3174,9 @@ mod prepare_tests {
 
     async fn confirm_run(
         source: &str,
+        name: &str,
         accept: bool,
-    ) -> (Result<usize, RqError>, Vec<String>, usize) {
+    ) -> (Result<(), RqError>, Vec<String>, usize) {
         let dir = tempfile::tempdir().expect("tempdir");
         write(dir.path(), "main.rq", source);
         let capture = Arc::new(CapturingHttp::default());
@@ -3294,10 +3197,11 @@ mod prepare_tests {
                 Err(RqError::NotConfirmed("refused".to_string()))
             }
         };
+        let main = dir.path().join("main.rq");
         let outcome = client
-            .run(&dir.path().join("main.rq"), None, None, &[], &confirm)
+            .run(RequestTarget::new(&main, name), None, &[], &confirm)
             .await
-            .map(|(results, _)| results.len());
+            .map(|_| ());
         let sent = capture.sent.lock().expect("lock").len();
         let asked = asked.lock().expect("lock").clone();
         (outcome, asked, sent)
@@ -3306,17 +3210,52 @@ mod prepare_tests {
     #[tokio::test]
     async fn run_asks_before_sending_a_request_marked_confirm() {
         let target = confirm_run(
-            "[confirm]\nrq purge(\"http://localhost/purge\");\n\nrq list(\"http://localhost/list\");\n",
+            "[confirm]\nrq purge(\"http://localhost/purge\");\n",
+            "purge",
             true,
         )
         .await;
-        assert_eq!((target.1, target.2), (vec!["purge".to_string()], 2));
+        assert_eq!((target.1, target.2), (vec!["purge".to_string()], 1));
     }
 
     #[tokio::test]
     async fn run_sends_nothing_once_a_confirmation_is_refused() {
-        let target = confirm_run("[confirm]\nrq purge(\"http://localhost/purge\");\n", false).await;
+        let target = confirm_run(
+            "[confirm]\nrq purge(\"http://localhost/purge\");\n",
+            "purge",
+            false,
+        )
+        .await;
         assert!(matches!(target.0, Err(RqError::NotConfirmed(_))) && target.2 == 0);
+    }
+
+    #[tokio::test]
+    async fn run_sends_only_the_named_request() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write(
+            dir.path(),
+            "main.rq",
+            "rq first(\"http://localhost/first\");\n\nrq second(\"http://localhost/second\");\n",
+        );
+        let main = dir.path().join("main.rq");
+        let capture = Arc::new(CapturingHttp::default());
+        let client = RqClient::new(
+            Arc::new(native::NativeFs),
+            Arc::new(native::NativeSecretProvider),
+            capture.clone(),
+        );
+        client
+            .run(RequestTarget::new(&main, "second"), None, &[], &|_| Ok(()))
+            .await
+            .expect("run failed");
+        let target: Vec<String> = capture
+            .sent
+            .lock()
+            .expect("lock")
+            .iter()
+            .map(|(request, _)| request.url.clone())
+            .collect();
+        assert_eq!(target, vec!["http://localhost/second".to_string()]);
     }
 
     #[test]

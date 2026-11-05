@@ -36,6 +36,7 @@ async fn test_auth_bearer_integration() {
     let output = common::rq_cmd()
         .arg("-s")
         .arg(&rq_path)
+        .args(["-n", "get_protected"])
         .output()
         .expect("Failed to execute rq binary");
 
@@ -99,6 +100,7 @@ async fn test_auth_oauth2_client_credentials_integration() {
     let output = common::rq_cmd()
         .arg("-s")
         .arg(&rq_path)
+        .args(["-n", "get_resource"])
         .output()
         .expect("Failed to execute rq binary");
 
@@ -148,6 +150,7 @@ async fn test_auth_oauth2_auth_code_integration() {
     let output_fail = common::rq_cmd()
         .arg("-s")
         .arg(&rq_path)
+        .args(["-n", "get_protected"])
         .output()
         .expect("Failed to execute rq binary");
 
@@ -162,6 +165,7 @@ async fn test_auth_oauth2_auth_code_integration() {
     let output_ok = common::rq_cmd()
         .arg("-s")
         .arg(&rq_path)
+        .args(["-n", "get_protected"])
         .arg("-v")
         .arg("auth_token=fallback-token-123")
         .output()
@@ -227,6 +231,7 @@ async fn test_auth_oauth2_client_credentials_variables() {
     let output = common::rq_cmd()
         .arg("-s")
         .arg("test_auth_cc_vars.rq")
+        .args(["-n", "get_resource"])
         .arg("-e")
         .arg("test")
         .current_dir(env!("CARGO_TARGET_TMPDIR"))
@@ -299,6 +304,7 @@ async fn test_auth_oauth2_client_credentials_cert_integration() {
     let output = common::rq_cmd()
         .arg("-s")
         .arg(&rq_path)
+        .args(["-n", "get_resource"])
         .output()
         .expect("Failed to execute rq binary");
 
@@ -367,6 +373,7 @@ async fn test_auth_oauth2_client_credentials_pfx_integration() {
     let output = common::rq_cmd()
         .arg("-s")
         .arg(&rq_path)
+        .args(["-n", "get_resource"])
         .output()
         .expect("Failed to execute rq binary");
 
@@ -435,6 +442,7 @@ async fn test_auth_oauth2_client_credentials_pem_integration() {
     let output = common::rq_cmd()
         .arg("-s")
         .arg(&rq_path)
+        .args(["-n", "get_resource"])
         .output()
         .expect("Failed to execute rq binary");
 
@@ -481,6 +489,7 @@ async fn test_auth_oauth2_implicit_integration() {
     let output_fail = common::rq_cmd()
         .arg("-s")
         .arg(&rq_path)
+        .args(["-n", "get_implicit"])
         .output()
         .expect("Failed to execute rq binary");
 
@@ -495,6 +504,7 @@ async fn test_auth_oauth2_implicit_integration() {
     let output_ok = common::rq_cmd()
         .arg("-s")
         .arg(&rq_path)
+        .args(["-n", "get_implicit"])
         .arg("-v")
         .arg("auth_token=implicit-token-123")
         .output()
@@ -548,6 +558,7 @@ async fn test_auth_oauth2_client_credentials_debug_trace() {
     let output = common::rq_cmd()
         .args(["-d", "-s"])
         .arg(&rq_path)
+        .args(["-n", "get_resource"])
         .output()
         .expect("Failed to execute rq binary");
     let stderr = String::from_utf8_lossy(&output.stderr);

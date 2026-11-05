@@ -103,3 +103,16 @@ fn test_no_args_no_rq_files_shows_help() -> Result<(), Box<dyn std::error::Error
     fs::remove_dir_all(&temp_dir).ok();
     result
 }
+
+#[test]
+fn test_no_args_with_rq_files_shows_help() -> Result<(), Box<dyn std::error::Error>> {
+    let temp_dir = std::env::temp_dir().join(format!("rq_test_no_args_rq_{}", std::process::id()));
+    fs::create_dir_all(&temp_dir)?;
+    fs::write(
+        temp_dir.join("api.rq"),
+        "rq list(\"http://localhost/list\");\n",
+    )?;
+    let result = verify_help_in_dir(&[], "root.txt", &temp_dir);
+    fs::remove_dir_all(&temp_dir).ok();
+    result
+}

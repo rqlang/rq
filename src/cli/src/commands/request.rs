@@ -9,7 +9,7 @@ use rq_lib::client::models::{PreparedRequest, RequestDetails, RequestTarget};
 use rq_lib::lint::LintScope;
 use rq_lib::{RequestExecutionResult, RqClient};
 use serde::Serialize;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::io::{IsTerminal, Write};
 use std::path::Path;
 use std::str::FromStr;
@@ -305,12 +305,8 @@ pub fn execute_list(args: &ListArgs) -> Result<(), Box<dyn std::error::Error>> {
 
 pub fn execute_show(args: &ShowArgs) -> Result<(), Box<dyn std::error::Error>> {
     let source_path = Path::new(&args.source.source);
-    let name = args
-        .request_name_args
-        .name
-        .as_deref()
-        .ok_or("Request name is required")?
-        .replace('.', "/");
+    let typed_name = required_request_name(&args.request_name_args, &args.source.source)?;
+    let name = typed_name.replace('.', "/");
 
     let details = RqClient::default()
         .get_request_details(
@@ -320,7 +316,7 @@ pub fn execute_show(args: &ShowArgs) -> Result<(), Box<dyn std::error::Error>> {
             false,
             &[],
         )
-        .map_err(|e| with_typed_request_name(e, args.request_name_args.name.as_deref()))?;
+        .map_err(|e| with_typed_request_name(e, typed_name))?;
 
     let view = RequestDetailsView::from(details);
     print!(
@@ -333,30 +329,24 @@ pub fn execute_show(args: &ShowArgs) -> Result<(), Box<dyn std::error::Error>> {
 
 pub async fn execute_run(args: &RunArgs) -> Result<(), Box<dyn std::error::Error>> {
     let source_path = Path::new(&args.source.source);
-    let request_name = args
-        .request_name_args
-        .name
-        .as_deref()
-        .map(|n| n.replace('.', "/"));
+    let typed_name = required_request_name(&args.request_name_args, &args.source.source)?;
+    let request_name = typed_name.replace('.', "/");
     let client = RqClient::default();
     if !args.no_lint {
         print_lint_summary(&client, &args.source.source, args.format.format);
     }
-    let (results, warnings) = client
+    let result = client
         .run(
-            source_path,
-            request_name.as_deref(),
+            RequestTarget::new(source_path, &request_name),
             args.env_args.environment.as_deref(),
             &args.variable,
             &|prepared| confirm_request(prepared, args.env_args.environment.as_deref(), args.yes),
         )
         .await
-        .map_err(|e| with_typed_request_name(e, args.request_name_args.name.as_deref()))?;
-
-    print_warnings(&warnings, args.format.format);
+        .map_err(|e| with_typed_request_name(e, typed_name))?;
 
     let view = ExecutionResultsView {
-        results,
+        results: vec![result],
         parts: args.print,
     };
     print!("{}", view.render(args.format.format));
@@ -386,12 +376,51 @@ fn quoted_source(source: &str) -> String {
     }
 }
 
-fn with_typed_request_name(error: RqError, typed_name: Option<&str>) -> RqError {
-    match (error, typed_name) {
-        (RqError::RequestNotFound(_), Some(typed_name)) if typed_name.contains('.') => {
+const LISTED_NAMES_LIMIT: usize = 10;
+
+fn required_request_name<'a>(args: &'a RequestNameArgs, source: &str) -> Result<&'a str, RqError> {
+    if let Some(name) = args.name.as_deref() {
+        return Ok(name);
+    }
+    let message = match RqClient::default().list_requests(Path::new(source)) {
+        Ok((requests, _)) => {
+            let names = requests
+                .into_iter()
+                .map(|request| request.name.replace('/', "."))
+                .collect::<BTreeSet<_>>();
+            missing_name_message(names, source)
+        }
+        Err(_) => "--name is required".to_string(),
+    };
+    Err(RqError::Generic(message))
+}
+
+fn missing_name_message(names: BTreeSet<String>, source: &str) -> String {
+    let source = quoted_source(source);
+    if names.is_empty() {
+        return format!("--name is required, but {source} has no requests");
+    }
+    let hidden = names.len().saturating_sub(LISTED_NAMES_LIMIT);
+    let shown = names
+        .into_iter()
+        .take(LISTED_NAMES_LIMIT)
+        .collect::<Vec<_>>()
+        .join(", ");
+    if hidden == 0 {
+        format!("--name is required. Requests in {source}: {shown}")
+    } else {
+        format!(
+            "--name is required. Requests in {source}: {shown} and {hidden} more, run `rq request list -s {source}` to see them all"
+        )
+    }
+}
+
+fn with_typed_request_name(error: RqError, typed_name: &str) -> RqError {
+    match error {
+        RqError::RequestNotFound(_) if typed_name.contains('.') => {
             RqError::RequestNotFound(typed_name.to_string())
         }
-        (error, _) => error,
+        error => error,
     }
 }
 

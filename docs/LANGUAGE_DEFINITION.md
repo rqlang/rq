@@ -612,7 +612,7 @@ ep users("{{base_url}}/users") {
 - A request needs confirmation when `confirm` is on the request itself, on its endpoint (or a template the endpoint extends), or on the environment it is run against. In the example, `users.delete` always asks and `users.list` asks only against `production`.
 - It is inherited: an endpoint passes it to its requests and a template to the endpoints that extend it. A request cannot opt out of a `confirm` it inherits.
 - It never changes what a request sends. It only decides whether a tool asks first:
-  - **CLI** — `rq request run` asks on the terminal before each marked request and sends it only on `y`/`yes`. Without a terminal (a script, CI) it does not send it and exits with code 9, unless `--yes` is passed. See [`rq request run`](CLI.md#rq-request-run).
+  - **CLI** — `rq request run` asks on the terminal before sending a marked request and sends it only on `y`/`yes`. Without a terminal (a script, CI) it does not send it and exits with code 9, unless `--yes` is passed. See [`rq request run`](CLI.md#rq-request-run).
   - **VS Code extension** — a modal dialog asks before the request is sent, on every run and on **Run again**.
   - **MCP server** — an assistant asks the user before a marked request, and also before every write (`POST`, `PUT`, `PATCH`, `DELETE`) whether marked or not, since nobody is watching it type. See [`run_request`](MCP_SERVER.md#run_request).
 - `rq request show` reports the outcome for the chosen environment as `confirmation_required`.

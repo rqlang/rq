@@ -1,5 +1,4 @@
 use clap::{CommandFactory, Parser};
-use std::path::Path;
 
 mod commands;
 mod core;
@@ -128,7 +127,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
         match result {
             Ok(_) => {
-                if args.len() == 1 && !has_rq_files_in_current_dir() {
+                if args.len() == 1 {
                     Args::command().print_help()?;
                     println!();
                     return Ok(());
@@ -151,19 +150,4 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     }
-}
-
-/// Checks whether the current working directory contains any .rq files (non-recursive).
-fn has_rq_files_in_current_dir() -> bool {
-    let current_dir = Path::new(".");
-    if let Ok(entries) = std::fs::read_dir(current_dir) {
-        for entry in entries.flatten() {
-            if let Some(ext) = entry.path().extension() {
-                if ext == "rq" {
-                    return true;
-                }
-            }
-        }
-    }
-    false
 }

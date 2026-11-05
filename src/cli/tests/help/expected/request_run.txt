@@ -5,11 +5,11 @@ Usage: rq request run [OPTIONS]
 Options:
   -d, --debug                  Enable debug logging
   -s, --source <SOURCE>        Path to the .rq file or directory [default: .]
-  -n, --name <NAME>            Name of the request
+  -n, --name <NAME>            Name of the request (required)
   -e, --env <ENVIRONMENT>      Environment name
   -v, --variable <NAME=VALUE>  Override requests variables
   -f, --format <FORMAT>        Output format: text or json [default: text] [possible values: text, json]
   -p, --print <PARTS>          Response parts to print, combinable (e.g. mhb): m (meta), h (headers), b (body) [default: mb]
       --no-lint                Skip the lint summary printed before running
-  -y, --yes                    Send requests marked [confirm] without asking
+  -y, --yes                    Send a request marked [confirm] without asking
   -h, --help                   Print help

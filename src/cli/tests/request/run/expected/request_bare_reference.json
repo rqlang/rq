@@ -1,12 +1,12 @@
 [
     {
         "request": {
-            "params": {"0": "/"}
+            "params": {"0": "/api/test"}
         }
     },
     {
         "request": {
-            "params": {"0": "/api/test"}
+            "params": {"0": "/"}
         }
     }
 ]

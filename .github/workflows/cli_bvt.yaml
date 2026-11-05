@@ -17,7 +17,12 @@ env:
 
 jobs:
   build:
+    name: Build and test ${{ matrix.target }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [x86_64-unknown-linux-gnu, x86_64-unknown-linux-musl]
     defaults:
       run:
         working-directory: ./src/cli
@@ -31,18 +36,32 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+          targets: ${{ matrix.target }}
+
+      - name: Install musl tools
+        if: endsWith(matrix.target, '-musl')
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+          echo "CC_${TARGET//-/_}=musl-gcc" >> "$GITHUB_ENV"
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
 
       - name: Formatting check
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
         run: cargo fmt --all -- --check
 
       - name: Clippy (deny warnings)
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
       - name: Build (debug)
-        run: cargo build --verbose
+        run: cargo build --verbose --target ${{ matrix.target }}
 
       - name: Start echo server
         run: |
@@ -69,7 +88,7 @@ jobs:
           curl -v http://localhost:8080
 
       - name: Test (all tests)
-        run: cargo test --workspace --verbose
+        run: cargo test --workspace --verbose --target ${{ matrix.target }}
 
       - name: Stop echo server
         if: always()

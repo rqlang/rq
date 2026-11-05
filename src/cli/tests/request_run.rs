@@ -102,6 +102,14 @@ fn main() {
             test_request_run_without_name_warns_about_broken_directory_file,
         ),
         Trial::test(
+            "request_run_directory_runs_request_past_broken_file",
+            test_request_run_directory_runs_request_past_broken_file,
+        ),
+        Trial::test(
+            "request_run_directory_reports_parse_error_when_request_is_missing",
+            test_request_run_directory_reports_parse_error_when_request_is_missing,
+        ),
+        Trial::test(
             "request_debug_names_file_of_request",
             test_request_debug_names_file_of_request,
         ),
@@ -806,12 +814,12 @@ fn test_request_run_without_name_lists_at_most_ten_requests() -> Result<(), Fail
     Ok(())
 }
 
-const MISSING_NAME_BROKEN: &str = "tests/request/run/fixtures/missing_name_broken";
+const BROKEN_SIBLING: &str = "tests/request/run/fixtures/broken_sibling";
 
 fn test_request_run_without_name_reports_syntax_error_of_file() -> Result<(), Failed> {
-    let target = run_without_name(&format!("{MISSING_NAME_BROKEN}/a_broken.rq"))?;
+    let target = run_without_name(&format!("{BROKEN_SIBLING}/a_broken.rq"))?;
     let expected = format!(
-        "Error: Syntax error in {MISSING_NAME_BROKEN}/a_broken.rq at line 1, column 11: Expected ')'"
+        "Error: Syntax error in {BROKEN_SIBLING}/a_broken.rq at line 1, column 11: Expected ')'"
     );
     if target != (2, expected) {
         return Err(format!("Unexpected result: {target:?}").into());
@@ -820,12 +828,57 @@ fn test_request_run_without_name_reports_syntax_error_of_file() -> Result<(), Fa
 }
 
 fn test_request_run_without_name_warns_about_broken_directory_file() -> Result<(), Failed> {
-    let target = run_without_name(MISSING_NAME_BROKEN)?;
+    let target = run_without_name(BROKEN_SIBLING)?;
     let expected = format!(
-        "Warning: Syntax error in {MISSING_NAME_BROKEN}/a_broken.rq at line 1, column 11: Expected ')'\nError: --name is required. Requests in {MISSING_NAME_BROKEN}: list"
+        "Warning: Syntax error in {BROKEN_SIBLING}/a_broken.rq at line 1, column 11: Expected ')'\nError: --name is required. Requests in {BROKEN_SIBLING}: list"
     );
     if target != (1, expected) {
         return Err(format!("Unexpected result: {target:?}").into());
+    }
+    Ok(())
+}
+
+fn run_in_broken_sibling(name: &str) -> Result<(i32, String, String), Failed> {
+    let output = rq_cmd()
+        .args([
+            "request",
+            "run",
+            "--no-lint",
+            "-p",
+            "m",
+            "-s",
+            BROKEN_SIBLING,
+            "-n",
+            name,
+        ])
+        .output()
+        .map_err(|e| format!("Failed to execute: {e}"))?;
+    Ok((
+        output.status.code().unwrap_or(-1),
+        String::from_utf8_lossy(&output.stdout).to_string(),
+        String::from_utf8_lossy(&output.stderr).trim().to_string(),
+    ))
+}
+
+fn test_request_run_directory_runs_request_past_broken_file() -> Result<(), Failed> {
+    let (code, stdout, stderr) = run_in_broken_sibling("list")?;
+    let warning = format!(
+        "Warning: Syntax error in {BROKEN_SIBLING}/a_broken.rq at line 1, column 11: Expected ')'"
+    );
+    if code != 0 || !stdout.starts_with("list  GET http://localhost:8080/get") || stderr != warning
+    {
+        return Err(format!("Unexpected result: {code} {stdout} {stderr}").into());
+    }
+    Ok(())
+}
+
+fn test_request_run_directory_reports_parse_error_when_request_is_missing() -> Result<(), Failed> {
+    let (code, _, stderr) = run_in_broken_sibling("missing")?;
+    let expected = format!(
+        "Error: Syntax error in {BROKEN_SIBLING}/a_broken.rq at line 1, column 11: Expected ')'"
+    );
+    if (code, stderr.as_str()) != (2, expected.as_str()) {
+        return Err(format!("Unexpected result: {code} {stderr}").into());
     }
     Ok(())
 }

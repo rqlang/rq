@@ -58,8 +58,8 @@ impl RqClient {
         environment: Option<&str>,
         variables: &[String],
         confirm: &dyn Fn(&PreparedRequest) -> Result<(), RqError>,
-    ) -> Result<RequestExecutionResult, RqError> {
-        let prepared = self.prepare_request(target, environment, variables)?;
+    ) -> Result<(RequestExecutionResult, Vec<RqError>), RqError> {
+        let (prepared, warnings) = self.prepare_target(target, environment, variables)?;
         if prepared.confirmation_required {
             confirm(&prepared)?;
         }
@@ -75,7 +75,7 @@ impl RqClient {
         Self::log_response(&response, elapsed.as_millis());
 
         let request = authorized.request;
-        Ok(RequestExecutionResult {
+        let result = RequestExecutionResult {
             request_name: request.name,
             method: request.method.as_str().to_string(),
             url: request.url,
@@ -84,7 +84,8 @@ impl RqClient {
             request_headers: request.headers.into_iter().collect(),
             response_headers: response.headers,
             body: response.body,
-        })
+        };
+        Ok((result, warnings))
     }
 
     pub fn list_requests(
@@ -132,7 +133,7 @@ impl RqClient {
     ) -> Result<RequestDetails, RqError> {
         let source_path = target.source;
         self.log_source(source_path);
-        let (rq_file, req_with_vars) = self.load_request(target)?;
+        let (rq_file, req_with_vars, _) = self.load_request(target)?;
         let request_file = crate::paths::clean_path(&rq_file.path);
         let request_line = req_with_vars.request.line;
         let request_character = req_with_vars.request.character;
@@ -210,20 +211,8 @@ impl RqClient {
         environment: Option<&str>,
         variables: &[String],
     ) -> Result<PreparedRequest, RqError> {
-        let source_path = target.source;
-        self.log_source(source_path);
-        let (rq_file, req_with_vars) = self.load_request(target)?;
-        Self::require_environment(&rq_file, environment)?;
-        let file_context = self.file_context(&rq_file, source_path, environment);
-        let cli_vars = Self::parse_cli_variables(variables)?;
-        self.prepare(
-            &rq_file,
-            &file_context,
-            req_with_vars,
-            cli_vars,
-            source_path,
-            environment,
-        )
+        self.prepare_target(target, environment, variables)
+            .map(|(prepared, _)| prepared)
     }
 
     pub fn check_overrides(
@@ -234,7 +223,7 @@ impl RqClient {
     ) -> Result<OverrideCheck, RqError> {
         let cli_vars = Self::parse_cli_variables(variables)?;
         Self::reject_templated_values(&cli_vars)?;
-        let (rq_file, req_with_vars) = self.load_request(target)?;
+        let (rq_file, req_with_vars, _) = self.load_request(target)?;
         let request = req_with_vars.request;
         let (kept, overrides): (Vec<_>, Vec<_>) = variables
             .iter()
@@ -1100,16 +1089,40 @@ impl RqClient {
             .ok_or_else(|| RqError::Validation(format!("Variable '{name}' not found")))
     }
 
+    fn prepare_target(
+        &self,
+        target: RequestTarget,
+        environment: Option<&str>,
+        variables: &[String],
+    ) -> Result<(PreparedRequest, Vec<RqError>), RqError> {
+        let source_path = target.source;
+        self.log_source(source_path);
+        let (rq_file, req_with_vars, warnings) = self.load_request(target)?;
+        Self::require_environment(&rq_file, environment)?;
+        let file_context = self.file_context(&rq_file, source_path, environment);
+        let cli_vars = Self::parse_cli_variables(variables)?;
+        let prepared = self.prepare(
+            &rq_file,
+            &file_context,
+            req_with_vars,
+            cli_vars,
+            source_path,
+            environment,
+        )?;
+        Ok((prepared, warnings))
+    }
+
     fn load_request(
         &self,
         target: RequestTarget,
-    ) -> Result<(RqFile, RequestWithVariables), RqError> {
+    ) -> Result<(RqFile, RequestWithVariables, Vec<RqError>), RqError> {
         let request_name = target.name;
         let request_source = target
             .scope_file
             .filter(|file| self.fs.is_file(file))
             .unwrap_or(target.source);
-        let mut rq_file = self.load_rq_file_with_request(request_source, request_name)?;
+        let (mut rq_file, warnings) =
+            self.load_rq_file_with_request(request_source, request_name)?;
         let req_with_vars = std::mem::take(&mut rq_file.requests)
             .into_iter()
             .find(|r| r.request.name == request_name)
@@ -1118,7 +1131,7 @@ impl RqClient {
             "* Request '{request_name}' from {}",
             crate::paths::clean_path(&rq_file.path)
         ));
-        Ok((rq_file, req_with_vars))
+        Ok((rq_file, req_with_vars, warnings))
     }
 
     fn prepare(
@@ -1566,9 +1579,9 @@ impl RqClient {
         &self,
         source_path: &Path,
         request_name: &str,
-    ) -> Result<RqFile, RqError> {
+    ) -> Result<(RqFile, Vec<RqError>), RqError> {
         if self.fs.is_file(source_path) {
-            return self.load_rq_file(source_path);
+            return Ok((self.load_rq_file(source_path)?, Vec::new()));
         }
 
         if !self.fs.is_dir(source_path) {
@@ -1577,42 +1590,30 @@ impl RqClient {
             ));
         }
 
-        self.find_rq_file_with_request(source_path, request_name)?
-            .ok_or_else(|| {
-                RqError::RequestNotFound(format!(
-                    "Request '{}' not found in directory: {}",
-                    request_name,
-                    source_path.display()
-                ))
-            })
+        let mut rq_files = Vec::new();
+        let parse_errors = self.collect_rq_files_parsed(source_path, &mut rq_files)?;
+        let found = rq_files.into_iter().find(|rq_file| {
+            rq_file
+                .requests
+                .iter()
+                .any(|r| r.request.name == request_name)
+        });
+        if let Some(rq_file) = found {
+            return Ok((rq_file, parse_errors));
+        }
+        match parse_errors.into_iter().next() {
+            Some(parse_error) => Err(parse_error),
+            None => Err(RqError::RequestNotFound(format!(
+                "Request '{}' not found in directory: {}",
+                request_name,
+                source_path.display()
+            ))),
+        }
     }
 
     fn collect_rq_paths(&self, dir: &Path, paths: &mut Vec<PathBuf>) -> Result<(), RqError> {
         paths.extend(crate::paths::walk_rq_files(&*self.fs, dir)?);
         Ok(())
-    }
-
-    fn find_rq_file_with_request(
-        &self,
-        dir: &Path,
-        request_name: &str,
-    ) -> Result<Option<RqFile>, RqError> {
-        for path in self.discover_rq_files(dir)? {
-            match self.load_rq_file(&path) {
-                Ok(rq_file) => {
-                    if rq_file
-                        .requests
-                        .iter()
-                        .any(|r| r.request.name == request_name)
-                    {
-                        return Ok(Some(rq_file));
-                    }
-                }
-                Err(RqError::Syntax(e)) => return Err(RqError::Syntax(e)),
-                Err(_) => {}
-            }
-        }
-        Ok(None)
     }
 
     fn check_variables(

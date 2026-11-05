@@ -205,6 +205,7 @@ Options:
 Behavior:
 
 - Before running, lints the source with the same [lint rules](LINT_RULES.md) as `rq check`. When any rule fires it prints a single line to stderr, such as `Warning: 2 lint warnings found, run \`rq check -s api.rq\` for details` (in `json` mode, a `{"warning": {...}}` object). When `--source` is a file, only that file is linted, so cross-file rules are left to `rq check`; when it is a directory, every file in it is linted against the others. Lint findings never change the exit code or stdout, and a lint failure never stops the run.
+- When `--source` is a directory, every `.rq` file in it is parsed to find the request. A file that does not parse does not stop the run: it is reported as a warning and the request runs from the file that defines it. If no file that parses defines the request, rq reports the first parse error, since the request may be in that file.
 - Uses the same variable precedence described in the language definition, with `-v NAME=VALUE` providing the highest-precedence overrides.
 - In `text` mode, prints a block with a line with the request name, method and URL, a status line with the reason phrase and elapsed time, and the response body. JSON bodies are indented without reordering their keys. `-p` picks which of these sections to print; `h` adds the response headers, one `name: value` per line sorted by name, between the status line and the body. Request headers are shown only with `-d`:
 

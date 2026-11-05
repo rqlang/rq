@@ -346,7 +346,7 @@ pub async fn execute_run(args: &RunArgs) -> Result<(), Box<dyn std::error::Error
     if !args.no_lint {
         print_lint_summary(&client, &args.source.source, args.format.format);
     }
-    let result = client
+    let (result, warnings) = client
         .run(
             RequestTarget::new(source_path, &request_name),
             args.env_args.environment.as_deref(),
@@ -355,6 +355,8 @@ pub async fn execute_run(args: &RunArgs) -> Result<(), Box<dyn std::error::Error
         )
         .await
         .map_err(|e| with_typed_request_name(e, typed_name))?;
+
+    print_warnings(&warnings, args.format.format);
 
     let view = ExecutionResultsView {
         results: vec![result],

@@ -766,3 +766,26 @@ fn test_request_show_without_name_lists_requests() -> Result<(), Box<dyn std::er
     );
     Ok(())
 }
+
+#[test]
+fn test_request_show_directory_warns_about_broken_file() -> Result<(), Box<dyn std::error::Error>> {
+    let output = rq_cmd()
+        .args([
+            "request",
+            "show",
+            "-s",
+            "tests/request/run/fixtures/broken_sibling",
+            "-n",
+            "list",
+        ])
+        .output()?;
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(
+        stderr.trim(),
+        "Warning: Syntax error in tests/request/run/fixtures/broken_sibling/a_broken.rq at line 1, column 11: Expected ')'"
+    );
+    assert!(output.status.success() && stdout.contains("name: list"));
+    Ok(())
+}

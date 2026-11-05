@@ -165,7 +165,7 @@ rq request show [OPTIONS]
 Options:
 
 - `-s, --source <SOURCE>` – Path to the `.rq` file or directory (default: `.`).
-- `-n, --name <NAME>` – Name of the request to show (required). Without it, rq exits with code 1 and lists the requests in the source, as [`rq request run`](#rq-request-run) does. If the request is defined inside an endpoint, use `<endpoint>/<request>` or `<endpoint>.<request>` (for example `users/list` or `users.list`).
+- `-n, --name <NAME>` – Name of the request to show (required). Without it, rq exits with code 1 and lists the requests in the source, as [`rq request run`](#rq-request-run) does. With a directory source it also finds the request past files that do not parse, reporting each of them as a warning. If the request is defined inside an endpoint, use `<endpoint>/<request>` or `<endpoint>.<request>` (for example `users/list` or `users.list`).
 - `-e, --env <ENVIRONMENT>` – Environment name to resolve variables and env-specific settings.
 - `--no-var-interpolation` – Skip variable interpolation and show raw values.
 - `-f, --format <FORMAT>` – Output format: `text` or `json` (default: `text`).

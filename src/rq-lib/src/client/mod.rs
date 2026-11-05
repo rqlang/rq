@@ -130,10 +130,10 @@ impl RqClient {
         interpolate_variables: bool,
         skip_required_variables: bool,
         variables: &[String],
-    ) -> Result<RequestDetails, RqError> {
+    ) -> Result<(RequestDetails, Vec<RqError>), RqError> {
         let source_path = target.source;
         self.log_source(source_path);
-        let (rq_file, req_with_vars, _) = self.load_request(target)?;
+        let (rq_file, req_with_vars, warnings) = self.load_request(target)?;
         let request_file = crate::paths::clean_path(&rq_file.path);
         let request_line = req_with_vars.request.line;
         let request_character = req_with_vars.request.character;
@@ -149,7 +149,7 @@ impl RqClient {
                 .and_then(|name| rq_file.auth_providers.get(name))
                 .map(|config| config.auth_type.as_str().to_string());
             let auth_name = auth_name.map(str::to_string);
-            return Ok(Self::request_details(
+            let details = Self::request_details(
                 req_with_vars.request,
                 auth_name,
                 auth_type,
@@ -157,7 +157,8 @@ impl RqClient {
                 request_line,
                 request_character,
                 confirmation_required,
-            ));
+            );
+            return Ok((details, warnings));
         }
 
         let RequestWithVariables {
@@ -194,7 +195,7 @@ impl RqClient {
         let auth_name = auth_config.map(|config| config.name.clone());
         let auth_type = auth_config.map(|config| config.auth_type.as_str().to_string());
 
-        Ok(Self::request_details(
+        let details = Self::request_details(
             resolved,
             auth_name,
             auth_type,
@@ -202,7 +203,8 @@ impl RqClient {
             request_line,
             request_character,
             confirmation_required,
-        ))
+        );
+        Ok((details, warnings))
     }
 
     pub fn prepare_request(
@@ -3015,7 +3017,8 @@ mod variable_tests {
                 false,
                 &[],
             )
-            .expect("get_request_details failed");
+            .expect("get_request_details failed")
+            .0;
         assert_eq!(target.url, "http://localhost/local");
     }
 
@@ -3036,7 +3039,8 @@ mod variable_tests {
                 false,
                 &[],
             )
-            .expect("get_request_details failed");
+            .expect("get_request_details failed")
+            .0;
         assert_eq!(target.url, "http://localhost/imported");
     }
 
@@ -3808,6 +3812,7 @@ mod description_tests {
         let target = RqClient::default()
             .get_request_details(RequestTarget::new(&file, "list"), None, false, false, &[])
             .expect("details")
+            .0
             .description;
         assert_eq!(target, Some("List users newest first".to_string()));
     }
@@ -3824,6 +3829,7 @@ mod description_tests {
         let target = RqClient::default()
             .get_request_details(RequestTarget::new(&file, "hello"), None, false, false, &[])
             .expect("details")
+            .0
             .description;
         assert_eq!(target, Some("Say \"hi\"".to_string()));
     }
@@ -3938,7 +3944,8 @@ mod confirmation_tests {
                 false,
                 &[],
             )
-            .expect("details");
+            .expect("details")
+            .0;
         assert_eq!(
             details.confirmation_required,
             prepared_in(&file, "users/list", Some("production")).confirmation_required

@@ -314,7 +314,7 @@ pub fn execute_show(args: &ShowArgs) -> Result<(), Box<dyn std::error::Error>> {
     )?;
     let name = typed_name.replace('.', "/");
 
-    let details = client
+    let (details, warnings) = client
         .get_request_details(
             RequestTarget::new(source_path, &name),
             args.env_args.environment.as_deref(),
@@ -323,6 +323,8 @@ pub fn execute_show(args: &ShowArgs) -> Result<(), Box<dyn std::error::Error>> {
             &[],
         )
         .map_err(|e| with_typed_request_name(e, typed_name))?;
+
+    print_warnings(&warnings, args.format.format);
 
     let view = RequestDetailsView::from(details);
     print!(

@@ -375,7 +375,7 @@ pub fn get_request_details(
     scope_file: Option<String>,
 ) -> Result<String, JsError> {
     let variables = parse_variables(variables_json.as_deref())?;
-    let details = make_client(
+    let (details, _) = make_client(
         parse_files(files_json)?,
         parse_secrets(secrets_json),
         source,

@@ -341,6 +341,35 @@ pub fn query_params(raw_url: &str) -> Vec<(String, String)> {
         .collect()
 }
 
+pub fn query_params_on_every_request(requests: &[&Request]) -> Vec<(String, String)> {
+    let parsed: Vec<Vec<(String, String)>> = requests
+        .iter()
+        .map(|request| query_params(&request.raw_url))
+        .collect();
+    let Some((first, rest)) = parsed.split_first() else {
+        return Vec::new();
+    };
+    let mut shared: Vec<(String, String)> = Vec::new();
+    for pair in first {
+        if shared.contains(pair) || !rest.iter().all(|params| params.contains(pair)) {
+            continue;
+        }
+        shared.push(pair.clone());
+    }
+    shared
+}
+
+pub fn merged_endpoint_qs(endpoint: &EndpointDefinition, key: &str, value: &str) -> String {
+    let pair = format!("{key}={value}");
+    match endpoint.qs.as_deref().filter(|qs| !qs.is_empty()) {
+        Some(existing) if !existing.split('&').any(|part| part.trim() == pair) => {
+            format!("{existing}&{pair}")
+        }
+        Some(existing) => existing.to_string(),
+        None => pair,
+    }
+}
+
 pub fn request_own_headers(
     request: &Request,
     endpoint: &EndpointDefinition,

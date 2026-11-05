@@ -29,7 +29,7 @@ Every finding names the rule that produced it. In VS Code the id is shown next t
 | `hardcoded_secret` | A credential literal in a committed file — move it to `.env` |
 | `single_brace_interpolation` | `{name}` is literal text — use `{{name}}` |
 | `query_param_as_header` | A query parameter passed where headers go |
-| `duplicated_request_qs` | The same query parameter written into sibling requests — put it on the `ep` as `qs` |
+| `duplicated_request_qs` | The same query parameter written into every request of an `ep` — put it on the `ep` as `qs` |
 | `let_default_instead_of_required` | A `let` standing in for a runtime input — use `[required(...)]` |
 | `absolute_import_path` | `import "/Users/..."` — use a relative path |
 | `invalid_lint_suppression` | An `rq-lint-ignore` comment naming an unknown rule or no rule |

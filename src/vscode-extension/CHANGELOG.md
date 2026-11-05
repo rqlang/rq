@@ -18,6 +18,7 @@
   - Auth fields were resolved without the request's variables (`[required]` prompts, *Run Request with Variables*, endpoint scope), and an auth name declared in two folders could resolve to the other folder's provider.
   - A string body that looked like JSON, such as `io.read_file("item.json")`, was sent with `Content-Type: application/json`; it is now sent without one, as the CLI does. Use `io.read_json` for a JSON body.
   - A header repeated in a request was sent only once.
+- Fixed the `duplicated_request_qs` lint rule flagging a query parameter that two requests share while another request of the same `ep` does not send it, and `query_param_as_header` suggesting the endpoint's `qs` in that case. Following either suggestion added the parameter to every request of the `ep`.
 - Fixed a runtime `auth_token` losing to an `auth_token` defined with `let` in the file.
 - Fixed a `timeout` too large to represent crashing `rq request run` and the extension. It is now reported as `Timeout value '…' is too large`, and a timeout longer than about 24.8 days no longer fires immediately in the extension.
 

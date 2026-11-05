@@ -348,17 +348,16 @@ pub async fn execute_run(args: &RunArgs) -> Result<(), Box<dyn std::error::Error
     if !args.no_lint {
         print_lint_summary(&client, &args.source.source, args.format.format);
     }
-    let (result, warnings) = client
+    let result = client
         .run(
             RequestTarget::new(source_path, &request_name),
             args.env_args.environment.as_deref(),
             &args.variable,
+            &|warnings| print_warnings(warnings, args.format.format),
             &|prepared| confirm_request(prepared, args.env_args.environment.as_deref(), args.yes),
         )
         .await
         .map_err(|e| with_typed_request_name(e, typed_name))?;
-
-    print_warnings(&warnings, args.format.format);
 
     let view = ExecutionResultsView {
         results: vec![result],

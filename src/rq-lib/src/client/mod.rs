@@ -57,9 +57,10 @@ impl RqClient {
         target: RequestTarget<'_>,
         environment: Option<&str>,
         variables: &[String],
+        warn: &dyn Fn(&[RqError]),
         confirm: &dyn Fn(&PreparedRequest) -> Result<(), RqError>,
-    ) -> Result<(RequestExecutionResult, Vec<RqError>), RqError> {
-        let (prepared, warnings) = self.prepare_target(target, environment, variables)?;
+    ) -> Result<RequestExecutionResult, RqError> {
+        let prepared = self.prepare_target(target, environment, variables, warn)?;
         if prepared.confirmation_required {
             confirm(&prepared)?;
         }
@@ -85,7 +86,7 @@ impl RqClient {
             response_headers: response.headers,
             body: response.body,
         };
-        Ok((result, warnings))
+        Ok(result)
     }
 
     pub fn list_requests(
@@ -213,8 +214,7 @@ impl RqClient {
         environment: Option<&str>,
         variables: &[String],
     ) -> Result<PreparedRequest, RqError> {
-        self.prepare_target(target, environment, variables)
-            .map(|(prepared, _)| prepared)
+        self.prepare_target(target, environment, variables, &|_| {})
     }
 
     pub fn check_overrides(
@@ -1096,22 +1096,23 @@ impl RqClient {
         target: RequestTarget,
         environment: Option<&str>,
         variables: &[String],
-    ) -> Result<(PreparedRequest, Vec<RqError>), RqError> {
+        warn: &dyn Fn(&[RqError]),
+    ) -> Result<PreparedRequest, RqError> {
         let source_path = target.source;
         self.log_source(source_path);
         let (rq_file, req_with_vars, warnings) = self.load_request(target)?;
+        warn(&warnings);
         Self::require_environment(&rq_file, environment)?;
         let file_context = self.file_context(&rq_file, source_path, environment);
         let cli_vars = Self::parse_cli_variables(variables)?;
-        let prepared = self.prepare(
+        self.prepare(
             &rq_file,
             &file_context,
             req_with_vars,
             cli_vars,
             source_path,
             environment,
-        )?;
-        Ok((prepared, warnings))
+        )
     }
 
     fn load_request(
@@ -1887,7 +1888,7 @@ impl RqClient {
                 Err(e) => parse_errors.push(e),
             }
         }
-        Ok(parse_errors)
+        Ok(Self::dedup_syntax_errors(parse_errors))
     }
 
     fn dedup_syntax_errors(errors: Vec<RqError>) -> Vec<RqError> {
@@ -3131,6 +3132,18 @@ mod prepare_tests {
         }
     }
 
+    struct FailingHttp;
+
+    impl HttpClient for FailingHttp {
+        fn execute<'a>(
+            &'a self,
+            _request: &'a Request,
+            _timeout: Option<Duration>,
+        ) -> Pin<Box<dyn Future<Output = Result<HttpResponse, RqError>> + Send + 'a>> {
+            Box::pin(async { Err(RqError::Network("connection refused".to_string())) })
+        }
+    }
+
     fn write(dir: &Path, file: &str, content: &str) {
         std::fs::write(dir.join(file), content).expect("write fixture");
     }
@@ -3171,9 +3184,13 @@ mod prepare_tests {
             capture.clone(),
         );
         client
-            .run(RequestTarget::new(&main, "api/create"), None, &[], &|_| {
-                Ok(())
-            })
+            .run(
+                RequestTarget::new(&main, "api/create"),
+                None,
+                &[],
+                &|_| {},
+                &|_| Ok(()),
+            )
             .await
             .expect("run failed");
         let prepared = prepare(&main, "api/create", &[]);
@@ -3208,7 +3225,13 @@ mod prepare_tests {
         };
         let main = dir.path().join("main.rq");
         let outcome = client
-            .run(RequestTarget::new(&main, name), None, &[], &confirm)
+            .run(
+                RequestTarget::new(&main, name),
+                None,
+                &[],
+                &|_| {},
+                &confirm,
+            )
             .await
             .map(|_| ());
         let sent = capture.sent.lock().expect("lock").len();
@@ -3254,7 +3277,13 @@ mod prepare_tests {
             capture.clone(),
         );
         client
-            .run(RequestTarget::new(&main, "second"), None, &[], &|_| Ok(()))
+            .run(
+                RequestTarget::new(&main, "second"),
+                None,
+                &[],
+                &|_| {},
+                &|_| Ok(()),
+            )
             .await
             .expect("run failed");
         let target: Vec<String> = capture
@@ -3265,6 +3294,46 @@ mod prepare_tests {
             .map(|(request, _)| request.url.clone())
             .collect();
         assert_eq!(target, vec!["http://localhost/second".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn run_reports_parse_warnings_when_the_request_fails() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write(dir.path(), "a_broken.rq", "rq broken(\n");
+        write(
+            dir.path(),
+            "users.rq",
+            "rq list(\"http://localhost/users\");\n",
+        );
+        let client = RqClient::new(
+            Arc::new(native::NativeFs),
+            Arc::new(native::NativeSecretProvider),
+            Arc::new(FailingHttp),
+        );
+        let warned = Mutex::new(0);
+        let outcome = client
+            .run(
+                RequestTarget::new(dir.path(), "list"),
+                None,
+                &[],
+                &|warnings| *warned.lock().expect("lock") += warnings.len(),
+                &|_| Ok(()),
+            )
+            .await;
+        let target = *warned.lock().expect("lock");
+        assert!(outcome.is_err() && target == 1);
+    }
+
+    #[test]
+    fn list_requests_reports_a_broken_import_once() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write(dir.path(), "broken.rq", "rq broken(\n");
+        write(dir.path(), "first.rq", "import \"broken\";\n");
+        write(dir.path(), "second.rq", "import \"broken\";\n");
+        let (_, target) = RqClient::default()
+            .list_requests(dir.path())
+            .expect("list_requests failed");
+        assert_eq!(target.len(), 1);
     }
 
     #[test]

@@ -106,6 +106,10 @@ fn main() {
             test_request_run_directory_runs_request_past_broken_file,
         ),
         Trial::test(
+            "request_run_directory_warns_about_broken_file_when_request_fails",
+            test_request_run_directory_warns_about_broken_file_when_request_fails,
+        ),
+        Trial::test(
             "request_run_directory_reports_parse_error_when_request_is_missing",
             test_request_run_directory_reports_parse_error_when_request_is_missing,
         ),
@@ -830,7 +834,7 @@ fn test_request_run_without_name_reports_syntax_error_of_file() -> Result<(), Fa
 fn test_request_run_without_name_warns_about_broken_directory_file() -> Result<(), Failed> {
     let target = run_without_name(BROKEN_SIBLING)?;
     let expected = format!(
-        "Warning: Syntax error in {BROKEN_SIBLING}/a_broken.rq at line 1, column 11: Expected ')'\nError: --name is required. Requests in {BROKEN_SIBLING}: list"
+        "Warning: Syntax error in {BROKEN_SIBLING}/a_broken.rq at line 1, column 11: Expected ')'\nError: --name is required. Requests in {BROKEN_SIBLING}: list, unreachable"
     );
     if target != (1, expected) {
         return Err(format!("Unexpected result: {target:?}").into());
@@ -868,6 +872,17 @@ fn test_request_run_directory_runs_request_past_broken_file() -> Result<(), Fail
     if code != 0 || !stdout.starts_with("list  GET http://localhost:8080/get") || stderr != warning
     {
         return Err(format!("Unexpected result: {code} {stdout} {stderr}").into());
+    }
+    Ok(())
+}
+
+fn test_request_run_directory_warns_about_broken_file_when_request_fails() -> Result<(), Failed> {
+    let (code, _, stderr) = run_in_broken_sibling("unreachable")?;
+    let warning = format!(
+        "Warning: Syntax error in {BROKEN_SIBLING}/a_broken.rq at line 1, column 11: Expected ')'\n"
+    );
+    if code == 0 || !stderr.starts_with(&warning) {
+        return Err(format!("Unexpected result: {code} {stderr}").into());
     }
     Ok(())
 }

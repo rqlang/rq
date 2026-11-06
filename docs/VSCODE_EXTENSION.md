@@ -1,7 +1,7 @@
 ---
 layout: default
 title: VS Code Extension
-nav_order: 5
+nav_order: 7
 ---
 
 # VS Code Extension
@@ -151,9 +151,9 @@ Set `rq.lint.enabled` to `false` to turn the warnings off; parse and semantic er
 
 ## AI assistance (MCP server)
 
-The extension bundles `rq-mcp`, an [MCP](https://modelcontextprotocol.io) server that lets Copilot Chat — and any other MCP-aware chat in VS Code — author `.rq` files against rq's own parser, analyzer and linter. It is registered automatically on activation, with nothing to install or configure. The same server is published to npm as `@rqlang/mcp` for assistants outside VS Code.
+The extension bundles `rq-mcp`, an [MCP](https://modelcontextprotocol.io) server that lets Copilot Chat — and any other MCP-aware chat in VS Code — author `.rq` files against rq's own parser, analyzer and linter, and run the requests the workspace already has, asking you before any write. Ask *"show me all the users"* and it finds the request and sends it; chain several into a skill and a multi-step procedure becomes one sentence. It is registered automatically on activation, with nothing to install or configure. The same server is published to npm as `@rqlang/mcp` for assistants outside VS Code.
 
-- [AI-Assisted Authoring](AI_ASSISTED_AUTHORING.md) — a ten-minute tutorial, ending with a request suite generated from an OpenAPI spec
+- [AI-Assisted Authoring](AI_ASSISTED_AUTHORING.md) — a ten-minute tutorial: write a suite (from scratch or from an OpenAPI spec), run it from the chat and chain it into procedures
 - [MCP Server](MCP_SERVER.md) — the tools it exposes, the style rules it enforces, and how it is launched
 
 ## Debug logging

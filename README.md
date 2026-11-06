@@ -11,9 +11,19 @@ The project provides two main tools to work with `.rq` files:
 - **Command-Line Interface (CLI)**: A powerful command-line tool that allows you to execute HTTP requests directly from your terminal, perfect for scripting, automation, and CI/CD pipelines.
 - **VS Code Extension**: A rich, interactive experience within Visual Studio Code, featuring syntax highlighting, request execution, and a visual interface for managing your API requests. The rq VS Code extension is distributed through the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=rq-lang.rq-language)
 
-New to rq? See the [getting started guide](https://www.rqlang.com/docs/GETTING_STARTED.html). Ready for more? Work through the [advanced example](https://www.rqlang.com/docs/ADVANCED_EXAMPLE.html).
+## Installation
 
-The extension also bundles an MCP server, so Copilot and other AI assistants write `.rq` files against rq's own parser and linter. Claude Code, Cursor and any other MCP client run the same server with `npx -y @rqlang/mcp` — see [AI-assisted authoring](https://www.rqlang.com/docs/AI_ASSISTED_AUTHORING.html).
+See the [installation guide](https://www.rqlang.com/docs/INSTALLATION.html) to install the CLI and the VS Code extension.
+
+## AI assistants
+
+Your AI assistant writes the requests, checked against rq's own parser and linter, and runs them for you: ask *"show me all the users"* and it finds the matching request and sends it, asking before any write. Chain requests with each other and with the assistant's other tools in a skill, and a multi-step procedure becomes one sentence.
+
+The VS Code extension sets this up for Copilot with nothing to configure; Claude Code, Cursor and any other MCP client run the same server with `npx -y @rqlang/mcp`. See [AI-assisted authoring](https://www.rqlang.com/docs/AI_ASSISTED_AUTHORING.html).
+
+## Learn rq
+
+New to rq? See the [getting started guide](https://www.rqlang.com/docs/GETTING_STARTED.html). Ready for more? Work through the [advanced example](https://www.rqlang.com/docs/ADVANCED_EXAMPLE.html).
 
 For full documentation, visit [rqlang.com](https://www.rqlang.com).
 

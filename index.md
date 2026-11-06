@@ -17,6 +17,14 @@ The project provides two main tools to work with `.rq` files:
 - **Command-Line Interface (CLI)**: A powerful command-line tool that allows you to execute HTTP requests directly from your terminal, perfect for scripting, automation, and CI/CD pipelines.
 - **VS Code Extension**: A rich, interactive experience within Visual Studio Code, featuring syntax highlighting, request execution, and a visual interface for managing your API requests. The rq VS Code extension is distributed through the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=rq-lang.rq-language)
 
+## Install
+
+See [installation](docs/INSTALLATION.md) to install the CLI and the VS Code extension, then run your first request with [getting started](docs/GETTING_STARTED.md).
+
+## AI assistants
+
+Your AI assistant writes the requests, checked against rq's own parser and linter, and runs them for you: ask *"show me all the users"* and it finds the matching request and sends it, asking before any write. Chain requests with each other and with the assistant's other tools in a skill, and a multi-step procedure becomes one sentence. The VS Code extension sets it up for Copilot; Claude Code, Cursor and any other MCP client run the same server. See [AI-assisted authoring](docs/AI_ASSISTED_AUTHORING.md).
+
 ## Why rq?
 
 rq is not just a text template format; it is a **programming language focused on the HTTP domain**. This has several advantages compared to ad‑hoc `.http` files, plain text snippets or visual tools:
@@ -45,15 +53,11 @@ See [advanced example](docs/ADVANCED_EXAMPLE.md) for a step-by-step walkthrough 
 
 ## AI-Assisted Authoring
 
-See [AI-assisted authoring](docs/AI_ASSISTED_AUTHORING.md) for a ten-minute tutorial on building a request suite by asking Copilot — ending with one generated from an OpenAPI spec.
+See [AI-assisted authoring](docs/AI_ASSISTED_AUTHORING.md) for a ten-minute tutorial: build a request suite by asking Copilot, run it from the chat and chain it into procedures.
 
 ## MCP Server
 
 See [MCP server](docs/MCP_SERVER.md) for the tools the bundled server exposes to AI assistants, the style rules it enforces, and what its checks do and don't guarantee.
-
-## Installation
-
-See [installation](docs/INSTALLATION.md) for installation instructions.
 
 ## Language Definition
 
@@ -61,7 +65,7 @@ See [language definition](docs/LANGUAGE_DEFINITION.md) for a detailed descriptio
 
 ## VS Code Extension
 
-See [Vs Code extension](docs/VSCODE_EXTENSION.md) for details about the Visual Studio Code extension and its features.
+See [VS Code extension](docs/VSCODE_EXTENSION.md) for details about the Visual Studio Code extension and its features.
 
 ## CLI
 

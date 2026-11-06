@@ -1,14 +1,16 @@
 ---
 layout: default
 title: Getting Started
-nav_order: 2
+nav_order: 3
 ---
 
 # Getting Started
 
 Let's run your first request. Two minutes, start to finish.
 
-First, make sure rq is installed — grab the CLI and/or VS Code extension from [Installation](INSTALLATION.md).
+## 0. Install
+
+This guide runs the request from VS Code, so install the extension first — see [Installation](INSTALLATION.md).
 
 ## 1. Write a request
 
@@ -37,7 +39,7 @@ The viewer shows you the status, response time, headers, and body — JSON gets 
 ## Where to next
 
 - **[Advanced Example](ADVANCED_EXAMPLE.md)** — ready for more? Build a single request up into a real API suite, step by step.
-- **[AI-Assisted Authoring](AI_ASSISTED_AUTHORING.md)** — let Copilot write the `.rq` files for you, checked against rq's parser and linter.
+- **[AI-Assisted Authoring](AI_ASSISTED_AUTHORING.md)** — let Copilot write the `.rq` files for you, checked against rq's parser and linter, then run them from the chat.
 - **[Language Definition](LANGUAGE_DEFINITION.md)** — headers, bodies, variables, auth, and everything else the `.rq` syntax can do.
 - **[VS Code Extension](VSCODE_EXTENSION.md)** — environments, the request explorer, and other editor features.
 - **[CLI](CLI.md)** — prefer the terminal? Run the same file from the command line.

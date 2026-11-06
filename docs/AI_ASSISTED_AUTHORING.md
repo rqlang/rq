@@ -1,22 +1,22 @@
 ---
 layout: default
 title: AI-Assisted Authoring
-nav_order: 8
+nav_order: 4
 ---
 
 {% raw %}
 
 # AI-Assisted Authoring
 
-Ten minutes, eight prompts. Copilot writes the `.rq` files; rq checks every draft before it lands.
+Ten minutes in the chat. Copilot writes the `.rq` files, rq checks every draft before it lands, and then Copilot runs them for you — one at a time, or chained into a procedure you trigger with one sentence.
 
-You need the [VS Code extension](INSTALLATION.md) and nothing else. It ships with an MCP server that gives the assistant rq's grammar and style rules, then validates whatever it writes.
+You need the [VS Code extension](INSTALLATION.md) and nothing else. It ships with an MCP server that gives the assistant rq's grammar and style rules, validates whatever it writes, and runs the requests your workspace already has.
 
 Working with Claude Code instead? Install the [rqlang plugin](MCP_SERVER.md#claude-code-plugin). With Cursor or another assistant, add the same server with `npx -y @rqlang/mcp` (see [Setup](MCP_SERVER.md#setup)). The prompts below work the same way.
 
 ## Check it is working
 
-Ask Copilot Chat what rq tools it has. You should see `validate_rq`, `lint_rq`, `list_requests` and `get_rq_reference`. If not, open any `.rq` file to activate the extension.
+Ask Copilot Chat what rq tools it has. You should see `validate_rq`, `lint_rq`, `list_requests`, `run_request` and `get_rq_reference`. If not, open any `.rq` file to activate the extension.
 
 ## 1. A first request
 
@@ -250,9 +250,60 @@ Read the request names and paths before committing. The checks guarantee well-fo
 
 The linter sees the whole workspace, not just the open file, so duplication *between* files is detected rather than guessed at. You get the shared parts extracted into a template and both endpoints rewritten to extend it.
 
+## 9. Run them from the chat
+
+Back to the users and widgets of step 6:
+
+> Show me all the users on remote.
+
+The assistant calls `list_requests`, picks `users/list` and sends it with `run_request`, through the same pipeline as the Request Explorer and the CLI: same URL, headers, auth and timeout. It shows which call it made, then answers from the body:
+
+```
+GET https://httpbin.org/anything/users → 200 (143 ms)
+```
+
+Follow-ups reuse what is there:
+
+> Now get user 42.
+
+That is `users/get` with `user_id` set to `42`, the value its `[required(user_id)]` asks for. The assistant can override any variable the request uses for one call, never the request itself: it runs only what is already written in a `.rq` file.
+
+Writes wait for you:
+
+> Delete user 42.
+
+A `DELETE` changes data, so nothing is sent until you agree. VS Code asks you directly, showing the method, the URL and the environment, as does any client that supports MCP elicitation; in the others the assistant asks you in the chat. `POST`, `PUT` and `PATCH` work the same way, and so does any request, endpoint or environment marked [`[confirm]`](LANGUAGE_DEFINITION.md#confirm-attribute) — mark `env remote` once and every call against it asks first. Bearer tokens come from your `.env`; OAuth2 sign-ins in the browser are covered in [`run_request`](MCP_SERVER.md#run_request).
+
+## 10. Chain requests into procedures
+
+A single request answers a question. A sequence of them, mixed with whatever else the assistant can do — read files, compare results, open an issue, write a report — automates a procedure. Pointed at a real users API rather than httpbin:
+
+> Create a user on remote, fetch it back and check it matches what was sent, then delete it.
+
+The assistant runs `users/post`, takes the id from the response, passes it to `users/get` and `users/delete`, and reports each call's summary line. The post and the delete are writes, so each still waits for your yes.
+
+Save that procedure once as a skill and it becomes one sentence. A skill is a `SKILL.md` file in a folder named after it: `.github/skills/users-smoke-test/` for Copilot in VS Code, `.claude/skills/users-smoke-test/` for Claude Code (VS Code reads that one too). The assistant picks it from its `description`, or you call it as `/users-smoke-test`:
+
+```markdown
+---
+name: users-smoke-test
+description: Smoke-test the users API in an environment. Use after a deploy, or when asked whether users work.
+---
+
+1. Run `users/post` in the environment the user names.
+2. Take the `id` from its response and run `users/get` with it as `user_id`.
+3. Check that the returned user matches `users-post.json`, the body `users/post` sends.
+4. Run `users/delete` with the same `user_id`.
+5. Report each call's summary line. Stop at the first call that does not return a 2xx and say which one.
+```
+
+> Smoke-test users on remote.
+
+The requests stay in `.rq` files, versioned and reviewed with the code, and runnable on their own from the editor or the CLI; the skill only says in what order to call them and what to do with each answer. A change to the API is a change to one `.rq` file, and every procedure that uses it follows.
+
 ## What it won't do
 
-- **Run anything.** No tool fires a request — use the [Request Explorer](VSCODE_EXTENSION.md#request-explorer) or the [CLI](CLI.md).
+- **Invent requests.** It runs only requests already in a `.rq` file, and asks before every write and every request marked `[confirm]`.
 - **Check your API.** Valid rqlang in the house style is no guarantee the path exists or the payload fits the schema.
 - **Repeat itself.** Names vary between runs. The shape is guaranteed; your intent is not.
 

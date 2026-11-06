@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Advanced Example
-nav_order: 7
+nav_order: 9
 ---
 
 {% raw %}

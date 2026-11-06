@@ -1,14 +1,16 @@
 ---
 layout: default
 title: Getting Started
-nav_order: 2
+nav_order: 3
 ---
 
 # Getting Started
 
 Let's run your first request. Two minutes, start to finish.
 
-First, make sure rq is installed — grab the CLI and/or VS Code extension from [Installation](INSTALLATION.md).
+## 0. Install
+
+This guide runs the request from VS Code, so install the extension first — see [Installation](INSTALLATION.md).
 
 ## 1. Write a request
 

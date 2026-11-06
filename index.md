@@ -37,7 +37,7 @@ rq is not just a text template format; it is a **programming language focused on
 
 ## Free and Open Source — Forever
 
-rq, the CLI, and the VS Code extension are **free and open source**, and there is an unconditional commitment to keep them that way — not as a temporary launch strategy, but as a founding principle.
+rq, the CLI, the VS Code extension and the MCP server are **free and open source**, and there is an unconditional commitment to keep them that way — not as a temporary launch strategy, but as a founding principle.
 
 The full source code is [publicly available on GitHub](https://github.com/rqlang/rq) and auditable. There are no paywalled tiers, no "community vs. enterprise" splits, and no features gated behind a subscription. Every capability available today, and every capability added in the future, will remain freely accessible to everyone.
 

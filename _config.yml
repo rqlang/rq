@@ -10,13 +10,10 @@ nav_enabled: true
 
 # Exclude non-docs files from Jekyll processing
 exclude:
-  - cli/
-  - src/cli/
+  - src/
   - deployment/
   - fuzz/
   - tests/
-  - vscode-extension/
-  - src/vscode-extension/
   - test.rq
   - "*.toml"
   - "*.lock"

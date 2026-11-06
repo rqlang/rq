@@ -22,8 +22,3 @@ exclude:
   - docs/LOCAL_DEVELOPMENT.md
   - docs/RQLANG_IDIOMS.md
   - CLAUDE.md
-
-callouts:
-  prompt:
-    title: Prompt
-    color: blue

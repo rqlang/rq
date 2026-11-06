@@ -22,8 +22,13 @@ Ask Copilot Chat what rq tools it has. You should see `validate_rq`, `lint_rq`, 
 
 ## 1. A first request
 
-{: .prompt }
-> Add a request that lists users from `https://httpbin.org/anything/users`.
+**Prompt:**
+
+```text
+Add a request that lists users from https://httpbin.org/anything/users.
+```
+
+What lands:
 
 ```
 rq get_users("https://httpbin.org/anything/users");
@@ -33,8 +38,11 @@ One line. Asked for "an API file", most assistants hand back an endpoint block a
 
 ## 2. A second request, same entity
 
-{: .prompt }
-> Now fetch a single user by id.
+**Prompt:**
+
+```text
+Now fetch a single user by id.
+```
 
 `list_requests` reports the `get_users` already there, so this is the second request against `/users`, not a blank page. It restructures instead of appending:
 
@@ -51,8 +59,11 @@ The base URL lives in one place, requests are named after the verb, and the id i
 
 ## 3. Writes, and a mistake it catches
 
-{: .prompt }
-> Add create and delete.
+**Prompt:**
+
+```text
+Add create and delete.
+```
 
 A first draft usually writes the body the way most API docs show it — `body: "{}"`. That parses, and sends the *string* `{}`. The linter stops it:
 
@@ -82,8 +93,11 @@ The payload goes beside it in `users-post.json`. `delete` correctly has none.
 
 ## 4. A second endpoint
 
-{: .prompt }
-> Add a widgets endpoint: list, get by id, and search by name.
+**Prompt:**
+
+```text
+Add a widgets endpoint: list, get by id, and search by name.
+```
 
 Two `ep` blocks in one file is a style error, and two endpoints repeating a base URL is another. Both are cleared by moving code, so you get three files.
 
@@ -131,8 +145,11 @@ Ask for `widgets` on its own and you get no template: `base_ep_extension` reject
 
 ## 5. Environments
 
-{: .prompt }
-> It has to run against localhost too.
+**Prompt:**
+
+```text
+It has to run against localhost too.
+```
 
 Only `shared.rq` changes:
 
@@ -152,8 +169,11 @@ ep base(url: "{{base_url}}");
 
 ## 6. Auth
 
-{: .prompt }
-> The API needs a bearer token.
+**Prompt:**
+
+```text
+The API needs a bearer token.
+```
 
 The reflex is an `Authorization` header on the endpoint, which draws `manual_auth_header` and, for the token itself:
 
@@ -195,8 +215,11 @@ The endpoint files again do not change. The attribute rides on the template, so 
 
 This one starts from scratch, and so do the steps after it: create a new, empty folder, open it in VS Code and save [`petstore.json`](examples/petstore.json) in it. It is a small Petstore spec whose server is httpbin, so the requests it produces actually run.
 
-{: .prompt }
-> Read `petstore.json` and create the rq files for it.
+**Prompt:**
+
+```text
+Read petstore.json and create the rq files for it.
+```
 
 **rq has no OpenAPI importer** — no command, no tool. The assistant reads the spec with its own file access and the server checks the result, which is why the source format barely matters: a Postman collection or a page of `curl` commands goes the same way.
 
@@ -257,8 +280,11 @@ httpbin accepts any token, so the placeholder is enough for the next steps; agai
 
 Still in the Petstore folder:
 
-{: .prompt }
-> Show me the first 10 pets.
+**Prompt:**
+
+```text
+Show me the first 10 pets.
+```
 
 The assistant calls `list_requests`, picks `pets/list` and sends it with `run_request`, `limit` set to `10`, through the same pipeline as the Request Explorer and the CLI: same URL, headers, auth and timeout. It shows which call it made, then answers from the body:
 
@@ -270,15 +296,21 @@ httpbin has no pets: it echoes your request back, so the body shows what was sen
 
 Follow-ups reuse what is there:
 
-{: .prompt }
-> Now get pet 42.
+**Prompt:**
+
+```text
+Now get pet 42.
+```
 
 That is `pets/get` with `pet_id` set to `42`, the value its `[required(pet_id)]` asks for. The assistant can override any variable the request uses for one call, never the request itself: it runs only what is already written in a `.rq` file.
 
 Writes wait for you:
 
-{: .prompt }
-> Delete pet 42.
+**Prompt:**
+
+```text
+Delete pet 42.
+```
 
 A `DELETE` changes data, so nothing is sent until you agree. VS Code asks you directly, showing the method, the URL and the environment, as does any client that supports MCP elicitation; in the others the assistant asks you in the chat. `POST`, `PUT` and `PATCH` work the same way, and so does any request, endpoint or environment marked [`[confirm]`](LANGUAGE_DEFINITION.md#confirm-attribute) — mark `env production` once and every call against it asks first. Bearer tokens come from your `.env`; OAuth2 sign-ins in the browser are covered in [`run_request`](MCP_SERVER.md#run_request).
 
@@ -286,8 +318,11 @@ A `DELETE` changes data, so nothing is sent until you agree. VS Code asks you di
 
 A single request answers a question. A sequence of them, mixed with whatever else the assistant can do — read files, compare results, open an issue, write a report — automates a procedure:
 
-{: .prompt }
-> Create a pet, fetch it back and check it matches what was sent, then delete it.
+**Prompt:**
+
+```text
+Create a pet, fetch it back and check it matches what was sent, then delete it.
+```
 
 The assistant runs `pets/post`, takes the id from the response, passes it to `pets/get` and `pets/delete`, and reports each call's summary line. The post and the delete are writes, so each still waits for your yes. httpbin stores nothing, so the id it hands back is the one `pets-post.json` sent, echoed under `json`; a real API would return the one it assigned.
 
@@ -306,8 +341,11 @@ description: Smoke-test the pets API in an environment. Use after a deploy, or w
 5. Report each call's summary line. Stop at the first call that does not return a 2xx and say which one.
 ```
 
-{: .prompt }
-> Smoke-test pets on production.
+**Prompt:**
+
+```text
+Smoke-test pets on production.
+```
 
 The requests stay in `.rq` files, versioned and reviewed with the code, and runnable on their own from the editor or the CLI; the skill only says in what order to call them and what to do with each answer. A change to the API is a change to one `.rq` file, and every procedure that uses it follows.
 

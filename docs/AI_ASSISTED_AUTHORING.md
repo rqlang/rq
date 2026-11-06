@@ -272,7 +272,7 @@ Writes wait for you:
 
 > Delete user 42.
 
-A `DELETE` changes data, so nothing is sent until you agree. VS Code asks you directly, showing the method, the URL and the environment; other clients have the assistant ask. `POST`, `PUT` and `PATCH` work the same way, and so does any request, endpoint or environment marked [`[confirm]`](LANGUAGE_DEFINITION.md#confirm-attribute) — mark `env production` once and every call against it asks first. Bearer tokens come from your `.env`; OAuth2 sign-ins in the browser are covered in [`run_request`](MCP_SERVER.md#run_request).
+A `DELETE` changes data, so nothing is sent until you agree. VS Code asks you directly, showing the method, the URL and the environment, as does any client that supports MCP elicitation; in the others the assistant asks you in the chat. `POST`, `PUT` and `PATCH` work the same way, and so does any request, endpoint or environment marked [`[confirm]`](LANGUAGE_DEFINITION.md#confirm-attribute) — mark `env remote` once and every call against it asks first. Bearer tokens come from your `.env`; OAuth2 sign-ins in the browser are covered in [`run_request`](MCP_SERVER.md#run_request).
 
 ## 10. Chain requests into procedures
 
@@ -282,7 +282,7 @@ A single request answers a question. A sequence of them, mixed with whatever els
 
 The assistant runs `users/post`, takes the id from the response, passes it to `users/get` and `users/delete`, and reports each call's summary line. The post and the delete are writes, so each still waits for your yes.
 
-Save that procedure once and it becomes one sentence. In Claude Code a skill is a `SKILL.md` file under `.claude/skills/<name>/`; Copilot takes the same steps as a prompt file under `.github/prompts/`:
+Save that procedure once as a skill and it becomes one sentence. A skill is a `SKILL.md` file in a folder named after it: `.github/skills/users-smoke-test/` for Copilot in VS Code, `.claude/skills/users-smoke-test/` for Claude Code (VS Code reads that one too). The assistant picks it from its `description`, or you call it as `/users-smoke-test`:
 
 ```markdown
 ---
@@ -292,7 +292,7 @@ description: Smoke-test the users API in an environment. Use after a deploy, or 
 
 1. Run `users/post` in the environment the user names.
 2. Take the `id` from its response and run `users/get` with it as `user_id`.
-3. Check that the returned user matches the body `users/post` sent.
+3. Check that the returned user matches `users-post.json`, the body `users/post` sends.
 4. Run `users/delete` with the same `user_id`.
 5. Report each call's summary line. Stop at the first call that does not return a 2xx and say which one.
 ```

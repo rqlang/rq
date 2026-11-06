@@ -72,8 +72,8 @@ The `rqlang` plugin for Claude Code, published from [`src/claude-plugin`](https:
 
 - It starts the server through `scripts/npx.mjs`, which only runs `npx` with the arguments in `.mcp.json` (through `cmd.exe` on Windows, where `npx` is a `.cmd` script).
 - The first time the server starts, `npx` downloads `@rqlang/mcp` at the exact version pinned in `.mcp.json`, with its dependencies, from the public npm registry. Later starts reuse the npm cache. Each rq release pins its own version.
-- The server runs locally on Node.js. It reads the `.rq` files under the workspace folder, or under the path a tool is given, to resolve imports and list request names.
-- To check that the secrets a file uses are defined, it reads the `.env` file in the workspace folder (the `workspace_path` a tool is given, or the session's working directory) and the `RQ__*` environment variables. Their values stay on the machine.
+- The server runs locally on Node.js. It reads the `.rq` files under the workspace folder, or under the path a tool is given, to resolve imports, list request names and build the requests `run_request` sends, together with the files those requests read, such as a body loaded with `io.read_json`.
+- It reads the `.env` file in the workspace folder (the `workspace_path` a tool is given, or the session's working directory) and the `RQ__*` environment variables, to check that the secrets a file uses are defined and to fill them in. Their values leave the machine only inside a request `run_request` sends, or the token call its auth needs.
 - Drafts passed to `validate_rq` and `lint_rq` are checked in memory and never written to disk.
 - It sends a request described in a `.rq` file only through [`run_request`](#run_request), with the confirmations described there, plus the token calls its auth needs. It makes no other network calls and collects no data.
 

@@ -1,7 +1,7 @@
 ---
 layout: default
 title: MCP Server
-nav_order: 9
+nav_order: 5
 ---
 
 {% raw %}
@@ -9,6 +9,12 @@ nav_order: 9
 # MCP Server
 
 `rq-mcp` is an [MCP](https://modelcontextprotocol.io) server that teaches AI assistants to write `.rq` files correctly, and lets them run the requests a workspace already has. The VS Code extension registers it automatically for Copilot, and any other MCP client — Claude Code, Claude Desktop, Cursor, Windsurf, Codex, Gemini CLI, Zed — runs it from npm as [`@rqlang/mcp`](https://www.npmjs.com/package/@rqlang/mcp).
+
+With it, your assistant can:
+
+- **Write requests from a description**: one request, a whole endpoint, or a suite from an OpenAPI spec, checked by rq's own parser and linter before it lands.
+- **Run them from the chat**: ask *"show me all the users"* and it finds the matching request and sends it, with the same URL, headers, auth and timeout as the CLI and the editor. Writes and requests marked `[confirm]` wait for your yes.
+- **Chain them into procedures**: feed one response into the next request, mix requests with the assistant's other tools, and save the sequence as a skill you trigger with one sentence — see [Chain requests into procedures](AI_ASSISTED_AUTHORING.md#10-chain-requests-into-procedures).
 
 For a hands-on walkthrough, start with [AI-Assisted Authoring](AI_ASSISTED_AUTHORING.md). This page is the reference: what each tool does, what the checks enforce, and what they do not.
 
@@ -62,14 +68,14 @@ It works relative to the folder it runs in: the first workspace folder in VS Cod
 
 ## Claude Code plugin
 
-The `rqlang` plugin for Claude Code, published from [`src/claude-plugin`](https://github.com/rqlang/rq/tree/main/src/claude-plugin) to [`rqlang/claude-plugin`](https://github.com/rqlang/claude-plugin), bundles this server with an `rq-authoring` skill that tells Claude to use it whenever `.rq` files come up. The plugin has no server code of its own:
+The `rqlang` plugin for Claude Code, published from [`src/claude-plugin`](https://github.com/rqlang/rq/tree/main/src/claude-plugin) to [`rqlang/claude-plugin`](https://github.com/rqlang/claude-plugin), bundles this server with two skills: `rq-authoring`, which tells Claude to use it whenever `.rq` files come up, and `rq-running`, which tells it to run an existing request when you ask for data or an action an API in the workspace provides. The plugin has no server code of its own:
 
 - It starts the server through `scripts/npx.mjs`, which only runs `npx` with the arguments in `.mcp.json` (through `cmd.exe` on Windows, where `npx` is a `.cmd` script).
 - The first time the server starts, `npx` downloads `@rqlang/mcp` at the exact version pinned in `.mcp.json`, with its dependencies, from the public npm registry. Later starts reuse the npm cache. Each rq release pins its own version.
 - The server runs locally on Node.js. It reads the `.rq` files under the workspace folder, or under the path a tool is given, to resolve imports and list request names.
 - To check that the secrets a file uses are defined, it reads the `.env` file in the workspace folder (the `workspace_path` a tool is given, or the session's working directory) and the `RQ__*` environment variables. Their values stay on the machine.
 - Drafts passed to `validate_rq` and `lint_rq` are checked in memory and never written to disk.
-- It never sends the HTTP requests described in `.rq` files, makes no other network calls and collects no data.
+- It sends a request described in a `.rq` file only through [`run_request`](#run_request), with the confirmations described there, plus the token calls its auth needs. It makes no other network calls and collects no data.
 
 ## Tools
 

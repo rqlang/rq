@@ -21,6 +21,10 @@ The project provides two main tools to work with `.rq` files:
 
 See [installation](docs/INSTALLATION.md) to install the CLI and the VS Code extension, then run your first request with [getting started](docs/GETTING_STARTED.md).
 
+## AI assistants
+
+Your AI assistant writes the requests, checked against rq's own parser and linter, and runs them for you: ask *"show me all the users"* and it finds the matching request and sends it, asking before any write. Chain requests with each other and with the assistant's other tools in a skill, and a multi-step procedure becomes one sentence. The VS Code extension sets it up for Copilot; Claude Code, Cursor and any other MCP client run the same server. See [AI-assisted authoring](docs/AI_ASSISTED_AUTHORING.md).
+
 ## Why rq?
 
 rq is not just a text template format; it is a **programming language focused on the HTTP domain**. This has several advantages compared to ad‑hoc `.http` files, plain text snippets or visual tools:
@@ -49,7 +53,7 @@ See [advanced example](docs/ADVANCED_EXAMPLE.md) for a step-by-step walkthrough 
 
 ## AI-Assisted Authoring
 
-See [AI-assisted authoring](docs/AI_ASSISTED_AUTHORING.md) for a ten-minute tutorial on building a request suite by asking Copilot — ending with one generated from an OpenAPI spec.
+See [AI-assisted authoring](docs/AI_ASSISTED_AUTHORING.md) for a ten-minute tutorial: build a request suite by asking Copilot, run it from the chat and chain it into procedures.
 
 ## MCP Server
 

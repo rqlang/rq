@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Language Definition
-nav_order: 4
+nav_order: 6
 ---
 
 {% raw %}

@@ -15,11 +15,15 @@ The project provides two main tools to work with `.rq` files:
 
 See the [installation guide](https://www.rqlang.com/docs/INSTALLATION.html) to install the CLI and the VS Code extension.
 
+## AI assistants
+
+Your AI assistant writes the requests, checked against rq's own parser and linter, and runs them for you: ask *"show me all the users"* and it finds the matching request and sends it, asking before any write. Chain requests with each other and with the assistant's other tools in a skill, and a multi-step procedure becomes one sentence.
+
+The VS Code extension sets this up for Copilot with nothing to configure; Claude Code, Cursor and any other MCP client run the same server with `npx -y @rqlang/mcp`. See [AI-assisted authoring](https://www.rqlang.com/docs/AI_ASSISTED_AUTHORING.html).
+
 ## Learn rq
 
 New to rq? See the [getting started guide](https://www.rqlang.com/docs/GETTING_STARTED.html). Ready for more? Work through the [advanced example](https://www.rqlang.com/docs/ADVANCED_EXAMPLE.html).
-
-The extension also bundles an MCP server, so Copilot and other AI assistants write `.rq` files against rq's own parser and linter. Claude Code, Cursor and any other MCP client run the same server with `npx -y @rqlang/mcp` — see [AI-assisted authoring](https://www.rqlang.com/docs/AI_ASSISTED_AUTHORING.html).
 
 For full documentation, visit [rqlang.com](https://www.rqlang.com).
 

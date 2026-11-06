@@ -14,7 +14,7 @@ With it, your assistant can:
 
 - **Write requests from a description**: one request, a whole endpoint, or a suite from an OpenAPI spec, checked by rq's own parser and linter before it lands.
 - **Run them from the chat**: ask *"show me all the users"* and it finds the matching request and sends it, with the same URL, headers, auth and timeout as the CLI and the editor. Writes and requests marked `[confirm]` wait for your yes.
-- **Chain them into procedures**: feed one response into the next request, mix requests with the assistant's other tools, and save the sequence as a skill you trigger with one sentence — see [Chain requests into procedures](AI_ASSISTED_AUTHORING.md#10-chain-requests-into-procedures).
+- **Chain them into procedures**: feed one response into the next request, mix requests with the assistant's other tools, and save the sequence as a skill you trigger with one sentence — see [Chain requests into procedures](AI_ASSISTED_AUTHORING.md#9-chain-requests-into-procedures).
 
 For a hands-on walkthrough, start with [AI-Assisted Authoring](AI_ASSISTED_AUTHORING.md). This page is the reference: what each tool does, what the checks enforce, and what they do not.
 

@@ -13,7 +13,7 @@ The project provides two main tools to work with `.rq` files:
 
 ## Installation
 
-See the [installation guide](https://www.rqlang.com/docs/INSTALLATION.html) to install the CLI and the VS Code extension.
+See the [installation guide](https://www.rqlang.com/docs/INSTALLATION.html) to install the VS Code extension, the CLI and the MCP server.
 
 ## AI assistants
 

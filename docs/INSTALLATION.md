@@ -6,12 +6,57 @@ nav_order: 2
 
 # Installation
 
-rq ships as two pieces that can be installed independently:
+rq ships as three pieces that can be installed independently:
 
-- the **CLI** (`rq`), to run and check `.rq` files from a terminal or a CI pipeline;
-- the **VS Code extension**, which bundles its own copy of the rq engine, so it does not need the CLI.
+| Piece | What it is for | Needs |
+|---|---|---|
+| [VS Code extension](#vs-code-extension) | Write, run and debug `.rq` files in the editor, with the [MCP server](MCP_SERVER.md) built in so Copilot writes and runs them from the chat | Nothing else: it bundles its own copy of the rq engine |
+| [MCP server](#mcp-server-for-other-assistants) | The same AI assistance in Claude Code, Cursor, Codex and any other MCP client | Node.js 18 or newer |
+| [CLI](#cli) (`rq`) | Run and check `.rq` files from a terminal or a CI pipeline | Nothing else: a single binary |
 
-## Which method to use
+New to rq? Install the extension and head to [Getting Started](GETTING_STARTED.md).
+
+## VS Code extension
+
+### VS Code Marketplace
+
+The extension is published on the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=rq-lang.rq-language). Install it from the **Extensions** view by searching for `rq`, or from a terminal:
+
+```bash
+code --install-extension rq-lang.rq-language
+```
+
+### Manual install from VSIX
+
+Each release also attaches the extension as a `.vsix` file, for machines without Marketplace access.
+
+1. Open the [Releases page](https://github.com/rqlang/rq/releases) and pick a release.
+2. Under **Assets**, download the `.vsix` file (for example `rq-language-0.8.0.vsix`).
+3. Install it from a terminal:
+
+   ```bash
+   code --install-extension rq-language-0.8.0.vsix
+   ```
+
+   Or, in VS Code, open the **Extensions** view (`Ctrl+Shift+X` / `Cmd+Shift+X`), click the **`...`** menu at the top of the panel and choose **Install from VSIX...**.
+
+   See [Install from a VSIX](https://code.visualstudio.com/docs/configure/extensions/extension-marketplace#_install-from-a-vsix) in the VS Code documentation for details.
+
+## MCP server for other assistants
+
+The VS Code extension registers the MCP server on its own, for Copilot and any other chat in VS Code. Other assistants run the same server from npm as [`@rqlang/mcp`](https://www.npmjs.com/package/@rqlang/mcp), with Node.js 18 or newer and nothing else to install.
+
+In Claude Code, install the plugin, which adds the server and the skills that tell Claude when to use it:
+
+```text
+/plugin install rqlang --marketplace rqlang/claude-plugin
+```
+
+Every other client launches the server with `npx -y @rqlang/mcp`. [Setup](MCP_SERVER.md#setup) shows where that command goes in Codex, Claude Desktop, Cursor, Windsurf, Gemini CLI and others.
+
+## CLI
+
+The CLI is a single binary per platform. Pick the method for yours:
 
 | Platform | Recommended | Alternatives |
 |---|---|---|
@@ -26,8 +71,6 @@ Whatever the method, check the result with:
 ```bash
 rq --version
 ```
-
-## CLI
 
 ### Homebrew (macOS and Linux)
 
@@ -188,29 +231,3 @@ Host names are resolved from `/etc/hosts` and the DNS servers in `/etc/resolv.co
 The install script runs under `bash`, which Alpine does not ship: install it first with `apk add bash curl`.
 
 Releases 0.8.1 and older were linked against glibc and need glibc 2.34 or newer. Releases 0.7.0 and older were also linked against the system OpenSSL and need OpenSSL 3 (`libssl.so.3`).
-
-## VS Code extension
-
-### VS Code Marketplace
-
-The extension is published on the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=rq-lang.rq-language). Install it from the **Extensions** view by searching for `rq`, or from a terminal:
-
-```bash
-code --install-extension rq-lang.rq-language
-```
-
-### Manual install from VSIX
-
-Each release also attaches the extension as a `.vsix` file, for machines without Marketplace access.
-
-1. Open the [Releases page](https://github.com/rqlang/rq/releases) and pick a release.
-2. Under **Assets**, download the `.vsix` file (for example `rq-language-0.8.0.vsix`).
-3. Install it from a terminal:
-
-   ```bash
-   code --install-extension rq-language-0.8.0.vsix
-   ```
-
-   Or, in VS Code, open the **Extensions** view (`Ctrl+Shift+X` / `Cmd+Shift+X`), click the **`...`** menu at the top of the panel and choose **Install from VSIX...**.
-
-   See [Install from a VSIX](https://code.visualstudio.com/docs/configure/extensions/extension-marketplace#_install-from-a-vsix) in the VS Code documentation for details.

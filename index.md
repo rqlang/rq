@@ -19,7 +19,7 @@ The project provides two main tools to work with `.rq` files:
 
 ## Install
 
-See [installation](docs/INSTALLATION.md) to install the CLI and the VS Code extension, then run your first request with [getting started](docs/GETTING_STARTED.md).
+See [installation](docs/INSTALLATION.md) to install the VS Code extension, the CLI and the MCP server, then run your first request with [getting started](docs/GETTING_STARTED.md).
 
 ## AI assistants
 

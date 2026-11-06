@@ -6,15 +6,13 @@ nav_order: 3
 
 # Getting Started
 
-Let's run your first request. Two minutes, start to finish.
-
-## 0. Install
-
-This guide runs the request from VS Code, so install the extension first — see [Installation](INSTALLATION.md).
+Let's run your first request. Two minutes, start to finish. All you need is the VS Code extension — see [Installation](INSTALLATION.md).
 
 ## 1. Write a request
 
-Create a file called `getting-started.rq` and add one line:
+The Request Explorer lists the requests in the folder VS Code has open, so open one first: **File → Open Folder…** and pick an existing project, or create a new, empty folder from that same dialog.
+
+In that folder, create a file called `getting-started.rq` and add one line:
 
 ```
 rq hello("https://httpbin.org/get");

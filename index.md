@@ -78,7 +78,7 @@ See [Auth](docs/AUTH.md) for how to configure authentication providers, includin
 <br><br>
 
 
-> rq — both the language and the associated tools (CLI and VS Code extension) — is currently in **preview**. This means:
+> rq — both the language and the associated tools (CLI, VS Code extension and MCP server) — is currently in **preview**. This means:
 >
 > - You may encounter bugs, incomplete features, or rough edges in everyday use.
 > - The language syntax and semantics are **not yet stable**, and future versions may introduce **breaking changes**.
@@ -91,7 +91,7 @@ See [Auth](docs/AUTH.md) for how to configure authentication providers, includin
 >
 > While this is not the primary goal, the priority at this stage is to keep the language flexible enough to evolve. If you rely on rq in critical environments, you should:
 >
-> - Pin specific versions of the CLI and VS Code extension.
+> - Pin specific versions of the CLI, the VS Code extension and the MCP server.
 > - Treat `.rq` files as **preview assets** that may need updates over time.
 > - Review release notes before upgrading to new versions.
 >

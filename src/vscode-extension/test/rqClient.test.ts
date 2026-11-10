@@ -7,6 +7,7 @@ const mockListVariableRefs = jest.fn();
 const mockListEnvironments = jest.fn();
 const mockListAuth = jest.fn();
 const mockAuthFields = jest.fn();
+const mockGetRequestDetails = jest.fn();
 
 jest.mock('../src/wasm/rq_wasm', () => ({
     prepare_request: mockPrepareRequest,
@@ -15,6 +16,7 @@ jest.mock('../src/wasm/rq_wasm', () => ({
     list_environments: mockListEnvironments,
     list_auth: mockListAuth,
     auth_fields: mockAuthFields,
+    get_request_details: mockGetRequestDetails,
 }), { virtual: true });
 
 const mockBuildSecretsMap = jest.fn(async () => JSON.stringify({ env_file: null, os_vars: [] }));
@@ -28,7 +30,7 @@ jest.mock('fs');
 jest.mock('https');
 
 import * as vscode from 'vscode';
-import { authFields, executeRequest, listAuthConfigsWithErrors, listEnvironments, listEnvironmentsWithErrors, setDebugLogging, varRefs } from '../src/rqClient';
+import { authFields, executeRequest, listAuthConfigsWithErrors, listEnvironments, listEnvironmentsWithErrors, setDebugLogging, showRequest, showRequestLocation, varRefs } from '../src/rqClient';
 
 const BASE_PREPARED = {
     name: 'test-req',
@@ -280,12 +282,15 @@ describe('executeRequest', () => {
                 { languageId: 'rq', isDirty: true, isUntitled: false, uri: { fsPath: '/tmp/project/sub/main.rq' }, getText: () => 'rq test_req("http://edited");' },
             ];
 
-            await executeRequest({
-                requestName: 'test-req',
-                sourceDirectory: '/tmp/project',
-                sourceFile: '/tmp/project/sub/main.rq',
-            });
-            (vscode.workspace as any).textDocuments = [];
+            try {
+                await executeRequest({
+                    requestName: 'test-req',
+                    sourceDirectory: '/tmp/project',
+                    sourceFile: '/tmp/project/sub/main.rq',
+                });
+            } finally {
+                (vscode.workspace as any).textDocuments = [];
+            }
 
             expect(mockPrepareRequest.mock.calls[0][0]).toBe('{}');
         });
@@ -540,6 +545,33 @@ describe('setDebugLogging', () => {
         await setDebugLogging(true);
 
         expect(mockSetDebugLogging).toHaveBeenCalledWith(true);
+    });
+});
+
+describe('request details', () => {
+    const editedDocument = { languageId: 'rq', isDirty: true, isUntitled: false, uri: { fsPath: '/tmp/project/main.rq' }, getText: () => '\n\nrq test_req("http://edited");' };
+
+    beforeEach(() => {
+        mockGetRequestDetails.mockReturnValue(JSON.stringify({ Request: 'test_req', Method: 'GET', URL: 'http://x', Headers: {}, file: '/tmp/project/main.rq', line: 2, character: 0 }));
+        (vscode.workspace as any).textDocuments = [editedDocument];
+    });
+
+    afterEach(() => {
+        (vscode.workspace as any).textDocuments = [];
+    });
+
+    test('shows the request from the saved file even when it has unsaved edits', async () => {
+        await showRequest('test_req', '/tmp/project');
+
+        expect(mockGetRequestDetails.mock.calls[0][0]).toBe('{}');
+    });
+
+    test('locates the request in the unsaved text the editor shows', async () => {
+        await showRequestLocation('test_req', '/tmp/project');
+
+        expect(JSON.parse(mockGetRequestDetails.mock.calls[0][0])).toEqual({
+            '/tmp/project/main.rq': '\n\nrq test_req("http://edited");',
+        });
     });
 });
 

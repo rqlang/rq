@@ -5,7 +5,7 @@ import * as https from 'https';
 import * as crypto from 'crypto';
 import * as forge from 'node-forge';
 import { StringDecoder } from 'string_decoder';
-import { buildSecretsMap, CANCELLED_MESSAGE, DraftFile, draftsJson } from './utils';
+import { buildSecretsMap, CANCELLED_MESSAGE, draftsJson } from './utils';
 import { wasmCall } from './wasmHost';
 import type { AuthShowOutput } from './rqClient';
 
@@ -84,8 +84,8 @@ export interface RequestScope {
     source: string;
 }
 
-export async function requestScope(source: string, drafts: DraftFile[] = []): Promise<RequestScope> {
-    return { filesJson: draftsJson(drafts), secretsJson: await buildSecretsMap(source), source };
+export async function requestScope(source: string): Promise<RequestScope> {
+    return { filesJson: draftsJson(), secretsJson: await buildSecretsMap(source), source };
 }
 
 export async function executeRequest(scope: RequestScope, options: ExecuteRequestOptions): Promise<ExecuteRequestResult> {

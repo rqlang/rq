@@ -42,6 +42,7 @@ function apiSource(apiPort) {
         '    client_id: "app",',
         `    authorization_url: "http://127.0.0.1:${apiPort}/authorize",`,
         `    token_url: "http://127.0.0.1:${apiPort}/token",`,
+        '    redirect_uri: "vscode://rq-lang.rq-language/oauth-callback",',
         '}',
         '',
         `auth paste_login(auth_type.oauth2_authorization_code) {`,
@@ -193,7 +194,7 @@ describe('run_request with a sign-in, on a client that cannot open urls', () => 
 
     it('refuses an auth whose redirect only VS Code can receive', async () => {
         const target = await callJson(client, 'run_request', { name: 'other', file: file() });
-        assert.deepEqual([target.status, target.sent, target.message.includes('the VS Code default'), received], ['authorization_failed', false, true, []]);
+        assert.deepEqual([target.status, target.sent, target.message.includes('vscode://rq-lang.rq-language/oauth-callback'), received], ['authorization_failed', false, true, []]);
     });
 });
 

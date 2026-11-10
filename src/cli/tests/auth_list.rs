@@ -225,7 +225,8 @@ auth auth_b(auth_type.bearer) {
 auth auth_c(auth_type.oauth2_authorization_code) {
     client_id: "client123",
     authorization_url: "https://auth.example.com/authorize",
-    token_url: "https://auth.example.com/token"
+    token_url: "https://auth.example.com/token",
+    redirect_uri: "http://localhost:8080/callback"
 }
 rq test("http://localhost:8080/test");
 "#,

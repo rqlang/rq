@@ -1,8 +1,6 @@
 import { OAuth2FlowType, OAuthProvider } from './oauthProvider';
 import { OAuth2Config, OAuthAuthConfig } from './types';
 
-const DEFAULT_REDIRECT_URI = 'vscode://rq-lang.rq-language/oauth-callback';
-
 export function getFlowTypeFromAuthType(authType: string): OAuth2FlowType {
     switch (authType) {
         case 'oauth2_authorization_code':
@@ -26,6 +24,9 @@ export async function performOAuth2Flow(authConfig: OAuthAuthConfig, provider: O
     if (flowType === 'authorization_code_pkce' && !fields.token_url) {
         throw new Error(`Auth '${authConfig.name}' has no token_url. Add it to the auth in its .rq file.`);
     }
+    if (!fields.redirect_uri) {
+        throw new Error(`Auth '${authConfig.name}' has no redirect_uri. Add the redirect URI registered for the app to the auth in its .rq file.`);
+    }
     requireUrl('authorization_url', fields.authorization_url);
     if (fields.token_url) {
         requireUrl('token_url', fields.token_url);
@@ -36,7 +37,7 @@ export async function performOAuth2Flow(authConfig: OAuthAuthConfig, provider: O
         clientSecret: fields.client_secret || undefined,
         authorizationUrl: fields.authorization_url,
         tokenUrl: fields.token_url,
-        redirectUri: fields.redirect_uri || DEFAULT_REDIRECT_URI,
+        redirectUri: fields.redirect_uri,
         scope: fields.scope || undefined,
         codeChallengeMethod: (fields.code_challenge_method as 'S256' | 'plain') || 'S256',
         useState: fields.use_state !== 'false',

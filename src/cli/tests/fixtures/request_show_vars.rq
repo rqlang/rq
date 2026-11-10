@@ -3,7 +3,8 @@ let auth_provider_name = "my_oauth";
 
 auth my_oauth(auth_type.oauth2_implicit) {
     client_id: "client-id",
-    authorization_url: "https://auth.example.com"
+    authorization_url: "https://auth.example.com",
+    redirect_uri: "http://localhost:8080/callback"
 }
 
 [auth("{{auth_provider_name}}")]

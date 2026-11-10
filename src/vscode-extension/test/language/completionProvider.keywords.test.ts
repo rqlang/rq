@@ -179,6 +179,16 @@ describe('top-level keyword completion', () => {
         expect(target.insertText.value).toContain('redirect_uri: "${5:http://localhost:8080/callback}",');
     });
 
+    test('auth oauth2_implicit snippet keeps the localhost redirect_uri', async () => {
+        const doc = makeDocument(['auth']);
+        const position = new vscode.Position(0, 4);
+
+        const items = await provideCompletionItems(doc, position);
+
+        const target = items.find((i: any) => i.label === 'auth oauth2_implicit');
+        expect(target.insertText.value).toContain('redirect_uri: "${4:http://localhost:8080/callback}",');
+    });
+
     test('auth oauth2_authorization_code snippet documents sample urls', async () => {
         const doc = makeDocument(['auth']);
         const position = new vscode.Position(0, 4);

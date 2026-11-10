@@ -8,7 +8,6 @@ const CLIENT_ID_FIELD: &str = "client_id";
 const CLIENT_SECRET_FIELD: &str = "client_secret";
 const AUTHORIZATION_URL_FIELD: &str = "authorization_url";
 const TOKEN_URL_FIELD: &str = "token_url";
-#[allow(dead_code)]
 const REDIRECT_URI_FIELD: &str = "redirect_uri";
 #[allow(dead_code)]
 const SCOPE_FIELD: &str = "scope";
@@ -36,12 +35,15 @@ impl AuthConfig for OAuth2AuthorizationCodeConfig {
     }
 
     fn validate(&self, name: &str, fields: &HashMap<String, Token>) -> Result<(), SyntaxError> {
-        const REQUIRED_FIELDS: &[&str] =
-            &[CLIENT_ID_FIELD, AUTHORIZATION_URL_FIELD, TOKEN_URL_FIELD];
+        const REQUIRED_FIELDS: &[&str] = &[
+            CLIENT_ID_FIELD,
+            AUTHORIZATION_URL_FIELD,
+            TOKEN_URL_FIELD,
+            REDIRECT_URI_FIELD,
+        ];
 
         const OPTIONAL_FIELDS: &[&str] = &[
             CLIENT_SECRET_FIELD,
-            REDIRECT_URI_FIELD,
             SCOPE_FIELD,
             CODE_CHALLENGE_METHOD_FIELD,
             USE_STATE_FIELD,
@@ -172,6 +174,10 @@ mod tests {
             TOKEN_URL_FIELD.to_string(),
             t("https://auth.example.com/token"),
         );
+        fields.insert(
+            REDIRECT_URI_FIELD.to_string(),
+            t("http://localhost:8080/callback"),
+        );
 
         assert!(config.validate("test_auth", &fields).is_ok());
     }
@@ -188,6 +194,10 @@ mod tests {
         fields.insert(
             TOKEN_URL_FIELD.to_string(),
             t("https://auth.example.com/token"),
+        );
+        fields.insert(
+            REDIRECT_URI_FIELD.to_string(),
+            t("http://localhost:8080/callback"),
         );
         fields.insert(USE_STATE_FIELD.to_string(), t("false"));
 
@@ -206,6 +216,10 @@ mod tests {
         fields.insert(
             TOKEN_URL_FIELD.to_string(),
             t("https://auth.example.com/token"),
+        );
+        fields.insert(
+            REDIRECT_URI_FIELD.to_string(),
+            t("http://localhost:8080/callback"),
         );
         fields.insert(USE_STATE_FIELD.to_string(), t("invalid"));
 
@@ -249,6 +263,10 @@ mod tests {
             TOKEN_URL_FIELD.to_string(),
             t("https://auth.example.com/token"),
         );
+        fields.insert(
+            REDIRECT_URI_FIELD.to_string(),
+            t("http://localhost:8080/callback"),
+        );
 
         assert!(config.validate("test_auth", &fields).is_ok());
     }
@@ -264,6 +282,10 @@ mod tests {
         fields.insert(
             TOKEN_URL_FIELD.to_string(),
             t("https://auth.example.com/token"),
+        );
+        fields.insert(
+            REDIRECT_URI_FIELD.to_string(),
+            t("http://localhost:8080/callback"),
         );
 
         let result = config.validate("test_auth", &fields);
@@ -282,6 +304,10 @@ mod tests {
         fields.insert(
             TOKEN_URL_FIELD.to_string(),
             t("https://auth.example.com/token"),
+        );
+        fields.insert(
+            REDIRECT_URI_FIELD.to_string(),
+            t("http://localhost:8080/callback"),
         );
 
         let result = config.validate("test_auth", &fields);
@@ -311,6 +337,28 @@ mod tests {
     }
 
     #[test]
+    fn test_oauth2_auth_code_missing_redirect_uri() {
+        let config = OAuth2AuthorizationCodeConfig::new();
+        let mut fields = HashMap::new();
+        fields.insert(CLIENT_ID_FIELD.to_string(), t("my-client-id"));
+        fields.insert(
+            AUTHORIZATION_URL_FIELD.to_string(),
+            t("https://auth.example.com/authorize"),
+        );
+        fields.insert(
+            TOKEN_URL_FIELD.to_string(),
+            t("https://auth.example.com/token"),
+        );
+
+        let result = config.validate("test_auth", &fields);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .message
+            .contains("missing required field 'redirect_uri'"));
+    }
+
+    #[test]
     fn test_oauth2_auth_code_empty_field() {
         let config = OAuth2AuthorizationCodeConfig::new();
         let mut fields = HashMap::new();
@@ -322,6 +370,10 @@ mod tests {
         fields.insert(
             TOKEN_URL_FIELD.to_string(),
             t("https://auth.example.com/token"),
+        );
+        fields.insert(
+            REDIRECT_URI_FIELD.to_string(),
+            t("http://localhost:8080/callback"),
         );
 
         let result = config.validate("test_auth", &fields);
@@ -344,6 +396,10 @@ mod tests {
         fields.insert(
             TOKEN_URL_FIELD.to_string(),
             t("https://auth.example.com/token"),
+        );
+        fields.insert(
+            REDIRECT_URI_FIELD.to_string(),
+            t("http://localhost:8080/callback"),
         );
         fields.insert(CODE_CHALLENGE_METHOD_FIELD.to_string(), t("invalid"));
 
@@ -368,6 +424,10 @@ mod tests {
             TOKEN_URL_FIELD.to_string(),
             t("https://auth.example.com/token"),
         );
+        fields.insert(
+            REDIRECT_URI_FIELD.to_string(),
+            t("http://localhost:8080/callback"),
+        );
         fields.insert("unexpected".to_string(), t("field"));
 
         let result = config.validate("test_auth", &fields);
@@ -391,6 +451,10 @@ mod tests {
             TOKEN_URL_FIELD.to_string(),
             t("https://auth.example.com/token"),
         );
+        fields.insert(
+            REDIRECT_URI_FIELD.to_string(),
+            t("http://localhost:8080/callback"),
+        );
         fields.insert(USE_PKCE_FIELD.to_string(), t("false"));
 
         assert!(config.validate("test_auth", &fields).is_ok());
@@ -408,6 +472,10 @@ mod tests {
         fields.insert(
             TOKEN_URL_FIELD.to_string(),
             t("https://auth.example.com/token"),
+        );
+        fields.insert(
+            REDIRECT_URI_FIELD.to_string(),
+            t("http://localhost:8080/callback"),
         );
         fields.insert(USE_PKCE_FIELD.to_string(), t("invalid"));
 

@@ -958,14 +958,14 @@ This flow always performs a `client_credentials` grant against `token_url` and t
 	- `client_id`: OAuth2 client identifier.
 	- `authorization_url`: URL where the user authorizes the client.
 	- `token_url`: URL of the token endpoint used to exchange the authorization code for an access token.
+	- `redirect_uri`: Redirect URI registered for the client, exactly as registered. It decides how the sign-in comes back and which tools can receive it (see [Redirect URIs](AUTH.md#redirect-uris-for-interactive-flows)).
 - **Optional fields**:
 	- `client_secret`: Client secret, when required by the authorization server.
-	- `redirect_uri`: Redirect URI registered for the client. If omitted, rq will default to `vscode://rq-lang.rq-language/oauth-callback` to integrate with the VS Code extension flow (see the explanation in [VSCODE_EXTENSION.md](VSCODE_EXTENSION.md#default-redirect-uri)).
 	- `scope`: Space-separated list of scopes to request.
 	- `code_challenge_method`: PKCE code challenge method. Accepted values: `S256` (SHA-256, recommended) or `plain`. If omitted, rq defaults to `S256`.
 	- `use_state`: Whether to use the `state` parameter for CSRF protection.
 
-This flow is designed to work with interactive authorization (via the VS Code extension). For non-interactive scenarios (for example, running the same `.rq` file from the CLI), you can provide a precomputed bearer token at runtime using the reserved variable `auth_token`; when present, rq will use this token directly instead of performing the interactive flow.
+This flow is designed to work with interactive authorization (via the VS Code extension or the MCP server). For non-interactive scenarios (for example, running the same `.rq` file from the CLI), you can provide a precomputed bearer token at runtime using the reserved variable `auth_token`; when present, rq will use this token directly instead of performing the interactive flow.
 
 #### OAuth2 implicit
 
@@ -973,11 +973,11 @@ This flow is designed to work with interactive authorization (via the VS Code ex
 - **Required fields**:
 	- `client_id`: OAuth2 client identifier.
 	- `authorization_url`: URL where the user authorizes the client and receives an access token directly.
+	- `redirect_uri`: Redirect URI registered for the client, exactly as registered (see [Redirect URIs](AUTH.md#redirect-uris-for-interactive-flows)).
 - **Optional fields**:
-	- `redirect_uri`: Redirect URI registered for the client. If omitted, rq will default to `vscode://rq-lang.rq-language/oauth-callback`.
 	- `scope`: Space-separated list of scopes to request.
 
-This flow is also primarily intended for interactive use through the VS Code extension. As with the authorization code flow, if you provide `auth_token` as a runtime variable, rq will use that token directly and skip the interactive step, which is useful when you share the same authentication setup between VS Code (interactive) and CLI (non-interactive) use.
+This flow is also primarily intended for interactive use through the VS Code extension or the MCP server. As with the authorization code flow, if you provide `auth_token` as a runtime variable, rq will use that token directly and skip the interactive step, which is useful when you share the same authentication setup between VS Code (interactive) and CLI (non-interactive) use.
 
 All auth types are validated at parse time: missing required fields, unexpected fields, or clearly invalid values (for example an empty bearer token) will cause rq to fail with a clear error before sending any request.
 

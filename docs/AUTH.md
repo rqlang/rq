@@ -42,25 +42,21 @@ For the formal syntax of `auth` blocks, see the [Language Definition — Auth](L
 
 ## Redirect URIs for interactive flows
 
-`oauth2_authorization_code` and `oauth2_implicit` flows require user interaction — a browser opens for sign-in and control must be passed back to rq after login. **These flows are only supported in the VS Code extension.** The CLI has no browser integration and cannot run them. To use an interactive auth config from the CLI, inject a precomputed token instead — see [Injecting a precomputed token](#injecting-a-precomputed-token).
+`oauth2_authorization_code` and `oauth2_implicit` flows require user interaction — a browser opens for sign-in and control must be passed back to rq after login. They run in the VS Code extension and in the [MCP server](MCP_SERVER.md#run_request). The CLI has no browser integration and cannot run them. To use an interactive auth config from the CLI, inject a precomputed token instead — see [Injecting a precomputed token](#injecting-a-precomputed-token).
 
-When running from VS Code, the redirect handling strategy is determined by the `redirect_uri` you set in your `auth` block.
+`redirect_uri` is required in both flows and has no default: it is part of the app registration at your provider, which compares it byte for byte, so the `.rq` file states the one you registered. How the sign-in comes back depends on that address and on where the request runs:
 
-### VS Code URI handler (default)
+| `redirect_uri` | VS Code extension | MCP server |
+| --- | --- | --- |
+| `http://localhost:PORT/…` or `http://127.0.0.1:PORT/…` | Received by a local server on that port | Received by a local server on that port (authorization code) |
+| `vscode://rq-lang.rq-language/oauth-callback` | Received by VS Code | Not supported |
+| Any other address | You paste the address the browser ends on | You paste the address the browser ends on |
 
-If you do not set `redirect_uri`, rq uses:
-
-```
-vscode://rq-lang.rq-language/oauth-callback
-```
-
-After sign-in the browser redirects to this URI and VS Code catches the callback automatically — no manual copy-pasting required. This is the recommended option and works across local setups, WSL, SSH remotes, and Codespaces.
-
-Register this exact URI in your provider's app settings. It is case-sensitive.
+Register a localhost address when the same file signs in from both the extension and an assistant. Use `vscode://` only for auths run from the extension alone, such as on a remote machine or in Codespaces, where no local port is reachable from your browser.
 
 ### Localhost server
 
-If you set `redirect_uri` to a `http://localhost:...` URL, the extension temporarily starts a local HTTP server on that port, captures the authorization code after sign-in, then stops the server:
+If you set `redirect_uri` to a `http://localhost:...` URL, rq temporarily starts a local HTTP server on that port, captures the authorization code after sign-in, then stops the server:
 
 ```
 auth my_api(auth_type.oauth2_authorization_code) {
@@ -69,13 +65,24 @@ auth my_api(auth_type.oauth2_authorization_code) {
 }
 ```
 
-Use this when your provider supports localhost redirects but not custom URI schemes (`vscode://`).
+Register the localhost URI in your provider's app settings. The implicit flow returns its token in the part of the address the browser keeps to itself, so with a localhost address you paste the address the browser ends on.
 
-Register the localhost URI in your provider's app settings.
+### VS Code URI handler
+
+```
+auth my_api(auth_type.oauth2_authorization_code) {
+  ...
+  redirect_uri: "vscode://rq-lang.rq-language/oauth-callback",
+}
+```
+
+After sign-in the browser redirects to this URI and VS Code catches the callback automatically — no manual copy-pasting required. It works across local setups, WSL, SSH remotes, and Codespaces, but only in the extension: the MCP server refuses it.
+
+Register this exact URI in your provider's app settings. It is case-sensitive.
 
 ### Manual (custom URL)
 
-For any other `redirect_uri` value — such as a production callback URL — the extension opens a browser, waits for you to complete the sign-in flow, then shows an input box asking for the full redirect URL. Copy it from the browser's address bar and paste it in; the extension extracts the authorization code from the URL.
+For any other `redirect_uri` value — such as a production callback URL — rq opens the sign-in page, waits for you to complete it, then asks for the full address the browser ended on. Copy it from the browser's address bar and paste it in; rq extracts the authorization code from it.
 
 ```
 auth my_api(auth_type.oauth2_authorization_code) {
@@ -220,7 +227,7 @@ me locations and formats only.
 
 ## Troubleshooting
 
-- Verify the redirect URI is registered byte-for-byte — `vscode://rq-lang.rq-language/oauth-callback` is case-sensitive.
+- Verify the `redirect_uri` is registered byte-for-byte: scheme, host, port, path and case must all match.
 - Check that the scope format matches the provider: Azure wants `api://{id}/.default`, Google wants full URLs, AWS Cognito wants `resource-server/scope`.
 - Enable debug logging to see the full token exchange and the headers actually sent. In the CLI, pass `-d` / `--debug`. In the VS Code extension, enable `rq.debugLogging` in Settings.
 - **Check the redirect URL for error details.** When auth is misconfigured, many providers encode the error in the redirect URL as query parameters (e.g. `?error=unauthorized_client&error_description=...`). If the sign-in flow fails silently or lands on an unexpected page, inspect the full URL in the browser's address bar — the error description is often right there.

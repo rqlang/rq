@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- `redirect_uri` is now required in `oauth2_authorization_code` and `oauth2_implicit` auths, and `vscode://rq-lang.rq-language/oauth-callback` is no longer filled in when it is missing. The MCP server cannot receive that address, so the same file signed in from the extension and failed from an assistant. An auth without `redirect_uri` is now reported in the Problems panel: add the address registered with your provider, `redirect_uri: "vscode://rq-lang.rq-language/oauth-callback"` to keep the previous behavior, or a `http://localhost:PORT/…` address registered for the app to sign in from both the extension and the MCP server.
+
 ### Features
 
 - Added the `doc.description` attribute: a request or an endpoint can say in plain words what it does, and the Request Explorer shows it in the tooltip. `doc.description` and `confirm` have completion, hover and syntax highlighting.

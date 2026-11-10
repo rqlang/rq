@@ -624,7 +624,8 @@ fn test_auth_show_oauth2_defaults_applied() -> Result<(), Box<dyn std::error::Er
 auth minimal_oauth(auth_type.oauth2_authorization_code) {
     client_id: "test-client-id",
     authorization_url: "https://auth.example.com/authorize",
-    token_url: "https://auth.example.com/token"
+    token_url: "https://auth.example.com/token",
+    redirect_uri: "http://localhost:8080/callback"
 }
 "#,
     )?;
@@ -659,17 +660,6 @@ auth minimal_oauth(auth_type.oauth2_authorization_code) {
     let fields = json
         .get("fields")
         .ok_or_else(|| format!("Expected 'fields' in JSON, got: {json}"))?;
-
-    // Check that defaults were applied
-    if fields.get("redirect_uri").and_then(|v| v.as_str())
-        != Some("vscode://rq-lang.rq-language/oauth-callback")
-    {
-        return Err(format!(
-            "Expected default redirect_uri 'vscode://rq-lang.rq-language/oauth-callback', got: {:?}",
-            fields.get("redirect_uri")
-        )
-        .into());
-    }
 
     if fields.get("code_challenge_method").and_then(|v| v.as_str()) != Some("S256") {
         return Err(format!(

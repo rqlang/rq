@@ -120,7 +120,7 @@ export const AUTH_PROPERTIES: Record<string, { name: string; required: boolean }
         { name: 'client_id', required: true },
         { name: 'authorization_url', required: true },
         { name: 'token_url', required: true },
-        { name: 'redirect_uri', required: false },
+        { name: 'redirect_uri', required: true },
         { name: 'client_secret', required: false },
         { name: 'scope', required: false },
         { name: 'code_challenge_method', required: false },
@@ -129,7 +129,7 @@ export const AUTH_PROPERTIES: Record<string, { name: string; required: boolean }
     oauth2_implicit: [
         { name: 'client_id', required: true },
         { name: 'authorization_url', required: true },
-        { name: 'redirect_uri', required: false },
+        { name: 'redirect_uri', required: true },
         { name: 'scope', required: false },
     ],
 };

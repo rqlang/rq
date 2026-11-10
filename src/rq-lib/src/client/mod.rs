@@ -3354,7 +3354,7 @@ mod prepare_tests {
         write(
             dir.path(),
             "main.rq",
-            "auth login(auth_type.oauth2_authorization_code) {\n    client_id: \"app\",\n    authorization_url: \"http://localhost/authorize\",\n    token_url: \"http://localhost/token\",\n}\n\n[auth(\"login\")]\nrq probe(\"http://localhost/probe\");\n",
+            "auth login(auth_type.oauth2_authorization_code) {\n    client_id: \"app\",\n    authorization_url: \"http://localhost/authorize\",\n    token_url: \"http://localhost/token\",\n    redirect_uri: \"http://localhost:8080/callback\",\n}\n\n[auth(\"login\")]\nrq probe(\"http://localhost/probe\");\n",
         );
         let target = prepare(&dir.path().join("main.rq"), "probe", &["auth_token=xyz"]);
         assert_eq!(

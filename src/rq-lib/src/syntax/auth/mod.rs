@@ -64,12 +64,17 @@ impl AuthType {
         match self {
             AuthType::Bearer => vec!["token"],
             AuthType::OAuth2AuthorizationCode => {
-                vec!["client_id", "authorization_url", "token_url"]
+                vec![
+                    "client_id",
+                    "authorization_url",
+                    "token_url",
+                    "redirect_uri",
+                ]
             }
             AuthType::OAuth2ClientCredentials => {
                 vec!["client_id", "token_url"]
             }
-            AuthType::OAuth2Implicit => vec!["client_id", "authorization_url"],
+            AuthType::OAuth2Implicit => vec!["client_id", "authorization_url", "redirect_uri"],
         }
     }
 
@@ -78,7 +83,6 @@ impl AuthType {
             AuthType::Bearer => vec![],
             AuthType::OAuth2AuthorizationCode => vec![
                 "client_secret",
-                "redirect_uri",
                 "scope",
                 "code_challenge_method",
                 "use_state",
@@ -86,7 +90,7 @@ impl AuthType {
             AuthType::OAuth2ClientCredentials => {
                 vec!["client_secret", "scope", "cert_file", "cert_password"]
             }
-            AuthType::OAuth2Implicit => vec!["redirect_uri", "scope"],
+            AuthType::OAuth2Implicit => vec!["scope"],
         }
     }
 }
@@ -107,26 +111,9 @@ impl Config {
         auth_config.validate(&self.name, &self.fields)
     }
 
-    /// - redirect_uri: "vscode://rq-lang.rq-language/oauth-callback" (if not present)
-    /// - code_challenge_method: "S256" (if not present)
-    ///   fields.insert("client_id".to_string(), "my-client".to_string());
-    ///   name: "oauth".to_string(),
-    ///   assert_eq!(config.fields.get("redirect_uri").unwrap(), "vscode://rq-lang.rq-language/auth-callback");
-    ///   assert_eq!(config.fields.get("code_challenge_method").unwrap(), "S256");
     pub fn apply_defaults(&mut self) {
         match self.auth_type {
             AuthType::OAuth2AuthorizationCode => {
-                if !self.fields.contains_key("redirect_uri") {
-                    self.fields.insert(
-                        "redirect_uri".to_string(),
-                        Token {
-                            token_type: crate::syntax::token::TokenType::String,
-                            value: "vscode://rq-lang.rq-language/oauth-callback".to_string(),
-                            span: 0..0,
-                        },
-                    );
-                }
-
                 if !self.fields.contains_key("code_challenge_method") {
                     self.fields.insert(
                         "code_challenge_method".to_string(),
@@ -138,18 +125,7 @@ impl Config {
                     );
                 }
             }
-            AuthType::OAuth2Implicit => {
-                if !self.fields.contains_key("redirect_uri") {
-                    self.fields.insert(
-                        "redirect_uri".to_string(),
-                        Token {
-                            token_type: crate::syntax::token::TokenType::String,
-                            value: "vscode://rq-lang.rq-language/oauth-callback".to_string(),
-                            span: 0..0,
-                        },
-                    );
-                }
-            }
+            AuthType::OAuth2Implicit => {}
             AuthType::Bearer => {}
             AuthType::OAuth2ClientCredentials => {}
         }
@@ -262,10 +238,6 @@ mod tests {
         config.apply_defaults();
 
         assert_eq!(
-            config.fields.get("redirect_uri").unwrap().value,
-            "vscode://rq-lang.rq-language/oauth-callback"
-        );
-        assert_eq!(
             config.fields.get("code_challenge_method").unwrap().value,
             "S256"
         );
@@ -305,6 +277,29 @@ mod tests {
             config.fields.get("code_challenge_method").unwrap().value,
             "plain"
         );
+    }
+
+    #[test]
+    fn test_config_apply_defaults_oauth2_leaves_redirect_uri_unset() {
+        let mut fields = HashMap::new();
+        fields.insert("client_id".to_string(), t("my-client"));
+        fields.insert(
+            "authorization_url".to_string(),
+            t("https://auth.example.com/authorize"),
+        );
+
+        let mut config = Config {
+            name: "test_oauth".to_string(),
+            auth_type: AuthType::OAuth2Implicit,
+            fields,
+            file_path: PathBuf::new(),
+            line: 0,
+            character: 0,
+        };
+
+        config.apply_defaults();
+
+        assert!(!config.fields.contains_key("redirect_uri"));
     }
 
     #[test]

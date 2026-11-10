@@ -1,0 +1,10 @@
+{
+  "errors": [
+    {
+      "file": "{{*}}",
+      "line": 1,
+      "column": 1,
+      "message": "oauth2_implicit auth 'login' missing required field 'redirect_uri'"
+    }
+  ]
+}

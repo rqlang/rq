@@ -542,14 +542,14 @@ rq get_protected("https://api.example.com/protected");
   - **Certificate**: provide `cert_file` (and optionally `cert_password`, `scope`); omit `client_secret`.
 
 #### `auth_type.oauth2_authorization_code`
-- Required: `client_id`, `authorization_url`, `token_url`.
-- Optional: `client_secret`, `redirect_uri`, `scope`, `code_challenge_method` (`S256` default, or `plain`), `use_state`.
-- Default `redirect_uri` (when omitted): `vscode://rq-lang.rq-language/oauth-callback`.
+- Required: `client_id`, `authorization_url`, `token_url`, `redirect_uri`.
+- Optional: `client_secret`, `scope`, `code_challenge_method` (`S256` default, or `plain`), `use_state`.
+- `redirect_uri` has no default and must match the provider's registration. `http://localhost:PORT/…` is received by both the VS Code extension and the MCP server; `vscode://rq-lang.rq-language/oauth-callback` only by the extension; any other address is pasted back by the user.
 - For non-interactive use (CLI), pass a precomputed token via the reserved runtime variable `auth_token` to skip the interactive flow.
 
 #### `auth_type.oauth2_implicit`
-- Required: `client_id`, `authorization_url`.
-- Optional: `redirect_uri`, `scope`.
+- Required: `client_id`, `authorization_url`, `redirect_uri`.
+- Optional: `scope`.
 - Same `auth_token` runtime variable override as authorization_code.
 
 All auth types are validated at parse time. Missing required fields, unexpected fields, or invalid values (e.g. empty bearer token) cause errors before any request executes.

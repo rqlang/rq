@@ -268,10 +268,13 @@ function acceptsRedirectUrlFromAgent(auth: OAuthAuthConfig): boolean {
 
 function requireSupportedRedirect(auth: OAuthAuthConfig): void {
     const redirectUri = auth.fields.redirect_uri;
-    if (!redirectUri || isAppRedirect(redirectUri)) {
+    if (!redirectUri) {
+        throw new McpAuthorizationError(surface.run_request.missing_redirect.replace('{auth}', auth.name));
+    }
+    if (isAppRedirect(redirectUri)) {
         throw new McpAuthorizationError(surface.run_request.unsupported_redirect
             .replace('{auth}', auth.name)
-            .replace('{redirect_uri}', redirectUri || 'the VS Code default'));
+            .replace('{redirect_uri}', redirectUri));
     }
 }
 

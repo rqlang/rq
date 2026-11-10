@@ -2,6 +2,7 @@
 auth implicit_test(auth_type.oauth2_implicit) {
     client_id: "my-client";
     authorization_url: "https://example.com/auth";
+    redirect_uri: "http://localhost:8080/callback";
 }
 
 // We provide the backdoor token in UPPERCASE

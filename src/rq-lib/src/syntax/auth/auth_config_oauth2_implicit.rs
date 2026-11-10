@@ -8,8 +8,8 @@ const AUTHORIZATION_URL_FIELD: &str = "authorization_url";
 const SCOPE_FIELD: &str = "scope";
 const REDIRECT_URI_FIELD: &str = "redirect_uri";
 
-const REQUIRED_FIELDS: [&str; 2] = [CLIENT_ID_FIELD, AUTHORIZATION_URL_FIELD];
-const OPTIONAL_FIELDS: [&str; 2] = [SCOPE_FIELD, REDIRECT_URI_FIELD];
+const REQUIRED_FIELDS: [&str; 3] = [CLIENT_ID_FIELD, AUTHORIZATION_URL_FIELD, REDIRECT_URI_FIELD];
+const OPTIONAL_FIELDS: [&str; 1] = [SCOPE_FIELD];
 
 pub struct OAuth2ImplicitConfig;
 
@@ -111,6 +111,7 @@ mod tests {
             AUTHORIZATION_URL_FIELD.to_string(),
             t("https://auth.example.com/authorize"),
         );
+        fields.insert(REDIRECT_URI_FIELD.to_string(), t("http://localhost:8080"));
 
         assert!(config.validate("test_auth", &fields).is_ok());
     }
@@ -146,11 +147,30 @@ mod tests {
     }
 
     #[test]
+    fn test_implicit_missing_redirect_uri() {
+        let config = OAuth2ImplicitConfig::new();
+        let mut fields = HashMap::new();
+        fields.insert(CLIENT_ID_FIELD.to_string(), t("my-client-id"));
+        fields.insert(
+            AUTHORIZATION_URL_FIELD.to_string(),
+            t("https://auth.example.com/authorize"),
+        );
+
+        let result = config.validate("test_auth", &fields);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .message
+            .contains("missing required field 'redirect_uri'"));
+    }
+
+    #[test]
     fn test_implicit_empty_authorization_url() {
         let config = OAuth2ImplicitConfig::new();
         let mut fields = HashMap::new();
         fields.insert(CLIENT_ID_FIELD.to_string(), t("my-client-id"));
         fields.insert(AUTHORIZATION_URL_FIELD.to_string(), t("  "));
+        fields.insert(REDIRECT_URI_FIELD.to_string(), t("http://localhost:8080"));
 
         let result = config.validate("test_auth", &fields);
         assert!(result.is_err());
@@ -169,6 +189,7 @@ mod tests {
             AUTHORIZATION_URL_FIELD.to_string(),
             t("https://auth.example.com/authorize"),
         );
+        fields.insert(REDIRECT_URI_FIELD.to_string(), t("http://localhost:8080"));
         fields.insert("unknown_field".to_string(), t("value"));
 
         let result = config.validate("test_auth", &fields);

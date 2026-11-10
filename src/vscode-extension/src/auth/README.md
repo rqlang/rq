@@ -29,7 +29,7 @@ Chosen from `redirect_uri`:
 
 | `redirect_uri` | Handler | Needs |
 |---|---|---|
-| `vscode://…` (the default) | `handleAppRedirectCallback` | `AuthUi.waitForAppRedirect`; without it the flow fails before opening anything |
+| `vscode://…` | `handleAppRedirectCallback` | `AuthUi.waitForAppRedirect`; without it the flow fails before opening anything |
 | `http://localhost:N`, `http://127.0.0.1:N` | `handleLocalServerCallback` | Nothing: a local server on that port takes one response |
 | Anything else | `handleManualPasteCallback` | `AuthUi.askForRedirectUrl` |
 

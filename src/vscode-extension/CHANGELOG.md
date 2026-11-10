@@ -4,7 +4,7 @@
 
 ### Breaking Changes
 
-- `redirect_uri` is now required in `oauth2_authorization_code` and `oauth2_implicit` auths, and `vscode://rq-lang.rq-language/oauth-callback` is no longer filled in when it is missing. The MCP server cannot receive that address, so the same file signed in from the extension and failed from an assistant. An auth without `redirect_uri` is now reported in the Problems panel: add the address registered with your provider, `redirect_uri: "vscode://rq-lang.rq-language/oauth-callback"` to keep the previous behavior, or a `http://localhost:PORT/…` address registered for the app to sign in from both the extension and the MCP server.
+- `redirect_uri` is now required in `oauth2_authorization_code` and `oauth2_implicit` auths, and `vscode://rq-lang.rq-language/oauth-callback` is no longer filled in when it is missing. The MCP server cannot receive that address, so the same file signed in from the extension and failed from an assistant. An auth without `redirect_uri` is now a syntax error everywhere: in the Problems panel, in `rq check`, and when the file is loaded by `rq request run` or the MCP server, also when the request is run with an `auth_token`, and it stops the whole file and the files that import it from loading. A `redirect_uri` that resolves to blank through a variable fails when a sign-in is needed. To migrate, add the address registered with your provider, `redirect_uri: "vscode://rq-lang.rq-language/oauth-callback"` to keep the previous behavior, or a `http://localhost:PORT/…` address registered for the app to sign in from both the extension and the MCP server.
 
 ### Features
 
@@ -24,6 +24,8 @@
   - A header repeated in a request was sent only once.
 - Fixed the `duplicated_request_qs` lint rule flagging a query parameter that two requests share while another request of the same `ep` does not send it, and `query_param_as_header` suggesting the endpoint's `qs` in that case. Following either suggestion added the parameter to every request of the `ep`.
 - Fixed a runtime `auth_token` losing to an `auth_token` defined with `let` in the file.
+- Fixed an auth missing a required field being reported at the `auth` keyword; it is now reported at the auth's name.
+- Fixed the unexpected-field error of an auth listing only its required fields; it now lists the optional ones too, so `scop` points to `scope`.
 - Fixed a `timeout` too large to represent crashing `rq request run` and the extension. It is now reported as `Timeout value '…' is too large`, and a timeout longer than about 24.8 days no longer fires immediately in the extension.
 
 ## [0.8.1]

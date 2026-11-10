@@ -1,3 +1,4 @@
+use crate::syntax::auth::auth_config::require_non_empty;
 use crate::syntax::auth::AuthConfig;
 use crate::syntax::error::SyntaxError;
 use crate::syntax::token::Token;
@@ -29,28 +30,20 @@ impl AuthConfig for OAuth2ClientCredentialsConfig {
         "oauth2_client_credentials"
     }
 
-    fn validate(&self, name: &str, fields: &HashMap<String, Token>) -> Result<(), SyntaxError> {
-        const REQUIRED_FIELDS: &[&str] = &[CLIENT_ID_FIELD, TOKEN_URL_FIELD];
-        const OPTIONAL_FIELDS: &[&str] = &[
+    fn required_fields(&self) -> &'static [&'static str] {
+        &[CLIENT_ID_FIELD, TOKEN_URL_FIELD]
+    }
+
+    fn optional_fields(&self) -> &'static [&'static str] {
+        &[
             CLIENT_SECRET_FIELD,
             SCOPE_FIELD,
             CERT_FILE_FIELD,
             CERT_PASSWORD_FIELD,
-        ];
+        ]
+    }
 
-        for field in REQUIRED_FIELDS {
-            if !fields.contains_key(*field) {
-                return Err(SyntaxError::new(
-                    format!(
-                        "OAuth2 Client Credentials auth '{name}' missing required field '{field}'"
-                    ),
-                    0,
-                    0,
-                    0..0,
-                ));
-            }
-        }
-
+    fn validate(&self, name: &str, fields: &HashMap<String, Token>) -> Result<(), SyntaxError> {
         if !fields.contains_key(CLIENT_SECRET_FIELD) && !fields.contains_key(CERT_FILE_FIELD) {
             return Err(SyntaxError::new(
                 format!(
@@ -62,39 +55,12 @@ impl AuthConfig for OAuth2ClientCredentialsConfig {
             ));
         }
 
-        for field in REQUIRED_FIELDS {
-            if let Some(token) = fields.get(*field) {
-                if token.value.trim().is_empty() {
-                    return Err(SyntaxError::new(
-                        format!(
-                            "OAuth2 Client Credentials auth '{name}' has empty '{field}' field"
-                        ),
-                        0,
-                        0,
-                        token.span.clone(),
-                    ));
-                }
-            }
-        }
-
-        for (field_name, token) in fields {
-            if !REQUIRED_FIELDS.contains(&field_name.as_str())
-                && !OPTIONAL_FIELDS.contains(&field_name.as_str())
-            {
-                return Err(SyntaxError::new(
-                    format!(
-                        "OAuth2 Client Credentials auth '{name}' has unexpected field '{field_name}'. Expected fields: {}, {}",
-                        REQUIRED_FIELDS.join(", "),
-                        OPTIONAL_FIELDS.join(", ")
-                    ),
-                    0,
-                    0,
-                    token.span.clone(),
-                ));
-            }
-        }
-
-        Ok(())
+        require_non_empty(
+            "OAuth2 Client Credentials",
+            name,
+            fields,
+            self.required_fields(),
+        )
     }
 }
 
@@ -126,16 +92,6 @@ mod tests {
         fields.insert(TOKEN_URL_FIELD.to_string(), t("https://example.com/token"));
 
         assert!(provider.validate("test_auth", &fields).is_ok());
-    }
-
-    #[test]
-    fn test_client_credentials_missing_field() {
-        let provider = OAuth2ClientCredentialsConfig::new();
-        let mut fields = HashMap::new();
-        fields.insert(CLIENT_ID_FIELD.to_string(), t("my-client"));
-        // Missing secret and token_url
-
-        assert!(provider.validate("test_auth", &fields).is_err());
     }
 
     #[test]

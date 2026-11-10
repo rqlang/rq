@@ -354,6 +354,8 @@ impl RqClient {
             &*self.fs,
         )?;
 
+        Self::validate_resolved_auth(&config)?;
+
         let auth_type_str = match config.auth_type {
             crate::syntax::auth::AuthType::Bearer => "bearer",
             crate::syntax::auth::AuthType::OAuth2AuthorizationCode => "oauth2_authorization_code",
@@ -1389,6 +1391,9 @@ impl RqClient {
             std::mem::take(&mut request.headers),
         );
         request.headers = headers;
+        if !applied {
+            Self::validate_resolved_auth(&config)?;
+        }
         Ok((
             request,
             Some(PreparedAuth {
@@ -1396,6 +1401,12 @@ impl RqClient {
                 token_required: !applied,
             }),
         ))
+    }
+
+    fn validate_resolved_auth(config: &AuthConfig) -> Result<(), RqError> {
+        config.validate().map_err(|e| {
+            RqError::Validation(format!("{} once its variables are resolved", e.message))
+        })
     }
 
     async fn authorize(mut prepared: PreparedRequest) -> Result<PreparedRequest, RqError> {
@@ -3365,6 +3376,41 @@ mod prepare_tests {
             (Some("Bearer xyz"), Some(false))
         );
     }
+
+    #[test]
+    fn prepared_request_rejects_a_redirect_uri_that_resolves_blank() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write(dir.path(), "main.rq", BLANK_REDIRECT_URI_AUTH);
+        let target = RqClient::default().prepare_request(
+            RequestTarget::new(&dir.path().join("main.rq"), "probe"),
+            None,
+            &[],
+        );
+        assert_eq!(
+            target.err().map(|e| e.to_string()),
+            Some("Validation error: OAuth2 Implicit auth 'login' has empty 'redirect_uri' field once its variables are resolved".to_string())
+        );
+    }
+
+    #[test]
+    fn prepared_request_with_a_runtime_auth_token_ignores_a_blank_redirect_uri() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write(dir.path(), "main.rq", BLANK_REDIRECT_URI_AUTH);
+        let target = prepare(&dir.path().join("main.rq"), "probe", &["auth_token=xyz"]);
+        assert_eq!(authorization(&target.request), Some("Bearer xyz"));
+    }
+
+    #[test]
+    fn auth_details_reject_a_redirect_uri_that_resolves_blank() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write(dir.path(), "main.rq", BLANK_REDIRECT_URI_AUTH);
+        let target = RqClient::default().get_auth_details(dir.path(), "login", None, true);
+        assert!(target
+            .err()
+            .is_some_and(|e| e.to_string().contains("has empty 'redirect_uri' field")));
+    }
+
+    const BLANK_REDIRECT_URI_AUTH: &str = "let callback = \" \";\n\nauth login(auth_type.oauth2_implicit) {\n    client_id: \"app\",\n    authorization_url: \"http://localhost/authorize\",\n    redirect_uri: \"{{callback}}\",\n}\n\n[auth(\"login\")]\nrq probe(\"http://localhost/probe\");\n";
 
     #[test]
     fn prepared_request_without_a_known_token_asks_for_one() {

@@ -18,15 +18,6 @@ export function getFlowTypeFromAuthType(authType: string): OAuth2FlowType {
 export async function performOAuth2Flow(authConfig: OAuthAuthConfig, provider: OAuthProvider): Promise<string> {
     const flowType = getFlowTypeFromAuthType(authConfig.auth_type);
     const { fields } = authConfig;
-    if (!fields.authorization_url) {
-        throw new Error(`Auth '${authConfig.name}' has no authorization_url. Add it to the auth in its .rq file.`);
-    }
-    if (flowType === 'authorization_code_pkce' && !fields.token_url) {
-        throw new Error(`Auth '${authConfig.name}' has no token_url. Add it to the auth in its .rq file.`);
-    }
-    if (!fields.redirect_uri) {
-        throw new Error(`Auth '${authConfig.name}' has no redirect_uri. Add the redirect URI registered for the app to the auth in its .rq file.`);
-    }
     requireUrl('authorization_url', fields.authorization_url);
     if (fields.token_url) {
         requireUrl('token_url', fields.token_url);

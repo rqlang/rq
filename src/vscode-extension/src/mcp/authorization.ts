@@ -268,9 +268,6 @@ function acceptsRedirectUrlFromAgent(auth: OAuthAuthConfig): boolean {
 
 function requireSupportedRedirect(auth: OAuthAuthConfig): void {
     const redirectUri = auth.fields.redirect_uri;
-    if (!redirectUri) {
-        throw new McpAuthorizationError(surface.run_request.missing_redirect.replace('{auth}', auth.name));
-    }
     if (isAppRedirect(redirectUri)) {
         throw new McpAuthorizationError(surface.run_request.unsupported_redirect
             .replace('{auth}', auth.name)

@@ -37,12 +37,11 @@ pub(crate) fn parse_auth_definition(
     r: &mut TokenReader,
     existing_providers: &HashMap<String, AuthConfig>,
 ) -> Result<AuthConfig, SyntaxError> {
-    let auth_token = expect(
+    expect(
         r,
         |t| t.token_type == TokenType::Keyword && t.value == KW_AUTH,
         format!("Expected '{KW_AUTH}'"),
     )?;
-    let span = auth_token.span.clone();
 
     r.advance();
     r.skip_ignorable();
@@ -53,6 +52,7 @@ pub(crate) fn parse_auth_definition(
         "Expected identifier",
     )?;
     let auth_name = name_tok.value.clone();
+    let name_span = name_tok.span.clone();
     let (line_1, col_1) = r.get_line_col(name_tok.span.start);
     let auth_line = line_1.saturating_sub(1);
     let auth_character = col_1.saturating_sub(1);
@@ -153,8 +153,8 @@ pub(crate) fn parse_auth_definition(
             &auth_type,
             &auth_name,
             &key,
-            &required_fields,
-            &optional_fields,
+            required_fields,
+            optional_fields,
             &key_tok,
             r,
         )?;
@@ -210,8 +210,8 @@ pub(crate) fn parse_auth_definition(
         &auth_type,
         &auth_name,
         &fields,
-        &required_fields,
-        span.clone(),
+        required_fields,
+        name_span.clone(),
         r,
     )?;
 
@@ -227,7 +227,7 @@ pub(crate) fn parse_auth_definition(
     if let Err(mut e) = config.validate() {
         if e.line == 0 || e.column == 0 {
             let err_span = if e.span.start == 0 && e.span.end == 0 {
-                span.clone()
+                name_span.clone()
             } else {
                 e.span.clone()
             };
@@ -259,7 +259,12 @@ fn validate_field_is_allowed(
                 auth_type.as_str(),
                 auth_name,
                 key,
-                required_fields.join(", ")
+                required_fields
+                    .iter()
+                    .chain(optional_fields)
+                    .copied()
+                    .collect::<Vec<_>>()
+                    .join(", ")
             ),
             token.span.clone(),
         ));

@@ -1,3 +1,4 @@
+use crate::syntax::auth::auth_config::require_non_empty;
 use crate::syntax::auth::AuthConfig;
 use crate::syntax::error::SyntaxError;
 use crate::syntax::token::Token;
@@ -24,19 +25,16 @@ impl AuthConfig for BearerAuthConfig {
         "bearer"
     }
 
-    fn validate(&self, name: &str, fields: &HashMap<String, Token>) -> Result<(), SyntaxError> {
-        if let Some(token) = fields.get(TOKEN_FIELD) {
-            if token.value.trim().is_empty() {
-                return Err(SyntaxError::new(
-                    format!("Bearer auth '{name}' has empty '{TOKEN_FIELD}' field"),
-                    0,
-                    0,
-                    token.span.clone(),
-                ));
-            }
-        }
+    fn required_fields(&self) -> &'static [&'static str] {
+        &[TOKEN_FIELD]
+    }
 
-        Ok(())
+    fn optional_fields(&self) -> &'static [&'static str] {
+        &[]
+    }
+
+    fn validate(&self, name: &str, fields: &HashMap<String, Token>) -> Result<(), SyntaxError> {
+        require_non_empty("Bearer", name, fields, self.required_fields())
     }
 }
 

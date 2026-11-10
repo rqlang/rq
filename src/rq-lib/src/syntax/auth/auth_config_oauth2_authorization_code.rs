@@ -1,19 +1,17 @@
+use crate::syntax::auth::auth_config::require_non_empty;
 use crate::syntax::auth::AuthConfig;
 use crate::syntax::error::SyntaxError;
 use crate::syntax::token::Token;
 use std::collections::HashMap;
 
 const CLIENT_ID_FIELD: &str = "client_id";
-#[allow(dead_code)]
 const CLIENT_SECRET_FIELD: &str = "client_secret";
 const AUTHORIZATION_URL_FIELD: &str = "authorization_url";
 const TOKEN_URL_FIELD: &str = "token_url";
 const REDIRECT_URI_FIELD: &str = "redirect_uri";
-#[allow(dead_code)]
 const SCOPE_FIELD: &str = "scope";
 const CODE_CHALLENGE_METHOD_FIELD: &str = "code_challenge_method";
 const USE_STATE_FIELD: &str = "use_state";
-const USE_PKCE_FIELD: &str = "use_pkce";
 
 pub struct OAuth2AuthorizationCodeConfig;
 
@@ -34,49 +32,31 @@ impl AuthConfig for OAuth2AuthorizationCodeConfig {
         "oauth2_authorization_code"
     }
 
-    fn validate(&self, name: &str, fields: &HashMap<String, Token>) -> Result<(), SyntaxError> {
-        const REQUIRED_FIELDS: &[&str] = &[
+    fn required_fields(&self) -> &'static [&'static str] {
+        &[
             CLIENT_ID_FIELD,
             AUTHORIZATION_URL_FIELD,
             TOKEN_URL_FIELD,
             REDIRECT_URI_FIELD,
-        ];
+        ]
+    }
 
-        const OPTIONAL_FIELDS: &[&str] = &[
+    fn optional_fields(&self) -> &'static [&'static str] {
+        &[
             CLIENT_SECRET_FIELD,
             SCOPE_FIELD,
             CODE_CHALLENGE_METHOD_FIELD,
             USE_STATE_FIELD,
-            USE_PKCE_FIELD,
-        ];
+        ]
+    }
 
-        for field in REQUIRED_FIELDS {
-            if !fields.contains_key(*field) {
-                return Err(SyntaxError::new(
-                    format!(
-                        "OAuth2 Authorization Code auth '{name}' missing required field '{field}'"
-                    ),
-                    0,
-                    0,
-                    0..0,
-                ));
-            }
-        }
-
-        for field in REQUIRED_FIELDS {
-            if let Some(token) = fields.get(*field) {
-                if token.value.trim().is_empty() {
-                    return Err(SyntaxError::new(
-                        format!(
-                            "OAuth2 Authorization Code auth '{name}' has empty '{field}' field"
-                        ),
-                        0,
-                        0,
-                        token.span.clone(),
-                    ));
-                }
-            }
-        }
+    fn validate(&self, name: &str, fields: &HashMap<String, Token>) -> Result<(), SyntaxError> {
+        require_non_empty(
+            "OAuth2 Authorization Code",
+            name,
+            fields,
+            self.required_fields(),
+        )?;
 
         if let Some(token) = fields.get(CODE_CHALLENGE_METHOD_FIELD) {
             let valid_methods = ["S256", "plain"];
@@ -99,37 +79,6 @@ impl AuthConfig for OAuth2AuthorizationCodeConfig {
                     format!(
                         "OAuth2 Authorization Code auth '{name}' has invalid '{USE_STATE_FIELD}': '{}'. Valid values: true, false",
                         token.value
-                    ),
-                    0,
-                    0,
-                    token.span.clone(),
-                ));
-            }
-        }
-
-        if let Some(token) = fields.get(USE_PKCE_FIELD) {
-            if token.value != "true" && token.value != "false" {
-                return Err(SyntaxError::new(
-                    format!(
-                        "OAuth2 Authorization Code auth '{name}' has invalid '{USE_PKCE_FIELD}': '{}'. Valid values: true, false",
-                        token.value
-                    ),
-                    0,
-                    0,
-                    token.span.clone(),
-                ));
-            }
-        }
-
-        for (field_name, token) in fields {
-            if !REQUIRED_FIELDS.contains(&field_name.as_str())
-                && !OPTIONAL_FIELDS.contains(&field_name.as_str())
-            {
-                return Err(SyntaxError::new(
-                    format!(
-                        "OAuth2 Authorization Code auth '{name}' has unexpected field '{field_name}'. Expected fields: {}, {}",
-                        REQUIRED_FIELDS.join(", "),
-                        OPTIONAL_FIELDS.join(", ")
                     ),
                     0,
                     0,
@@ -272,93 +221,6 @@ mod tests {
     }
 
     #[test]
-    fn test_oauth2_auth_code_missing_client_id() {
-        let config = OAuth2AuthorizationCodeConfig::new();
-        let mut fields = HashMap::new();
-        fields.insert(
-            AUTHORIZATION_URL_FIELD.to_string(),
-            t("https://auth.example.com/authorize"),
-        );
-        fields.insert(
-            TOKEN_URL_FIELD.to_string(),
-            t("https://auth.example.com/token"),
-        );
-        fields.insert(
-            REDIRECT_URI_FIELD.to_string(),
-            t("http://localhost:8080/callback"),
-        );
-
-        let result = config.validate("test_auth", &fields);
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .message
-            .contains("missing required field 'client_id'"));
-    }
-
-    #[test]
-    fn test_oauth2_auth_code_missing_authorization_url() {
-        let config = OAuth2AuthorizationCodeConfig::new();
-        let mut fields = HashMap::new();
-        fields.insert(CLIENT_ID_FIELD.to_string(), t("my-client-id"));
-        fields.insert(
-            TOKEN_URL_FIELD.to_string(),
-            t("https://auth.example.com/token"),
-        );
-        fields.insert(
-            REDIRECT_URI_FIELD.to_string(),
-            t("http://localhost:8080/callback"),
-        );
-
-        let result = config.validate("test_auth", &fields);
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .message
-            .contains("missing required field 'authorization_url'"));
-    }
-
-    #[test]
-    fn test_oauth2_auth_code_missing_token_url() {
-        let config = OAuth2AuthorizationCodeConfig::new();
-        let mut fields = HashMap::new();
-        fields.insert(CLIENT_ID_FIELD.to_string(), t("my-client-id"));
-        fields.insert(
-            AUTHORIZATION_URL_FIELD.to_string(),
-            t("https://auth.example.com/authorize"),
-        );
-
-        let result = config.validate("test_auth", &fields);
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .message
-            .contains("missing required field 'token_url'"));
-    }
-
-    #[test]
-    fn test_oauth2_auth_code_missing_redirect_uri() {
-        let config = OAuth2AuthorizationCodeConfig::new();
-        let mut fields = HashMap::new();
-        fields.insert(CLIENT_ID_FIELD.to_string(), t("my-client-id"));
-        fields.insert(
-            AUTHORIZATION_URL_FIELD.to_string(),
-            t("https://auth.example.com/authorize"),
-        );
-        fields.insert(
-            TOKEN_URL_FIELD.to_string(),
-            t("https://auth.example.com/token"),
-        );
-
-        let result = config.validate("test_auth", &fields);
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .message
-            .contains("missing required field 'redirect_uri'"));
-    }
-
-    #[test]
     fn test_oauth2_auth_code_empty_field() {
         let config = OAuth2AuthorizationCodeConfig::new();
         let mut fields = HashMap::new();
@@ -409,76 +271,5 @@ mod tests {
             .unwrap_err()
             .message
             .contains("invalid 'code_challenge_method'"));
-    }
-
-    #[test]
-    fn test_oauth2_auth_code_unexpected_field() {
-        let config = OAuth2AuthorizationCodeConfig::new();
-        let mut fields = HashMap::new();
-        fields.insert(CLIENT_ID_FIELD.to_string(), t("my-client-id"));
-        fields.insert(
-            AUTHORIZATION_URL_FIELD.to_string(),
-            t("https://auth.example.com/authorize"),
-        );
-        fields.insert(
-            TOKEN_URL_FIELD.to_string(),
-            t("https://auth.example.com/token"),
-        );
-        fields.insert(
-            REDIRECT_URI_FIELD.to_string(),
-            t("http://localhost:8080/callback"),
-        );
-        fields.insert("unexpected".to_string(), t("field"));
-
-        let result = config.validate("test_auth", &fields);
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .message
-            .contains("unexpected field 'unexpected'"));
-    }
-
-    #[test]
-    fn test_valid_oauth2_auth_code_with_use_pkce() {
-        let config = OAuth2AuthorizationCodeConfig::new();
-        let mut fields = HashMap::new();
-        fields.insert(CLIENT_ID_FIELD.to_string(), t("my-client-id"));
-        fields.insert(
-            AUTHORIZATION_URL_FIELD.to_string(),
-            t("https://auth.example.com/authorize"),
-        );
-        fields.insert(
-            TOKEN_URL_FIELD.to_string(),
-            t("https://auth.example.com/token"),
-        );
-        fields.insert(
-            REDIRECT_URI_FIELD.to_string(),
-            t("http://localhost:8080/callback"),
-        );
-        fields.insert(USE_PKCE_FIELD.to_string(), t("false"));
-
-        assert!(config.validate("test_auth", &fields).is_ok());
-    }
-
-    #[test]
-    fn test_invalid_oauth2_auth_code_use_pkce() {
-        let config = OAuth2AuthorizationCodeConfig::new();
-        let mut fields = HashMap::new();
-        fields.insert(CLIENT_ID_FIELD.to_string(), t("my-client-id"));
-        fields.insert(
-            AUTHORIZATION_URL_FIELD.to_string(),
-            t("https://auth.example.com/authorize"),
-        );
-        fields.insert(
-            TOKEN_URL_FIELD.to_string(),
-            t("https://auth.example.com/token"),
-        );
-        fields.insert(
-            REDIRECT_URI_FIELD.to_string(),
-            t("http://localhost:8080/callback"),
-        );
-        fields.insert(USE_PKCE_FIELD.to_string(), t("invalid"));
-
-        assert!(config.validate("test_auth", &fields).is_err());
     }
 }

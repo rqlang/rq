@@ -32,7 +32,6 @@ export const surface = surfaceJson as {
         file_outside_workspace: string;
         authorization_message: string;
         authorization_required: string;
-        missing_redirect: string;
         unsupported_redirect: string;
         implicit_needs_dialog: string;
         unprotected_needs_dialog: string;

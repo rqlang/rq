@@ -48,7 +48,7 @@ For the formal syntax of `auth` blocks, see the [Language Definition — Auth](L
 
 | `redirect_uri` | VS Code extension | MCP server |
 | --- | --- | --- |
-| `http://localhost:PORT/…` or `http://127.0.0.1:PORT/…` | Received by a local server on that port | Received by a local server on that port (authorization code) |
+| `http://localhost:PORT/…` or `http://127.0.0.1:PORT/…` | Authorization code: received by a local server on that port. Implicit: you paste the address the browser ends on | Authorization code: received by a local server on that port. Implicit: you paste the address the browser ends on |
 | `vscode://rq-lang.rq-language/oauth-callback` | Received by VS Code | Not supported |
 | Any other address | You paste the address the browser ends on | You paste the address the browser ends on |
 

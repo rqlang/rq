@@ -148,13 +148,6 @@ describe('Authorizer', () => {
         expect(open).not.toHaveBeenCalled();
     });
 
-    it('rejects an auth whose redirect uri is empty before opening anything', async () => {
-        const open = opener('accepted');
-        const target = withOpener(open);
-        await expect(target.authorize(authConfig({ redirect_uri: '' }))).rejects.toThrow('has an empty redirect_uri');
-        expect(open).not.toHaveBeenCalled();
-    });
-
     it('stops waiting once the call is cancelled', async () => {
         const cancellation = new AbortController();
         let url = '';

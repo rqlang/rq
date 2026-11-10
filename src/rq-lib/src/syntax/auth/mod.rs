@@ -60,38 +60,12 @@ impl AuthType {
         }
     }
 
-    pub fn required_fields(&self) -> Vec<&'static str> {
-        match self {
-            AuthType::Bearer => vec!["token"],
-            AuthType::OAuth2AuthorizationCode => {
-                vec![
-                    "client_id",
-                    "authorization_url",
-                    "token_url",
-                    "redirect_uri",
-                ]
-            }
-            AuthType::OAuth2ClientCredentials => {
-                vec!["client_id", "token_url"]
-            }
-            AuthType::OAuth2Implicit => vec!["client_id", "authorization_url", "redirect_uri"],
-        }
+    pub fn required_fields(&self) -> &'static [&'static str] {
+        self.get_config().required_fields()
     }
 
-    pub fn optional_fields(&self) -> Vec<&'static str> {
-        match self {
-            AuthType::Bearer => vec![],
-            AuthType::OAuth2AuthorizationCode => vec![
-                "client_secret",
-                "scope",
-                "code_challenge_method",
-                "use_state",
-            ],
-            AuthType::OAuth2ClientCredentials => {
-                vec!["client_secret", "scope", "cert_file", "cert_password"]
-            }
-            AuthType::OAuth2Implicit => vec!["scope"],
-        }
+    pub fn optional_fields(&self) -> &'static [&'static str] {
+        self.get_config().optional_fields()
     }
 }
 
@@ -180,6 +154,16 @@ mod tests {
         let auth_type = AuthType::OAuth2AuthorizationCode;
         let config = auth_type.get_config();
         assert_eq!(config.auth_type(), "oauth2_authorization_code");
+    }
+
+    #[test]
+    fn test_interactive_auth_types_require_redirect_uri() {
+        assert!(AuthType::OAuth2AuthorizationCode
+            .required_fields()
+            .contains(&"redirect_uri"));
+        assert!(AuthType::OAuth2Implicit
+            .required_fields()
+            .contains(&"redirect_uri"));
     }
 
     #[test]
@@ -287,10 +271,11 @@ mod tests {
             "authorization_url".to_string(),
             t("https://auth.example.com/authorize"),
         );
+        fields.insert("token_url".to_string(), t("https://auth.example.com/token"));
 
         let mut config = Config {
             name: "test_oauth".to_string(),
-            auth_type: AuthType::OAuth2Implicit,
+            auth_type: AuthType::OAuth2AuthorizationCode,
             fields,
             file_path: PathBuf::new(),
             line: 0,

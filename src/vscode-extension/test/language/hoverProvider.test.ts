@@ -4,6 +4,7 @@ import * as vscode from 'vscode';
 import * as cliService from '../../src/rqClient';
 import { setEnvironmentProvider } from '../../src/language/hoverProvider';
 import '../../src/language/hoverProvider';
+import { AUTH_FIELDS } from './completionTestUtils';
 
 function makeDocument(lines: string[]) {
     return {
@@ -34,6 +35,7 @@ beforeAll(() => {
 beforeEach(() => {
     jest.clearAllMocks();
     setEnvironmentProvider({ getSelectedEnvironment: () => undefined });
+    (cliService.authFields as jest.Mock).mockResolvedValue(AUTH_FIELDS);
 });
 
 describe('rq declaration hover', () => {

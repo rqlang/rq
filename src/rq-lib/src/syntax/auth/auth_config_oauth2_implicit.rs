@@ -1,3 +1,4 @@
+use crate::syntax::auth::auth_config::require_non_empty;
 use crate::syntax::auth::AuthConfig;
 use crate::syntax::error::SyntaxError;
 use crate::syntax::token::Token;
@@ -7,9 +8,6 @@ const CLIENT_ID_FIELD: &str = "client_id";
 const AUTHORIZATION_URL_FIELD: &str = "authorization_url";
 const SCOPE_FIELD: &str = "scope";
 const REDIRECT_URI_FIELD: &str = "redirect_uri";
-
-const REQUIRED_FIELDS: [&str; 2] = [CLIENT_ID_FIELD, AUTHORIZATION_URL_FIELD];
-const OPTIONAL_FIELDS: [&str; 2] = [SCOPE_FIELD, REDIRECT_URI_FIELD];
 
 pub struct OAuth2ImplicitConfig;
 
@@ -30,56 +28,16 @@ impl AuthConfig for OAuth2ImplicitConfig {
         "oauth2_implicit"
     }
 
+    fn required_fields(&self) -> &'static [&'static str] {
+        &[CLIENT_ID_FIELD, AUTHORIZATION_URL_FIELD, REDIRECT_URI_FIELD]
+    }
+
+    fn optional_fields(&self) -> &'static [&'static str] {
+        &[SCOPE_FIELD]
+    }
+
     fn validate(&self, name: &str, fields: &HashMap<String, Token>) -> Result<(), SyntaxError> {
-        for field in &REQUIRED_FIELDS {
-            if !fields.contains_key(*field) {
-                return Err(SyntaxError::new(
-                    format!(
-                        "OAuth2 Implicit auth '{name}' is missing required field '{field}'. Required fields: {}",
-                        REQUIRED_FIELDS.join(", ")
-                    ),
-                    0,
-                    0,
-                    if let Some(first) = fields.values().next() {
-                        first.span.clone()
-                    } else {
-                        0..0
-                    }
-                ));
-            }
-        }
-
-        for field in &REQUIRED_FIELDS {
-            if let Some(token) = fields.get(*field) {
-                if token.value.trim().is_empty() {
-                    return Err(SyntaxError::new(
-                        format!("OAuth2 Implicit auth '{name}' has empty '{field}' field"),
-                        0,
-                        0,
-                        token.span.clone(),
-                    ));
-                }
-            }
-        }
-
-        for (field_name, token) in fields {
-            if !REQUIRED_FIELDS.contains(&field_name.as_str())
-                && !OPTIONAL_FIELDS.contains(&field_name.as_str())
-            {
-                return Err(SyntaxError::new(
-                    format!(
-                        "OAuth2 Implicit auth '{name}' has unexpected field '{field_name}'. Expected fields: {}, {}",
-                        REQUIRED_FIELDS.join(", "),
-                        OPTIONAL_FIELDS.join(", ")
-                    ),
-                    0,
-                    0,
-                    token.span.clone(),
-                ));
-            }
-        }
-
-        Ok(())
+        require_non_empty(self.auth_type(), name, fields, self.required_fields())
     }
 }
 
@@ -111,6 +69,7 @@ mod tests {
             AUTHORIZATION_URL_FIELD.to_string(),
             t("https://auth.example.com/authorize"),
         );
+        fields.insert(REDIRECT_URI_FIELD.to_string(), t("http://localhost:8080"));
 
         assert!(config.validate("test_auth", &fields).is_ok());
     }
@@ -131,18 +90,21 @@ mod tests {
     }
 
     #[test]
-    fn test_implicit_missing_fields() {
+    fn test_implicit_blank_redirect_uri() {
         let config = OAuth2ImplicitConfig::new();
         let mut fields = HashMap::new();
         fields.insert(CLIENT_ID_FIELD.to_string(), t("my-client-id"));
-        // Missing authorization_url
+        fields.insert(
+            AUTHORIZATION_URL_FIELD.to_string(),
+            t("https://auth.example.com/authorize"),
+        );
+        fields.insert(REDIRECT_URI_FIELD.to_string(), t("  "));
 
         let result = config.validate("test_auth", &fields);
-        assert!(result.is_err());
         assert!(result
             .unwrap_err()
             .message
-            .contains("missing required field"));
+            .contains("has empty 'redirect_uri' field"));
     }
 
     #[test]
@@ -151,6 +113,7 @@ mod tests {
         let mut fields = HashMap::new();
         fields.insert(CLIENT_ID_FIELD.to_string(), t("my-client-id"));
         fields.insert(AUTHORIZATION_URL_FIELD.to_string(), t("  "));
+        fields.insert(REDIRECT_URI_FIELD.to_string(), t("http://localhost:8080"));
 
         let result = config.validate("test_auth", &fields);
         assert!(result.is_err());
@@ -158,21 +121,5 @@ mod tests {
             .unwrap_err()
             .message
             .contains("has empty 'authorization_url' field"));
-    }
-
-    #[test]
-    fn test_implicit_unexpected_field() {
-        let config = OAuth2ImplicitConfig::new();
-        let mut fields = HashMap::new();
-        fields.insert(CLIENT_ID_FIELD.to_string(), t("my-client-id"));
-        fields.insert(
-            AUTHORIZATION_URL_FIELD.to_string(),
-            t("https://auth.example.com/authorize"),
-        );
-        fields.insert("unknown_field".to_string(), t("value"));
-
-        let result = config.validate("test_auth", &fields);
-        assert!(result.is_err());
-        assert!(result.unwrap_err().message.contains("unexpected field"));
     }
 }

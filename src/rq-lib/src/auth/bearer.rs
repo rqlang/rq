@@ -75,6 +75,10 @@ impl AuthProvider for BearerProvider {
         Self::apply_configured_token(auth_config, headers)
     }
 
+    fn known_token_reads_fields(&self) -> bool {
+        true
+    }
+
     fn configure<'a>(
         &'a self,
         auth_config: &'a crate::syntax::auth::Config,

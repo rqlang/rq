@@ -7,6 +7,7 @@ auth api_oauth(auth_type.oauth2_authorization_code) {
     client_id: "test-client-id",
     authorization_url: "https://auth.example.com/authorize",
     token_url: "https://auth.example.com/token",
+    redirect_uri: "http://localhost:8080/callback",
     scope: "read write"
 }
 

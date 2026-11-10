@@ -29,7 +29,7 @@ Chosen from `redirect_uri`:
 
 | `redirect_uri` | Handler | Needs |
 |---|---|---|
-| `vscode://…` (the default) | `handleAppRedirectCallback` | `AuthUi.waitForAppRedirect`; without it the flow fails before opening anything |
+| `vscode://…` | `handleAppRedirectCallback` | `AuthUi.waitForAppRedirect`; without it the flow fails before opening anything |
 | `http://localhost:N`, `http://127.0.0.1:N` | `handleLocalServerCallback` | Nothing: a local server on that port takes one response |
 | Anything else | `handleManualPasteCallback` | `AuthUi.askForRedirectUrl` |
 
@@ -50,6 +50,6 @@ Another host builds its own `OAuthProvider` from an `AuthUi` and a `TokenStore`,
 
 ## Security
 
-- PKCE (S256 by default) and `state` are on unless the auth sets `use_pkce: false` or `use_state: false`.
+- PKCE (S256 by default) is always on; `state` is on unless the auth sets `use_state: false`.
 - The extension keeps tokens in VS Code's secret storage under `oauth-token-cache`.
 - The local callback page escapes what the provider sends back and closes the connection after one response.

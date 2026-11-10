@@ -2,8 +2,8 @@ env bearer_env {
     auth_name: "bearer_auth",
 }
 
-env oauth_ac_default_env {
-    auth_name: "oauth_ac_default",
+env oauth_ac_vscode_env {
+    auth_name: "oauth_ac_vscode",
 }
 
 env oauth_ac_custom_env {
@@ -22,18 +22,19 @@ env oauth_cc_cert_env {
     auth_name: "oauth_cc_cert",
 }
 
-env oauth_implicit_default_env {
-    auth_name: "oauth_implicit_default",
+env oauth_implicit_vscode_env {
+    auth_name: "oauth_implicit_vscode",
 }
 
 auth bearer_auth(auth_type.bearer) {
     token: "{{api_token}}",
 }
 
-auth oauth_ac_default(auth_type.oauth2_authorization_code) {
+auth oauth_ac_vscode(auth_type.oauth2_authorization_code) {
     client_id: "{{oauth_client_id}}",
     authorization_url: "{{oauth_authorization_url}}",
     token_url: "{{oauth_token_url}}",
+    redirect_uri: "vscode://rq-lang.rq-language/oauth-callback",
     scope: "{{oauth_scope}}",
 }
 
@@ -68,8 +69,9 @@ auth oauth_cc_cert(auth_type.oauth2_client_credentials) {
     scope: "{{oauth_scope}}",
 }
 
-auth oauth_implicit_default(auth_type.oauth2_implicit) {
+auth oauth_implicit_vscode(auth_type.oauth2_implicit) {
     client_id: "{{oauth_client_id}}",
     authorization_url: "{{oauth_authorization_url}}",
+    redirect_uri: "vscode://rq-lang.rq-language/oauth-callback",
     scope: "{{oauth_scope}}",
 }

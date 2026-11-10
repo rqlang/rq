@@ -1,0 +1,10 @@
+{
+  "errors": [
+    {
+      "file": "{{*}}",
+      "line": 5,
+      "column": 5,
+      "message": "oauth2_implicit auth 'login' has unexpected field 'scop'. Expected fields: client_id, authorization_url, redirect_uri, scope"
+    }
+  ]
+}

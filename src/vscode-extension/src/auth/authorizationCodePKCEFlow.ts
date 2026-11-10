@@ -13,27 +13,18 @@ export class AuthorizationCodePKCEFlow implements IOAuth2Flow {
             this.ui.log(`Starting OAuth2 Authorization Code with PKCE flow for client ${config.clientId}`);
             validateUrls(config);
 
-            let codeVerifier: string | undefined;
-            let challengeMethod: 'S256' | 'plain' | undefined;
-            let codeChallenge: string | undefined;
-            if (config.usePkce !== false) {
-                codeVerifier = generateCodeVerifier();
-                challengeMethod = config.codeChallengeMethod || 'S256';
-                codeChallenge = generateCodeChallenge(codeVerifier, challengeMethod);
-            } else {
-                this.ui.log('PKCE disabled by configuration');
-            }
+            const codeVerifier = generateCodeVerifier();
+            const challengeMethod = config.codeChallengeMethod || 'S256';
+            const codeChallenge = generateCodeChallenge(codeVerifier, challengeMethod);
 
             const state = config.useState !== false ? crypto.randomBytes(32).toString('hex') : undefined;
             const authParams = new URLSearchParams({
                 client_id: config.clientId,
                 redirect_uri: config.redirectUri,
                 response_type: 'code',
+                code_challenge_method: challengeMethod,
+                code_challenge: codeChallenge,
             });
-            if (codeChallenge && challengeMethod) {
-                authParams.set('code_challenge_method', challengeMethod);
-                authParams.set('code_challenge', codeChallenge);
-            }
             if (config.scope) {
                 authParams.set('scope', config.scope);
             }
@@ -70,7 +61,7 @@ export class AuthorizationCodePKCEFlow implements IOAuth2Flow {
         return handleManualPasteCallback(this.ui, authUrl, redirectUri);
     }
 
-    private async exchangeCodeForToken(code: string, codeVerifier: string | undefined, config: OAuth2Config): Promise<TokenResponse> {
+    private async exchangeCodeForToken(code: string, codeVerifier: string, config: OAuth2Config): Promise<TokenResponse> {
         if (!config.tokenUrl) {
             throw new Error('Token URL is required for Authorization Code flow');
         }
@@ -79,10 +70,8 @@ export class AuthorizationCodePKCEFlow implements IOAuth2Flow {
             grant_type: 'authorization_code',
             code,
             redirect_uri: config.redirectUri,
+            code_verifier: codeVerifier,
         };
-        if (codeVerifier) {
-            params.code_verifier = codeVerifier;
-        }
         if (config.clientSecret) {
             params.client_secret = config.clientSecret;
         }

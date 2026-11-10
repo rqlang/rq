@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
+import { AuthField } from '../rqClient';
 import {
     REQUEST_PARAM_NAMES,
     ENDPOINT_PARAM_NAMES,
-    AUTH_PROPERTIES,
     AttributeDefinition,
     readDeclarationText,
     extractArgumentList,
@@ -133,9 +133,9 @@ export function buildAuthHover(
     document: vscode.TextDocument,
     line: number,
     name: string,
-    authType: string
+    authType: string,
+    fields: AuthField[] | undefined
 ): vscode.MarkdownString {
-    const fields = AUTH_PROPERTIES[authType];
     const contents = new vscode.MarkdownString();
     contents.appendMarkdown(`**Auth: \`${name}\`** *(${formatAuthType(authType)})*\n\n`);
     if (!fields) {

@@ -115,7 +115,8 @@ export const hoverProvider = vscode.languages.registerHoverProvider('rq', {
             const keywordStart = lineText.indexOf(authDeclMatch[1]);
             const openParen = lineText.indexOf('(');
             if (col >= keywordStart && col < openParen) {
-                return new vscode.Hover(buildAuthHover(document, position.line, authDeclMatch[2], authDeclMatch[3]));
+                const fields = (await rqClient.authFields())[authDeclMatch[3]];
+                return new vscode.Hover(buildAuthHover(document, position.line, authDeclMatch[2], authDeclMatch[3], fields));
             }
         }
 

@@ -320,13 +320,13 @@ Expected:
 - The request is sent to `http://localhost:8080/test`.
 - The **Authorization** header is present with a `Bearer` token value derived from `api_token`.
 
-### C2. OAuth2 authorization code (default redirect) (oauth_ac_default)
+### C2. OAuth2 authorization code (VS Code redirect) (oauth_ac_vscode)
 
-This auth performs an OAuth2 Authorization Code flow with PKCE using the extension's default redirect URI (`vscode://rq-lang.rq-language/oauth-callback`).
+This auth performs an OAuth2 Authorization Code flow with PKCE using the VS Code redirect URI (`vscode://rq-lang.rq-language/oauth-callback`).
 
 Steps:
 
-1. In the RQ Request Explorer, select the `oauth_ac_default_env` environment.
+1. In the RQ Request Explorer, select the `oauth_ac_vscode_env` environment.
 2. Locate the `auth_basic` request under `auth/basic.rq`.
 3. Run the `auth_basic` request.
 4. When the browser opens, complete the login and consent flow in your OAuth provider.
@@ -339,13 +339,13 @@ Expected:
 - After successful login, the request is executed automatically.
 - The **Authorization** header is present with a `Bearer` access token obtained from the OAuth provider.
 
-### C3. OAuth2 authorization code with required variable (oauth_ac_default)
+### C3. OAuth2 authorization code with required variable (oauth_ac_vscode)
 
-This scenario reuses the same `oauth_ac_default` auth and `oauth_ac_default_env` environment as C2, but runs the `basic_with_required` request which requires the variable `foo` to be provided at runtime.
+This scenario reuses the same `oauth_ac_vscode` auth and `oauth_ac_vscode_env` environment as C2, but runs the `basic_with_required` request which requires the variable `foo` to be provided at runtime.
 
 Steps:
 
-1. In the RQ Request Explorer, select the `oauth_ac_default_env` environment.
+1. In the RQ Request Explorer, select the `oauth_ac_vscode_env` environment.
 2. Locate the `basic_with_required` request under `auth/basic.rq`.
 3. Run the `basic_with_required` request from the explorer.
 4. When prompted for the required variable, provide a value for `foo` (for example `foo=bar`).
@@ -354,8 +354,8 @@ Steps:
 
 Expected:
 
-- The request is sent to `http://localhost:8080/oauth_ac_default/bar` (substituting the `foo` value provided).
-- The **Authorization** header is present with a `Bearer` access token obtained via the `oauth_ac_default` auth configuration.
+- The request is sent to `http://localhost:8080/oauth_ac_vscode/bar` (substituting the `foo` value provided).
+- The **Authorization** header is present with a `Bearer` access token obtained via the `oauth_ac_vscode` auth configuration.
 - The request completes successfully with no errors in the Problems view.
 
 ### C4. OAuth2 authorization code (custom localhost redirect) (oauth_ac_custom)
@@ -435,13 +435,13 @@ Expected:
 - The request to `http://localhost:8080/test` succeeds.
 - The **Authorization** header is present with a `Bearer` access token obtained via the certificate-based client credentials flow.
 
-### C8. OAuth2 implicit flow (oauth_implicit_default)
+### C8. OAuth2 implicit flow (oauth_implicit_vscode)
 
 This auth uses the OAuth2 Implicit flow, where the access token is returned directly in the redirect.
 
 Steps:
 
-1. In the RQ Request Explorer, select the `oauth_implicit_default_env` environment.
+1. In the RQ Request Explorer, select the `oauth_implicit_vscode_env` environment.
 2. Locate the `auth_basic` request under `auth/basic.rq`.
 3. Run the `auth_basic` request.
 4. When the browser opens, complete the login and consent flow.
@@ -454,23 +454,23 @@ Expected:
 - After successful login, the request to `http://localhost:8080/test` is executed.
 - The **Authorization** header is present with a `Bearer` access token obtained from the implicit flow.
 
-### C9. Get OAuth2 access token command (oauth_ac_default)
+### C9. Get OAuth2 access token command (oauth_ac_vscode)
 
-This scenario validates the `RQ: Get OAuth2 Access Token` command using the same `oauth_ac_default` configuration.
+This scenario validates the `RQ: Get OAuth2 Access Token` command using the same `oauth_ac_vscode` configuration.
 
 Steps:
 
-1. In the RQ Request Explorer, select the `oauth_ac_default_env` environment.
+1. In the RQ Request Explorer, select the `oauth_ac_vscode_env` environment.
 2. Open the VS Code Command Palette and run `RQ: Get OAuth2 Access Token`.
-3. When prompted, select the `oauth_ac_default_env` environment.
-4. When prompted, select the `oauth_ac_default` auth configuration.
+3. When prompted, select the `oauth_ac_vscode_env` environment.
+4. When prompted, select the `oauth_ac_vscode` auth configuration.
 5. When the browser opens, complete the login and consent flow in your OAuth provider.
 6. When prompted, allow the browser to open VS Code so the extension can capture the callback.
 7. In VS Code, choose `Copy Token` when the success notification appears.
 
 Expected:
 
-- The command discovers the `oauth_ac_default` auth configuration for the selected environment.
+- The command discovers the `oauth_ac_vscode` auth configuration for the selected environment.
 - The browser opens and the full OAuth2 Authorization Code flow completes successfully.
 - The access token is copied to the clipboard.
 - The token is cached internally so subsequent calls can reuse it.
@@ -481,10 +481,10 @@ This scenario validates the interaction between the `RQ: Get OAuth2 Access Token
 
 Steps:
 
-1. With the `oauth_ac_default_env` environment selected, run `RQ: Get OAuth2 Access Token` and complete the flow once so that a token is cached.
+1. With the `oauth_ac_vscode_env` environment selected, run `RQ: Get OAuth2 Access Token` and complete the flow once so that a token is cached.
 2. Confirm that the command completes without opening the browser again on a second run (token is served from cache).
 3. Open the VS Code Command Palette and run `RQ: Clear OAuth2 Access Tokens`.
-4. Run `RQ: Get OAuth2 Access Token` again with `oauth_ac_default_env` and `oauth_ac_default`.
+4. Run `RQ: Get OAuth2 Access Token` again with `oauth_ac_vscode_env` and `oauth_ac_vscode`.
 5. Complete the browser login and consent flow once more.
 
 Expected:

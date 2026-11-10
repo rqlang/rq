@@ -1,0 +1,6 @@
+auth login(auth_type.oauth2_implicit) {
+    client_id: "rq-client",
+    authorization_url: "https://auth.example.com/authorize",
+    redirect_uri: "http://localhost:8080/callback",
+    scop: "openid",
+}

@@ -32,7 +32,6 @@ import {
     ENDPOINT_PROPERTIES,
     parseVariables,
     declarationPattern,
-    AUTH_PROPERTIES,
     UI_COLORS,
 } from './definitions';
 
@@ -231,7 +230,7 @@ export const authPropertyNameHandler: CompletionHandler = {
     async provide({ documentPrefix }) {
         const authBlock = getActiveAuthBlock(documentPrefix);
         if (!authBlock) { return undefined; }
-        const props = AUTH_PROPERTIES[authBlock.authType];
+        const props = (await rqClient.authFields())[authBlock.authType];
         if (!props) { return undefined; }
         return props
             .filter(p => !authBlock.definedProps.has(p.name))
@@ -681,7 +680,7 @@ export const topLevelKeywordHandler: CompletionHandler = {
             (() => {
                 const i = new vscode.CompletionItem('auth oauth2_implicit', vscode.CompletionItemKind.Module);
                 i.detail = 'Auth block — OAuth2 Implicit Flow';
-                Object.assign(i, sampleDataSnippet('auth ${1:my_auth}(auth_type.oauth2_implicit) {\n\tclient_id: ${2:client_id},\n\tauthorization_url: "${3:https://auth.example.com/oauth2/authorize}",\n\tscope: "${4:openid profile}",\n}', [3, 4]));
+                Object.assign(i, sampleDataSnippet('auth ${1:my_auth}(auth_type.oauth2_implicit) {\n\tclient_id: ${2:client_id},\n\tauthorization_url: "${3:https://auth.example.com/oauth2/authorize}",\n\tredirect_uri: "${4:https://app.example.com/callback}",\n\tscope: "${5:openid profile}",\n}', [3, 4, 5]));
                 i.sortText = 'auth_2oauth_impl';
                 return i;
             })(),

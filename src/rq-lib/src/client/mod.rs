@@ -354,6 +354,8 @@ impl RqClient {
             &*self.fs,
         )?;
 
+        self.validate_resolved_auth(&config)?;
+
         let auth_type_str = match config.auth_type {
             crate::syntax::auth::AuthType::Bearer => "bearer",
             crate::syntax::auth::AuthType::OAuth2AuthorizationCode => "oauth2_authorization_code",
@@ -1383,11 +1385,12 @@ impl RqClient {
             config.name,
             config.auth_type.as_str()
         ));
-        let (headers, applied) = crate::auth::get_provider(&config.auth_type).known_token(
-            &config,
-            context,
-            std::mem::take(&mut request.headers),
-        );
+        let provider = crate::auth::get_provider(&config.auth_type);
+        let (headers, applied) =
+            provider.known_token(&config, context, std::mem::take(&mut request.headers));
+        if !applied || provider.known_token_reads_fields() {
+            self.validate_resolved_auth(&config)?;
+        }
         request.headers = headers;
         Ok((
             request,
@@ -1396,6 +1399,24 @@ impl RqClient {
                 token_required: !applied,
             }),
         ))
+    }
+
+    fn validate_resolved_auth(&self, config: &AuthConfig) -> Result<(), RqError> {
+        config.validate().map_err(|e| {
+            let (line, column) = if e.span.is_empty() {
+                (config.line + 1, config.character + 1)
+            } else {
+                let source = self.fs.read(&config.file_path).unwrap_or_default();
+                crate::syntax::reader::line_col_at(&source, e.span.start)
+            };
+            RqError::Syntax(crate::syntax::error::SyntaxError::with_file(
+                format!("{} once its variables are resolved", e.message),
+                line,
+                column,
+                e.span,
+                config.file_path.display().to_string(),
+            ))
+        })
     }
 
     async fn authorize(mut prepared: PreparedRequest) -> Result<PreparedRequest, RqError> {
@@ -3354,7 +3375,7 @@ mod prepare_tests {
         write(
             dir.path(),
             "main.rq",
-            "auth login(auth_type.oauth2_authorization_code) {\n    client_id: \"app\",\n    authorization_url: \"http://localhost/authorize\",\n    token_url: \"http://localhost/token\",\n}\n\n[auth(\"login\")]\nrq probe(\"http://localhost/probe\");\n",
+            "auth login(auth_type.oauth2_authorization_code) {\n    client_id: \"app\",\n    authorization_url: \"http://localhost/authorize\",\n    token_url: \"http://localhost/token\",\n    redirect_uri: \"http://localhost:8080/callback\",\n}\n\n[auth(\"login\")]\nrq probe(\"http://localhost/probe\");\n",
         );
         let target = prepare(&dir.path().join("main.rq"), "probe", &["auth_token=xyz"]);
         assert_eq!(
@@ -3365,6 +3386,78 @@ mod prepare_tests {
             (Some("Bearer xyz"), Some(false))
         );
     }
+
+    #[test]
+    fn prepared_request_rejects_a_redirect_uri_that_resolves_blank() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write(dir.path(), "main.rq", BLANK_REDIRECT_URI_AUTH);
+        let target = RqClient::default().prepare_request(
+            RequestTarget::new(&dir.path().join("main.rq"), "probe"),
+            None,
+            &[],
+        );
+        assert_eq!(
+            syntax_error(target.err()),
+            Some((
+                "oauth2_implicit auth 'login' has empty 'redirect_uri' field once its variables are resolved".to_string(),
+                6,
+                19
+            ))
+        );
+    }
+
+    #[test]
+    fn prepared_request_with_a_runtime_auth_token_ignores_a_blank_redirect_uri() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write(dir.path(), "main.rq", BLANK_REDIRECT_URI_AUTH);
+        let target = prepare(&dir.path().join("main.rq"), "probe", &["auth_token=xyz"]);
+        assert_eq!(authorization(&target.request), Some("Bearer xyz"));
+    }
+
+    #[test]
+    fn auth_details_reject_a_redirect_uri_that_resolves_blank() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write(dir.path(), "main.rq", BLANK_REDIRECT_URI_AUTH);
+        let target = RqClient::default().get_auth_details(dir.path(), "login", None, true);
+        assert_eq!(
+            syntax_error(target.err()).map(|(_, line, column)| (line, column)),
+            Some((6, 19))
+        );
+    }
+
+    #[test]
+    fn prepared_request_and_auth_details_both_reject_a_bearer_token_that_resolves_blank() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write(
+            dir.path(),
+            "main.rq",
+            "let token = \"\";\n\nauth api(auth_type.bearer) {\n    token: \"{{token}}\",\n}\n\n[auth(\"api\")]\nrq probe(\"http://localhost/probe\");\n",
+        );
+        let prepared = RqClient::default().prepare_request(
+            RequestTarget::new(&dir.path().join("main.rq"), "probe"),
+            None,
+            &[],
+        );
+        let details = RqClient::default().get_auth_details(dir.path(), "api", None, true);
+        let expected = Some((
+            "bearer auth 'api' has empty 'token' field once its variables are resolved".to_string(),
+            4,
+            12,
+        ));
+        assert_eq!(
+            (syntax_error(prepared.err()), syntax_error(details.err())),
+            (expected.clone(), expected)
+        );
+    }
+
+    fn syntax_error(error: Option<RqError>) -> Option<(String, usize, usize)> {
+        match error {
+            Some(RqError::Syntax(e)) => Some((e.message, e.line, e.column)),
+            _ => None,
+        }
+    }
+
+    const BLANK_REDIRECT_URI_AUTH: &str = "let callback = \" \";\n\nauth login(auth_type.oauth2_implicit) {\n    client_id: \"app\",\n    authorization_url: \"http://localhost/authorize\",\n    redirect_uri: \"{{callback}}\",\n}\n\n[auth(\"login\")]\nrq probe(\"http://localhost/probe\");\n";
 
     #[test]
     fn prepared_request_without_a_known_token_asks_for_one() {

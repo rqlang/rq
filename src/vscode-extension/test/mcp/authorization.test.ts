@@ -148,11 +148,6 @@ describe('Authorizer', () => {
         expect(open).not.toHaveBeenCalled();
     });
 
-    it('rejects an auth with no redirect uri, which defaults to VS Code', async () => {
-        const target = withOpener(opener('accepted'));
-        await expect(target.authorize(authConfig({ redirect_uri: '' }))).rejects.toThrow('the VS Code default');
-    });
-
     it('stops waiting once the call is cancelled', async () => {
         const cancellation = new AbortController();
         let url = '';
@@ -353,10 +348,6 @@ describe('Authorizer with a redirect address the user pastes', () => {
         await expect(pastedInChat(target, pastedAuth(), () => `${PASTED_REDIRECT_URI}?code=granted&state=forged`)).rejects.toThrow('comes from another sign-in');
     });
 
-    it('refuses an address from the agent for an auth with neither PKCE nor state', async () => {
-        const target = withOpener(opener('accepted'));
-        await expect(target.authorize(pastedAuth({ use_pkce: 'false', use_state: 'false' }))).rejects.toThrow('turns off both PKCE and state');
-    });
 
     it('refuses the implicit flow when the client has no dialog, so the token never reaches the agent', async () => {
         const target = withOpener(opener('accepted'));

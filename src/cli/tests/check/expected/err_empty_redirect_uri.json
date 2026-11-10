@@ -1,0 +1,10 @@
+{
+  "errors": [
+    {
+      "file": "{{*}}",
+      "line": 5,
+      "column": 19,
+      "message": "oauth2_authorization_code auth 'login' has empty 'redirect_uri' field"
+    }
+  ]
+}

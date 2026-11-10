@@ -186,14 +186,13 @@ Supported flows:
 
 Redirect handling:
 
-The extension automatically selects the best handling strategy based on the `redirect_uri` configured in your auth `fields`:
+The extension selects the handling strategy from the `redirect_uri` configured in your auth `fields`. `redirect_uri` is required and must match the address registered with your provider; see [Redirect URIs](./AUTH.md#redirect-uris-for-interactive-flows) for which one to register.
 
 1.  **VS Code URI Handler (`vscode://...`)**
 
-	<a id="default-redirect-uri"></a>
-	This is the **preferred and default option**. If you do not specify a `redirect_uri`, the extension automatically uses `vscode://rq-lang.rq-language/oauth-callback`.
+	Set `redirect_uri: "vscode://rq-lang.rq-language/oauth-callback"`.
 
-	- **Why it is preferred**: This URI instructs the identity provider to redirect control directly back to the RQ extension. It provides the most seamless experience (no manual copy-pasting) and works reliable across local setups, WSL, SSH remotes, and Codespaces without needing to open local ports.
+	- **When to use it**: This URI instructs the identity provider to redirect control directly back to the RQ extension. It needs no copy-pasting and works across local setups, WSL, SSH remotes, and Codespaces without opening local ports. The MCP server cannot receive it, so an auth that assistants also run needs a localhost address instead.
 
 	- **Process**:
 		1. Extension opens your browser for login.

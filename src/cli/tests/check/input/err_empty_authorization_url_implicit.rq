@@ -1,4 +1,5 @@
 auth login(auth_type.oauth2_implicit) {
     client_id: "rq-client",
     authorization_url: "",
+    redirect_uri: "http://localhost:8080/callback",
 }

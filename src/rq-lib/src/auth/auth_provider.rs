@@ -28,6 +28,10 @@ pub trait AuthProvider: Send + Sync {
         BearerProvider::apply_from_variables(&context.all_variables(), headers)
     }
 
+    fn known_token_reads_fields(&self) -> bool {
+        false
+    }
+
     fn configure<'a>(
         &'a self,
         auth_config: &'a Config,

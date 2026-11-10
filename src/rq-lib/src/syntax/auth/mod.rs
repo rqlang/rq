@@ -4,11 +4,11 @@ mod auth_config_oauth2_authorization_code;
 mod auth_config_oauth2_client_credentials;
 mod auth_config_oauth2_implicit;
 
-pub use auth_config::AuthConfig;
-pub use auth_config_bearer::BearerAuthConfig;
-pub use auth_config_oauth2_authorization_code::OAuth2AuthorizationCodeConfig;
-pub use auth_config_oauth2_client_credentials::OAuth2ClientCredentialsConfig;
-pub use auth_config_oauth2_implicit::OAuth2ImplicitConfig;
+pub(crate) use auth_config::AuthConfig;
+pub(crate) use auth_config_bearer::BearerAuthConfig;
+pub(crate) use auth_config_oauth2_authorization_code::OAuth2AuthorizationCodeConfig;
+pub(crate) use auth_config_oauth2_client_credentials::OAuth2ClientCredentialsConfig;
+pub(crate) use auth_config_oauth2_implicit::OAuth2ImplicitConfig;
 
 use crate::syntax::error::SyntaxError;
 use crate::syntax::token::Token;
@@ -60,7 +60,7 @@ impl AuthType {
         }
     }
 
-    pub fn get_config(&self) -> &'static dyn AuthConfig {
+    pub(crate) fn get_config(&self) -> &'static dyn AuthConfig {
         match self {
             AuthType::Bearer => &BearerAuthConfig,
             AuthType::OAuth2AuthorizationCode => &OAuth2AuthorizationCodeConfig,

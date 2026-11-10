@@ -350,7 +350,7 @@ export async function listRequests(sourceDirectory?: string): Promise<ListReques
 
 export async function showRequest(requestName: string, sourceDirectory?: string, environment?: string, interpolate = false, skipRequiredVariables = false, sourceFile?: string): Promise<RequestShowOutput> {
     const source = resolveSource(sourceDirectory);
-    const { filesJson, secretsJson } = await requestScope(source, unsavedDrafts(source));
+    const { filesJson, secretsJson } = await requestScope(source);
     const result = await wasmCall('get_request_details', [filesJson, secretsJson, source, requestName, environment, interpolate, skipRequiredVariables, undefined, resolveScopeFile(sourceFile)]);
     const raw = JSON.parse(result) as RequestShowRaw;
     return {
@@ -452,5 +452,5 @@ export async function setDebugLogging(enabled: boolean): Promise<void> {
 
 export async function executeRequest(options: ExecuteRequestOptions): Promise<ExecuteRequestResult> {
     const source = resolveSource(options.sourceDirectory);
-    return execution.executeRequest(await requestScope(source, unsavedDrafts(source)), options);
+    return execution.executeRequest(await requestScope(source), options);
 }

@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.9.0]
 
 ### Breaking Changes
 
@@ -11,8 +11,12 @@
 - Added the `doc.description` attribute: a request or an endpoint can say in plain words what it does, and the Request Explorer shows it in the tooltip. `doc.description` and `confirm` have completion, hover and syntax highlighting.
 - Added the `confirm` attribute: a request marked `[confirm]`, or run in an endpoint or environment marked with it, opens a modal dialog before it is sent, on **Run again** too. Mark `env production` once and every request against it asks.
 - The bundled MCP server can now run the requests of the workspace through the new `run_request` tool, so an assistant answers *"show me all the users"* by finding the matching request and sending it. It asks you before every write and before every request marked `[confirm]`.
-
 - Added the `rq.results.tabMode` setting to choose where request results open: one shared tab (`single`, the default and the previous behavior), one tab per request (`perRequest`), or a new tab for every run (`perExecution`). **Run again** and **Copy** in a results tab now act on that tab's own request and body, and **Run again** uses the environment selected in the explorer when it is clicked.
+- Added the `ui.color` attribute for environments: `[ui.color(red)] env production { … }` shows the selected environment in that color in the Requests view.
+- The Requests and Configuration explorers remember their expanded nodes, selection and environment across view switches and restarts.
+- *Get OAuth2 Token* preselects the environment chosen in the explorer.
+- The bundled MCP server can sign in to OAuth2 through a `http://localhost` redirect, and `run_request` can override any variable the request uses for a single call. Overrides that change the host or the auth ask first.
+- Added `.rqignore`: list the folders and `.rq` files to skip when looking for requests, one per line, as in `.gitignore`. The CLI and the MCP server read it too.
 
 ### Bug Fixes
 
@@ -22,6 +26,9 @@
   - Auth fields were resolved without the request's variables (`[required]` prompts, *Run Request with Variables*, endpoint scope), and an auth name declared in two folders could resolve to the other folder's provider.
   - A string body that looked like JSON, such as `io.read_file("item.json")`, was sent with `Content-Type: application/json`; it is now sent without one, as the CLI does. Use `io.read_json` for a JSON body.
   - A header repeated in a request was sent only once.
+- Fixed the Request Explorer getting stuck on folders with a huge number of files. Hidden folders are skipped, and the search stops after 50,000 entries naming the largest folders.
+- Fixed *Rename Symbol* and *Find All References* on variables declared with `[required(...)]`; they now stay within the request that declares them.
+- Fixed the packaged extension including the test folder.
 - Fixed the `duplicated_request_qs` lint rule flagging a query parameter that two requests share while another request of the same `ep` does not send it, and `query_param_as_header` suggesting the endpoint's `qs` in that case. Following either suggestion added the parameter to every request of the `ep`.
 - Fixed a runtime `auth_token` losing to an `auth_token` defined with `let` in the file.
 - Fixed an auth missing a required field being reported at the `auth` keyword; it is now reported at the auth's name.

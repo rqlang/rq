@@ -10,11 +10,15 @@ pub trait AuthConfig: Send + Sync {
 
     fn optional_fields(&self) -> &'static [&'static str];
 
+    fn one_of_fields(&self) -> &'static [&'static [&'static str]] {
+        &[]
+    }
+
     fn validate(&self, name: &str, fields: &HashMap<String, Token>) -> Result<(), SyntaxError>;
 }
 
 pub fn require_non_empty(
-    label: &str,
+    auth_type: &str,
     name: &str,
     fields: &HashMap<String, Token>,
     required_fields: &[&str],
@@ -23,7 +27,7 @@ pub fn require_non_empty(
         if let Some(token) = fields.get(*field) {
             if token.value.trim().is_empty() {
                 return Err(SyntaxError::new(
-                    format!("{label} auth '{name}' has empty '{field}' field"),
+                    format!("{auth_type} auth '{name}' has empty '{field}' field"),
                     0,
                     0,
                     token.span.clone(),

@@ -655,6 +655,34 @@ pub fn take_debug_logs() -> String {
         .unwrap_or_default()
 }
 
+#[derive(Serialize)]
+struct AuthFieldEntry {
+    name: &'static str,
+    required: bool,
+}
+
+#[derive(Serialize)]
+struct AuthTypeFields {
+    auth_type: String,
+    fields: Vec<AuthFieldEntry>,
+}
+
+#[wasm_bindgen]
+pub fn auth_fields() -> Result<String, JsError> {
+    let types: Vec<AuthTypeFields> = rq_lib::syntax::auth::AuthType::all()
+        .iter()
+        .map(|auth_type| AuthTypeFields {
+            auth_type: auth_type.as_str().to_string(),
+            fields: auth_type
+                .fields()
+                .into_iter()
+                .map(|(name, required)| AuthFieldEntry { name, required })
+                .collect(),
+        })
+        .collect();
+    serde_json::to_string(&types).map_err(|e| JsError::new(&e.to_string()))
+}
+
 #[wasm_bindgen]
 pub fn version() -> String {
     rq_lib::version::app_version().to_string()

@@ -4,6 +4,7 @@ import { Worker } from 'worker_threads';
 type WasmMethod =
     | 'list_requests'
     | 'list_auth'
+    | 'auth_fields'
     | 'list_environments'
     | 'list_endpoints'
     | 'list_variables'

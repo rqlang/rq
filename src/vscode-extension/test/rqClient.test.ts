@@ -6,6 +6,7 @@ const mockSetDebugLogging = jest.fn();
 const mockListVariableRefs = jest.fn();
 const mockListEnvironments = jest.fn();
 const mockListAuth = jest.fn();
+const mockAuthFields = jest.fn();
 
 jest.mock('../src/wasm/rq_wasm', () => ({
     prepare_request: mockPrepareRequest,
@@ -13,6 +14,7 @@ jest.mock('../src/wasm/rq_wasm', () => ({
     list_variable_refs: mockListVariableRefs,
     list_environments: mockListEnvironments,
     list_auth: mockListAuth,
+    auth_fields: mockAuthFields,
 }), { virtual: true });
 
 const mockBuildSecretsMap = jest.fn(async () => JSON.stringify({ env_file: null, os_vars: [] }));
@@ -26,7 +28,7 @@ jest.mock('fs');
 jest.mock('https');
 
 import * as vscode from 'vscode';
-import { executeRequest, listAuthConfigsWithErrors, listEnvironments, listEnvironmentsWithErrors, setDebugLogging, varRefs } from '../src/rqClient';
+import { authFields, executeRequest, listAuthConfigsWithErrors, listEnvironments, listEnvironmentsWithErrors, setDebugLogging, varRefs } from '../src/rqClient';
 
 const BASE_PREPARED = {
     name: 'test-req',
@@ -691,5 +693,20 @@ describe('listAuthConfigsWithErrors', () => {
         const target = await listAuthConfigsWithErrors('/tmp/project');
 
         expect(target).toEqual({ authConfigs: [{ name: 'token', auth_type: 'bearer' }], errors: ['Unexpected end of file'] });
+    });
+});
+
+describe('authFields', () => {
+    test('maps the fields of each auth type and asks rq-wasm only once', async () => {
+        mockAuthFields.mockReturnValue(JSON.stringify([
+            { auth_type: 'bearer', fields: [{ name: 'token', required: true }] },
+        ]));
+
+        const target = [await authFields(), await authFields()];
+
+        expect([target, mockAuthFields.mock.calls.length]).toEqual([
+            [{ bearer: [{ name: 'token', required: true }] }, { bearer: [{ name: 'token', required: true }] }],
+            1,
+        ]);
     });
 });

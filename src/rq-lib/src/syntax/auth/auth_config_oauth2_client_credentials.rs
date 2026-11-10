@@ -43,24 +43,12 @@ impl AuthConfig for OAuth2ClientCredentialsConfig {
         ]
     }
 
-    fn validate(&self, name: &str, fields: &HashMap<String, Token>) -> Result<(), SyntaxError> {
-        if !fields.contains_key(CLIENT_SECRET_FIELD) && !fields.contains_key(CERT_FILE_FIELD) {
-            return Err(SyntaxError::new(
-                format!(
-                    "OAuth2 Client Credentials auth '{name}' must have either '{CLIENT_SECRET_FIELD}' or '{CERT_FILE_FIELD}'"
-                ),
-                0,
-                0,
-                0..0,
-            ));
-        }
+    fn one_of_fields(&self) -> &'static [&'static [&'static str]] {
+        &[&[CLIENT_SECRET_FIELD, CERT_FILE_FIELD]]
+    }
 
-        require_non_empty(
-            "OAuth2 Client Credentials",
-            name,
-            fields,
-            self.required_fields(),
-        )
+    fn validate(&self, name: &str, fields: &HashMap<String, Token>) -> Result<(), SyntaxError> {
+        require_non_empty(self.auth_type(), name, fields, self.required_fields())
     }
 }
 
@@ -114,17 +102,5 @@ mod tests {
         fields.insert(TOKEN_URL_FIELD.to_string(), t("https://example.com/token"));
 
         assert!(provider.validate("test_auth", &fields).is_ok());
-    }
-
-    #[test]
-    fn test_client_credentials_missing_secret_and_cert() {
-        let provider = OAuth2ClientCredentialsConfig::new();
-        let mut fields = HashMap::new();
-        fields.insert(CLIENT_ID_FIELD.to_string(), t("my-client"));
-        fields.insert(TOKEN_URL_FIELD.to_string(), t("https://example.com/token"));
-
-        let result = provider.validate("test_auth", &fields);
-        assert!(result.is_err());
-        assert!(result.unwrap_err().message.contains("must have either"));
     }
 }

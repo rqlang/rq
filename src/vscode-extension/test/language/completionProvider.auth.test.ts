@@ -3,7 +3,7 @@ jest.mock('../../src/rqClient');
 import * as vscode from 'vscode';
 import * as cliService from '../../src/rqClient';
 import '../../src/language/completionProvider';
-import { makeDocument } from './completionTestUtils';
+import { AUTH_FIELDS, makeDocument } from './completionTestUtils';
 
 let provideCompletionItems: Function;
 
@@ -20,6 +20,7 @@ beforeEach(() => {
     (cliService.listEndpoints as jest.Mock).mockResolvedValue([]);
     (cliService.listVariables as jest.Mock).mockResolvedValue([]);
     (cliService.listAuthConfigs as jest.Mock).mockResolvedValue([]);
+    (cliService.authFields as jest.Mock).mockResolvedValue(AUTH_FIELDS);
 });
 
 describe('auth declaration parameter completion', () => {

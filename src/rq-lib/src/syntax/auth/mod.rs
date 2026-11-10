@@ -24,6 +24,15 @@ pub enum AuthType {
 }
 
 impl AuthType {
+    pub fn all() -> [AuthType; 4] {
+        [
+            AuthType::Bearer,
+            AuthType::OAuth2AuthorizationCode,
+            AuthType::OAuth2ClientCredentials,
+            AuthType::OAuth2Implicit,
+        ]
+    }
+
     #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Result<AuthType, SyntaxError> {
         match s {
@@ -51,12 +60,12 @@ impl AuthType {
         }
     }
 
-    pub fn get_config(&self) -> Box<dyn AuthConfig> {
+    pub fn get_config(&self) -> &'static dyn AuthConfig {
         match self {
-            AuthType::Bearer => Box::new(BearerAuthConfig::new()),
-            AuthType::OAuth2AuthorizationCode => Box::new(OAuth2AuthorizationCodeConfig::new()),
-            AuthType::OAuth2ClientCredentials => Box::new(OAuth2ClientCredentialsConfig::new()),
-            AuthType::OAuth2Implicit => Box::new(OAuth2ImplicitConfig::new()),
+            AuthType::Bearer => &BearerAuthConfig,
+            AuthType::OAuth2AuthorizationCode => &OAuth2AuthorizationCodeConfig,
+            AuthType::OAuth2ClientCredentials => &OAuth2ClientCredentialsConfig,
+            AuthType::OAuth2Implicit => &OAuth2ImplicitConfig,
         }
     }
 
@@ -66,6 +75,18 @@ impl AuthType {
 
     pub fn optional_fields(&self) -> &'static [&'static str] {
         self.get_config().optional_fields()
+    }
+
+    pub fn one_of_fields(&self) -> &'static [&'static [&'static str]] {
+        self.get_config().one_of_fields()
+    }
+
+    pub fn fields(&self) -> Vec<(&'static str, bool)> {
+        self.required_fields()
+            .iter()
+            .map(|field| (*field, true))
+            .chain(self.optional_fields().iter().map(|field| (*field, false)))
+            .collect()
     }
 }
 
@@ -154,6 +175,19 @@ mod tests {
         let auth_type = AuthType::OAuth2AuthorizationCode;
         let config = auth_type.get_config();
         assert_eq!(config.auth_type(), "oauth2_authorization_code");
+    }
+
+    #[test]
+    fn test_fields_list_required_before_optional() {
+        assert_eq!(
+            AuthType::OAuth2Implicit.fields(),
+            vec![
+                ("client_id", true),
+                ("authorization_url", true),
+                ("redirect_uri", true),
+                ("scope", false)
+            ]
+        );
     }
 
     #[test]

@@ -4,7 +4,7 @@
       "file": "{{*}}",
       "line": 5,
       "column": 19,
-      "message": "OAuth2 Authorization Code auth 'login' has empty 'redirect_uri' field"
+      "message": "oauth2_authorization_code auth 'login' has empty 'redirect_uri' field"
     }
   ]
 }

@@ -25,6 +25,7 @@
 - Fixed the `duplicated_request_qs` lint rule flagging a query parameter that two requests share while another request of the same `ep` does not send it, and `query_param_as_header` suggesting the endpoint's `qs` in that case. Following either suggestion added the parameter to every request of the `ep`.
 - Fixed a runtime `auth_token` losing to an `auth_token` defined with `let` in the file.
 - Fixed an auth missing a required field being reported at the `auth` keyword; it is now reported at the auth's name.
+- Fixed a bearer `token` that resolves blank through a variable being sent as `Authorization: Bearer ` with no token. Any required auth field that resolves blank is now reported, with the file, line and column of the field, before a sign-in starts or the request is sent.
 - Fixed the unexpected-field error of an auth listing only its required fields; it now lists the optional ones too, so `scop` points to `scope`.
 - Fixed a `timeout` too large to represent crashing `rq request run` and the extension. It is now reported as `Timeout value '…' is too large`, and a timeout longer than about 24.8 days no longer fires immediately in the extension.
 

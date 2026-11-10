@@ -208,6 +208,26 @@ export async function listEnvironmentsWithErrors(sourceDirectory?: string): Prom
     };
 }
 
+export interface AuthField {
+    name: string;
+    required: boolean;
+}
+
+let authFieldsByType: Promise<Record<string, AuthField[]>> | undefined;
+
+export async function authFields(): Promise<Record<string, AuthField[]>> {
+    authFieldsByType ??= loadAuthFields().catch(error => {
+        authFieldsByType = undefined;
+        throw error;
+    });
+    return authFieldsByType;
+}
+
+async function loadAuthFields(): Promise<Record<string, AuthField[]>> {
+    const types = JSON.parse(await wasmCall('auth_fields', [])) as { auth_type: string; fields: AuthField[] }[];
+    return Object.fromEntries(types.map(entry => [entry.auth_type, entry.fields]));
+}
+
 export async function listAuthConfigs(sourceDirectory?: string, rootDirectory?: string, drafts: DraftFile[] = []): Promise<AuthListEntry[]> {
     return (await listAuthConfigsWithErrors(sourceDirectory, rootDirectory, drafts)).authConfigs;
 }

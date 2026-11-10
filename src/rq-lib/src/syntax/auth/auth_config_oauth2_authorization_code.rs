@@ -51,19 +51,15 @@ impl AuthConfig for OAuth2AuthorizationCodeConfig {
     }
 
     fn validate(&self, name: &str, fields: &HashMap<String, Token>) -> Result<(), SyntaxError> {
-        require_non_empty(
-            "OAuth2 Authorization Code",
-            name,
-            fields,
-            self.required_fields(),
-        )?;
+        require_non_empty(self.auth_type(), name, fields, self.required_fields())?;
 
         if let Some(token) = fields.get(CODE_CHALLENGE_METHOD_FIELD) {
             let valid_methods = ["S256", "plain"];
             if !valid_methods.contains(&token.value.as_str()) {
                 return Err(SyntaxError::new(
                     format!(
-                        "OAuth2 Authorization Code auth '{name}' has invalid '{CODE_CHALLENGE_METHOD_FIELD}': '{}'. Valid values: S256, plain",
+                        "{} auth '{name}' has invalid '{CODE_CHALLENGE_METHOD_FIELD}': '{}'. Valid values: S256, plain",
+                        self.auth_type(),
                         token.value
                     ),
                     0,
@@ -77,7 +73,8 @@ impl AuthConfig for OAuth2AuthorizationCodeConfig {
             if token.value != "true" && token.value != "false" {
                 return Err(SyntaxError::new(
                     format!(
-                        "OAuth2 Authorization Code auth '{name}' has invalid '{USE_STATE_FIELD}': '{}'. Valid values: true, false",
+                        "{} auth '{name}' has invalid '{USE_STATE_FIELD}': '{}'. Valid values: true, false",
+                        self.auth_type(),
                         token.value
                     ),
                     0,

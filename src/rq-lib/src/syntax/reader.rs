@@ -63,14 +63,7 @@ impl TokenReader {
     }
 
     pub fn get_line_col(&self, pos: usize) -> (usize, usize) {
-        if pos > self.source.len() {
-            return (1, 1);
-        }
-        let prefix = &self.source[..pos];
-        let line = prefix.matches('\n').count() + 1;
-        let last_line_start = prefix.rfind('\n').map(|i| i + 1).unwrap_or(0);
-        let column = prefix[last_line_start..].chars().count() + 1;
-        (line, column)
+        line_col_at(&self.source, pos)
     }
 
     pub fn skip_ignorable(&mut self) {
@@ -186,4 +179,32 @@ where
         }
     };
     Err(r.create_error_with_file(msg, span))
+}
+
+pub fn line_col_at(source: &str, pos: usize) -> (usize, usize) {
+    let Some(prefix) = source.get(..pos) else {
+        return (1, 1);
+    };
+    let line = prefix.matches('\n').count() + 1;
+    let last_line_start = prefix.rfind('\n').map(|i| i + 1).unwrap_or(0);
+    let column = prefix
+        .get(last_line_start..)
+        .map_or(0, |l| l.chars().count())
+        + 1;
+    (line, column)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::line_col_at;
+
+    #[test]
+    fn line_col_at_counts_multi_byte_characters_as_one_column() {
+        assert_eq!(line_col_at("é\naé b", 7), (2, 4));
+    }
+
+    #[test]
+    fn line_col_at_inside_a_multi_byte_character_falls_back_to_the_start() {
+        assert_eq!(line_col_at("é", 1), (1, 1));
+    }
 }

@@ -37,7 +37,7 @@ impl AuthConfig for OAuth2ImplicitConfig {
     }
 
     fn validate(&self, name: &str, fields: &HashMap<String, Token>) -> Result<(), SyntaxError> {
-        require_non_empty("OAuth2 Implicit", name, fields, self.required_fields())
+        require_non_empty(self.auth_type(), name, fields, self.required_fields())
     }
 }
 

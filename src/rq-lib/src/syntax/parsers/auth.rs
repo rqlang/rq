@@ -293,5 +293,18 @@ fn validate_required_fields_present(
             ));
         }
     }
+    for alternatives in auth_type.one_of_fields() {
+        if !alternatives.iter().any(|field| fields.contains_key(*field)) {
+            return Err(r.create_error_with_file(
+                format!(
+                    "{} auth '{}' must have one of the fields '{}'",
+                    auth_type.as_str(),
+                    auth_name,
+                    alternatives.join("', '")
+                ),
+                span.clone(),
+            ));
+        }
+    }
     Ok(())
 }

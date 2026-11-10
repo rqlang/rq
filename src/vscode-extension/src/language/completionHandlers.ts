@@ -32,7 +32,6 @@ import {
     ENDPOINT_PROPERTIES,
     parseVariables,
     declarationPattern,
-    AUTH_PROPERTIES,
     UI_COLORS,
 } from './definitions';
 
@@ -231,7 +230,7 @@ export const authPropertyNameHandler: CompletionHandler = {
     async provide({ documentPrefix }) {
         const authBlock = getActiveAuthBlock(documentPrefix);
         if (!authBlock) { return undefined; }
-        const props = AUTH_PROPERTIES[authBlock.authType];
+        const props = (await rqClient.authFields())[authBlock.authType];
         if (!props) { return undefined; }
         return props
             .filter(p => !authBlock.definedProps.has(p.name))

@@ -32,7 +32,6 @@ export async function performOAuth2Flow(authConfig: OAuthAuthConfig, provider: O
         scope: fields.scope || undefined,
         codeChallengeMethod: (fields.code_challenge_method as 'S256' | 'plain') || 'S256',
         useState: fields.use_state !== 'false',
-        usePkce: fields.use_pkce !== 'false',
     };
     const result = await provider.executeOAuth2Flow(config, flowType, { authName: authConfig.name, environment: authConfig.environment, file: authConfig.file });
     return result.accessToken;

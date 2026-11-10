@@ -7,7 +7,6 @@ export interface OAuth2Config {
     scope?: string;
     codeChallengeMethod?: 'S256' | 'plain';
     useState?: boolean;
-    usePkce?: boolean;
 }
 
 export interface OAuth2Result {

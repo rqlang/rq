@@ -146,30 +146,4 @@ describe('AuthorizationCodePKCEFlow', () => {
         await expect(pkceFlow.execute(mockConfig)).rejects.toThrow('rejected the authorization code at https://auth.example.com/token (HTTP 400: Code not valid)');
     });
 
-    test('should NOT include code_challenge when usePkce is false', async () => {
-        const configNoPkce = { ...mockConfig, usePkce: false };
-        
-        const mockTokenResponse = {
-            access_token: 'access-token',
-            token_type: 'Bearer',
-            expires_in: 3600
-        };
-        fetchMock.mockResponse(mockTokenResponse);
-
-        await pkceFlow.execute(configNoPkce);
-
-        // Check auth URL
-        const authUrl = (callbackHandlers.handleLocalServerCallback as jest.Mock).mock.calls[0][1];
-        const url = new URL(authUrl);
-        expect(url.searchParams.has('code_challenge')).toBe(false);
-        expect(url.searchParams.has('code_challenge_method')).toBe(false);
-
-        // Check token exchange
-        const fetchCalls = fetchMock.jestMock.mock.calls;
-        expect(fetchCalls.length).toBe(1);
-        
-        const requestInit = fetchCalls[0][1];
-        const body = new URLSearchParams(requestInit.body);
-        expect(body.has('code_verifier')).toBe(false);
-    });
 });

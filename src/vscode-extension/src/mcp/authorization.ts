@@ -195,8 +195,8 @@ export class Authorizer {
                     }
                     return outcome.url;
                 }
-                if (!acceptsRedirectUrlFromAgent(auth)) {
-                    throw new McpAuthorizationError(redirectUrlNeedsDialog(auth));
+                if (auth.auth_type === 'oauth2_implicit') {
+                    throw new McpAuthorizationError(surface.run_request.implicit_needs_dialog.replace('{auth}', auth.name));
                 }
                 const pasted = this.awaitRedirectUrl(pending, request);
                 publish({ url: shown, redirectUrlRequired: true });
@@ -262,10 +262,6 @@ function receivesRedirect(auth: OAuthAuthConfig): boolean {
     return auth.auth_type === 'oauth2_authorization_code' && isLoopbackRedirect(auth.fields.redirect_uri ?? '');
 }
 
-function acceptsRedirectUrlFromAgent(auth: OAuthAuthConfig): boolean {
-    return auth.auth_type === 'oauth2_authorization_code' && !(auth.fields.use_pkce === 'false' && auth.fields.use_state === 'false');
-}
-
 function requireSupportedRedirect(auth: OAuthAuthConfig): void {
     const redirectUri = auth.fields.redirect_uri;
     if (isAppRedirect(redirectUri)) {
@@ -273,11 +269,6 @@ function requireSupportedRedirect(auth: OAuthAuthConfig): void {
             .replace('{auth}', auth.name)
             .replace('{redirect_uri}', redirectUri));
     }
-}
-
-function redirectUrlNeedsDialog(auth: OAuthAuthConfig): string {
-    const template = auth.auth_type === 'oauth2_implicit' ? surface.run_request.implicit_needs_dialog : surface.run_request.unprotected_needs_dialog;
-    return template.replace('{auth}', auth.name);
 }
 
 function delay(ms: number): Promise<void> {

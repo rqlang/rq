@@ -96,3 +96,22 @@ impl RqFile {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::RqFile;
+    use crate::native::NativeFs;
+    use std::path::PathBuf;
+
+    #[test]
+    fn lenient_parse_resumes_at_the_request_after_an_unclosed_one() {
+        let source = "rq get(\"http://x\"\n\n[required(id)]\nrq other(\"{{id}}\");\n";
+        let target: Vec<String> =
+            RqFile::from_content_lenient(PathBuf::from("test.rq"), source, &NativeFs)
+                .requests
+                .into_iter()
+                .map(|req_with_vars| req_with_vars.request.name)
+                .collect();
+        assert_eq!(target, vec!["other".to_string()]);
+    }
+}

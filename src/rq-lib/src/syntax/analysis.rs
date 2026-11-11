@@ -42,34 +42,38 @@ pub fn analyze_lenient(
     })
 }
 
-fn skip_to_next_statement(r: &mut TokenReader) {
-    let mut depth = 0usize;
+fn skip_to_next_statement(r: &mut TokenReader, parsers: &[Box<dyn Parse>]) {
+    let mut braces = 0usize;
+    let mut groups = 0usize;
+    let mut at_statement_start = true;
     while let Some(tok) = r.cur() {
-        match tok.token_type {
-            TokenType::Punctuation => match tok.value.as_str() {
-                "{" | "[" | "(" => {
-                    depth += 1;
-                    r.advance();
-                }
-                "}" | "]" | ")" => {
-                    depth = depth.saturating_sub(1);
-                    r.advance();
-                }
-                ";" if depth == 0 => {
-                    r.advance();
-                    return;
-                }
-                _ => {
-                    r.advance();
-                }
-            },
-            TokenType::Newline if depth == 0 => {
-                r.advance();
-                return;
+        if !at_statement_start && braces == 0 && parsers.iter().any(|p| p.can_parse(r)) {
+            return;
+        }
+        at_statement_start = false;
+        let ends_statement = match (&tok.token_type, tok.value.as_str()) {
+            (TokenType::Punctuation, "{") => {
+                braces += 1;
+                false
             }
-            _ => {
-                r.advance();
+            (TokenType::Punctuation, "}") => {
+                braces = braces.saturating_sub(1);
+                false
             }
+            (TokenType::Punctuation, "(" | "[") => {
+                groups += 1;
+                false
+            }
+            (TokenType::Punctuation, ")" | "]") => {
+                groups = groups.saturating_sub(1);
+                false
+            }
+            (TokenType::Punctuation, ";") | (TokenType::Newline, _) => braces == 0 && groups == 0,
+            _ => false,
+        };
+        r.advance();
+        if ends_statement {
+            return;
         }
     }
 }
@@ -120,7 +124,7 @@ fn analyze_impl(
                     Ok(()) => {}
                     Err(_) if lenient => {
                         r.idx = saved_idx;
-                        skip_to_next_statement(&mut r);
+                        skip_to_next_statement(&mut r, &parsers);
                     }
                     Err(e) => return Err(e),
                 }

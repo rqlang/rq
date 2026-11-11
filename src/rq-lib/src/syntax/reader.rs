@@ -189,14 +189,30 @@ pub fn line_col_at(source: &str, pos: usize) -> (usize, usize) {
     let last_line_start = prefix.rfind('\n').map(|i| i + 1).unwrap_or(0);
     let column = prefix
         .get(last_line_start..)
-        .map_or(0, |l| l.chars().count())
+        .map_or(0, |l| l.encode_utf16().count())
         + 1;
     (line, column)
 }
 
+pub fn offset_at(source: &str, line: usize, column: usize) -> Option<usize> {
+    let line_start = match line.checked_sub(1)? {
+        0 => 0,
+        previous => source.match_indices('\n').nth(previous - 1)?.0 + 1,
+    };
+    let line_text = source.get(line_start..)?.split('\n').next()?;
+    let mut remaining = column.checked_sub(1)?;
+    for (index, ch) in line_text.char_indices() {
+        if remaining < ch.len_utf16() {
+            return Some(line_start + index);
+        }
+        remaining -= ch.len_utf16();
+    }
+    Some(line_start + line_text.len())
+}
+
 #[cfg(test)]
 mod tests {
-    use super::line_col_at;
+    use super::{line_col_at, offset_at};
 
     #[test]
     fn line_col_at_counts_multi_byte_characters_as_one_column() {
@@ -206,5 +222,47 @@ mod tests {
     #[test]
     fn line_col_at_inside_a_multi_byte_character_falls_back_to_the_start() {
         assert_eq!(line_col_at("é", 1), (1, 1));
+    }
+
+    #[test]
+    fn line_col_at_counts_a_character_outside_the_bmp_as_two_columns() {
+        assert_eq!(line_col_at("a\n😀x", 6), (2, 3));
+    }
+
+    #[test]
+    fn offset_at_counts_a_character_outside_the_bmp_as_two_columns() {
+        assert_eq!(offset_at("a\n😀x", 2, 3), Some(6));
+    }
+
+    #[test]
+    fn offset_at_inside_a_surrogate_pair_falls_back_to_the_character_start() {
+        assert_eq!(offset_at("😀x", 1, 2), Some(0));
+    }
+
+    #[test]
+    fn offset_at_past_the_end_of_a_line_stays_on_that_line() {
+        assert_eq!(offset_at("ab\ncd", 1, 10), Some(2));
+    }
+
+    #[test]
+    fn offset_at_a_missing_line_is_none() {
+        assert_eq!(offset_at("ab", 3, 1), None);
+    }
+
+    #[test]
+    fn offset_at_inverts_line_col_at() {
+        let source = "é😀\n[😀] x";
+        let target: Vec<Option<usize>> = source
+            .char_indices()
+            .map(|(offset, _)| {
+                let (line, column) = line_col_at(source, offset);
+                offset_at(source, line, column)
+            })
+            .collect();
+        let expected: Vec<Option<usize>> = source
+            .char_indices()
+            .map(|(offset, _)| Some(offset))
+            .collect();
+        assert_eq!(target, expected);
     }
 }

@@ -69,7 +69,7 @@ pub fn tokenize(input: &str) -> Result<Vec<Token>, SyntaxError> {
             // Check for unclosed string
             if let Some(mat) = UNCLOSED_STRING_PATTERN.find(remaining) {
                 if mat.start() == 0 {
-                    let (line, column) = get_line_col(input, position);
+                    let (line, column) = crate::syntax::reader::line_col_at(input, position);
                     return Err(SyntaxError::new(
                         "Unclosed string literal".into(),
                         line,
@@ -91,18 +91,6 @@ pub fn tokenize(input: &str) -> Result<Vec<Token>, SyntaxError> {
         }
     }
     Ok(tokens)
-}
-
-fn get_line_col(input: &str, pos: usize) -> (usize, usize) {
-    let prefix = &input[..pos];
-    let line = prefix.matches('\n').count() + 1;
-    let last_line_start = prefix.rfind('\n').map(|i| i + 1).unwrap_or(0);
-    // Be careful with unicode here, but column usually counts chars or bytes.
-    // Editors use char offset or UTF-16 offset.
-    // For now simple byte offset from BOL is fine or char count.
-    // Let's do char count for column.
-    let column = prefix[last_line_start..].chars().count() + 1;
-    (line, column)
 }
 
 #[cfg(test)]

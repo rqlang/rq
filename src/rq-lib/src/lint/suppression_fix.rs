@@ -2,6 +2,7 @@ use crate::lint::line_col;
 use crate::lint::suppression::{
     parse_comment, starts_line, statement_range, ParsedComment, IGNORE, IGNORE_FILE,
 };
+use crate::syntax::reader::offset_at;
 use crate::syntax::token::{Token, TokenType};
 use serde::{Deserialize, Serialize};
 use std::ops::Range;
@@ -49,13 +50,7 @@ impl<'a> Lines<'a> {
     }
 
     fn offset(&self, line: usize, column: usize) -> Option<usize> {
-        let start = self.start(line)?;
-        self.source
-            .get(start..)?
-            .char_indices()
-            .map(|(index, _)| start + index)
-            .chain(std::iter::once(self.source.len()))
-            .nth(column.checked_sub(1)?)
+        offset_at(self.source, line, column)
     }
 
     fn eol(&self) -> &'static str {

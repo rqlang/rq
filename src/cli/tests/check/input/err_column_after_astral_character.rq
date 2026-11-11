@@ -1,0 +1,1 @@
+rq get(url: "http://x/😀", body: not_found);

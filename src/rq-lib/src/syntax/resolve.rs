@@ -11,7 +11,7 @@ use super::{
         attributes::{ATTR_DESCRIPTION, ATTR_UI_COLOR},
         utils::parse_system_function,
     },
-    reader::TokenReader,
+    reader::{line_col_at, offset_at, TokenReader},
     token::{Token, TokenType},
     tokenizer::tokenize,
     types::{slot_type_error, type_of_slot, ParameterSlot, SlotBinding, TypeLookup, ValueType},
@@ -46,16 +46,7 @@ fn find_in_file(fs: &dyn Fs, path: &Path, var_name: &str) -> (usize, usize) {
         return (0, 0);
     };
 
-    let get_line_col = |pos: usize| -> (usize, usize) {
-        if pos > content.len() {
-            return (1, 1);
-        }
-        let prefix = &content[..pos];
-        let line = prefix.matches('\n').count() + 1;
-        let last_line_start = prefix.rfind('\n').map(|i| i + 1).unwrap_or(0);
-        let column = prefix[last_line_start..].chars().count() + 1;
-        (line, column)
-    };
+    let get_line_col = |pos: usize| line_col_at(&content, pos);
 
     let escaped = regex::escape(var_name);
     let pattern_interp = format!(r"\{{\{{\s*{escaped}\s*\}}\}}");
@@ -108,16 +99,7 @@ fn find_rhs_identifier_in_file(fs: &dyn Fs, path: &Path, var_name: &str) -> (usi
         return (0, 0);
     };
 
-    let get_line_col = |pos: usize| -> (usize, usize) {
-        if pos > content.len() {
-            return (1, 1);
-        }
-        let prefix = &content[..pos];
-        let line = prefix.matches('\n').count() + 1;
-        let last_line_start = prefix.rfind('\n').map(|i| i + 1).unwrap_or(0);
-        let column = prefix[last_line_start..].chars().count() + 1;
-        (line, column)
-    };
+    let get_line_col = |pos: usize| line_col_at(&content, pos);
 
     let mut seen = 0usize;
     for (i, token) in tokens.iter().enumerate() {
@@ -292,12 +274,8 @@ pub fn find_all_endpoint_references(
 }
 
 fn zero_based_line_col(content: &str, pos: usize) -> (usize, usize) {
-    let pos = pos.min(content.len());
-    let prefix = &content[..pos];
-    let line = prefix.matches('\n').count();
-    let last_line_start = prefix.rfind('\n').map(|i| i + 1).unwrap_or(0);
-    let column = prefix[last_line_start..].chars().count();
-    (line, column)
+    let (line, column) = line_col_at(content, pos);
+    (line - 1, column - 1)
 }
 
 fn is_in_env_block(tokens: &[Token], idx: usize) -> bool {
@@ -519,16 +497,7 @@ fn is_trivia(token: &Token) -> bool {
 }
 
 fn byte_offset(content: &str, line: usize, character: usize) -> Option<usize> {
-    let line_start = match line {
-        0 => 0,
-        _ => content.match_indices('\n').nth(line - 1)?.0 + 1,
-    };
-    let line_text = content.get(line_start..)?.split('\n').next()?;
-    let column = line_text
-        .char_indices()
-        .nth(character)
-        .map_or(line_text.len(), |(index, _)| index);
-    Some(line_start + column)
+    offset_at(content, line + 1, character + 1)
 }
 
 fn find_all_ep_refs_in_file(fs: &dyn Fs, path: &Path, ep_name: &str) -> Vec<(usize, usize)> {

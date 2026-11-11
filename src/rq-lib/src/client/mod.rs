@@ -2925,6 +2925,13 @@ mod navigation_tests {
     }
 
     #[test]
+    fn required_variable_references_count_utf16_columns() {
+        let content = "[required(id)]\nrq get(\"😀{{id}}\", body: id);\n";
+        let target = variable_refs_at(content, "id", Some((1, 12)));
+        assert_eq!(target, vec![(0, 10), (1, 12), (1, 25)]);
+    }
+
+    #[test]
     fn unclosed_request_does_not_swallow_the_next_one() {
         let content = "[required(id)]\nrq get(id\n\n[required(id)]\nrq other(\"{{id}}\");\n";
         let target = variable_refs_at(content, "id", Some((1, 8)));

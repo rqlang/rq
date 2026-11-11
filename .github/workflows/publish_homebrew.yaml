@@ -110,7 +110,9 @@ jobs:
 
       - name: Audit formula
         if: matrix.os == 'ubuntu-latest'
-        run: brew audit --strict --online rqlang/verify/rqlang
+        run: |
+          brew trust --formula rqlang/verify/rqlang
+          brew audit --strict --online rqlang/verify/rqlang
 
       - name: Install and test formula
         run: |

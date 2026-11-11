@@ -6,7 +6,7 @@ use super::{
         KW_AUTH, KW_ENV, KW_EP, KW_RQ, OP_LT, PUNC_DOT, PUNC_LBRACE, PUNC_LBRACKET, PUNC_RBRACE,
         PUNC_RBRACKET, PUNC_SEMI,
     },
-    parse_result::{EndpointDefinition, Request, RequestWithVariables},
+    parse_result::{EndpointDefinition, Request, RequestWithVariables, RequiredVariable},
     parsers::{
         attributes::{ATTR_DESCRIPTION, ATTR_UI_COLOR},
         utils::parse_system_function,
@@ -219,9 +219,7 @@ pub fn find_request_scoped_references(
     var_name: &str,
 ) -> Option<Vec<ScopedReference>> {
     let content = fs.read(at.file).ok()?;
-    let offset = byte_offset(&content, at.line, at.character)?;
-    let request = requests_declaring(fs, at.file, requests, var_name)
-        .find(|request| request.span.contains(&offset))?;
+    let request = request_declaring_at(fs, at, &content, requests, var_name)?;
     let Ok(tokens) = tokenize(&content) else {
         return Some(Vec::new());
     };
@@ -244,6 +242,21 @@ pub fn find_request_scoped_references(
             })
             .collect(),
     )
+}
+
+pub fn find_required_declaration<'a>(
+    fs: &dyn Fs,
+    at: &SourcePosition,
+    requests: &'a [RequestWithVariables],
+    var_name: &'a str,
+) -> Option<(&'a Request, &'a RequiredVariable)> {
+    let content = fs.read(at.file).ok()?;
+    let request = request_declaring_at(fs, at, &content, requests, var_name)?;
+    let required = request
+        .required_variables
+        .iter()
+        .find(|required| required.name == var_name)?;
+    Some((request, required))
 }
 
 pub fn find_all_variable_references(
@@ -349,6 +362,18 @@ fn find_all_var_refs_in_file(
         .filter(|offset| !shadowing.iter().any(|span| span.contains(offset)))
         .map(|offset| zero_based_line_col(&content, offset))
         .collect()
+}
+
+fn request_declaring_at<'a>(
+    fs: &dyn Fs,
+    at: &SourcePosition,
+    content: &str,
+    requests: &'a [RequestWithVariables],
+    var_name: &'a str,
+) -> Option<&'a Request> {
+    let offset = byte_offset(content, at.line, at.character)?;
+    requests_declaring(fs, at.file, requests, var_name)
+        .find(|request| request.span.contains(&offset))
 }
 
 fn requests_declaring<'a>(

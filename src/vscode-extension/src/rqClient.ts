@@ -280,6 +280,19 @@ export async function listVariables(sourceFile?: string, environment?: string, r
     return raw.map(v => ({ ...v, file: normalizePath(v.file) }));
 }
 
+export async function requiredVariable(name: string, document: vscode.TextDocument, position: vscode.Position, sourceDirectory?: string): Promise<VariableShowOutput | undefined> {
+    const source = resolveSource(sourceDirectory);
+    const scopeFile = documentDraftPath(document, source);
+    const filesJson = draftsJson(openDrafts(document, source));
+    try {
+        const result = await wasmCall('get_required_variable', [filesJson, await buildSecretsMap(source), source, name, scopeFile, position.line, position.character]);
+        const raw = JSON.parse(result) as VariableShowOutput | null;
+        return raw ? { ...raw, file: normalizePath(raw.file) } : undefined;
+    } catch {
+        return undefined;
+    }
+}
+
 export async function varRefs(name: string, document: vscode.TextDocument, position: vscode.Position, sourceDirectory?: string): Promise<SymbolReference[]> {
     return symbolRefs('list_variable_refs', name, document, sourceDirectory, [position.line, position.character]);
 }

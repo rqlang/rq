@@ -14,8 +14,8 @@ use crate::logger::Logger;
 use crate::syntax::auth::Config as AuthConfig;
 use crate::syntax::parse_result::{AuthLocation, RequestWithVariables, RequiredVariable};
 use crate::syntax::resolve::{
-    find_request_scoped_references, referenced_variable_names, variable_dependencies,
-    SourcePosition,
+    find_request_scoped_references, find_required_declaration, referenced_variable_names,
+    variable_dependencies, SourcePosition,
 };
 use crate::syntax::types::SlotValue;
 use crate::syntax::variable_context::{VariableContext, VariableContextBuilder};
@@ -600,6 +600,31 @@ impl RqClient {
         Ok(VariableEntry {
             value: resolved,
             ..entry
+        })
+    }
+
+    pub fn get_required_variable(
+        &self,
+        scope_file: &Path,
+        position: (usize, usize),
+        name: &str,
+    ) -> Option<VariableEntry> {
+        let (line, character) = position;
+        let at = SourcePosition {
+            file: scope_file,
+            line,
+            character,
+        };
+        let requests = self.parsed_requests(&[scope_file.to_path_buf()]);
+        let (request, required) = find_required_declaration(&*self.fs, &at, &requests, name)?;
+        Some(VariableEntry {
+            name: required.name.clone(),
+            value: String::new(),
+            file: crate::paths::clean_path_str(request.source_path.as_deref().unwrap_or_default())
+                .to_string(),
+            line: required.line,
+            character: required.character,
+            source: "required".to_string(),
         })
     }
 
@@ -2814,6 +2839,54 @@ mod navigation_tests {
             .iter()
             .map(|r| (r.line, r.character))
             .collect()
+    }
+
+    fn required_definition_at(content: &str, position: (usize, usize)) -> Option<(usize, usize)> {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let file = dir.path().join("test.rq");
+        std::fs::write(&file, content).expect("test.rq");
+        RqClient::default()
+            .get_required_variable(&file, position, "id")
+            .map(|entry| (entry.line, entry.character))
+    }
+
+    #[test]
+    fn required_definition_of_a_usage_is_its_request_attribute() {
+        let target = required_definition_at("[required(id)]\nrq get(id);\n", (1, 7));
+        assert_eq!(target, Some((0, 10)));
+    }
+
+    #[test]
+    fn required_definition_of_the_attribute_is_itself() {
+        let target = required_definition_at("[required(id)]\nrq get(id);\n", (0, 11));
+        assert_eq!(target, Some((0, 10)));
+    }
+
+    #[test]
+    fn required_definition_is_the_one_of_the_enclosing_request() {
+        let content = "[required(id)]\nrq a(id);\n\n[required(id)]\nrq b(id);\n";
+        let target = required_definition_at(content, (4, 5));
+        assert_eq!(target, Some((3, 10)));
+    }
+
+    #[test]
+    fn required_definition_accepts_an_attribute_on_the_request_line() {
+        let target = required_definition_at("[required(id)] rq get(id);\n", (0, 22));
+        assert_eq!(target, Some((0, 10)));
+    }
+
+    #[test]
+    fn top_level_let_after_a_request_has_no_required_definition() {
+        let content = "[required(id)]\nrq get(id);\nlet url = \"{{id}}\";\n";
+        let target = required_definition_at(content, (2, 13));
+        assert_eq!(target, None);
+    }
+
+    #[test]
+    fn endpoint_header_use_has_no_required_definition() {
+        let content = "ep items(\"http://x/{{id}}\") {\n    [required(id)]\n    rq get(id);\n}\n";
+        let target = required_definition_at(content, (0, 21));
+        assert_eq!(target, None);
     }
 
     #[test]

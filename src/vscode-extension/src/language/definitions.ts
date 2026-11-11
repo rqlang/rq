@@ -278,39 +278,3 @@ export function escapeRegex(s: string): string {
     return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-export function findRequiredAttributeLineInScope(
-    document: vscode.TextDocument,
-    cursorLine: number,
-    varName: string
-): number {
-    let rqLine = -1;
-    for (let i = cursorLine; i >= 0; i--) {
-        if (/^\s*rq\s+/.test(document.lineAt(i).text)) {
-            rqLine = i;
-            break;
-        }
-    }
-    if (rqLine === -1) {
-        return -1;
-    }
-
-    for (let i = rqLine - 1; i >= 0; i--) {
-        const text = document.lineAt(i).text;
-        if (!/^\s*\[/.test(text)) {
-            break;
-        }
-        if (isRequiredAttributeFor(text, varName)) {
-            return i;
-        }
-    }
-    return -1;
-}
-
-export function isRequiredAttributeFor(lineText: string, varName: string): boolean {
-    return new RegExp(`\\[\\s*required\\s*\\(\\s*${escapeRegex(varName)}\\s*\\)`).test(lineText);
-}
-
-export function requiredAttributeColumn(lineText: string, varName: string): number {
-    const match = new RegExp(`(\\[\\s*required\\s*\\(\\s*)${escapeRegex(varName)}\\s*\\)`).exec(lineText);
-    return match ? match.index + match[1].length : 0;
-}

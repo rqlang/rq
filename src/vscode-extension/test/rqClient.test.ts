@@ -4,6 +4,7 @@ import * as fs from 'fs';
 const mockPrepareRequest = jest.fn();
 const mockSetDebugLogging = jest.fn();
 const mockListVariableRefs = jest.fn();
+const mockGetRequiredVariable = jest.fn();
 const mockListEnvironments = jest.fn();
 const mockListAuth = jest.fn();
 const mockAuthFields = jest.fn();
@@ -13,6 +14,7 @@ jest.mock('../src/wasm/rq_wasm', () => ({
     prepare_request: mockPrepareRequest,
     set_debug_logging: mockSetDebugLogging,
     list_variable_refs: mockListVariableRefs,
+    get_required_variable: mockGetRequiredVariable,
     list_environments: mockListEnvironments,
     list_auth: mockListAuth,
     auth_fields: mockAuthFields,
@@ -30,7 +32,7 @@ jest.mock('fs');
 jest.mock('https');
 
 import * as vscode from 'vscode';
-import { authFields, executeRequest, listAuthConfigsWithErrors, listEnvironments, listEnvironmentsWithErrors, setDebugLogging, showRequest, showRequestLocation, varRefs } from '../src/rqClient';
+import { authFields, executeRequest, listAuthConfigsWithErrors, listEnvironments, listEnvironmentsWithErrors, setDebugLogging, showRequest, showRequestLocation, requiredVariable, varRefs } from '../src/rqClient';
 
 const BASE_PREPARED = {
     name: 'test-req',
@@ -647,6 +649,56 @@ describe('varRefs', () => {
 
         expect(mockListVariableRefs.mock.calls[0][4]).toBe('c:/ws/foo.rq');
     });
+
+describe('requiredVariable', () => {
+    function makeDocument(uri: any, text: string) {
+        return { uri, isUntitled: false, languageId: 'rq', isDirty: true, getText: () => text } as any;
+    }
+
+    afterEach(() => {
+        (vscode.workspace as any).textDocuments = [];
+    });
+
+    test('looks the variable up in the unsaved text at the cursor position', async () => {
+        const doc = makeDocument({ fsPath: '/tmp/project/foo.rq' }, '[required(id)]\nrq get(id);');
+        mockGetRequiredVariable.mockReturnValue('null');
+
+        await requiredVariable('id', doc, new vscode.Position(1, 7), '/tmp/project');
+
+        const call = mockGetRequiredVariable.mock.calls[0];
+        expect(JSON.parse(call[0])).toEqual({ '/tmp/project/foo.rq': '[required(id)]\nrq get(id);' });
+        expect(call.slice(2)).toEqual(['/tmp/project', 'id', '/tmp/project/foo.rq', 1, 7]);
+    });
+
+    test('returns the declaration rq reports', async () => {
+        const doc = makeDocument({ fsPath: '/tmp/project/foo.rq' }, '[required(id)]\nrq get(id);');
+        mockGetRequiredVariable.mockReturnValue(JSON.stringify({
+            name: 'id', value: '', file: '/tmp/project/foo.rq', line: 0, character: 10, source: 'required',
+        }));
+
+        const target = await requiredVariable('id', doc, new vscode.Position(1, 7), '/tmp/project');
+
+        expect(target).toMatchObject({ line: 0, character: 10, source: 'required' });
+    });
+
+    test('is undefined when no request at the position declares the variable', async () => {
+        const doc = makeDocument({ fsPath: '/tmp/project/foo.rq' }, 'rq get(id);');
+        mockGetRequiredVariable.mockReturnValue('null');
+
+        const target = await requiredVariable('id', doc, new vscode.Position(0, 7), '/tmp/project');
+
+        expect(target).toBeUndefined();
+    });
+
+    test('is undefined when the lookup fails', async () => {
+        const doc = makeDocument({ fsPath: '/tmp/project/foo.rq' }, 'rq get(id);');
+        mockGetRequiredVariable.mockImplementation(() => { throw new Error('boom'); });
+
+        const target = await requiredVariable('id', doc, new vscode.Position(0, 7), '/tmp/project');
+
+        expect(target).toBeUndefined();
+    });
+});
 
     test('flags references that the endpoint shares with other requests', async () => {
         const uri = { fsPath: '/tmp/project/foo.rq' };

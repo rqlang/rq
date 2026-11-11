@@ -36,14 +36,7 @@ impl Parse for RequestParser {
         result: &mut ParseResult,
         _fs: &dyn Fs,
     ) -> Result<(), SyntaxError> {
-        let (req, req_vars, req_locs) =
-            parse_request_with_context(r, &Vec::new(), None, &result.requests)?;
-        for (name, file, line, character) in req_locs {
-            result
-                .required_variable_locations
-                .entry(name)
-                .or_insert((file, line, character));
-        }
+        let (req, req_vars) = parse_request_with_context(r, &Vec::new(), None, &result.requests)?;
         result
             .requests
             .push(crate::syntax::parse_result::RequestWithVariables {
@@ -214,14 +207,13 @@ fn parse_headers_parameter(
     }
 }
 
-type RequiredVarLocation = (String, String, usize, usize);
-
 pub(crate) fn parse_request_with_context(
     r: &mut TokenReader,
     _endpoint_vars: &[Variable],
     endpoint_name: Option<&str>,
     existing_requests: &[crate::syntax::parse_result::RequestWithVariables],
-) -> Result<(Request, Vec<Variable>, Vec<RequiredVarLocation>), SyntaxError> {
+) -> Result<(Request, Vec<Variable>), SyntaxError> {
+    let span_start = r.cur().map_or(r.source.len(), |t| t.span.start);
     let mut ctx = AttributeContext::default();
     let parsers: Vec<&dyn AttributeParser> = vec![
         &MethodAttributeParser,
@@ -291,19 +283,16 @@ pub(crate) fn parse_request_with_context(
 
     r.skip_ignorable();
     let vars = params.variables;
-    expect(
+    let span_end = expect(
         r,
         |t| t.token_type == TokenType::Punctuation && t.value == PUNC_SEMI,
         format!("Expected '{PUNC_SEMI}'"),
-    )?;
+    )?
+    .span
+    .end;
     r.advance();
 
     let file = r.file_path.to_string_lossy().to_string();
-    let required_locations: Vec<(String, String, usize, usize)> = ctx
-        .required_variables
-        .iter()
-        .map(|v| (v.name.clone(), file.clone(), v.line, v.character))
-        .collect();
     let request = Request {
         name,
         url: params.url.clone(),
@@ -320,11 +309,13 @@ pub(crate) fn parse_request_with_context(
         timeout: ctx.timeout,
         description: ctx.description,
         confirm: ctx.confirm,
-        required_variables: ctx.required_variables.into_iter().map(|v| v.name).collect(),
+        required_variables: ctx.required_variables,
         source_path: Some(file),
         related_files: Vec::new(),
         line: req_line,
         character: req_character,
+        span: span_start..span_end,
+        endpoint_header: None,
     };
-    Ok((request, vars, required_locations))
+    Ok((request, vars))
 }

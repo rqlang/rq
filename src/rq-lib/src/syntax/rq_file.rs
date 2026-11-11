@@ -23,7 +23,6 @@ pub struct RqFile {
     pub imported_files: Vec<PathBuf>,
     pub let_variable_locations: HashMap<String, (String, usize, usize)>,
     pub env_variable_locations: HashMap<String, HashMap<String, (String, usize, usize)>>,
-    pub required_variable_locations: HashMap<String, (String, usize, usize)>,
 }
 
 impl RqFile {
@@ -73,7 +72,6 @@ impl RqFile {
                 imported_files: Vec::new(),
                 let_variable_locations: HashMap::new(),
                 env_variable_locations: HashMap::new(),
-                required_variable_locations: HashMap::new(),
             },
         )
     }
@@ -92,7 +90,6 @@ impl RqFile {
             imported_files: parse_result.imported_files,
             let_variable_locations: parse_result.let_variable_locations,
             env_variable_locations: parse_result.env_variable_locations,
-            required_variable_locations: parse_result.required_variable_locations,
         }
     }
 }
@@ -101,17 +98,76 @@ impl RqFile {
 mod tests {
     use super::RqFile;
     use crate::native::NativeFs;
+    use crate::syntax::parse_result::{Request, RequiredVariable};
     use std::path::PathBuf;
+
+    fn requests_of(source: &str) -> Vec<Request> {
+        RqFile::from_content_lenient(PathBuf::from("test.rq"), source, &NativeFs)
+            .requests
+            .into_iter()
+            .map(|req_with_vars| req_with_vars.request)
+            .collect()
+    }
+
+    #[test]
+    fn request_span_covers_its_attributes_and_semicolon() {
+        let source = "let a = \"1\";\n[required(id)]\nrq get(id);\nlet b = \"2\";\n";
+        let target = &requests_of(source)[0];
+        assert_eq!(&source[target.span.clone()], "[required(id)]\nrq get(id);");
+    }
+
+    #[test]
+    fn endpoint_request_records_the_endpoint_header() {
+        let source = "[timeout(5)]\nep items(\"http://x\") {\n    rq get(\"/\");\n}\n";
+        let target = requests_of(source)[0].endpoint_header.clone();
+        assert_eq!(
+            target.map(|header| &source[header]),
+            Some("[timeout(5)]\nep items(\"http://x\") {")
+        );
+    }
+
+    #[test]
+    fn top_level_request_has_no_endpoint_header() {
+        let target = requests_of("rq get(\"http://x\");\n");
+        assert_eq!(target[0].endpoint_header, None);
+    }
+
+    #[test]
+    fn each_request_keeps_its_own_required_variable_location() {
+        let source = "[required(id)]\nrq a(id);\n\n[required(id)]\nrq b(id);\n";
+        let target: Vec<Vec<RequiredVariable>> = requests_of(source)
+            .into_iter()
+            .map(|request| request.required_variables)
+            .collect();
+        assert_eq!(
+            target,
+            vec![
+                vec![RequiredVariable {
+                    name: "id".to_string(),
+                    line: 0,
+                    character: 10,
+                }],
+                vec![RequiredVariable {
+                    name: "id".to_string(),
+                    line: 3,
+                    character: 10,
+                }],
+            ]
+        );
+    }
 
     #[test]
     fn lenient_parse_resumes_at_the_request_after_an_unclosed_one() {
         let source = "rq get(\"http://x\"\n\n[required(id)]\nrq other(\"{{id}}\");\n";
-        let target: Vec<String> =
-            RqFile::from_content_lenient(PathBuf::from("test.rq"), source, &NativeFs)
-                .requests
-                .into_iter()
-                .map(|req_with_vars| req_with_vars.request.name)
-                .collect();
-        assert_eq!(target, vec!["other".to_string()]);
+        let target: Vec<(String, Vec<String>)> = requests_of(source)
+            .into_iter()
+            .map(|request| {
+                (
+                    request.name.clone(),
+                    request.required_names().cloned().collect(),
+                )
+            })
+            .collect();
+        assert_eq!(target, vec![("other".to_string(), vec!["id".to_string()])]);
     }
 }

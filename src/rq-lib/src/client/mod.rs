@@ -12,7 +12,7 @@ use crate::http::HttpClient;
 use crate::lint::{lint_rq_file, LintDiagnostic, LintScope, WorkspaceCollector, WorkspaceFile};
 use crate::logger::Logger;
 use crate::syntax::auth::Config as AuthConfig;
-use crate::syntax::parse_result::{AuthLocation, RequestWithVariables};
+use crate::syntax::parse_result::{AuthLocation, RequestWithVariables, RequiredVariable};
 use crate::syntax::resolve::{
     find_request_scoped_references, referenced_variable_names, variable_dependencies,
     SourcePosition,
@@ -178,8 +178,7 @@ impl RqClient {
             let defined = context.as_map();
             let placeholders = Self::empty_variables(
                 request
-                    .required_variables
-                    .iter()
+                    .required_names()
                     .filter(|name| !defined.contains_key(name.as_str())),
             );
             context.cli_variables.extend(placeholders);
@@ -619,7 +618,8 @@ impl RqClient {
                 character,
             });
         if let Some(at) = at {
-            if let Some(scoped) = find_request_scoped_references(&*self.fs, &at, name) {
+            let requests = self.parsed_requests(&[at.file.to_path_buf()]);
+            if let Some(scoped) = find_request_scoped_references(&*self.fs, &at, &requests, name) {
                 let file = crate::paths::clean_path(at.file);
                 return Ok(scoped
                     .into_iter()
@@ -635,7 +635,10 @@ impl RqClient {
         let paths = self.reference_paths(source_path, scope_file, |closure| {
             self.variable_definition_file(closure, name)
         })?;
-        let refs = crate::syntax::resolve::find_all_variable_references(&*self.fs, &paths, name);
+        let requests = self.parsed_requests(&paths);
+        let refs = crate::syntax::resolve::find_all_variable_references(
+            &*self.fs, &paths, &requests, name,
+        );
         Ok(Self::reference_locations(refs))
     }
 
@@ -1054,19 +1057,34 @@ impl RqClient {
                 });
             }
         }
-        for (var_name, (file, line, character)) in &rq_file.required_variable_locations {
-            if seen.insert(var_name.clone()) {
+        for (file, required) in Self::required_variables_of(rq_file) {
+            if seen.insert(required.name.clone()) {
                 entries.push(VariableEntry {
-                    name: var_name.clone(),
+                    name: required.name.clone(),
                     value: String::new(),
                     file: crate::paths::clean_path_str(file).to_string(),
-                    line: *line,
-                    character: *character,
+                    line: required.line,
+                    character: required.character,
                     source: "required".to_string(),
                 });
             }
         }
         entries
+    }
+
+    fn required_variables_of(rq_file: &RqFile) -> impl Iterator<Item = (&str, &RequiredVariable)> {
+        rq_file.requests.iter().flat_map(|req_with_vars| {
+            let file = req_with_vars
+                .request
+                .source_path
+                .as_deref()
+                .unwrap_or_default();
+            req_with_vars
+                .request
+                .required_variables
+                .iter()
+                .map(move |required| (file, required))
+        })
     }
 
     fn find_variable_entry(
@@ -1199,10 +1217,7 @@ impl RqClient {
     }
 
     fn is_required(request: &Request, name: &str) -> bool {
-        request
-            .required_variables
-            .iter()
-            .any(|required| required == name)
+        request.requires(name)
     }
 
     fn variables_used(
@@ -1314,8 +1329,7 @@ impl RqClient {
     fn require_runtime_variables(request: &Request, cli_vars: &[Variable]) -> Result<(), RqError> {
         let mut seen = HashSet::new();
         let missing: Vec<&str> = request
-            .required_variables
-            .iter()
+            .required_names()
             .filter(|name| !cli_vars.iter().any(|v| &v.name == *name))
             .map(String::as_str)
             .filter(|name| seen.insert(*name))
@@ -1509,7 +1523,11 @@ impl RqClient {
             body: request.body,
             timeout: request.timeout,
             description: request.description,
-            required_variables: request.required_variables,
+            required_variables: request
+                .required_variables
+                .into_iter()
+                .map(|required| required.name)
+                .collect(),
             confirmation_required,
             file,
             line,
@@ -1711,7 +1729,7 @@ impl RqClient {
                 errors.push(RqError::Syntax(e));
             }
             let required_placeholders =
-                Self::empty_variables(&req_with_vars.request.required_variables);
+                Self::empty_variables(req_with_vars.request.required_names());
             let context = Self::request_context(
                 &file_context,
                 req_with_vars.endpoint_variables.clone(),
@@ -2104,6 +2122,14 @@ impl RqClient {
         }
     }
 
+    fn parsed_requests(&self, paths: &[PathBuf]) -> Vec<RequestWithVariables> {
+        paths
+            .iter()
+            .filter_map(|path| self.load_rq_file_lenient(path))
+            .flat_map(|rq_file| rq_file.requests)
+            .collect()
+    }
+
     fn reference_locations(refs: Vec<(usize, usize, PathBuf)>) -> Vec<ReferenceLocation> {
         refs.into_iter()
             .map(|(line, character, path)| ReferenceLocation {
@@ -2155,17 +2181,23 @@ impl RqClient {
             let Some(rq_file) = self.load_rq_file_lenient(path) else {
                 continue;
             };
-            let location = rq_file
+            let file = rq_file
                 .let_variable_locations
                 .get(name)
-                .or_else(|| rq_file.required_variable_locations.get(name))
+                .map(|(file, _, _)| file.as_str())
+                .or_else(|| {
+                    Self::required_variables_of(&rq_file)
+                        .find(|(_, required)| required.name == name)
+                        .map(|(file, _)| file)
+                })
                 .or_else(|| {
                     rq_file
                         .env_variable_locations
                         .values()
                         .find_map(|key_map| key_map.get(name))
+                        .map(|(file, _, _)| file.as_str())
                 });
-            if let Some((file, _, _)) = location {
+            if let Some(file) = file {
                 return Some(PathBuf::from(file));
             }
         }
@@ -2604,6 +2636,8 @@ mod prepare_request_tests {
             related_files: Vec::new(),
             line: 0,
             character: 0,
+            span: 0..0,
+            endpoint_header: None,
         }
     }
 

@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use crate::syntax::auth::Config as AuthConfig;
 use crate::syntax::http_method::HttpMethod;
 use crate::syntax::types::{SlotBinding, ValueType};
@@ -35,6 +37,13 @@ pub struct EndpointDefinition {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct RequiredVariable {
+    pub name: String,
+    pub line: usize,
+    pub character: usize,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct Request {
     pub name: String,
     pub url: String,
@@ -51,11 +60,25 @@ pub struct Request {
     pub timeout: Option<String>,
     pub description: Option<String>,
     pub confirm: bool,
-    pub required_variables: Vec<String>,
+    pub required_variables: Vec<RequiredVariable>,
     pub source_path: Option<String>,
     pub related_files: Vec<String>,
     pub line: usize,
     pub character: usize,
+    pub span: Range<usize>,
+    pub endpoint_header: Option<Range<usize>>,
+}
+
+impl Request {
+    pub fn required_names(&self) -> impl Iterator<Item = &String> {
+        self.required_variables
+            .iter()
+            .map(|required| &required.name)
+    }
+
+    pub fn requires(&self, name: &str) -> bool {
+        self.required_names().any(|required| required == name)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -81,5 +104,4 @@ pub struct ParseResult {
         String,
         std::collections::HashMap<String, (String, usize, usize)>,
     >,
-    pub required_variable_locations: std::collections::HashMap<String, (String, usize, usize)>,
 }

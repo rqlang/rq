@@ -240,4 +240,26 @@ mod tests {
             ]
         );
     }
+
+    #[test]
+    fn imported_request_scope_is_part_of_the_importing_file() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            dir.path().join("child.rq"),
+            "[required(id)]\nrq get(\"http://x/{{id}}\");\n",
+        )
+        .expect("child.rq");
+        let main = dir.path().join("main.rq");
+        let source = "import \"child\";\n";
+        std::fs::write(&main, source).expect("main.rq");
+        let target = RqFile::from_content_lenient(main, source, &NativeFs);
+        assert_eq!(
+            target
+                .request_scopes
+                .iter()
+                .map(required_names)
+                .collect::<Vec<_>>(),
+            vec![vec!["id"]]
+        );
+    }
 }

@@ -86,6 +86,7 @@ impl Parse for ImportParser {
         result.imported_files.push(canonical_path);
         result.imported_files.extend(imported_result.imported_files);
         result.requests.extend(imported_result.requests);
+        result.request_scopes.extend(imported_result.request_scopes);
         result.file_variables.extend(imported_result.file_variables);
         for name in imported_result.environments.keys() {
             result.environment_colors.remove(name);

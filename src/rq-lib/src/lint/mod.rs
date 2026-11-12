@@ -1,6 +1,7 @@
 use crate::error::RqError;
 use crate::syntax::fs::Fs;
 use crate::syntax::parse_result::{EndpointDefinition, Request};
+use crate::syntax::reader::line_col_at as line_col;
 use crate::syntax::rq_file::RqFile;
 use crate::syntax::token::TokenType;
 use serde::Serialize;
@@ -521,17 +522,6 @@ fn known_rule_ids() -> Vec<&'static str> {
 
 fn bare_request_name(qualified: &str) -> &str {
     qualified.rsplit('/').next().unwrap_or(qualified)
-}
-
-fn line_col(source: &str, offset: usize) -> (usize, usize) {
-    if offset > source.len() {
-        return (1, 1);
-    }
-    let prefix = &source[..offset];
-    let line = prefix.matches('\n').count() + 1;
-    let last_line_start = prefix.rfind('\n').map(|i| i + 1).unwrap_or(0);
-    let column = prefix[last_line_start..].chars().count() + 1;
-    (line, column)
 }
 
 #[cfg(test)]

@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use crate::syntax::auth::Config as AuthConfig;
 use crate::syntax::http_method::HttpMethod;
 use crate::syntax::types::{SlotBinding, ValueType};
@@ -35,6 +37,13 @@ pub struct EndpointDefinition {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct RequiredVariable {
+    pub name: String,
+    pub line: usize,
+    pub character: usize,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct Request {
     pub name: String,
     pub url: String,
@@ -51,11 +60,39 @@ pub struct Request {
     pub timeout: Option<String>,
     pub description: Option<String>,
     pub confirm: bool,
-    pub required_variables: Vec<String>,
+    pub required_variables: Vec<RequiredVariable>,
     pub source_path: Option<String>,
     pub related_files: Vec<String>,
     pub line: usize,
     pub character: usize,
+}
+
+impl Request {
+    pub fn required_names(&self) -> impl Iterator<Item = &String> {
+        self.required_variables
+            .iter()
+            .map(|required| &required.name)
+    }
+
+    pub fn requires(&self, name: &str) -> bool {
+        self.required_names().any(|required| required == name)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RequestScope {
+    pub source_path: String,
+    pub span: Range<usize>,
+    pub endpoint_header: Option<Range<usize>>,
+    pub required_variables: Vec<RequiredVariable>,
+}
+
+impl RequestScope {
+    pub fn requires(&self, name: &str) -> bool {
+        self.required_variables
+            .iter()
+            .any(|required| required.name == name)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -68,6 +105,7 @@ pub struct RequestWithVariables {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ParseResult {
     pub requests: Vec<RequestWithVariables>,
+    pub request_scopes: Vec<RequestScope>,
     pub environments: std::collections::HashMap<String, Vec<Variable>>,
     pub environment_locations: std::collections::HashMap<String, (String, usize, usize)>,
     pub environment_colors: std::collections::HashMap<String, crate::syntax::ui_color::UiColor>,
@@ -81,5 +119,4 @@ pub struct ParseResult {
         String,
         std::collections::HashMap<String, (String, usize, usize)>,
     >,
-    pub required_variable_locations: std::collections::HashMap<String, (String, usize, usize)>,
 }

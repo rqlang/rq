@@ -17,6 +17,7 @@ type WasmMethod =
     | 'get_environment'
     | 'get_endpoint'
     | 'get_variable'
+    | 'get_required_variable'
     | 'list_variable_refs'
     | 'list_endpoint_refs'
     | 'version'

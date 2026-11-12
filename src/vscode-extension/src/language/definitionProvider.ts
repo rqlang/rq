@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as rqClient from '../rqClient';
-import { parseVariables, findRequiredAttributeLineInScope, isRequiredAttributeFor, requiredAttributeColumn } from './definitions';
+import { parseVariables } from './definitions';
 
 const EP_TEMPLATE_PATTERN = /^\s*ep\s+[a-zA-Z_][a-zA-Z0-9_-]*\s*<\s*([a-zA-Z_][a-zA-Z0-9_-]*)\s*>/;
 const VAR_NAME_PATTERN = /[a-zA-Z_][a-zA-Z0-9_-]*/;
@@ -41,20 +41,13 @@ export const definitionProvider = vscode.languages.registerDefinitionProvider('r
             return null;
         }
         const word = document.getText(wordRange);
-
-        if (isRequiredAttributeFor(line, word)) {
-            return new vscode.Location(document.uri, new vscode.Position(position.line, requiredAttributeColumn(line, word)));
-        }
-
-        const requiredLine = findRequiredAttributeLineInScope(document, position.line, word);
-        if (requiredLine !== -1) {
-            return new vscode.Location(
-                document.uri,
-                new vscode.Position(requiredLine, requiredAttributeColumn(document.lineAt(requiredLine).text, word))
-            );
-        }
-
         const sourceDirectory = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+
+        const required = await rqClient.requiredVariable(word, document, position, sourceDirectory);
+        if (required) {
+            return new vscode.Location(document.uri, new vscode.Position(required.line, required.character));
+        }
+
         const environment = environmentProvider?.getSelectedEnvironment();
 
         if (!environment) {

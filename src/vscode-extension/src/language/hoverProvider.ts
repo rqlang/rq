@@ -10,8 +10,6 @@ import {
     ENDPOINT_PROPERTIES,
     parseVariables,
     Variable,
-    findRequiredAttributeLineInScope,
-    isRequiredAttributeFor,
     declarationPattern,
     ATTRIBUTE_DEFINITIONS
 } from './definitions';
@@ -212,8 +210,9 @@ export const hoverProvider = vscode.languages.registerHoverProvider('rq', {
                 return undefined;
             }
 
-            if (isRequiredAttributeFor(lineText, word)
-                || findRequiredAttributeLineInScope(document, position.line, word) !== -1) {
+            const sourceDirectory = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+            const required = await rqClient.requiredVariable(word, document, position, sourceDirectory);
+            if (required) {
                 return new vscode.Hover(buildRequiredVariableHover(word));
             }
 
@@ -225,7 +224,6 @@ export const hoverProvider = vscode.languages.registerHoverProvider('rq', {
             }
 
             try {
-                const sourceDirectory = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
                 const result = await rqClient.showVariable(word, sourceDirectory, environment, true, document.uri.fsPath);
                 return new vscode.Hover(buildResolvedVariableHover(result));
             } catch {

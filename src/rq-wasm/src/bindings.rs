@@ -589,6 +589,24 @@ pub fn get_variable(
 }
 
 #[wasm_bindgen]
+pub fn get_required_variable(
+    files_json: &str,
+    source: &str,
+    name: &str,
+    scope_file: &str,
+    line: usize,
+    character: usize,
+) -> Result<String, JsError> {
+    let entry = make_client(
+        parse_files(files_json)?,
+        WasmSecretProvider::new(None, Vec::new()),
+        source,
+    )
+    .get_required_variable(Path::new(scope_file), (line, character), name);
+    serde_json::to_string(&entry).map_err(|e| JsError::new(&e.to_string()))
+}
+
+#[wasm_bindgen]
 pub fn list_variable_refs(
     files_json: &str,
     secrets_json: &str,

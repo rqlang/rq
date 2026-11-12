@@ -10,6 +10,7 @@ pub struct TokenReader {
     pub idx: usize,
     pub file_path: PathBuf,
     pub source: String,
+    pub lenient: bool,
 }
 impl TokenReader {
     pub fn new(tokens: Vec<Token>, file_path: PathBuf, source: String) -> Self {
@@ -18,6 +19,7 @@ impl TokenReader {
             idx: 0,
             file_path,
             source,
+            lenient: false,
         }
     }
     pub fn cur(&self) -> Option<&Token> {
@@ -64,6 +66,52 @@ impl TokenReader {
 
     pub fn get_line_col(&self, pos: usize) -> (usize, usize) {
         line_col_at(&self.source, pos)
+    }
+
+    pub fn skip_statement(&mut self, starts_statement: &dyn Fn(&TokenReader) -> bool) -> usize {
+        let mut braces = 0usize;
+        let mut groups = 0usize;
+        let mut end = self.cur().map_or(self.source.len(), |t| t.span.start);
+        let mut at_statement_start = true;
+        while let Some(tok) = self.cur() {
+            if !at_statement_start && braces == 0 && starts_statement(self) {
+                break;
+            }
+            at_statement_start = false;
+            let ends_statement = match (&tok.token_type, tok.value.as_str()) {
+                (TokenType::Punctuation, "{") => {
+                    braces += 1;
+                    false
+                }
+                (TokenType::Punctuation, "}") => {
+                    braces = braces.saturating_sub(1);
+                    false
+                }
+                (TokenType::Punctuation, "(" | "[") => {
+                    groups += 1;
+                    false
+                }
+                (TokenType::Punctuation, ")" | "]") => {
+                    groups = groups.saturating_sub(1);
+                    false
+                }
+                (TokenType::Punctuation, ";") | (TokenType::Newline, _) => {
+                    braces == 0 && groups == 0
+                }
+                _ => false,
+            };
+            if !matches!(
+                tok.token_type,
+                TokenType::Whitespace | TokenType::Newline | TokenType::Comment
+            ) {
+                end = tok.span.end;
+            }
+            self.advance();
+            if ends_statement {
+                break;
+            }
+        }
+        end
     }
 
     pub fn skip_ignorable(&mut self) {
@@ -189,14 +237,40 @@ pub fn line_col_at(source: &str, pos: usize) -> (usize, usize) {
     let last_line_start = prefix.rfind('\n').map(|i| i + 1).unwrap_or(0);
     let column = prefix
         .get(last_line_start..)
-        .map_or(0, |l| l.chars().count())
+        .map_or(0, |l| l.chars().map(column_width).sum::<usize>())
         + 1;
     (line, column)
 }
 
+pub fn offset_at(source: &str, line: usize, column: usize) -> Option<usize> {
+    let line_start = match line.checked_sub(1)? {
+        0 => 0,
+        previous => source.match_indices('\n').nth(previous - 1)?.0 + 1,
+    };
+    let line_text = source.get(line_start..)?.split('\n').next()?;
+    let mut remaining = column.checked_sub(1)?;
+    for (index, ch) in line_text.char_indices() {
+        if remaining < column_width(ch) {
+            return Some(line_start + index);
+        }
+        remaining -= column_width(ch);
+    }
+    Some(line_start + line_text.len())
+}
+
+#[cfg(feature = "utf16-columns")]
+fn column_width(ch: char) -> usize {
+    ch.len_utf16()
+}
+
+#[cfg(not(feature = "utf16-columns"))]
+fn column_width(_: char) -> usize {
+    1
+}
+
 #[cfg(test)]
 mod tests {
-    use super::line_col_at;
+    use super::{line_col_at, offset_at};
 
     #[test]
     fn line_col_at_counts_multi_byte_characters_as_one_column() {
@@ -206,5 +280,62 @@ mod tests {
     #[test]
     fn line_col_at_inside_a_multi_byte_character_falls_back_to_the_start() {
         assert_eq!(line_col_at("é", 1), (1, 1));
+    }
+
+    #[cfg(feature = "utf16-columns")]
+    #[test]
+    fn line_col_at_counts_a_character_outside_the_bmp_as_two_columns() {
+        assert_eq!(line_col_at("a\n😀x", 6), (2, 3));
+    }
+
+    #[cfg(feature = "utf16-columns")]
+    #[test]
+    fn offset_at_counts_a_character_outside_the_bmp_as_two_columns() {
+        assert_eq!(offset_at("a\n😀x", 2, 3), Some(6));
+    }
+
+    #[cfg(feature = "utf16-columns")]
+    #[test]
+    fn offset_at_inside_a_surrogate_pair_falls_back_to_the_character_start() {
+        assert_eq!(offset_at("😀x", 1, 2), Some(0));
+    }
+
+    #[cfg(not(feature = "utf16-columns"))]
+    #[test]
+    fn line_col_at_counts_a_character_outside_the_bmp_as_one_column() {
+        assert_eq!(line_col_at("a\n😀x", 6), (2, 2));
+    }
+
+    #[cfg(not(feature = "utf16-columns"))]
+    #[test]
+    fn offset_at_counts_a_character_outside_the_bmp_as_one_column() {
+        assert_eq!(offset_at("a\n😀x", 2, 2), Some(6));
+    }
+
+    #[test]
+    fn offset_at_past_the_end_of_a_line_stays_on_that_line() {
+        assert_eq!(offset_at("ab\ncd", 1, 10), Some(2));
+    }
+
+    #[test]
+    fn offset_at_a_missing_line_is_none() {
+        assert_eq!(offset_at("ab", 3, 1), None);
+    }
+
+    #[test]
+    fn offset_at_inverts_line_col_at() {
+        let source = "é😀\n[😀] x";
+        let target: Vec<Option<usize>> = source
+            .char_indices()
+            .map(|(offset, _)| {
+                let (line, column) = line_col_at(source, offset);
+                offset_at(source, line, column)
+            })
+            .collect();
+        let expected: Vec<Option<usize>> = source
+            .char_indices()
+            .map(|(offset, _)| Some(offset))
+            .collect();
+        assert_eq!(target, expected);
     }
 }

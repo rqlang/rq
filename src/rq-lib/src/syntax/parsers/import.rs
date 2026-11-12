@@ -86,6 +86,7 @@ impl Parse for ImportParser {
         result.imported_files.push(canonical_path);
         result.imported_files.extend(imported_result.imported_files);
         result.requests.extend(imported_result.requests);
+        result.request_scopes.extend(imported_result.request_scopes);
         result.file_variables.extend(imported_result.file_variables);
         for name in imported_result.environments.keys() {
             result.environment_colors.remove(name);
@@ -106,12 +107,6 @@ impl Parse for ImportParser {
         result
             .let_variable_locations
             .extend(imported_result.let_variable_locations);
-        for (name, loc) in imported_result.required_variable_locations {
-            result
-                .required_variable_locations
-                .entry(name)
-                .or_insert(loc);
-        }
         for (env_name, key_map) in imported_result.env_variable_locations {
             result
                 .env_variable_locations

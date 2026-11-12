@@ -8,7 +8,7 @@ use crate::syntax::{
         KW_ENV, KW_RQ, PUNC_DOLLAR, PUNC_DOT, PUNC_LBRACKET, PUNC_LPAREN, PUNC_RBRACKET,
         PUNC_RPAREN,
     },
-    parse_result::AuthLocation,
+    parse_result::{AuthLocation, RequiredVariable},
     reader::{expect, TokenReader},
     token::{Token, TokenType},
     ui_color::UiColor,
@@ -17,12 +17,6 @@ use crate::syntax::{
 pub const ATTR_UI_COLOR: &str = "ui.color";
 pub const ATTR_DESCRIPTION: &str = "doc.description";
 pub const ATTR_CONFIRM: &str = "confirm";
-
-pub struct RequiredVariable {
-    pub name: String,
-    pub line: usize,
-    pub character: usize,
-}
 
 #[derive(Default)]
 pub struct AttributeContext {

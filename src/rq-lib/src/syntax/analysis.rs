@@ -2,12 +2,12 @@ use super::{
     error::SyntaxError,
     fs::Fs,
     parse_result::ParseResult,
+    parsers::utils::starts_top_level_statement,
     parsers::{
         AuthParser, EndpointParser, EnvironmentParser, ImportParser, Parse, RequestParser,
         VariableParser,
     },
     reader::TokenReader,
-    token::TokenType,
 };
 use std::path::PathBuf;
 
@@ -28,6 +28,7 @@ pub fn analyze_lenient(
 ) -> ParseResult {
     analyze_impl(tokens, file_path, source, fs, true).unwrap_or_else(|_| ParseResult {
         requests: Vec::new(),
+        request_scopes: Vec::new(),
         environments: std::collections::HashMap::new(),
         environment_locations: std::collections::HashMap::new(),
         environment_colors: std::collections::HashMap::new(),
@@ -38,40 +39,7 @@ pub fn analyze_lenient(
         imported_files: Vec::new(),
         let_variable_locations: std::collections::HashMap::new(),
         env_variable_locations: std::collections::HashMap::new(),
-        required_variable_locations: std::collections::HashMap::new(),
     })
-}
-
-fn skip_to_next_statement(r: &mut TokenReader) {
-    let mut depth = 0usize;
-    while let Some(tok) = r.cur() {
-        match tok.token_type {
-            TokenType::Punctuation => match tok.value.as_str() {
-                "{" | "[" | "(" => {
-                    depth += 1;
-                    r.advance();
-                }
-                "}" | "]" | ")" => {
-                    depth = depth.saturating_sub(1);
-                    r.advance();
-                }
-                ";" if depth == 0 => {
-                    r.advance();
-                    return;
-                }
-                _ => {
-                    r.advance();
-                }
-            },
-            TokenType::Newline if depth == 0 => {
-                r.advance();
-                return;
-            }
-            _ => {
-                r.advance();
-            }
-        }
-    }
 }
 
 fn analyze_impl(
@@ -82,8 +50,10 @@ fn analyze_impl(
     lenient: bool,
 ) -> Result<ParseResult, SyntaxError> {
     let mut r = TokenReader::new(tokens.to_vec(), file_path, source.to_string());
+    r.lenient = lenient;
     let mut result = ParseResult {
         requests: Vec::new(),
+        request_scopes: Vec::new(),
         environments: std::collections::HashMap::new(),
         environment_locations: std::collections::HashMap::new(),
         environment_colors: std::collections::HashMap::new(),
@@ -94,7 +64,6 @@ fn analyze_impl(
         imported_files: Vec::new(),
         let_variable_locations: std::collections::HashMap::new(),
         env_variable_locations: std::collections::HashMap::new(),
-        required_variable_locations: std::collections::HashMap::new(),
     };
 
     let parsers: Vec<Box<dyn Parse>> = vec![
@@ -120,7 +89,7 @@ fn analyze_impl(
                     Ok(()) => {}
                     Err(_) if lenient => {
                         r.idx = saved_idx;
-                        skip_to_next_statement(&mut r);
+                        r.skip_statement(&starts_top_level_statement);
                     }
                     Err(e) => return Err(e),
                 }

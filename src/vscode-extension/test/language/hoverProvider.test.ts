@@ -445,6 +445,16 @@ describe('local variable hover', () => {
 });
 
 describe('required variable hover', () => {
+    beforeEach(() => {
+        (cliService.requiredVariable as jest.Mock).mockResolvedValue({
+            name: 'collection_id', value: '', file: '/workspace/inma/collections.rq', line: 0, character: 10, source: 'required'
+        });
+    });
+
+    afterEach(() => {
+        (cliService.requiredVariable as jest.Mock).mockReset();
+    });
+
     function documentWithRequired(lines: string[], line: number, word: string) {
         const column = lines[line].indexOf(word);
         return {
@@ -496,6 +506,17 @@ describe('required variable hover', () => {
 
         expect((fromAttribute!.contents as unknown as vscode.MarkdownString).value)
             .toBe((fromUsage!.contents as unknown as vscode.MarkdownString).value);
+    });
+
+    test('hovers as a plain variable when no request at the cursor declares it', async () => {
+        const lines = ['let collection_id = "1";', 'rq delete(collection_id);'];
+        const { doc, column } = documentWithRequired(lines, 1, 'collection_id');
+        (cliService.requiredVariable as jest.Mock).mockResolvedValue(undefined);
+        setEnvironmentProvider({ getSelectedEnvironment: () => undefined });
+
+        const result = await provideHover(doc as any, pos(1, column)) as vscode.Hover;
+
+        expect((result!.contents as unknown as vscode.MarkdownString).value).not.toContain('*(required)*');
     });
 
     test('does not resolve a same-named variable when hovering the attribute argument', async () => {

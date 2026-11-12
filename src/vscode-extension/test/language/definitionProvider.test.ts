@@ -207,36 +207,44 @@ describe('resolution scope', () => {
 });
 
 describe('required attribute declarations', () => {
+    const REQUIRED = { name: 'collection_id', value: '', file: '/workspace/inma/collections.rq', line: 1, character: 14, source: 'required' };
+
     beforeEach(() => {
         setEnvironmentProvider({ getSelectedEnvironment: () => undefined });
         (vscode.workspace as any).workspaceFolders = [{ uri: { fsPath: '/workspace' } }];
     });
 
-    test('jumps from the usage up to the required attribute', async () => {
-        const lines = ['[required(collection_id)]', 'rq delete(collection_id);'];
+    function documentAt(line: number) {
+        const lines = ['    rq put(collection_id);', '    [required(collection_id)]', '    rq delete(collection_id);'];
         const doc = makeDocument(lines, { fsPath: '/workspace/inma/collections.rq' });
-        const position = new vscode.Position(1, lines[1].indexOf('collection_id'));
-
+        const position = new vscode.Position(line, lines[line].indexOf('collection_id'));
         (doc.getWordRangeAtPosition as jest.Mock).mockReturnValue({ start: position, end: position });
         (doc.getText as jest.Mock).mockReturnValue('collection_id');
+        return { doc, position };
+    }
+
+    test('asks rq for the required declaration at the cursor', async () => {
+        const { doc, position } = documentAt(2);
+
+        await provideDefinition(doc, position);
+
+        expect(cliService.requiredVariable).toHaveBeenCalledWith('collection_id', doc, position, '/workspace');
+    });
+
+    test('jumps to the required attribute rq reports', async () => {
+        const { doc, position } = documentAt(2);
+        (cliService.requiredVariable as jest.Mock).mockResolvedValue(REQUIRED);
 
         const result = await provideDefinition(doc, position);
 
-        expect((result as vscode.Location).range.start).toEqual(new vscode.Position(0, 10));
+        expect((result as vscode.Location).uri).toBe(doc.uri);
+        expect((result as vscode.Location).range.start).toEqual(new vscode.Position(1, 14));
         expect(cliService.showVariable).not.toHaveBeenCalled();
     });
 
-    test('stays on the required attribute instead of resolving a same-named variable', async () => {
-        const lines = [
-            '    rq put(collection_id);',
-            '    [required(collection_id)]',
-            '    rq delete(collection_id);'
-        ];
-        const doc = makeDocument(lines, { fsPath: '/workspace/inma/collections.rq' });
-        const position = new vscode.Position(1, lines[1].indexOf('collection_id'));
-
-        (doc.getWordRangeAtPosition as jest.Mock).mockReturnValue({ start: position, end: position });
-        (doc.getText as jest.Mock).mockReturnValue('collection_id');
+    test('resolves the variable when no request at the cursor declares it', async () => {
+        const { doc, position } = documentAt(0);
+        (cliService.requiredVariable as jest.Mock).mockResolvedValue(undefined);
         (cliService.showVariable as jest.Mock).mockResolvedValue({
             name: 'collection_id',
             file: '/workspace/inma/_shared.rq',
@@ -247,21 +255,7 @@ describe('required attribute declarations', () => {
 
         const result = await provideDefinition(doc, position);
 
-        expect(cliService.showVariable).not.toHaveBeenCalled();
-        expect((result as vscode.Location).uri).toBe(doc.uri);
-        expect((result as vscode.Location).range.start).toEqual(new vscode.Position(1, 14));
-    });
-
-    test('points at the variable name inside a spaced required attribute', async () => {
-        const lines = ['  [ required( resource_id ) ]', '  rq get(resource_id);'];
-        const doc = makeDocument(lines, { fsPath: '/workspace/foo.rq' });
-        const position = new vscode.Position(1, lines[1].indexOf('resource_id'));
-
-        (doc.getWordRangeAtPosition as jest.Mock).mockReturnValue({ start: position, end: position });
-        (doc.getText as jest.Mock).mockReturnValue('resource_id');
-
-        const result = await provideDefinition(doc, position);
-
-        expect((result as vscode.Location).range.start).toEqual(new vscode.Position(0, lines[0].indexOf('resource_id')));
+        expect(cliService.showVariable).toHaveBeenCalled();
+        expect((result as vscode.Location).range.start).toEqual(new vscode.Position(6, 4));
     });
 });

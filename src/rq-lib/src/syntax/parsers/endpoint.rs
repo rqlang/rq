@@ -4,10 +4,10 @@ use super::{
         ConfirmAttributeParser, DescriptionAttributeParser, TimeoutAttributeParser,
     },
     parse_trait::Parse,
-    request::parse_request_with_context,
+    request::{parse_scoped_request, RequestContext},
     utils::{
         can_parse_attributed, claim_parameter_slot, parse_headers_array, parse_string_value,
-        parse_url_value, peek_slot_value, record_binding, SlotTracker,
+        parse_url_value, peek_slot_value, record_binding, starts_endpoint_statement, SlotTracker,
     },
     variable::parse_variable_declaration,
 };
@@ -18,7 +18,7 @@ use crate::syntax::{
         KW_EP, KW_LET, KW_RQ, OP_GT, OP_LT, PUNC_COMMA, PUNC_LBRACE, PUNC_LBRACKET, PUNC_LPAREN,
         PUNC_RBRACE, PUNC_RPAREN, PUNC_SEMI,
     },
-    parse_result::{EndpointDefinition, ParseResult},
+    parse_result::{EndpointDefinition, ParseResult, RequestScope},
     reader::{expect, TokenReader},
     token::TokenType,
     types::{ParameterSlot, SlotBinding, SlotValue},
@@ -35,14 +35,12 @@ impl Parse for EndpointParser {
         result: &mut ParseResult,
         _fs: &dyn Fs,
     ) -> Result<(), SyntaxError> {
-        let (mut ep, ep_def, ep_locs) =
-            parse_endpoint_with_context(r, &result.requests, &result.endpoints)?;
-        for (name, file, line, character) in ep_locs {
-            result
-                .required_variable_locations
-                .entry(name)
-                .or_insert((file, line, character));
-        }
+        let (mut ep, ep_def) = parse_endpoint_with_context(
+            r,
+            &result.requests,
+            &result.endpoints,
+            &mut result.request_scopes,
+        )?;
         result.requests.append(&mut ep);
         result.endpoints.insert(ep_def.name.clone(), ep_def);
         Ok(())
@@ -142,13 +140,13 @@ fn parse_endpoint_headers(
 type EndpointParseResult = (
     Vec<crate::syntax::parse_result::RequestWithVariables>,
     EndpointDefinition,
-    Vec<(String, String, usize, usize)>,
 );
 
 pub(crate) fn parse_endpoint_with_context(
     r: &mut TokenReader,
     existing_requests: &[crate::syntax::parse_result::RequestWithVariables],
     existing_endpoints: &std::collections::HashMap<String, EndpointDefinition>,
+    scopes: &mut Vec<RequestScope>,
 ) -> Result<EndpointParseResult, SyntaxError> {
     let declaration_start = r.cur().map(|t| t.span.start);
     let mut ctx = AttributeContext::default();
@@ -327,7 +325,6 @@ pub(crate) fn parse_endpoint_with_context(
         .unwrap_or(ep_line);
 
     let mut children = Vec::new();
-    let mut required_locations: Vec<(String, String, usize, usize)> = Vec::new();
 
     if let Some(t) = r.cur() {
         if t.token_type == TokenType::Punctuation && t.value == PUNC_SEMI {
@@ -355,15 +352,18 @@ pub(crate) fn parse_endpoint_with_context(
                 declaration_line: ep_declaration_line,
                 declaration_end_line: ep_declaration_end_line,
             };
-            return Ok((children, ep_def, required_locations));
+            return Ok((children, ep_def));
         }
     }
 
-    expect(
+    let header_end = expect(
         r,
         |t| t.token_type == TokenType::Punctuation && t.value == PUNC_LBRACE,
         format!("Expected '{PUNC_LBRACE}' or '{PUNC_SEMI}'"),
-    )?;
+    )?
+    .span
+    .end;
+    let header = declaration_start.map(|start| start..header_end);
     r.advance();
 
     loop {
@@ -375,8 +375,15 @@ pub(crate) fn parse_endpoint_with_context(
             }
         }
         if r.is_keyword(KW_LET) {
-            let (var, _, _) = parse_variable_declaration(r)?;
-            endpoint_variables.push(var);
+            let start_idx = r.idx;
+            match parse_variable_declaration(r) {
+                Ok((var, _, _)) => endpoint_variables.push(var),
+                Err(_) if r.lenient => {
+                    r.idx = start_idx;
+                    r.skip_statement(&starts_endpoint_statement);
+                }
+                Err(error) => return Err(error),
+            }
             continue;
         }
         if r.is_keyword(KW_RQ)
@@ -390,11 +397,17 @@ pub(crate) fn parse_endpoint_with_context(
             let mut all_requests = existing_requests.to_vec();
             all_requests.extend(children.clone());
 
-            let (mut req, req_vars, req_locs) =
-                parse_request_with_context(r, &endpoint_variables, Some(&ep_name), &all_requests)?;
-            for loc in req_locs {
-                required_locations.push(loc);
-            }
+            let context = RequestContext {
+                endpoint_variables: &endpoint_variables,
+                endpoint_name: Some(&ep_name),
+                endpoint_header: header.clone(),
+                starts_statement: &starts_endpoint_statement,
+            };
+            let Some((mut req, req_vars)) =
+                parse_scoped_request(r, &context, &all_requests, scopes)?
+            else {
+                continue;
+            };
             req.slot_bindings.extend(ep_slot_bindings.iter().cloned());
             if req.url.is_empty() {
                 req.url = base_url.clone();
@@ -475,7 +488,14 @@ pub(crate) fn parse_endpoint_with_context(
             continue;
         }
         if let Some(t) = r.cur() {
+            if r.lenient {
+                r.skip_statement(&starts_endpoint_statement);
+                continue;
+            }
             return Err(r.create_error(format!("Unexpected token '{}'", t.value), t.span.clone()));
+        }
+        if r.lenient {
+            break;
         }
         let span = if r.tokens.is_empty() {
             0..0
@@ -509,5 +529,5 @@ pub(crate) fn parse_endpoint_with_context(
         declaration_end_line: ep_declaration_end_line,
     };
 
-    Ok((children, ep_def, required_locations))
+    Ok((children, ep_def))
 }

@@ -2,6 +2,7 @@ use crate::lint::line_col;
 use crate::lint::suppression::{
     parse_comment, starts_line, statement_range, ParsedComment, IGNORE, IGNORE_FILE,
 };
+use crate::syntax::reader::offset_at;
 use crate::syntax::token::{Token, TokenType};
 use serde::{Deserialize, Serialize};
 use std::ops::Range;
@@ -46,16 +47,6 @@ impl<'a> Lines<'a> {
 
     fn start(&self, line: usize) -> Option<usize> {
         self.starts.get(line.checked_sub(1)?).copied()
-    }
-
-    fn offset(&self, line: usize, column: usize) -> Option<usize> {
-        let start = self.start(line)?;
-        self.source
-            .get(start..)?
-            .char_indices()
-            .map(|(index, _)| start + index)
-            .chain(std::iter::once(self.source.len()))
-            .nth(column.checked_sub(1)?)
     }
 
     fn eol(&self) -> &'static str {
@@ -103,7 +94,7 @@ pub fn suppression_edit(
 pub fn unused_suppression_removal(source: &str, line: usize, column: usize) -> Option<SourceEdit> {
     let tokens = crate::syntax::tokenize(source).ok()?;
     let lines = Lines::new(source);
-    let offset = lines.offset(line, column)?;
+    let offset = offset_at(lines.source, line, column)?;
     let (index, token) = tokens
         .iter()
         .enumerate()
@@ -297,9 +288,10 @@ fn is_significant(token: &Token) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{Lines, SourceEdit, SuppressionScope};
+    use super::{SourceEdit, SuppressionScope};
     use crate::lint::{lint_rq_file, suppression_edit, unused_suppression_removal, LintDiagnostic};
     use crate::native::NativeFs;
+    use crate::syntax::reader::offset_at;
     use crate::syntax::rq_file::RqFile;
     use std::path::PathBuf;
 
@@ -312,11 +304,8 @@ mod tests {
     }
 
     fn apply(source: &str, edit: &SourceEdit) -> String {
-        let lines = Lines::new(source);
-        let start = lines
-            .offset(edit.start_line, edit.start_column)
-            .expect("start");
-        let end = lines.offset(edit.end_line, edit.end_column).expect("end");
+        let start = offset_at(source, edit.start_line, edit.start_column).expect("start");
+        let end = offset_at(source, edit.end_line, edit.end_column).expect("end");
         format!("{}{}{}", &source[..start], edit.new_text, &source[end..])
     }
 

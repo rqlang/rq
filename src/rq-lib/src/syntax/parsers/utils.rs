@@ -1,8 +1,8 @@
 use crate::syntax::{
     error::SyntaxError,
     keywords::{
-        PUNC_COLON, PUNC_COMMA, PUNC_DOLLAR, PUNC_DOT, PUNC_LBRACKET, PUNC_LPAREN, PUNC_RBRACKET,
-        PUNC_RPAREN,
+        KW_AUTH, KW_ENV, KW_EP, KW_IMPORT, KW_LET, KW_RQ, PUNC_COLON, PUNC_COMMA, PUNC_DOLLAR,
+        PUNC_DOT, PUNC_LBRACKET, PUNC_LPAREN, PUNC_RBRACE, PUNC_RBRACKET, PUNC_RPAREN,
     },
     reader::{expect, make_error, TokenReader},
     token::TokenType,
@@ -354,6 +354,22 @@ pub fn headers_map_entry_error(r: &TokenReader) -> SyntaxError {
             r.source.len()..r.source.len(),
         ),
     }
+}
+
+pub fn starts_top_level_statement(r: &TokenReader) -> bool {
+    [KW_IMPORT, KW_LET, KW_AUTH]
+        .iter()
+        .any(|keyword| r.is_keyword(keyword))
+        || [KW_ENV, KW_EP, KW_RQ]
+            .iter()
+            .any(|keyword| can_parse_attributed(r, keyword))
+}
+
+pub fn starts_endpoint_statement(r: &TokenReader) -> bool {
+    r.is_keyword(KW_LET)
+        || can_parse_attributed(r, KW_RQ)
+        || r.cur()
+            .is_some_and(|t| t.token_type == TokenType::Punctuation && t.value == PUNC_RBRACE)
 }
 
 pub fn can_parse_attributed(r: &TokenReader, keyword: &str) -> bool {

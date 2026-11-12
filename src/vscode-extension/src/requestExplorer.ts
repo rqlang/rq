@@ -490,7 +490,7 @@ export class RequestTreeItem extends vscode.TreeItem {
             this.command = {
                 command: 'rq.openRequestFile',
                 title: 'Open Request File',
-                arguments: [request.name, this]
+                arguments: [this]
             };
         } else {
             // This is an endpoint group

@@ -186,6 +186,13 @@ describe('RequestExplorerProvider', () => {
         expect(item.iconPath).toEqual(new vscode.ThemeIcon('sync~spin'));
     });
 
+    test('request item opens its file with itself as the only argument, like the context menu', () => {
+        const item = new RequestTreeItem('req', { name: 'req', endpoint: null, file: '/root/req.rq' }, vscode.TreeItemCollapsibleState.None);
+
+        expect(item.command?.command).toBe('rq.openRequestFile');
+        expect(item.command?.arguments).toEqual([item]);
+    });
+
     test('setItemRunning(false) restores the request context value and icon', () => {
         const item = new RequestTreeItem('req', { name: 'req', endpoint: null, file: '/root/req.rq' }, vscode.TreeItemCollapsibleState.None);
         const originalIcon = item.iconPath;

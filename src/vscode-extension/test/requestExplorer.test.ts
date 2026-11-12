@@ -145,6 +145,12 @@ describe('RequestExplorerProvider', () => {
         expect(item.tooltip).toBe('req\nFile: /root/req.rq');
     });
 
+    test('request tooltip names the file that declares an imported request', () => {
+        const item = new RequestTreeItem('login', { name: 'login', endpoint: null, file: '/root/a.rq', request_file: '/root/shared/b.rq', line: 2, character: 3 }, vscode.TreeItemCollapsibleState.None);
+
+        expect(item.tooltip).toBe('login\nFile: /root/a.rq\nDeclared in: /root/shared/b.rq');
+    });
+
     test('endpoint tooltip shows the endpoint description', async () => {
         (rqClient.listRequests as jest.Mock).mockResolvedValue({
             requests: [{ name: 'users/list', endpoint: 'users', endpoint_description: 'Users of the platform', file: '/root/users.rq', request_file: '/root/users.rq', line: 0, character: 0 }],

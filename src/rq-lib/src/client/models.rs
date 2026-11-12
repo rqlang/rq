@@ -28,6 +28,7 @@ pub struct RequestDetails {
     pub required_variables: Vec<String>,
     pub confirmation_required: bool,
     pub file: String,
+    pub request_file: String,
     pub line: usize,
     pub character: usize,
 }

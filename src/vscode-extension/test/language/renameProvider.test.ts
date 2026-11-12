@@ -248,7 +248,6 @@ describe('rq statement rename', () => {
 
         const result = await provideRenameEdits(doc, position, 'renamed_request');
 
-        expect(cliService.showRequestLocation).not.toHaveBeenCalled();
         expect(result).toBeInstanceOf(vscode.WorkspaceEdit);
         expect((result as any).edits).toHaveLength(1);
         expect((result as any).edits[0].uri.fsPath).toBe('/test/file.rq');

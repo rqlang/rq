@@ -56,7 +56,11 @@ impl From<RequestDetails> for RequestDetailsView {
             timeout: details.timeout,
             auth,
             confirmation_required: details.confirmation_required,
-            location: Location::from_zero_based(details.file, details.line, details.character),
+            location: Location::from_zero_based(
+                details.request_file,
+                details.line,
+                details.character,
+            ),
         }
     }
 }

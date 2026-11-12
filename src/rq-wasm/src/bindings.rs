@@ -116,6 +116,7 @@ struct RequestDetailsJson {
     #[serde(rename = "ConfirmationRequired")]
     confirmation_required: bool,
     file: String,
+    request_file: String,
     line: usize,
     character: usize,
 }
@@ -406,6 +407,7 @@ pub fn get_request_details(
         required_variables: details.required_variables,
         confirmation_required: details.confirmation_required,
         file: details.file,
+        request_file: details.request_file,
         line: details.line,
         character: details.character,
     };

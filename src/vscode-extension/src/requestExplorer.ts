@@ -480,7 +480,7 @@ export class RequestTreeItem extends vscode.TreeItem {
         if (request) {
             // This is a request item
             this.contextValue = 'request';
-            this.tooltip = withDescription(request.name, request.description, `File: ${request.file}`);
+            this.tooltip = withDescription(request.name, request.description, `File: ${request.file}`, request.request_file !== request.file ? `Declared in: ${request.request_file}` : '');
             this.description = undefined;
             
             // Set icon

@@ -32,7 +32,7 @@ jest.mock('fs');
 jest.mock('https');
 
 import * as vscode from 'vscode';
-import { authFields, executeRequest, listAuthConfigsWithErrors, listEnvironments, listEnvironmentsWithErrors, setDebugLogging, showRequest, showRequestLocation, requiredVariable, varRefs } from '../src/rqClient';
+import { authFields, executeRequest, listAuthConfigsWithErrors, listEnvironments, listEnvironmentsWithErrors, setDebugLogging, showRequest, requiredVariable, varRefs } from '../src/rqClient';
 
 const BASE_PREPARED = {
     name: 'test-req',
@@ -554,7 +554,7 @@ describe('request details', () => {
     const editedDocument = { languageId: 'rq', isDirty: true, isUntitled: false, uri: { fsPath: '/tmp/project/main.rq' }, getText: () => '\n\nrq test_req("http://edited");' };
 
     beforeEach(() => {
-        mockGetRequestDetails.mockReturnValue(JSON.stringify({ Request: 'test_req', Method: 'GET', URL: 'http://x', Headers: {}, file: '/tmp/project/main.rq', line: 2, character: 0 }));
+        mockGetRequestDetails.mockReturnValue(JSON.stringify({ Request: 'test_req', Method: 'GET', URL: 'http://x', Headers: {}, file: '/tmp/project/main.rq', request_file: '/tmp/project/shared/b.rq', line: 2, character: 0 }));
         (vscode.workspace as any).textDocuments = [editedDocument];
     });
 
@@ -568,18 +568,10 @@ describe('request details', () => {
         expect(mockGetRequestDetails.mock.calls[0][0]).toBe('{}');
     });
 
-    test('locates the request in the unsaved text the editor shows', async () => {
-        await showRequestLocation('test_req', '/tmp/project');
+    test('locates the request in the file that declares it', async () => {
+        const target = await showRequest('test_req', '/tmp/project');
 
-        expect(JSON.parse(mockGetRequestDetails.mock.calls[0][0])).toEqual({
-            '/tmp/project/main.rq': '\n\nrq test_req("http://edited");',
-        });
-    });
-
-    test('locates the request in the given scope file', async () => {
-        await showRequestLocation('test_req', '/tmp/project', 'C:\\project\\b.rq');
-
-        expect(mockGetRequestDetails.mock.calls[0][8]).toBe('C:/project/b.rq');
+        expect([target.file, target.line, target.character]).toEqual(['/tmp/project/shared/b.rq', 2, 0]);
     });
 });
 

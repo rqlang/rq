@@ -137,9 +137,6 @@ impl RqClient {
         let source_path = target.source;
         self.log_source(source_path);
         let (rq_file, req_with_vars, warnings) = self.load_request(target)?;
-        let request_file = crate::paths::clean_path(&rq_file.path);
-        let request_line = req_with_vars.request.line;
-        let request_character = req_with_vars.request.character;
         let confirmation_required =
             Self::confirmation_required(&rq_file, &req_with_vars.request, environment);
 
@@ -156,9 +153,7 @@ impl RqClient {
                 req_with_vars.request,
                 auth_name,
                 auth_type,
-                request_file,
-                request_line,
-                request_character,
+                &rq_file,
                 confirmation_required,
             );
             return Ok((details, warnings));
@@ -201,9 +196,7 @@ impl RqClient {
             resolved,
             auth_name,
             auth_type,
-            request_file,
-            request_line,
-            request_character,
+            &rq_file,
             confirmation_required,
         );
         Ok((details, warnings))
@@ -1501,13 +1494,8 @@ impl RqClient {
             .endpoint
             .as_ref()
             .and_then(|name| rq_file.endpoints.get(name));
-        let endpoint_file = endpoint.map(|ep| {
-            ep.source_path
-                .as_deref()
-                .map(crate::paths::clean_path_str)
-                .map(str::to_string)
-                .unwrap_or_else(|| crate::paths::clean_path(&rq_file.path))
-        });
+        let endpoint_file =
+            endpoint.map(|ep| Self::declaring_file(rq_file, ep.source_path.as_deref()));
         RequestInfo {
             name: request.name.clone(),
             method: request.method.as_str().to_string(),
@@ -1516,21 +1504,30 @@ impl RqClient {
             endpoint: request.endpoint.clone(),
             endpoint_description: endpoint.and_then(|ep| ep.description.clone()),
             file: crate::paths::clean_path(&rq_file.path),
+            request_file: Self::declaring_file(rq_file, request.source_path.as_deref()),
+            line: request.line,
+            character: request.character,
             endpoint_file,
             endpoint_line: endpoint.map(|ep| ep.line),
             endpoint_character: endpoint.map(|ep| ep.character),
         }
     }
 
+    fn declaring_file(rq_file: &RqFile, source_path: Option<&str>) -> String {
+        source_path
+            .map(crate::paths::clean_path_str)
+            .map(str::to_string)
+            .unwrap_or_else(|| crate::paths::clean_path(&rq_file.path))
+    }
+
     fn request_details(
         request: Request,
         auth_name: Option<String>,
         auth_type: Option<String>,
-        file: String,
-        line: usize,
-        character: usize,
+        rq_file: &RqFile,
         confirmation_required: bool,
     ) -> RequestDetails {
+        let request_file = Self::declaring_file(rq_file, request.source_path.as_deref());
         RequestDetails {
             name: request.name,
             auth_name,
@@ -1547,9 +1544,10 @@ impl RqClient {
                 .map(|required| required.name)
                 .collect(),
             confirmation_required,
-            file,
-            line,
-            character,
+            file: crate::paths::clean_path(&rq_file.path),
+            request_file,
+            line: request.line,
+            character: request.character,
         }
     }
 
@@ -4086,6 +4084,108 @@ mod description_tests {
             .map(|r| (r.description, r.endpoint_description))
             .collect();
         assert_eq!(target, vec![(None, Some("Users".to_string()))]);
+    }
+
+    #[test]
+    fn list_requests_gives_each_request_its_position() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let file = dir.path().join("users.rq");
+        std::fs::write(
+            &file,
+            "ep users(\"http://x/users\") {\n    rq list();\n}\n\nrq health(\"http://x/health\");\n",
+        )
+        .expect("write");
+        let (requests, _) = RqClient::default().list_requests(&file).expect("list");
+        let target: Vec<(String, usize, usize)> = requests
+            .into_iter()
+            .map(|r| (r.name, r.line, r.character))
+            .collect();
+        assert_eq!(
+            target,
+            vec![
+                ("health".to_string(), 4, 3),
+                ("users/list".to_string(), 1, 7)
+            ]
+        );
+    }
+
+    #[test]
+    fn list_requests_locates_an_imported_request_in_the_file_that_declares_it() {
+        let dir = imported_request_dir();
+        let dir_path = dir.path().canonicalize().expect("canonicalize");
+        let (requests, _) = RqClient::default()
+            .list_requests(&dir_path.join("a.rq"))
+            .expect("list");
+        let target: Vec<(String, String, String, usize)> = requests
+            .into_iter()
+            .map(|r| (r.name, r.file, r.request_file, r.line))
+            .collect();
+        let a = crate::paths::clean_path(&dir_path.join("a.rq"));
+        let b = crate::paths::clean_path(&dir_path.join("b.rq"));
+        assert_eq!(
+            target,
+            vec![
+                ("a_req".to_string(), a.clone(), a.clone(), 1),
+                ("b_req".to_string(), a, b, 2),
+            ]
+        );
+    }
+
+    #[test]
+    fn get_request_details_locates_an_imported_request_in_the_file_that_declares_it() {
+        let dir = imported_request_dir();
+        let dir_path = dir.path().canonicalize().expect("canonicalize");
+        let target: Vec<(String, usize)> = [false, true]
+            .into_iter()
+            .map(|interpolate| {
+                let (details, _) = RqClient::default()
+                    .get_request_details(
+                        RequestTarget::new(&dir_path.join("a.rq"), "b_req"),
+                        None,
+                        interpolate,
+                        false,
+                        &[],
+                    )
+                    .expect("details");
+                (details.request_file, details.line)
+            })
+            .collect();
+        let b = crate::paths::clean_path(&dir_path.join("b.rq"));
+        assert_eq!(target, vec![(b.clone(), 2), (b, 2)]);
+    }
+
+    #[test]
+    fn get_request_details_keeps_the_file_an_imported_request_is_loaded_from() {
+        let dir = imported_request_dir();
+        let dir_path = dir.path().canonicalize().expect("canonicalize");
+        let (details, _) = RqClient::default()
+            .get_request_details(
+                RequestTarget::new(&dir_path.join("a.rq"), "b_req"),
+                None,
+                true,
+                false,
+                &[],
+            )
+            .expect("details");
+        assert_eq!(
+            details.file,
+            crate::paths::clean_path(&dir_path.join("a.rq"))
+        );
+    }
+
+    fn imported_request_dir() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            dir.path().join("a.rq"),
+            "import \"b.rq\";\nrq a_req(\"http://x/a\");\n",
+        )
+        .expect("write a");
+        std::fs::write(
+            dir.path().join("b.rq"),
+            "let x = \"1\";\n\nrq b_req(\"http://x/b\");\n",
+        )
+        .expect("write b");
+        dir
     }
 
     #[test]

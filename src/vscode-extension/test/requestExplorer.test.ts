@@ -80,8 +80,8 @@ describe('RequestExplorerProvider', () => {
 
     test('getChildren() calls CLI and returns grouped items after load', async () => {
         const mockOutput = [
-            { name: 'req1', endpoint: 'GET /api', file: '/root/req1.http' },
-            { name: 'req2', endpoint: null, file: '/root/req2.http' }
+            { name: 'req1', endpoint: 'GET /api', file: '/root/req1.http', request_file: '/root/req1.http', line: 0, character: 0 },
+            { name: 'req2', endpoint: null, file: '/root/req2.http', request_file: '/root/req2.http', line: 0, character: 0 }
         ];
 
         (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: mockOutput });
@@ -115,7 +115,7 @@ describe('RequestExplorerProvider', () => {
 
     test('getChildren() shows parse errors item when CLI reports warnings', async () => {
         const mockOutput = [
-            { name: 'req1', endpoint: null, file: '/root/req1.http' }
+            { name: 'req1', endpoint: null, file: '/root/req1.http', request_file: '/root/req1.http', line: 0, character: 0 }
         ];
         const errors = ['Warning: Failed to parse file1.rq: Syntax error', 'Warning: Failed to parse file2.rq: Syntax error'];
         (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: mockOutput, errors });
@@ -134,20 +134,26 @@ describe('RequestExplorerProvider', () => {
     });
 
     test('request tooltip shows the description under the request name', () => {
-        const item = new RequestTreeItem('list', { name: 'users/list', description: 'List every user', endpoint: 'users', file: '/root/users.rq' }, vscode.TreeItemCollapsibleState.None);
+        const item = new RequestTreeItem('list', { name: 'users/list', description: 'List every user', endpoint: 'users', file: '/root/users.rq', request_file: '/root/users.rq', line: 0, character: 0 }, vscode.TreeItemCollapsibleState.None);
 
         expect(item.tooltip).toBe('users/list\nList every user\nFile: /root/users.rq');
     });
 
     test('request tooltip without a description keeps only the name and file', () => {
-        const item = new RequestTreeItem('req', { name: 'req', description: null, endpoint: null, file: '/root/req.rq' }, vscode.TreeItemCollapsibleState.None);
+        const item = new RequestTreeItem('req', { name: 'req', description: null, endpoint: null, file: '/root/req.rq', request_file: '/root/req.rq', line: 0, character: 0 }, vscode.TreeItemCollapsibleState.None);
 
         expect(item.tooltip).toBe('req\nFile: /root/req.rq');
     });
 
+    test('request tooltip names the file that declares an imported request', () => {
+        const item = new RequestTreeItem('login', { name: 'login', endpoint: null, file: '/root/a.rq', request_file: '/root/shared/b.rq', line: 2, character: 3 }, vscode.TreeItemCollapsibleState.None);
+
+        expect(item.tooltip).toBe('login\nFile: /root/a.rq\nDeclared in: /root/shared/b.rq');
+    });
+
     test('endpoint tooltip shows the endpoint description', async () => {
         (rqClient.listRequests as jest.Mock).mockResolvedValue({
-            requests: [{ name: 'users/list', endpoint: 'users', endpoint_description: 'Users of the platform', file: '/root/users.rq' }],
+            requests: [{ name: 'users/list', endpoint: 'users', endpoint_description: 'Users of the platform', file: '/root/users.rq', request_file: '/root/users.rq', line: 0, character: 0 }],
             errors: []
         });
 
@@ -158,7 +164,7 @@ describe('RequestExplorerProvider', () => {
     });
 
     test('setItemLoading(true) saves original icon and sets spinner', () => {
-        const item = new RequestTreeItem('req', { name: 'req', endpoint: null, file: '/root/req.rq' }, vscode.TreeItemCollapsibleState.None);
+        const item = new RequestTreeItem('req', { name: 'req', endpoint: null, file: '/root/req.rq', request_file: '/root/req.rq', line: 0, character: 0 }, vscode.TreeItemCollapsibleState.None);
         const originalIcon = item.iconPath;
 
         target.setItemLoading(item, true);
@@ -168,7 +174,7 @@ describe('RequestExplorerProvider', () => {
     });
 
     test('setItemLoading(false) restores original icon', () => {
-        const item = new RequestTreeItem('req', { name: 'req', endpoint: null, file: '/root/req.rq' }, vscode.TreeItemCollapsibleState.None);
+        const item = new RequestTreeItem('req', { name: 'req', endpoint: null, file: '/root/req.rq', request_file: '/root/req.rq', line: 0, character: 0 }, vscode.TreeItemCollapsibleState.None);
         const originalIcon = item.iconPath;
 
         target.setItemLoading(item, true);
@@ -178,7 +184,7 @@ describe('RequestExplorerProvider', () => {
     });
 
     test('setItemRunning(true) switches the context value to request-running', () => {
-        const item = new RequestTreeItem('req', { name: 'req', endpoint: null, file: '/root/req.rq' }, vscode.TreeItemCollapsibleState.None);
+        const item = new RequestTreeItem('req', { name: 'req', endpoint: null, file: '/root/req.rq', request_file: '/root/req.rq', line: 0, character: 0 }, vscode.TreeItemCollapsibleState.None);
 
         target.setItemRunning(item, true);
 
@@ -187,14 +193,14 @@ describe('RequestExplorerProvider', () => {
     });
 
     test('request item opens its file with itself as the only argument, like the context menu', () => {
-        const item = new RequestTreeItem('req', { name: 'req', endpoint: null, file: '/root/req.rq' }, vscode.TreeItemCollapsibleState.None);
+        const item = new RequestTreeItem('req', { name: 'req', endpoint: null, file: '/root/req.rq', request_file: '/root/req.rq', line: 0, character: 0 }, vscode.TreeItemCollapsibleState.None);
 
         expect(item.command?.command).toBe('rq.openRequestFile');
         expect(item.command?.arguments).toEqual([item]);
     });
 
     test('setItemRunning(false) restores the request context value and icon', () => {
-        const item = new RequestTreeItem('req', { name: 'req', endpoint: null, file: '/root/req.rq' }, vscode.TreeItemCollapsibleState.None);
+        const item = new RequestTreeItem('req', { name: 'req', endpoint: null, file: '/root/req.rq', request_file: '/root/req.rq', line: 0, character: 0 }, vscode.TreeItemCollapsibleState.None);
         const originalIcon = item.iconPath;
 
         target.setItemRunning(item, true);
@@ -205,7 +211,7 @@ describe('RequestExplorerProvider', () => {
     });
 
     test('setItemLoading fires onDidChangeTreeData for the item', () => {
-        const item = new RequestTreeItem('req', { name: 'req', endpoint: null, file: '/root/req.rq' }, vscode.TreeItemCollapsibleState.None);
+        const item = new RequestTreeItem('req', { name: 'req', endpoint: null, file: '/root/req.rq', request_file: '/root/req.rq', line: 0, character: 0 }, vscode.TreeItemCollapsibleState.None);
         const eventSpy = jest.fn();
         target.onDidChangeTreeData(eventSpy);
 
@@ -219,7 +225,7 @@ describe('RequestExplorerProvider', () => {
 
     test('getChildren() handles files outside workspace root gracefully', async () => {
         const mockOutput = [
-            { name: 'req1', endpoint: null, file: '/outside/req1.http' }
+            { name: 'req1', endpoint: null, file: '/outside/req1.http', request_file: '/outside/req1.http', line: 0, character: 0 }
         ];
 
         (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: mockOutput });
@@ -287,7 +293,7 @@ describe('RequestExplorerProvider', () => {
 
     test('assigns stable ids to folders, endpoints and requests', async () => {
         (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: [
-            { name: 'api/get', endpoint: 'api', file: '/root/users/api.rq' }
+            { name: 'api/get', endpoint: 'api', file: '/root/users/api.rq', request_file: '/root/users/api.rq', line: 0, character: 0 }
         ] });
 
         const [folder] = await getRequestItems(target);
@@ -300,8 +306,8 @@ describe('RequestExplorerProvider', () => {
 
     test('makes duplicated request ids unique', async () => {
         (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: [
-            { name: 'get', endpoint: null, file: '/root/a.rq' },
-            { name: 'get', endpoint: null, file: '/root/a.rq' }
+            { name: 'get', endpoint: null, file: '/root/a.rq', request_file: '/root/a.rq', line: 0, character: 0 },
+            { name: 'get', endpoint: null, file: '/root/a.rq', request_file: '/root/a.rq', line: 0, character: 0 }
         ] });
 
         const items = await getRequestItems(target);
@@ -315,7 +321,7 @@ describe('RequestExplorerProvider', () => {
         state.setExpanded('endpoint:users#api', false);
         target = new RequestExplorerProvider('/root', state);
         (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: [
-            { name: 'api/get', endpoint: 'api', file: '/root/users/api.rq' }
+            { name: 'api/get', endpoint: 'api', file: '/root/users/api.rq', request_file: '/root/users/api.rq', line: 0, character: 0 }
         ] });
 
         const [folder] = await getRequestItems(target);
@@ -325,7 +331,7 @@ describe('RequestExplorerProvider', () => {
     });
 
     test('refresh() after a load keeps the current items until the reload completes', async () => {
-        (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: [{ name: 'req1', endpoint: null, file: '/root/req1.rq' }] });
+        (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: [{ name: 'req1', endpoint: null, file: '/root/req1.rq', request_file: '/root/req1.rq', line: 0, character: 0 }] });
         await getRequestItems(target);
 
         target.refresh();
@@ -357,7 +363,7 @@ describe('RequestExplorerProvider', () => {
 
     test('findItem() finds a nested request and getParent() walks up to the root', async () => {
         (rqClient.listRequests as jest.Mock).mockResolvedValue({ requests: [
-            { name: 'api/get', endpoint: 'api', file: '/root/users/api.rq' }
+            { name: 'api/get', endpoint: 'api', file: '/root/users/api.rq', request_file: '/root/users/api.rq', line: 0, character: 0 }
         ] });
         const [folder] = await getRequestItems(target);
 

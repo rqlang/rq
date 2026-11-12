@@ -28,6 +28,7 @@ pub struct RequestDetails {
     pub required_variables: Vec<String>,
     pub confirmation_required: bool,
     pub file: String,
+    pub request_file: String,
     pub line: usize,
     pub character: usize,
 }
@@ -41,6 +42,9 @@ pub struct RequestInfo {
     pub endpoint: Option<String>,
     pub endpoint_description: Option<String>,
     pub file: String,
+    pub request_file: String,
+    pub line: usize,
+    pub character: usize,
     pub endpoint_file: Option<String>,
     pub endpoint_line: Option<usize>,
     pub endpoint_character: Option<usize>,

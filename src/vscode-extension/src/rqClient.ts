@@ -386,9 +386,9 @@ export async function showAuthLocation(name: string, sourceDirectory?: string): 
     return { file: normalizePath(raw.file), line: raw.line, character: raw.character };
 }
 
-export async function showRequestLocation(requestName: string, sourceDirectory?: string): Promise<LocationOutput> {
+export async function showRequestLocation(requestName: string, sourceDirectory?: string, scopeFile?: string): Promise<LocationOutput> {
     const source = resolveSource(sourceDirectory);
-    const result = await wasmCall('get_request_details', [draftsJson(unsavedDrafts(source)), await buildSecretsMap(source), source, requestName, undefined, false, false]);
+    const result = await wasmCall('get_request_details', [draftsJson(unsavedDrafts(source)), await buildSecretsMap(source), source, requestName, undefined, false, false, undefined, resolveScopeFile(scopeFile)]);
     const raw = JSON.parse(result) as RequestShowRaw;
     return { file: normalizePath(raw.file), line: raw.line, character: raw.character };
 }

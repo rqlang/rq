@@ -8,7 +8,7 @@ export function registerOpenRequestFileCommand(context: vscode.ExtensionContext,
         if (item) { provider.setItemLoading(item, true); }
         try {
             const sourceDirectory = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-            const result = await rqClient.showRequestLocation(requestName, sourceDirectory);
+            const result = await rqClient.showRequestLocation(requestName, sourceDirectory, item?.request?.file);
             const normalizedPath = normalizePath(result.file);
             const document = await vscode.workspace.openTextDocument(normalizedPath);
             const editor = await vscode.window.showTextDocument(document);

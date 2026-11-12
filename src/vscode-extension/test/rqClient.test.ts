@@ -575,6 +575,12 @@ describe('request details', () => {
             '/tmp/project/main.rq': '\n\nrq test_req("http://edited");',
         });
     });
+
+    test('locates the request in the given scope file', async () => {
+        await showRequestLocation('test_req', '/tmp/project', 'C:\\project\\b.rq');
+
+        expect(mockGetRequestDetails.mock.calls[0][8]).toBe('C:/project/b.rq');
+    });
 });
 
 describe('varRefs', () => {

@@ -58,11 +58,19 @@ describe('openRequestFile Command', () => {
     test('opens file and highlights request', async () => {
         await commandCallback('myRequest');
 
-        expect(cliService.showRequestLocation).toHaveBeenCalledWith('myRequest', undefined);
+        expect(cliService.showRequestLocation).toHaveBeenCalledWith('myRequest', undefined, undefined);
         expect(vscode.workspace.openTextDocument).toHaveBeenCalledWith('/path/to/file.rq');
         expect(vscode.window.showTextDocument).toHaveBeenCalledWith(mockDocument);
         expect(mockEditor.revealRange).toHaveBeenCalled();
         expect(mockEditor.selection).toBeDefined();
+    });
+
+    test('locates the request in the file the item is listed under', async () => {
+        const item = { request: { name: 'login', file: '/tmp/project/b.rq' } } as unknown as RequestTreeItem;
+
+        await commandCallback('login', item);
+
+        expect(cliService.showRequestLocation).toHaveBeenCalledWith('login', undefined, '/tmp/project/b.rq');
     });
 
     test('handles file open error', async () => {

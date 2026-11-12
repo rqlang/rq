@@ -310,6 +310,10 @@
         {
           "command": "rq.cancelRequest",
           "when": "rq.requestRunning"
+        },
+        {
+          "command": "rq.openRequestFile",
+          "when": "false"
         }
       ]
     }

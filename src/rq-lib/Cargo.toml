@@ -10,6 +10,7 @@ path = "src/lib.rs"
 [features]
 default = ["native"]
 native = ["dep:openssl", "dep:jsonwebtoken", "reqwest/native-tls"]
+utf16-columns = []
 
 [dependencies]
 regex = "1"

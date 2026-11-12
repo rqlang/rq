@@ -3,7 +3,7 @@
     {
       "file": "{{*}}",
       "line": 1,
-      "column": 34,
+      "column": 33,
       "message": "Unresolved variable: 'not_found'"
     }
   ]

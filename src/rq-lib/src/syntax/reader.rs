@@ -189,7 +189,7 @@ pub fn line_col_at(source: &str, pos: usize) -> (usize, usize) {
     let last_line_start = prefix.rfind('\n').map(|i| i + 1).unwrap_or(0);
     let column = prefix
         .get(last_line_start..)
-        .map_or(0, |l| l.encode_utf16().count())
+        .map_or(0, |l| l.chars().map(column_width).sum::<usize>())
         + 1;
     (line, column)
 }
@@ -202,12 +202,22 @@ pub fn offset_at(source: &str, line: usize, column: usize) -> Option<usize> {
     let line_text = source.get(line_start..)?.split('\n').next()?;
     let mut remaining = column.checked_sub(1)?;
     for (index, ch) in line_text.char_indices() {
-        if remaining < ch.len_utf16() {
+        if remaining < column_width(ch) {
             return Some(line_start + index);
         }
-        remaining -= ch.len_utf16();
+        remaining -= column_width(ch);
     }
     Some(line_start + line_text.len())
+}
+
+#[cfg(feature = "utf16-columns")]
+fn column_width(ch: char) -> usize {
+    ch.len_utf16()
+}
+
+#[cfg(not(feature = "utf16-columns"))]
+fn column_width(_: char) -> usize {
+    1
 }
 
 #[cfg(test)]
@@ -224,19 +234,34 @@ mod tests {
         assert_eq!(line_col_at("é", 1), (1, 1));
     }
 
+    #[cfg(feature = "utf16-columns")]
     #[test]
     fn line_col_at_counts_a_character_outside_the_bmp_as_two_columns() {
         assert_eq!(line_col_at("a\n😀x", 6), (2, 3));
     }
 
+    #[cfg(feature = "utf16-columns")]
     #[test]
     fn offset_at_counts_a_character_outside_the_bmp_as_two_columns() {
         assert_eq!(offset_at("a\n😀x", 2, 3), Some(6));
     }
 
+    #[cfg(feature = "utf16-columns")]
     #[test]
     fn offset_at_inside_a_surrogate_pair_falls_back_to_the_character_start() {
         assert_eq!(offset_at("😀x", 1, 2), Some(0));
+    }
+
+    #[cfg(not(feature = "utf16-columns"))]
+    #[test]
+    fn line_col_at_counts_a_character_outside_the_bmp_as_one_column() {
+        assert_eq!(line_col_at("a\n😀x", 6), (2, 2));
+    }
+
+    #[cfg(not(feature = "utf16-columns"))]
+    #[test]
+    fn offset_at_counts_a_character_outside_the_bmp_as_one_column() {
+        assert_eq!(offset_at("a\n😀x", 2, 2), Some(6));
     }
 
     #[test]

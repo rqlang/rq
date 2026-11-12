@@ -115,7 +115,7 @@ describe('runRequest Commands', () => {
 
     describe('rq.runRequest', () => {
         test('runs request successfully', async () => {
-            const request = { name: 'test-req', endpoint: 'GET /', file: 'test.rq' };
+            const request = { name: 'test-req', endpoint: 'GET /', file: 'test.rq', request_file: 'test.rq', line: 0, character: 0 };
             const item = new RequestTreeItem('test-req', request, 0);
 
             (cliService.showRequest as jest.Mock).mockResolvedValue({ name: 'test-req', requiredVariables: [] });
@@ -147,7 +147,7 @@ describe('runRequest Commands', () => {
         });
 
         test('acquires an OAuth2 token when rq-lib asks for one', async () => {
-            const request = { name: 'auth-req', endpoint: 'GET /', file: 'test.rq' };
+            const request = { name: 'auth-req', endpoint: 'GET /', file: 'test.rq', request_file: 'test.rq', line: 0, character: 0 };
             const item = new RequestTreeItem('auth-req', request, 0);
             const pendingAuth = {
                 name: 'my-auth',
@@ -177,7 +177,7 @@ describe('runRequest Commands', () => {
         });
 
         test('runs the request against the file that declares it with its required variables', async () => {
-            const request = { name: 'auth-req', endpoint: 'GET /', file: '/workspace/sub/test.rq' };
+            const request = { name: 'auth-req', endpoint: 'GET /', file: '/workspace/sub/test.rq', request_file: '/workspace/sub/test.rq', line: 0, character: 0 };
             const item = new RequestTreeItem('auth-req', request, 0);
 
             (cliService.showRequest as jest.Mock).mockResolvedValue({ name: 'auth-req', requiredVariables: ['user_id'] });
@@ -193,7 +193,7 @@ describe('runRequest Commands', () => {
         });
 
         test('handles execution error', async () => {
-            const request = { name: 'error-req', endpoint: 'GET /', file: 'test.rq' };
+            const request = { name: 'error-req', endpoint: 'GET /', file: 'test.rq', request_file: 'test.rq', line: 0, character: 0 };
             const item = new RequestTreeItem('error-req', request, 0);
 
             (cliService.executeRequest as jest.Mock).mockRejectedValue(new Error('Execution failed'));
@@ -215,7 +215,7 @@ describe('runRequest Commands', () => {
         });
 
         test('filters cargo output from error message', async () => {
-            const request = { name: 'fail-req', endpoint: 'GET /', file: 'test.rq' };
+            const request = { name: 'fail-req', endpoint: 'GET /', file: 'test.rq', request_file: 'test.rq', line: 0, character: 0 };
             const item = new RequestTreeItem('fail-req', request, 0);
 
             const stderr = [
@@ -249,7 +249,7 @@ describe('runRequest Commands', () => {
 
     describe('webview messages', () => {
         const runAndGetMessageHandler = async (): Promise<(message: any) => void> => {
-            const request = { name: 'test-req', endpoint: 'GET /', file: 'test.rq' };
+            const request = { name: 'test-req', endpoint: 'GET /', file: 'test.rq', request_file: 'test.rq', line: 0, character: 0 };
             const item = new RequestTreeItem('test-req', request, 0);
 
             (cliService.executeRequest as jest.Mock).mockResolvedValue({
@@ -300,7 +300,7 @@ describe('runRequest Commands', () => {
 
     describe('rq.runRequestWithVariables', () => {
         test('prompts for variables and runs request', async () => {
-            const request = { name: 'var-req', endpoint: 'GET /', file: 'test.rq' };
+            const request = { name: 'var-req', endpoint: 'GET /', file: 'test.rq', request_file: 'test.rq', line: 0, character: 0 };
             const item = new RequestTreeItem('var-req', request, 0);
 
             (cliService.showRequest as jest.Mock).mockResolvedValue({ name: 'var-req', requiredVariables: [] });
@@ -324,7 +324,7 @@ describe('runRequest Commands', () => {
         });
 
         test('cancels if input cancelled', async () => {
-            const request = { name: 'cancel-req', endpoint: 'GET /', file: 'test.rq' };
+            const request = { name: 'cancel-req', endpoint: 'GET /', file: 'test.rq', request_file: 'test.rq', line: 0, character: 0 };
             const item = new RequestTreeItem('cancel-req', request, 0);
 
             (cliService.showRequest as jest.Mock).mockResolvedValue({ name: 'cancel-req', requiredVariables: [] });
@@ -339,7 +339,7 @@ describe('runRequest Commands', () => {
         });
 
         test('prompts for required variables not yet supplied', async () => {
-            const request = { name: 'req-req', endpoint: 'GET /', file: 'test.rq' };
+            const request = { name: 'req-req', endpoint: 'GET /', file: 'test.rq', request_file: 'test.rq', line: 0, character: 0 };
             const item = new RequestTreeItem('req-req', request, 0);
 
             (cliService.showRequest as jest.Mock).mockResolvedValue({ name: 'req-req', requiredVariables: ['user_id'] });
@@ -359,7 +359,7 @@ describe('runRequest Commands', () => {
         });
 
         test('clears loading state when execution throws', async () => {
-            const request = { name: 'throw-req', endpoint: 'GET /', file: 'test.rq' };
+            const request = { name: 'throw-req', endpoint: 'GET /', file: 'test.rq', request_file: 'test.rq', line: 0, character: 0 };
             const item = new RequestTreeItem('throw-req', request, 0);
 
             (cliService.showRequest as jest.Mock).mockResolvedValue({ name: 'throw-req', requiredVariables: [] });
@@ -383,7 +383,7 @@ describe('runRequest Commands', () => {
     });
     describe('cancellation', () => {
         function makeItem(name: string) {
-            return new RequestTreeItem(name, { name, endpoint: 'GET /', file: 'test.rq' }, 0);
+            return new RequestTreeItem(name, { name, endpoint: 'GET /', file: 'test.rq', request_file: 'test.rq', line: 0, character: 0 }, 0);
         }
 
         test('passes a cancellation token to executeRequest', async () => {
@@ -485,7 +485,7 @@ describe('runRequest Commands', () => {
         let panels: any[];
 
         function makeItem(name: string) {
-            return new RequestTreeItem(name, { name, endpoint: 'GET /', file: 'test.rq' }, 0);
+            return new RequestTreeItem(name, { name, endpoint: 'GET /', file: 'test.rq', request_file: 'test.rq', line: 0, character: 0 }, 0);
         }
 
         function useTabMode(mode: string) {

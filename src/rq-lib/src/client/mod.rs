@@ -1512,6 +1512,9 @@ impl RqClient {
             endpoint: request.endpoint.clone(),
             endpoint_description: endpoint.and_then(|ep| ep.description.clone()),
             file: crate::paths::clean_path(&rq_file.path),
+            request_file: Self::declaring_file(rq_file, request.source_path.as_deref()),
+            line: request.line,
+            character: request.character,
             endpoint_file,
             endpoint_line: endpoint.map(|ep| ep.line),
             endpoint_character: endpoint.map(|ep| ep.character),
@@ -4089,6 +4092,61 @@ mod description_tests {
             .map(|r| (r.description, r.endpoint_description))
             .collect();
         assert_eq!(target, vec![(None, Some("Users".to_string()))]);
+    }
+
+    #[test]
+    fn list_requests_gives_each_request_its_position() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let file = dir.path().join("users.rq");
+        std::fs::write(
+            &file,
+            "ep users(\"http://x/users\") {\n    rq list();\n}\n\nrq health(\"http://x/health\");\n",
+        )
+        .expect("write");
+        let (requests, _) = RqClient::default().list_requests(&file).expect("list");
+        let target: Vec<(String, usize, usize)> = requests
+            .into_iter()
+            .map(|r| (r.name, r.line, r.character))
+            .collect();
+        assert_eq!(
+            target,
+            vec![
+                ("health".to_string(), 4, 3),
+                ("users/list".to_string(), 1, 7)
+            ]
+        );
+    }
+
+    #[test]
+    fn list_requests_locates_an_imported_request_in_the_file_that_declares_it() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let dir_path = dir.path().canonicalize().expect("canonicalize");
+        std::fs::write(
+            dir_path.join("a.rq"),
+            "import \"b.rq\";\nrq a_req(\"http://x/a\");\n",
+        )
+        .expect("write a");
+        std::fs::write(
+            dir_path.join("b.rq"),
+            "let x = \"1\";\n\nrq b_req(\"http://x/b\");\n",
+        )
+        .expect("write b");
+        let (requests, _) = RqClient::default()
+            .list_requests(&dir_path.join("a.rq"))
+            .expect("list");
+        let target: Vec<(String, String, String, usize)> = requests
+            .into_iter()
+            .map(|r| (r.name, r.file, r.request_file, r.line))
+            .collect();
+        let a = crate::paths::clean_path(&dir_path.join("a.rq"));
+        let b = crate::paths::clean_path(&dir_path.join("b.rq"));
+        assert_eq!(
+            target,
+            vec![
+                ("a_req".to_string(), a.clone(), a.clone(), 1),
+                ("b_req".to_string(), a, b, 2),
+            ]
+        );
     }
 
     #[test]

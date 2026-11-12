@@ -1,5 +1,4 @@
 import * as vscode from 'vscode';
-import * as rqClient from '../rqClient';
 import { normalizePath } from '../utils';
 import { RequestExplorerProvider, RequestTreeItem } from '../requestExplorer';
 
@@ -11,12 +10,9 @@ export function registerOpenRequestFileCommand(context: vscode.ExtensionContext,
         }
         provider.setItemLoading(item, true);
         try {
-            const sourceDirectory = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-            const result = await rqClient.showRequestLocation(item.request.name, sourceDirectory, item.request.file);
-            const normalizedPath = normalizePath(result.file);
-            const document = await vscode.workspace.openTextDocument(normalizedPath);
+            const document = await vscode.workspace.openTextDocument(normalizePath(item.request.request_file));
             const editor = await vscode.window.showTextDocument(document);
-            const position = new vscode.Position(result.line, result.character);
+            const position = new vscode.Position(item.request.line, item.request.character);
             editor.selection = new vscode.Selection(position, position);
             editor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.InCenter);
         } catch (error) {

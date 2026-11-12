@@ -83,6 +83,9 @@ export interface RequestInfo {
     endpoint: string | null;
     endpoint_description?: string | null;
     file: string;
+    request_file: string;
+    line: number;
+    character: number;
     endpoint_file?: string;
     endpoint_line?: number;
     endpoint_character?: number;
@@ -356,6 +359,7 @@ export async function listRequests(sourceDirectory?: string): Promise<ListReques
     const requests = parsed.requests ?? [];
     requests.forEach(r => {
         r.file = normalizePath(r.file);
+        r.request_file = normalizePath(r.request_file);
         if (r.endpoint_file) { r.endpoint_file = normalizePath(r.endpoint_file); }
     });
     return { requests, errors: (parsed.parse_errors ?? []).map(e => e.message) };
@@ -383,13 +387,6 @@ export async function showAuthLocation(name: string, sourceDirectory?: string): 
     const source = resolveSource(sourceDirectory);
     const result = await wasmCall('get_auth_details', [draftsJson(), await buildSecretsMap(source), source, name, undefined, false]);
     const raw = JSON.parse(result) as AuthShowRaw;
-    return { file: normalizePath(raw.file), line: raw.line, character: raw.character };
-}
-
-export async function showRequestLocation(requestName: string, sourceDirectory?: string, scopeFile?: string): Promise<LocationOutput> {
-    const source = resolveSource(sourceDirectory);
-    const result = await wasmCall('get_request_details', [draftsJson(unsavedDrafts(source)), await buildSecretsMap(source), source, requestName, undefined, false, false, undefined, resolveScopeFile(scopeFile)]);
-    const raw = JSON.parse(result) as RequestShowRaw;
     return { file: normalizePath(raw.file), line: raw.line, character: raw.character };
 }
 

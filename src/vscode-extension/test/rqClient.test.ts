@@ -32,7 +32,7 @@ jest.mock('fs');
 jest.mock('https');
 
 import * as vscode from 'vscode';
-import { authFields, executeRequest, listAuthConfigsWithErrors, listEnvironments, listEnvironmentsWithErrors, setDebugLogging, showRequest, showRequestLocation, requiredVariable, varRefs } from '../src/rqClient';
+import { authFields, executeRequest, listAuthConfigsWithErrors, listEnvironments, listEnvironmentsWithErrors, setDebugLogging, showRequest, requiredVariable, varRefs } from '../src/rqClient';
 
 const BASE_PREPARED = {
     name: 'test-req',
@@ -566,20 +566,6 @@ describe('request details', () => {
         await showRequest('test_req', '/tmp/project');
 
         expect(mockGetRequestDetails.mock.calls[0][0]).toBe('{}');
-    });
-
-    test('locates the request in the unsaved text the editor shows', async () => {
-        await showRequestLocation('test_req', '/tmp/project');
-
-        expect(JSON.parse(mockGetRequestDetails.mock.calls[0][0])).toEqual({
-            '/tmp/project/main.rq': '\n\nrq test_req("http://edited");',
-        });
-    });
-
-    test('locates the request in the given scope file', async () => {
-        await showRequestLocation('test_req', '/tmp/project', 'C:\\project\\b.rq');
-
-        expect(mockGetRequestDetails.mock.calls[0][8]).toBe('C:/project/b.rq');
     });
 });
 

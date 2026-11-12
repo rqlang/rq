@@ -180,6 +180,7 @@ interface RequestShowRaw {
     Auth?: { name: string; type: string };
     RequiredVariables?: string[];
     file: string;
+    request_file: string;
     line: number;
     character: number;
 }
@@ -377,7 +378,7 @@ export async function showRequest(requestName: string, sourceDirectory?: string,
         headers: raw.Headers,
         auth: raw.Auth,
         requiredVariables: raw.RequiredVariables ?? [],
-        file: normalizePath(raw.file),
+        file: normalizePath(raw.request_file),
         line: raw.line,
         character: raw.character,
     };

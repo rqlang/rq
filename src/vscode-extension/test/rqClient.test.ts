@@ -554,7 +554,7 @@ describe('request details', () => {
     const editedDocument = { languageId: 'rq', isDirty: true, isUntitled: false, uri: { fsPath: '/tmp/project/main.rq' }, getText: () => '\n\nrq test_req("http://edited");' };
 
     beforeEach(() => {
-        mockGetRequestDetails.mockReturnValue(JSON.stringify({ Request: 'test_req', Method: 'GET', URL: 'http://x', Headers: {}, file: '/tmp/project/main.rq', line: 2, character: 0 }));
+        mockGetRequestDetails.mockReturnValue(JSON.stringify({ Request: 'test_req', Method: 'GET', URL: 'http://x', Headers: {}, file: '/tmp/project/main.rq', request_file: '/tmp/project/shared/b.rq', line: 2, character: 0 }));
         (vscode.workspace as any).textDocuments = [editedDocument];
     });
 
@@ -566,6 +566,12 @@ describe('request details', () => {
         await showRequest('test_req', '/tmp/project');
 
         expect(mockGetRequestDetails.mock.calls[0][0]).toBe('{}');
+    });
+
+    test('locates the request in the file that declares it', async () => {
+        const target = await showRequest('test_req', '/tmp/project');
+
+        expect([target.file, target.line, target.character]).toEqual(['/tmp/project/shared/b.rq', 2, 0]);
     });
 });
 

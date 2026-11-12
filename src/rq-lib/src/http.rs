@@ -69,8 +69,6 @@ mod tests {
             related_files: Vec::new(),
             line: 0,
             character: 0,
-            span: 0..0,
-            endpoint_header: None,
         }
     }
 

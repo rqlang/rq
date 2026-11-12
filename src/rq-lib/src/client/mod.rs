@@ -12,7 +12,9 @@ use crate::http::HttpClient;
 use crate::lint::{lint_rq_file, LintDiagnostic, LintScope, WorkspaceCollector, WorkspaceFile};
 use crate::logger::Logger;
 use crate::syntax::auth::Config as AuthConfig;
-use crate::syntax::parse_result::{AuthLocation, RequestWithVariables, RequiredVariable};
+use crate::syntax::parse_result::{
+    AuthLocation, RequestScope, RequestWithVariables, RequiredVariable,
+};
 use crate::syntax::resolve::{
     find_request_scoped_references, find_required_declaration, referenced_variable_names,
     variable_dependencies, SourcePosition,
@@ -615,17 +617,9 @@ impl RqClient {
             line,
             character,
         };
-        let requests = self.parsed_requests(&[scope_file.to_path_buf()]);
-        let (request, required) = find_required_declaration(&*self.fs, &at, &requests, name)?;
-        Some(VariableEntry {
-            name: required.name.clone(),
-            value: String::new(),
-            file: crate::paths::clean_path_str(request.source_path.as_deref().unwrap_or_default())
-                .to_string(),
-            line: required.line,
-            character: required.character,
-            source: "required".to_string(),
-        })
+        let scopes = self.request_scopes(&[scope_file.to_path_buf()]);
+        let (scope, required) = find_required_declaration(&*self.fs, &at, &scopes, name)?;
+        Some(Self::required_entry(&scope.source_path, required))
     }
 
     pub fn list_variable_references(
@@ -643,8 +637,8 @@ impl RqClient {
                 character,
             });
         if let Some(at) = at {
-            let requests = self.parsed_requests(&[at.file.to_path_buf()]);
-            if let Some(scoped) = find_request_scoped_references(&*self.fs, &at, &requests, name) {
+            let scopes = self.request_scopes(&[at.file.to_path_buf()]);
+            if let Some(scoped) = find_request_scoped_references(&*self.fs, &at, &scopes, name) {
                 let file = crate::paths::clean_path(at.file);
                 return Ok(scoped
                     .into_iter()
@@ -660,10 +654,9 @@ impl RqClient {
         let paths = self.reference_paths(source_path, scope_file, |closure| {
             self.variable_definition_file(closure, name)
         })?;
-        let requests = self.parsed_requests(&paths);
-        let refs = crate::syntax::resolve::find_all_variable_references(
-            &*self.fs, &paths, &requests, name,
-        );
+        let scopes = self.request_scopes(&paths);
+        let refs =
+            crate::syntax::resolve::find_all_variable_references(&*self.fs, &paths, &scopes, name);
         Ok(Self::reference_locations(refs))
     }
 
@@ -1084,17 +1077,21 @@ impl RqClient {
         }
         for (file, required) in Self::required_variables_of(rq_file) {
             if seen.insert(required.name.clone()) {
-                entries.push(VariableEntry {
-                    name: required.name.clone(),
-                    value: String::new(),
-                    file: crate::paths::clean_path_str(file).to_string(),
-                    line: required.line,
-                    character: required.character,
-                    source: "required".to_string(),
-                });
+                entries.push(Self::required_entry(file, required));
             }
         }
         entries
+    }
+
+    fn required_entry(file: &str, required: &RequiredVariable) -> VariableEntry {
+        VariableEntry {
+            name: required.name.clone(),
+            value: String::new(),
+            file: crate::paths::clean_path_str(file).to_string(),
+            line: required.line,
+            character: required.character,
+            source: "required".to_string(),
+        }
     }
 
     fn required_variables_of(rq_file: &RqFile) -> impl Iterator<Item = (&str, &RequiredVariable)> {
@@ -2147,11 +2144,11 @@ impl RqClient {
         }
     }
 
-    fn parsed_requests(&self, paths: &[PathBuf]) -> Vec<RequestWithVariables> {
+    fn request_scopes(&self, paths: &[PathBuf]) -> Vec<RequestScope> {
         paths
             .iter()
             .filter_map(|path| self.load_rq_file_lenient(path))
-            .flat_map(|rq_file| rq_file.requests)
+            .flat_map(|rq_file| rq_file.request_scopes)
             .collect()
     }
 
@@ -2661,8 +2658,6 @@ mod prepare_request_tests {
             related_files: Vec::new(),
             line: 0,
             character: 0,
-            span: 0..0,
-            endpoint_header: None,
         }
     }
 
@@ -2873,6 +2868,26 @@ mod navigation_tests {
     fn required_definition_accepts_an_attribute_on_the_request_line() {
         let target = required_definition_at("[required(id)] rq get(id);\n", (0, 22));
         assert_eq!(target, Some((0, 10)));
+    }
+
+    #[test]
+    fn required_definition_survives_a_duplicate_sibling_in_its_endpoint() {
+        let content = "ep items(\"http://x\") {\n    [required(id)]\n    rq get(id);\n    rq get(\"/\");\n}\n";
+        let target = required_definition_at(content, (2, 11));
+        assert_eq!(target, Some((1, 14)));
+    }
+
+    #[test]
+    fn required_definition_of_an_unclosed_request_is_its_attribute() {
+        let target = required_definition_at("[required(id)]\nrq get(id\n", (1, 7));
+        assert_eq!(target, Some((0, 10)));
+    }
+
+    #[test]
+    fn global_references_skip_an_unclosed_request_that_requires_the_name() {
+        let content = "let id = \"1\";\n[required(id)]\nrq get(\"{{id}}\"\n";
+        let target = variable_refs_at(content, "id", Some((0, 5)));
+        assert_eq!(target, vec![(0, 4)]);
     }
 
     #[test]

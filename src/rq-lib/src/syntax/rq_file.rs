@@ -1,7 +1,7 @@
 use super::{
     error::SyntaxError,
     fs::Fs,
-    parse_result::{EndpointDefinition, ParseResult, RequestWithVariables},
+    parse_result::{EndpointDefinition, ParseResult, RequestScope, RequestWithVariables},
     token::Token,
     ui_color::UiColor,
     variable_context::Variable,
@@ -13,6 +13,7 @@ use std::path::PathBuf;
 pub struct RqFile {
     pub path: PathBuf,
     pub requests: Vec<RequestWithVariables>,
+    pub request_scopes: Vec<RequestScope>,
     pub environments: HashMap<String, Vec<Variable>>,
     pub environment_locations: HashMap<String, (String, usize, usize)>,
     pub environment_colors: HashMap<String, UiColor>,
@@ -62,6 +63,7 @@ impl RqFile {
             path,
             ParseResult {
                 requests: Vec::new(),
+                request_scopes: Vec::new(),
                 environments: HashMap::new(),
                 environment_locations: HashMap::new(),
                 environment_colors: HashMap::new(),
@@ -80,6 +82,7 @@ impl RqFile {
         Self {
             path,
             requests: parse_result.requests,
+            request_scopes: parse_result.request_scopes,
             environments: parse_result.environments,
             environment_locations: parse_result.environment_locations,
             environment_colors: parse_result.environment_colors,
@@ -98,28 +101,44 @@ impl RqFile {
 mod tests {
     use super::RqFile;
     use crate::native::NativeFs;
-    use crate::syntax::parse_result::{Request, RequiredVariable};
+    use crate::syntax::parse_result::{Request, RequestScope, RequiredVariable};
     use std::path::PathBuf;
 
-    fn requests_of(source: &str) -> Vec<Request> {
+    fn parse(source: &str) -> RqFile {
         RqFile::from_content_lenient(PathBuf::from("test.rq"), source, &NativeFs)
+    }
+
+    fn requests_of(source: &str) -> Vec<Request> {
+        parse(source)
             .requests
             .into_iter()
             .map(|req_with_vars| req_with_vars.request)
             .collect()
     }
 
+    fn scopes_of(source: &str) -> Vec<RequestScope> {
+        parse(source).request_scopes
+    }
+
+    fn required_names(scope: &RequestScope) -> Vec<&str> {
+        scope
+            .required_variables
+            .iter()
+            .map(|required| required.name.as_str())
+            .collect()
+    }
+
     #[test]
-    fn request_span_covers_its_attributes_and_semicolon() {
+    fn request_scope_covers_its_attributes_and_semicolon() {
         let source = "let a = \"1\";\n[required(id)]\nrq get(id);\nlet b = \"2\";\n";
-        let target = &requests_of(source)[0];
+        let target = &scopes_of(source)[0];
         assert_eq!(&source[target.span.clone()], "[required(id)]\nrq get(id);");
     }
 
     #[test]
-    fn endpoint_request_records_the_endpoint_header() {
+    fn endpoint_request_scope_records_the_endpoint_header() {
         let source = "[timeout(5)]\nep items(\"http://x\") {\n    rq get(\"/\");\n}\n";
-        let target = requests_of(source)[0].endpoint_header.clone();
+        let target = scopes_of(source)[0].endpoint_header.clone();
         assert_eq!(
             target.map(|header| &source[header]),
             Some("[timeout(5)]\nep items(\"http://x\") {")
@@ -127,8 +146,8 @@ mod tests {
     }
 
     #[test]
-    fn top_level_request_has_no_endpoint_header() {
-        let target = requests_of("rq get(\"http://x\");\n");
+    fn top_level_request_scope_has_no_endpoint_header() {
+        let target = scopes_of("rq get(\"http://x\");\n");
         assert_eq!(target[0].endpoint_header, None);
     }
 
@@ -169,5 +188,56 @@ mod tests {
             })
             .collect();
         assert_eq!(target, vec![("other".to_string(), vec!["id".to_string()])]);
+    }
+
+    #[test]
+    fn unparsed_request_keeps_its_scope() {
+        let source = "[required(id)]\nrq get(id\n\nrq other(\"http://x\");\n";
+        let target = &scopes_of(source)[0];
+        assert_eq!(
+            (&source[target.span.clone()], required_names(target)),
+            ("[required(id)]\nrq get(id", vec!["id"])
+        );
+    }
+
+    #[test]
+    fn broken_request_does_not_drop_its_endpoint_siblings() {
+        let source = "ep items(\"http://x\") {\n    [required(id)]\n    rq get(id);\n    rq get(\"/\");\n}\n";
+        let target: Vec<String> = requests_of(source)
+            .into_iter()
+            .map(|request| request.name)
+            .collect();
+        assert_eq!(target, vec!["items/get".to_string()]);
+    }
+
+    #[test]
+    fn broken_endpoint_request_keeps_its_scope_and_header() {
+        let source = "ep items(\"http://x/{{id}}\") {\n    [required(id)]\n    rq get(id\n    rq list();\n}\n";
+        let scopes = scopes_of(source);
+        let target: Vec<(&str, Option<&str>, Vec<&str>)> = scopes
+            .iter()
+            .map(|scope| {
+                (
+                    &source[scope.span.clone()],
+                    scope.endpoint_header.clone().map(|header| &source[header]),
+                    required_names(scope),
+                )
+            })
+            .collect();
+        assert_eq!(
+            target,
+            vec![
+                (
+                    "[required(id)]\n    rq get(id",
+                    Some("ep items(\"http://x/{{id}}\") {"),
+                    vec!["id"]
+                ),
+                (
+                    "rq list();",
+                    Some("ep items(\"http://x/{{id}}\") {"),
+                    vec![]
+                ),
+            ]
+        );
     }
 }

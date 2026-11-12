@@ -2,12 +2,12 @@ use super::{
     error::SyntaxError,
     fs::Fs,
     parse_result::ParseResult,
+    parsers::utils::starts_top_level_statement,
     parsers::{
         AuthParser, EndpointParser, EnvironmentParser, ImportParser, Parse, RequestParser,
         VariableParser,
     },
     reader::TokenReader,
-    token::TokenType,
 };
 use std::path::PathBuf;
 
@@ -28,6 +28,7 @@ pub fn analyze_lenient(
 ) -> ParseResult {
     analyze_impl(tokens, file_path, source, fs, true).unwrap_or_else(|_| ParseResult {
         requests: Vec::new(),
+        request_scopes: Vec::new(),
         environments: std::collections::HashMap::new(),
         environment_locations: std::collections::HashMap::new(),
         environment_colors: std::collections::HashMap::new(),
@@ -41,42 +42,6 @@ pub fn analyze_lenient(
     })
 }
 
-fn skip_to_next_statement(r: &mut TokenReader, parsers: &[Box<dyn Parse>]) {
-    let mut braces = 0usize;
-    let mut groups = 0usize;
-    let mut at_statement_start = true;
-    while let Some(tok) = r.cur() {
-        if !at_statement_start && braces == 0 && parsers.iter().any(|p| p.can_parse(r)) {
-            return;
-        }
-        at_statement_start = false;
-        let ends_statement = match (&tok.token_type, tok.value.as_str()) {
-            (TokenType::Punctuation, "{") => {
-                braces += 1;
-                false
-            }
-            (TokenType::Punctuation, "}") => {
-                braces = braces.saturating_sub(1);
-                false
-            }
-            (TokenType::Punctuation, "(" | "[") => {
-                groups += 1;
-                false
-            }
-            (TokenType::Punctuation, ")" | "]") => {
-                groups = groups.saturating_sub(1);
-                false
-            }
-            (TokenType::Punctuation, ";") | (TokenType::Newline, _) => braces == 0 && groups == 0,
-            _ => false,
-        };
-        r.advance();
-        if ends_statement {
-            return;
-        }
-    }
-}
-
 fn analyze_impl(
     tokens: &[super::token::Token],
     file_path: PathBuf,
@@ -85,8 +50,10 @@ fn analyze_impl(
     lenient: bool,
 ) -> Result<ParseResult, SyntaxError> {
     let mut r = TokenReader::new(tokens.to_vec(), file_path, source.to_string());
+    r.lenient = lenient;
     let mut result = ParseResult {
         requests: Vec::new(),
+        request_scopes: Vec::new(),
         environments: std::collections::HashMap::new(),
         environment_locations: std::collections::HashMap::new(),
         environment_colors: std::collections::HashMap::new(),
@@ -122,7 +89,7 @@ fn analyze_impl(
                     Ok(()) => {}
                     Err(_) if lenient => {
                         r.idx = saved_idx;
-                        skip_to_next_statement(&mut r, &parsers);
+                        r.skip_statement(&starts_top_level_statement);
                     }
                     Err(e) => return Err(e),
                 }

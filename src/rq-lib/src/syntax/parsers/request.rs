@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use super::{
     attributes::{
         parse_attributes, AttributeContext, AttributeParser, AuthAttributeParser,
@@ -7,7 +9,8 @@ use super::{
     parse_trait::Parse,
     utils::{
         binding_position, can_parse_attributed, claim_parameter_slot, parse_headers_array,
-        parse_string_value, parse_url_value, peek_slot_value, record_binding, SlotTracker,
+        parse_string_value, parse_url_value, peek_slot_value, record_binding,
+        starts_top_level_statement, SlotTracker,
     },
 };
 use crate::syntax::fs::Fs;
@@ -18,7 +21,7 @@ use crate::syntax::{
         KW_RQ, PUNC_COMMA, PUNC_DOLLAR, PUNC_LBRACE, PUNC_LPAREN, PUNC_RBRACE, PUNC_RPAREN,
         PUNC_SEMI,
     },
-    parse_result::{ParseResult, Request},
+    parse_result::{ParseResult, Request, RequestScope, RequestWithVariables},
     reader::{expect, TokenReader},
     token::TokenType,
     types::{ParameterSlot, SlotBinding, SlotValue, ValueType},
@@ -36,14 +39,21 @@ impl Parse for RequestParser {
         result: &mut ParseResult,
         _fs: &dyn Fs,
     ) -> Result<(), SyntaxError> {
-        let (req, req_vars) = parse_request_with_context(r, &Vec::new(), None, &result.requests)?;
-        result
-            .requests
-            .push(crate::syntax::parse_result::RequestWithVariables {
+        let context = RequestContext {
+            endpoint_variables: &[],
+            endpoint_name: None,
+            endpoint_header: None,
+            starts_statement: &starts_top_level_statement,
+        };
+        if let Some((req, req_vars)) =
+            parse_scoped_request(r, &context, &result.requests, &mut result.request_scopes)?
+        {
+            result.requests.push(RequestWithVariables {
                 request: req,
                 endpoint_variables: Vec::new(),
                 request_variables: req_vars,
             });
+        }
         Ok(())
     }
 }
@@ -207,23 +217,78 @@ fn parse_headers_parameter(
     }
 }
 
-pub(crate) fn parse_request_with_context(
+pub(crate) struct RequestContext<'a> {
+    pub endpoint_variables: &'a [Variable],
+    pub endpoint_name: Option<&'a str>,
+    pub endpoint_header: Option<Range<usize>>,
+    pub starts_statement: &'a dyn Fn(&TokenReader) -> bool,
+}
+
+pub(crate) fn parse_scoped_request(
     r: &mut TokenReader,
-    _endpoint_vars: &[Variable],
-    endpoint_name: Option<&str>,
-    existing_requests: &[crate::syntax::parse_result::RequestWithVariables],
-) -> Result<(Request, Vec<Variable>), SyntaxError> {
+    context: &RequestContext,
+    existing_requests: &[RequestWithVariables],
+    scopes: &mut Vec<RequestScope>,
+) -> Result<Option<(Request, Vec<Variable>)>, SyntaxError> {
+    let start_idx = r.idx;
     let span_start = r.cur().map_or(r.source.len(), |t| t.span.start);
-    let mut ctx = AttributeContext::default();
-    let parsers: Vec<&dyn AttributeParser> = vec![
+    let source_path = r.file_path.to_string_lossy().to_string();
+    match parse_request_with_context(
+        r,
+        context.endpoint_variables,
+        context.endpoint_name,
+        existing_requests,
+    ) {
+        Ok((request, variables)) => {
+            let span_end = r
+                .idx
+                .checked_sub(1)
+                .and_then(|last| r.tokens.get(last))
+                .map_or(span_start, |t| t.span.end);
+            scopes.push(RequestScope {
+                source_path,
+                span: span_start..span_end,
+                endpoint_header: context.endpoint_header.clone(),
+                required_variables: request.required_variables.clone(),
+            });
+            Ok(Some((request, variables)))
+        }
+        Err(_) if r.lenient => {
+            r.idx = start_idx;
+            let mut ctx = AttributeContext::default();
+            parse_attributes(r, &request_attribute_parsers(), KW_RQ, &mut ctx).ok();
+            let span_end = r.skip_statement(context.starts_statement);
+            scopes.push(RequestScope {
+                source_path,
+                span: span_start..span_end,
+                endpoint_header: context.endpoint_header.clone(),
+                required_variables: ctx.required_variables,
+            });
+            Ok(None)
+        }
+        Err(error) => Err(error),
+    }
+}
+
+fn request_attribute_parsers() -> Vec<&'static dyn AttributeParser> {
+    vec![
         &MethodAttributeParser,
         &AuthAttributeParser,
         &TimeoutAttributeParser,
         &RequiredAttributeParser,
         &DescriptionAttributeParser,
         &ConfirmAttributeParser,
-    ];
-    parse_attributes(r, &parsers, KW_RQ, &mut ctx)?;
+    ]
+}
+
+fn parse_request_with_context(
+    r: &mut TokenReader,
+    _endpoint_vars: &[Variable],
+    endpoint_name: Option<&str>,
+    existing_requests: &[RequestWithVariables],
+) -> Result<(Request, Vec<Variable>), SyntaxError> {
+    let mut ctx = AttributeContext::default();
+    parse_attributes(r, &request_attribute_parsers(), KW_RQ, &mut ctx)?;
 
     expect(
         r,
@@ -283,13 +348,11 @@ pub(crate) fn parse_request_with_context(
 
     r.skip_ignorable();
     let vars = params.variables;
-    let span_end = expect(
+    expect(
         r,
         |t| t.token_type == TokenType::Punctuation && t.value == PUNC_SEMI,
         format!("Expected '{PUNC_SEMI}'"),
-    )?
-    .span
-    .end;
+    )?;
     r.advance();
 
     let file = r.file_path.to_string_lossy().to_string();
@@ -314,8 +377,6 @@ pub(crate) fn parse_request_with_context(
         related_files: Vec::new(),
         line: req_line,
         character: req_character,
-        span: span_start..span_end,
-        endpoint_header: None,
     };
     Ok((request, vars))
 }

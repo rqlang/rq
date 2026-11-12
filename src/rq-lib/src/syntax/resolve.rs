@@ -6,7 +6,7 @@ use super::{
         KW_AUTH, KW_ENV, KW_EP, KW_RQ, OP_LT, PUNC_DOT, PUNC_LBRACE, PUNC_LBRACKET, PUNC_RBRACE,
         PUNC_RBRACKET, PUNC_SEMI,
     },
-    parse_result::{EndpointDefinition, Request, RequestWithVariables, RequiredVariable},
+    parse_result::{EndpointDefinition, Request, RequestScope, RequiredVariable},
     parsers::{
         attributes::{ATTR_DESCRIPTION, ATTR_UI_COLOR},
         utils::parse_system_function,
@@ -197,11 +197,11 @@ pub struct ScopedReference {
 pub fn find_request_scoped_references(
     fs: &dyn Fs,
     at: &SourcePosition,
-    requests: &[RequestWithVariables],
+    scopes: &[RequestScope],
     var_name: &str,
 ) -> Option<Vec<ScopedReference>> {
     let content = fs.read(at.file).ok()?;
-    let request = request_declaring_at(fs, at, &content, requests, var_name)?;
+    let scope = scope_declaring_at(fs, at, &content, scopes, var_name)?;
     let Ok(tokens) = tokenize(&content) else {
         return Some(Vec::new());
     };
@@ -209,11 +209,11 @@ pub fn find_request_scoped_references(
         var_ref_offsets(&tokens, var_name)
             .into_iter()
             .filter_map(|offset| {
-                let shared = request
+                let shared = scope
                     .endpoint_header
                     .as_ref()
                     .is_some_and(|header| header.contains(&offset));
-                (shared || request.span.contains(&offset)).then(|| {
+                (shared || scope.span.contains(&offset)).then(|| {
                     let (line, character) = zero_based_line_col(&content, offset);
                     ScopedReference {
                         line,
@@ -229,28 +229,28 @@ pub fn find_request_scoped_references(
 pub fn find_required_declaration<'a>(
     fs: &dyn Fs,
     at: &SourcePosition,
-    requests: &'a [RequestWithVariables],
+    scopes: &'a [RequestScope],
     var_name: &'a str,
-) -> Option<(&'a Request, &'a RequiredVariable)> {
+) -> Option<(&'a RequestScope, &'a RequiredVariable)> {
     let content = fs.read(at.file).ok()?;
-    let request = request_declaring_at(fs, at, &content, requests, var_name)?;
-    let required = request
+    let scope = scope_declaring_at(fs, at, &content, scopes, var_name)?;
+    let required = scope
         .required_variables
         .iter()
         .find(|required| required.name == var_name)?;
-    Some((request, required))
+    Some((scope, required))
 }
 
 pub fn find_all_variable_references(
     fs: &dyn Fs,
     paths: &[PathBuf],
-    requests: &[RequestWithVariables],
+    scopes: &[RequestScope],
     var_name: &str,
 ) -> Vec<(usize, usize, PathBuf)> {
     let mut results = Vec::new();
     for path in paths {
-        let shadowing: Vec<&Range<usize>> = requests_declaring(fs, path, requests, var_name)
-            .map(|request| &request.span)
+        let shadowing: Vec<&Range<usize>> = scopes_declaring(fs, path, scopes, var_name)
+            .map(|scope| &scope.span)
             .collect();
         for (line, col) in find_all_var_refs_in_file(fs, path, var_name, &shadowing) {
             results.push((line, col, path.clone()));
@@ -342,34 +342,30 @@ fn find_all_var_refs_in_file(
         .collect()
 }
 
-fn request_declaring_at<'a>(
+fn scope_declaring_at<'a>(
     fs: &dyn Fs,
     at: &SourcePosition,
     content: &str,
-    requests: &'a [RequestWithVariables],
+    scopes: &'a [RequestScope],
     var_name: &'a str,
-) -> Option<&'a Request> {
+) -> Option<&'a RequestScope> {
     let offset = byte_offset(content, at.line, at.character)?;
-    requests_declaring(fs, at.file, requests, var_name)
-        .find(|request| request.span.contains(&offset))
+    scopes_declaring(fs, at.file, scopes, var_name).find(|scope| scope.span.contains(&offset))
 }
 
-fn requests_declaring<'a>(
+fn scopes_declaring<'a>(
     fs: &dyn Fs,
     file: &Path,
-    requests: &'a [RequestWithVariables],
+    scopes: &'a [RequestScope],
     var_name: &'a str,
-) -> impl Iterator<Item = &'a Request> {
+) -> impl Iterator<Item = &'a RequestScope> {
     let file = fs
         .canonicalize(file)
         .ok()
         .map(|canonical| canonical.to_string_lossy().to_string());
-    requests
+    scopes
         .iter()
-        .map(|req_with_vars| &req_with_vars.request)
-        .filter(move |request| {
-            file.is_some() && request.source_path == file && request.requires(var_name)
-        })
+        .filter(move |scope| file.as_ref() == Some(&scope.source_path) && scope.requires(var_name))
 }
 
 fn var_ref_offsets(tokens: &[Token], var_name: &str) -> Vec<usize> {

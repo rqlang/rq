@@ -65,8 +65,6 @@ pub struct Request {
     pub related_files: Vec<String>,
     pub line: usize,
     pub character: usize,
-    pub span: Range<usize>,
-    pub endpoint_header: Option<Range<usize>>,
 }
 
 impl Request {
@@ -82,6 +80,22 @@ impl Request {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct RequestScope {
+    pub source_path: String,
+    pub span: Range<usize>,
+    pub endpoint_header: Option<Range<usize>>,
+    pub required_variables: Vec<RequiredVariable>,
+}
+
+impl RequestScope {
+    pub fn requires(&self, name: &str) -> bool {
+        self.required_variables
+            .iter()
+            .any(|required| required.name == name)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct RequestWithVariables {
     pub request: Request,
     pub endpoint_variables: Vec<Variable>,
@@ -91,6 +105,7 @@ pub struct RequestWithVariables {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ParseResult {
     pub requests: Vec<RequestWithVariables>,
+    pub request_scopes: Vec<RequestScope>,
     pub environments: std::collections::HashMap<String, Vec<Variable>>,
     pub environment_locations: std::collections::HashMap<String, (String, usize, usize)>,
     pub environment_colors: std::collections::HashMap<String, crate::syntax::ui_color::UiColor>,

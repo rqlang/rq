@@ -10,6 +10,7 @@ pub struct TokenReader {
     pub idx: usize,
     pub file_path: PathBuf,
     pub source: String,
+    pub lenient: bool,
 }
 impl TokenReader {
     pub fn new(tokens: Vec<Token>, file_path: PathBuf, source: String) -> Self {
@@ -18,6 +19,7 @@ impl TokenReader {
             idx: 0,
             file_path,
             source,
+            lenient: false,
         }
     }
     pub fn cur(&self) -> Option<&Token> {
@@ -64,6 +66,52 @@ impl TokenReader {
 
     pub fn get_line_col(&self, pos: usize) -> (usize, usize) {
         line_col_at(&self.source, pos)
+    }
+
+    pub fn skip_statement(&mut self, starts_statement: &dyn Fn(&TokenReader) -> bool) -> usize {
+        let mut braces = 0usize;
+        let mut groups = 0usize;
+        let mut end = self.cur().map_or(self.source.len(), |t| t.span.start);
+        let mut at_statement_start = true;
+        while let Some(tok) = self.cur() {
+            if !at_statement_start && braces == 0 && starts_statement(self) {
+                break;
+            }
+            at_statement_start = false;
+            let ends_statement = match (&tok.token_type, tok.value.as_str()) {
+                (TokenType::Punctuation, "{") => {
+                    braces += 1;
+                    false
+                }
+                (TokenType::Punctuation, "}") => {
+                    braces = braces.saturating_sub(1);
+                    false
+                }
+                (TokenType::Punctuation, "(" | "[") => {
+                    groups += 1;
+                    false
+                }
+                (TokenType::Punctuation, ")" | "]") => {
+                    groups = groups.saturating_sub(1);
+                    false
+                }
+                (TokenType::Punctuation, ";") | (TokenType::Newline, _) => {
+                    braces == 0 && groups == 0
+                }
+                _ => false,
+            };
+            if !matches!(
+                tok.token_type,
+                TokenType::Whitespace | TokenType::Newline | TokenType::Comment
+            ) {
+                end = tok.span.end;
+            }
+            self.advance();
+            if ends_statement {
+                break;
+            }
+        }
+        end
     }
 
     pub fn skip_ignorable(&mut self) {

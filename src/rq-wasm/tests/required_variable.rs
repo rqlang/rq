@@ -7,9 +7,8 @@ fn required_variable_at(content: &str, line: usize, character: usize) -> Value {
     std::fs::write(&file, content).unwrap();
     let source = workspace.path().to_string_lossy().replace('\\', "/");
     let scope_file = file.to_string_lossy().replace('\\', "/");
-    let output =
-        bindings::get_required_variable("{}", "{}", &source, "id", &scope_file, line, character)
-            .unwrap_or_default();
+    let output = bindings::get_required_variable("{}", &source, "id", &scope_file, line, character)
+        .unwrap_or_default();
     serde_json::from_str(&output).unwrap_or(Value::String(output))
 }
 

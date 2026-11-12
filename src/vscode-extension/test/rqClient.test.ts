@@ -650,6 +650,31 @@ describe('varRefs', () => {
         expect(mockListVariableRefs.mock.calls[0][4]).toBe('c:/ws/foo.rq');
     });
 
+    test('flags references that the endpoint shares with other requests', async () => {
+        const uri = { fsPath: '/tmp/project/foo.rq' };
+        const doc = makeDocument(uri, 'rq get(id);');
+        mockListVariableRefs.mockReturnValue(JSON.stringify([
+            { file: '/tmp/project/foo.rq', line: 0, character: 20, shared: true },
+        ]));
+
+        const target = await varRefs('id', doc, new vscode.Position(0, 8), '/tmp/project');
+
+        expect(target).toEqual([{ uri, line: 0, character: 20, shared: true }]);
+    });
+
+    test('maps references in an untitled document back to that document', async () => {
+        const uri = { fsPath: 'Untitled-1', path: 'Untitled-1', scheme: 'untitled' };
+        const doc = makeDocument(uri, 'rq get(resource_id);', true);
+        mockListVariableRefs.mockReturnValue(JSON.stringify([
+            { file: '/tmp/project/Untitled-1', line: 0, character: 7 },
+        ]));
+
+        const target = await varRefs('resource_id', doc, new vscode.Position(0, 8), '/tmp/project');
+
+        expect(target).toEqual([{ uri, line: 0, character: 7, shared: false }]);
+    });
+});
+
 describe('requiredVariable', () => {
     function makeDocument(uri: any, text: string) {
         return { uri, isUntitled: false, languageId: 'rq', isDirty: true, getText: () => text } as any;
@@ -667,7 +692,7 @@ describe('requiredVariable', () => {
 
         const call = mockGetRequiredVariable.mock.calls[0];
         expect(JSON.parse(call[0])).toEqual({ '/tmp/project/foo.rq': '[required(id)]\nrq get(id);' });
-        expect(call.slice(2)).toEqual(['/tmp/project', 'id', '/tmp/project/foo.rq', 1, 7]);
+        expect(call.slice(1)).toEqual(['/tmp/project', 'id', '/tmp/project/foo.rq', 1, 7]);
     });
 
     test('returns the declaration rq reports', async () => {
@@ -692,36 +717,11 @@ describe('requiredVariable', () => {
 
     test('is undefined when the lookup fails', async () => {
         const doc = makeDocument({ fsPath: '/tmp/project/foo.rq' }, 'rq get(id);');
-        mockGetRequiredVariable.mockImplementation(() => { throw new Error('boom'); });
+        mockGetRequiredVariable.mockImplementationOnce(() => { throw new Error('boom'); });
 
         const target = await requiredVariable('id', doc, new vscode.Position(0, 7), '/tmp/project');
 
         expect(target).toBeUndefined();
-    });
-});
-
-    test('flags references that the endpoint shares with other requests', async () => {
-        const uri = { fsPath: '/tmp/project/foo.rq' };
-        const doc = makeDocument(uri, 'rq get(id);');
-        mockListVariableRefs.mockReturnValue(JSON.stringify([
-            { file: '/tmp/project/foo.rq', line: 0, character: 20, shared: true },
-        ]));
-
-        const target = await varRefs('id', doc, new vscode.Position(0, 8), '/tmp/project');
-
-        expect(target).toEqual([{ uri, line: 0, character: 20, shared: true }]);
-    });
-
-    test('maps references in an untitled document back to that document', async () => {
-        const uri = { fsPath: 'Untitled-1', path: 'Untitled-1', scheme: 'untitled' };
-        const doc = makeDocument(uri, 'rq get(resource_id);', true);
-        mockListVariableRefs.mockReturnValue(JSON.stringify([
-            { file: '/tmp/project/Untitled-1', line: 0, character: 7 },
-        ]));
-
-        const target = await varRefs('resource_id', doc, new vscode.Position(0, 8), '/tmp/project');
-
-        expect(target).toEqual([{ uri, line: 0, character: 7, shared: false }]);
     });
 });
 

@@ -493,7 +493,7 @@ fn is_trivia(token: &Token) -> bool {
 }
 
 fn byte_offset(content: &str, line: usize, character: usize) -> Option<usize> {
-    offset_at(content, line + 1, character + 1)
+    offset_at(content, line.checked_add(1)?, character.checked_add(1)?)
 }
 
 fn find_all_ep_refs_in_file(fs: &dyn Fs, path: &Path, ep_name: &str) -> Vec<(usize, usize)> {

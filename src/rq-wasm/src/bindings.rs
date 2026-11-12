@@ -591,7 +591,6 @@ pub fn get_variable(
 #[wasm_bindgen]
 pub fn get_required_variable(
     files_json: &str,
-    secrets_json: &str,
     source: &str,
     name: &str,
     scope_file: &str,
@@ -600,7 +599,7 @@ pub fn get_required_variable(
 ) -> Result<String, JsError> {
     let entry = make_client(
         parse_files(files_json)?,
-        parse_secrets(secrets_json),
+        WasmSecretProvider::new(None, Vec::new()),
         source,
     )
     .get_required_variable(Path::new(scope_file), (line, character), name);

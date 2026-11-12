@@ -285,7 +285,7 @@ export async function requiredVariable(name: string, document: vscode.TextDocume
     const scopeFile = documentDraftPath(document, source);
     const filesJson = draftsJson(openDrafts(document, source));
     try {
-        const result = await wasmCall('get_required_variable', [filesJson, await buildSecretsMap(source), source, name, scopeFile, position.line, position.character]);
+        const result = await wasmCall('get_required_variable', [filesJson, source, name, scopeFile, position.line, position.character]);
         const raw = JSON.parse(result) as VariableShowOutput | null;
         return raw ? { ...raw, file: normalizePath(raw.file) } : undefined;
     } catch {

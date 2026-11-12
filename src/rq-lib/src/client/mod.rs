@@ -231,7 +231,7 @@ impl RqClient {
         let (kept, overrides): (Vec<_>, Vec<_>) = variables
             .iter()
             .zip(&cli_vars)
-            .partition(|(_, variable)| Self::is_required(&request, &variable.name));
+            .partition(|(_, variable)| request.requires(&variable.name));
         let kept: Vec<String> = kept.into_iter().map(|(kv, _)| kv.clone()).collect();
         let prepared = self.prepare_request(target, environment, variables)?;
         let used = Self::variables_used(&rq_file, &request, &prepared);
@@ -1236,10 +1236,6 @@ impl RqClient {
             "Variable(s) {} contain '{{' or '}}': a runtime value is plain text, so it cannot reference variables or call functions",
             templated.join(", ")
         )))
-    }
-
-    fn is_required(request: &Request, name: &str) -> bool {
-        request.requires(name)
     }
 
     fn variables_used(

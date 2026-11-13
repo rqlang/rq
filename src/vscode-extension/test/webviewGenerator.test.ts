@@ -28,7 +28,7 @@ describe('webviewGenerator', () => {
 
     test('getWebviewContent generates HTML with correct replacements', async () => {
         // Mock template and renderer script
-        const mockTemplate = '<html><body>{{REQUEST_NAME}} {{METHOD}} {{URL}} {{STATUS}} {{BODY_CONTENT}} {{JSON_SCRIPT}}</body></html>';
+        const mockTemplate = '<html><body>{{REQUEST_NAME}} {{METHOD}} {{URL}} {{STATUS}} {{BODY_CONTENT}} {{BODY_SCRIPT}}</body></html>';
         const mockRenderer = 'function render() {}';
         
         mockFs.readFile.mockImplementation((uri: any) => {
@@ -61,7 +61,7 @@ describe('webviewGenerator', () => {
         
         // Check JSON specific content
         expect(html).toContain('id="json-body"'); // From {{BODY_CONTENT}} for JSON
-        expect(html).toContain('const jsonData = {'); // From {{JSON_SCRIPT}}
+        expect(html).toContain('const jsonData = {'); // From {{BODY_SCRIPT}}
         expect(html).toContain(mockRenderer); // Injected renderer script
     });
 
@@ -177,7 +177,7 @@ describe('webviewGenerator', () => {
 
         test('URL copy button receives the real URL in data-copy', async () => {
             const html = await renderWith(
-                '<span class="url">{{URL}}</span><button data-copy="{{URL}}"></button>{{BODY_CONTENT}}{{JSON_SCRIPT}}',
+                '<span class="url">{{URL}}</span><button data-copy="{{URL}}"></button>{{BODY_CONTENT}}{{BODY_SCRIPT}}',
                 { url: 'https://api.example.com/users?id=1' }
             );
 
@@ -186,7 +186,7 @@ describe('webviewGenerator', () => {
         });
 
         test('each header row has a copy button with "name: value"', async () => {
-            const html = await renderWith('{{REQUEST_HEADERS_HTML}}{{BODY_CONTENT}}{{JSON_SCRIPT}}', {
+            const html = await renderWith('{{REQUEST_HEADERS_HTML}}{{BODY_CONTENT}}{{BODY_SCRIPT}}', {
                 request_headers: { 'Content-Type': 'application/json' }
             });
 
@@ -194,7 +194,7 @@ describe('webviewGenerator', () => {
         });
 
         test('copy-all headers button joins headers by newline', async () => {
-            const html = await renderWith('{{RESPONSE_HEADERS_COPY_ALL}}{{BODY_CONTENT}}{{JSON_SCRIPT}}', {
+            const html = await renderWith('{{RESPONSE_HEADERS_COPY_ALL}}{{BODY_CONTENT}}{{BODY_SCRIPT}}', {
                 response_headers: { Accept: '*/*', Server: 'nginx' }
             });
 
@@ -204,7 +204,7 @@ describe('webviewGenerator', () => {
         });
 
         test('request headers copy-all button renders for populated headers', async () => {
-            const html = await renderWith('{{REQUEST_HEADERS_COPY_ALL}}{{BODY_CONTENT}}{{JSON_SCRIPT}}', {
+            const html = await renderWith('{{REQUEST_HEADERS_COPY_ALL}}{{BODY_CONTENT}}{{BODY_SCRIPT}}', {
                 request_headers: { 'Content-Type': 'application/json' }
             });
 
@@ -214,7 +214,7 @@ describe('webviewGenerator', () => {
         });
 
         test('copy-all headers button is omitted when there are no headers', async () => {
-            const html = await renderWith('X{{REQUEST_HEADERS_COPY_ALL}}Y{{BODY_CONTENT}}{{JSON_SCRIPT}}', {
+            const html = await renderWith('X{{REQUEST_HEADERS_COPY_ALL}}Y{{BODY_CONTENT}}{{BODY_SCRIPT}}', {
                 request_headers: {}
             });
 
@@ -223,7 +223,7 @@ describe('webviewGenerator', () => {
         });
 
         test('escapes special characters in header copy data', async () => {
-            const html = await renderWith('{{REQUEST_HEADERS_HTML}}{{BODY_CONTENT}}{{JSON_SCRIPT}}', {
+            const html = await renderWith('{{REQUEST_HEADERS_HTML}}{{BODY_CONTENT}}{{BODY_SCRIPT}}', {
                 request_headers: { 'X-Test': '"><img src=x>' }
             });
 
@@ -233,7 +233,7 @@ describe('webviewGenerator', () => {
     });
 
     test('getWebviewContent handles non-JSON body', async () => {
-        const mockTemplate = '{{BODY_CONTENT}} {{JSON_SCRIPT}}';
+        const mockTemplate = '{{BODY_CONTENT}} {{BODY_SCRIPT}}';
         mockFs.readFile.mockResolvedValue(new TextEncoder().encode(mockTemplate));
 
         const result: cliService.RequestExecutionResult = {
@@ -249,7 +249,7 @@ describe('webviewGenerator', () => {
 
         const html = await getWebviewContent(mockContext, result);
 
-        expect(html).toContain('<pre><code>Plain text body</code></pre>');
+        expect(html).toContain('<pre class="text-body"><code>Plain text body</code></pre>');
         expect(html).not.toContain('const jsonData =');
     });
 });

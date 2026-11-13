@@ -92,8 +92,8 @@ export async function getWebviewContent(context: vscode.ExtensionContext, result
                .replace('{{RESPONSE_HEADERS_COUNT}}', Object.keys(result.response_headers).length.toString())
                .replace('{{RESPONSE_HEADERS_COPY_ALL}}', copyAllHeadersButton(result.response_headers))
                .replace('{{RESPONSE_HEADERS_HTML}}', responseHeadersHtml)
-               .replace('{{BODY_CONTENT}}', renderedBody.content)
-               .replace('{{BODY_SCRIPT}}', renderedBody.script);
+               .replace('{{BODY_CONTENT}}', () => renderedBody.content)
+               .replace('{{BODY_SCRIPT}}', () => renderedBody.script);
 
     return html;
 }

@@ -252,4 +252,23 @@ describe('webviewGenerator', () => {
         expect(html).toContain('<pre class="text-body"><code>Plain text body</code></pre>');
         expect(html).not.toContain('const jsonData =');
     });
+
+    test('getWebviewContent keeps replacement patterns in a text body literal', async () => {
+        mockFs.readFile.mockResolvedValue(new TextEncoder().encode('{{BODY_CONTENT}}'));
+
+        const result: cliService.RequestExecutionResult = {
+            request_name: 'Test',
+            method: 'GET',
+            url: 'http://test',
+            status: 200,
+            elapsed_ms: 50,
+            request_headers: {},
+            response_headers: { 'content-type': 'text/plain' },
+            body: "costs $& and $'"
+        };
+
+        const html = await getWebviewContent(mockContext, result);
+
+        expect(html).toContain('costs $&amp; and $&#039;');
+    });
 });

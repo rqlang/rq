@@ -32,6 +32,13 @@ describe('bodyRenderers', () => {
         expect(target.script).toContain('const jsonData = {\n  "a": 1\n}');
     });
 
+    test('keeps a closing script tag in a JSON body inside the script', async () => {
+        const target = await render({ 'content-type': 'application/json' }, '{"a":"</script><script>x()</script>"}');
+
+        expect(target.script).not.toContain('</script>');
+        expect(target.script).toContain('"\\u003c/script>\\u003cscript>x()\\u003c/script>"');
+    });
+
     test('renders a +json media type as a JSON tree', async () => {
         const target = await render({ 'content-type': 'application/problem+json' }, '{"title":"x"}');
 

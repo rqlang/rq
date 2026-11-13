@@ -16,7 +16,7 @@ const jsonRenderer: BodyRenderer = {
         return (mediaType === undefined || isJsonMediaType(mediaType)) && parsesAsJson(body);
     },
     async render(context: vscode.ExtensionContext, body: string): Promise<RenderedBody> {
-        const formattedBody = JSON.stringify(JSON.parse(body), null, 2);
+        const formattedBody = JSON.stringify(JSON.parse(body), null, 2).replace(/</g, '\\u003c');
         const rendererUri = vscode.Uri.joinPath(context.extensionUri, 'media', 'jsonRenderer.js');
         const rendererScript = new TextDecoder().decode(await vscode.workspace.fs.readFile(rendererUri));
         return {

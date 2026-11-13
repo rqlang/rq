@@ -3,7 +3,7 @@ use crate::commands::shared::{
 };
 use crate::commands::validators;
 use crate::core::error::RqError;
-use crate::core::formatter::{pretty_body, render, to_json, OutputFormat, TextBlock};
+use crate::core::formatter::{render, to_json, OutputFormat, TextBlock};
 use clap::{Args, Subcommand};
 use rq_lib::client::models::{PreparedRequest, RequestDetails, RequestTarget};
 use rq_lib::lint::LintScope;
@@ -449,9 +449,7 @@ fn render_execution_result(result: &RequestExecutionResult, parts: PrintParts) -
         parts
             .headers
             .then(|| render_headers(&result.response_headers)),
-        parts
-            .body
-            .then(|| pretty_body(&result.body).trim_end().to_string()),
+        parts.body.then(|| result.body.trim_end().to_string()),
     ];
     let rendered = sections
         .into_iter()

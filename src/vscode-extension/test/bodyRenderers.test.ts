@@ -29,7 +29,13 @@ describe('bodyRenderers', () => {
         const target = await render({ 'content-type': 'application/json' }, '{"a":1}');
 
         expect(target.content).toContain('id="json-body"');
-        expect(target.script).toContain('const jsonData = {\n  "a": 1\n}');
+        expect(target.script).toContain('const jsonTree = {"type":"object","entries":[["a",{"type":"number","text":"1"}]]};');
+    });
+
+    test('embeds an object key named __proto__ as a string', async () => {
+        const target = await render({ 'content-type': 'application/json' }, '{"__proto__":1}');
+
+        expect(target.script).toContain('"entries":[["__proto__",');
     });
 
     test('keeps a closing script tag in a JSON body inside the script', async () => {

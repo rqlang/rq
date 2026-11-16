@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { escapeHtml } from './html';
+import { parseJsonTree } from './jsonTree';
 
 export interface RenderedBody {
     content: string;
@@ -16,19 +17,19 @@ interface MediaTypeRenderer extends BodyRenderer {
 
 const jsonRenderer: MediaTypeRenderer = {
     accepts(mediaType: string | undefined, body: string): boolean {
-        return (mediaType === undefined || isJsonMediaType(mediaType)) && parsesAsJson(body);
+        return (mediaType === undefined || isJsonMediaType(mediaType)) && parseJsonTree(body) !== undefined;
     },
     async render(context: vscode.ExtensionContext, body: string): Promise<RenderedBody> {
-        const formattedBody = JSON.stringify(JSON.parse(body), null, 2).replace(/</g, '\\u003c');
+        const tree = JSON.stringify(parseJsonTree(body)).replace(/</g, '\\u003c');
         const rendererScript = await readJsonRendererScript(context);
         return {
             content: '<div id="json-body"></div>',
             script: `
-        const jsonData = ${formattedBody};
+        const jsonTree = ${tree};
 
         ${rendererScript}
 
-        renderJSON(jsonData, document.getElementById('json-body'));
+        renderJSON(jsonTree, document.getElementById('json-body'));
     `
         };
     }
@@ -76,13 +77,4 @@ const jsonMediaTypes = ['application/json', 'text/json', 'application/x-json'];
 
 function isJsonMediaType(mediaType: string): boolean {
     return jsonMediaTypes.includes(mediaType) || mediaType.endsWith('+json');
-}
-
-function parsesAsJson(body: string): boolean {
-    try {
-        JSON.parse(body);
-        return true;
-    } catch {
-        return false;
-    }
 }

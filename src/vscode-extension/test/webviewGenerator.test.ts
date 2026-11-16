@@ -59,7 +59,7 @@ describe('webviewGenerator', () => {
         expect(html).toContain('200');
 
         expect(html).toContain('id="json-body"');
-        expect(html).toContain('const jsonData = {');
+        expect(html).toContain('const jsonTree = {');
         expect(html).toContain(mockRenderer);
     });
 
@@ -272,7 +272,7 @@ describe('webviewGenerator', () => {
         const html = await getWebviewContent(mockContext, result);
 
         expect(html).toContain('<pre class="text-body"><code>Plain text body</code></pre>');
-        expect(html).not.toContain('const jsonData =');
+        expect(html).not.toContain('const jsonTree =');
     });
 
     test('getWebviewContent keeps replacement patterns in a text body literal', async () => {

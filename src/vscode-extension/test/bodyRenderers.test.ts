@@ -126,6 +126,62 @@ describe('bodyRenderers', () => {
         expect(readFile).toHaveBeenCalledTimes(1);
     });
 
+    test('renders a text/html body as a sandboxed preview', async () => {
+        const target = await render({ 'content-type': 'text/html; charset=utf-8' }, '<p>hi</p>');
+
+        expect(target.content).toContain('<iframe class="html-view html-preview" data-view="preview" sandbox="" srcdoc="&lt;p&gt;hi&lt;/p&gt;"></iframe>');
+    });
+
+    test('renders an application/xhtml+xml body as a preview', async () => {
+        const target = await render({ 'content-type': 'application/xhtml+xml' }, '<html></html>');
+
+        expect(target.content).toContain('class="html-view html-preview"');
+    });
+
+    test('keeps the HTML source next to the preview', async () => {
+        const target = await render({ 'content-type': 'text/html' }, '<p>hi</p>');
+
+        expect(target.content).toContain('<pre class="html-view text-body" data-view="source" hidden><code>&lt;p&gt;hi&lt;/p&gt;</code></pre>');
+    });
+
+    test('escapes quotes in the preview srcdoc', async () => {
+        const target = await render({ 'content-type': 'text/html' }, '<a href="x" onclick=\'y\'>');
+
+        expect(target.content).toContain('srcdoc="&lt;a href=&quot;x&quot; onclick=&#039;y&#039;&gt;"');
+    });
+
+    test.each(['<!DOCTYPE html><html></html>', '  \n<html lang="en"></html>', '\uFEFF<html>'])('renders a body without content-type that is an HTML document as a preview: %j', async (body) => {
+        const target = await render({}, body);
+
+        expect(target.content).toContain('class="html-view html-preview"');
+    });
+
+    test('renders a body without content-type that only contains HTML tags as text', async () => {
+        const target = await render({}, '<p>hi</p>');
+
+        expect(target.content).toBe('<pre class="text-body"><code>&lt;p&gt;hi&lt;/p&gt;</code></pre>');
+    });
+
+    test('renders a text/plain HTML document as text', async () => {
+        const target = await render({ 'content-type': 'text/plain' }, '<!doctype html><html></html>');
+
+        expect(target.content).toBe('<pre class="text-body"><code>&lt;!doctype html&gt;&lt;html&gt;&lt;/html&gt;</code></pre>');
+    });
+
+    test('switches between the HTML preview and source', async () => {
+        const target = await render({ 'content-type': 'text/html' }, '<p>hi</p>');
+        const elements = [
+            { dataset: { view: 'preview' }, hidden: false, classList: { toggle: jest.fn() } },
+            { dataset: { view: 'source' }, hidden: true, classList: { toggle: jest.fn() } }
+        ];
+        const document = { querySelectorAll: () => elements };
+
+        new Function('document', `${target.script}\nshowHtmlView('source');`)(document);
+
+        expect(elements.map(element => element.hidden)).toEqual([true, false]);
+        expect(elements[1].classList.toggle).toHaveBeenCalledWith('active', true);
+    });
+
     test('escapes HTML in a text body', async () => {
         const target = await render({ 'content-type': 'text/plain' }, '<b>hi</b>');
 

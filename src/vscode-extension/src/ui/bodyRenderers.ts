@@ -35,6 +35,34 @@ function jsonRenderer(mediaType: string | undefined, body: string): BodyRenderer
     };
 }
 
+function htmlRenderer(mediaType: string | undefined, body: string): BodyRenderer | undefined {
+    const isHtml = mediaType === undefined ? isHtmlDocument(body) : htmlMediaTypes.includes(mediaType);
+    if (!isHtml) {
+        return undefined;
+    }
+    return {
+        async render(): Promise<RenderedBody> {
+            const escapedBody = escapeHtml(body);
+            return {
+                content: `<div class="html-body">
+            <div class="html-view-toggle">
+                <button class="html-view-btn active" data-view="preview" onclick="showHtmlView('preview')">Preview</button>
+                <button class="html-view-btn" data-view="source" onclick="showHtmlView('source')">Source</button>
+            </div>
+            <iframe class="html-view html-preview" data-view="preview" sandbox="" srcdoc="${escapedBody}"></iframe>
+            <pre class="html-view text-body" data-view="source" hidden><code>${escapedBody}</code></pre>
+        </div>`,
+                script: `
+        function showHtmlView(view) {
+            document.querySelectorAll('.html-view-btn').forEach(button => button.classList.toggle('active', button.dataset.view === view));
+            document.querySelectorAll('.html-view').forEach(element => { element.hidden = element.dataset.view !== view; });
+        }
+    `
+            };
+        }
+    };
+}
+
 const textRenderer: BodyRenderer = {
     async render(_context: vscode.ExtensionContext, body: string): Promise<RenderedBody> {
         return {
@@ -44,7 +72,7 @@ const textRenderer: BodyRenderer = {
     }
 };
 
-const mediaTypeRenderers: MediaTypeRenderer[] = [jsonRenderer];
+const mediaTypeRenderers: MediaTypeRenderer[] = [jsonRenderer, htmlRenderer];
 
 let jsonRendererScript: Promise<string> | undefined;
 
@@ -83,4 +111,10 @@ const jsonMediaTypes = ['application/json', 'text/json', 'application/x-json'];
 
 function isJsonMediaType(mediaType: string): boolean {
     return jsonMediaTypes.includes(mediaType) || mediaType.endsWith('+json');
+}
+
+const htmlMediaTypes = ['text/html', 'application/xhtml+xml'];
+
+function isHtmlDocument(body: string): boolean {
+    return /^(<!doctype\s+html|<html[\s>])/i.test(body.trimStart());
 }

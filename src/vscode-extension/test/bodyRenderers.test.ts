@@ -129,7 +129,7 @@ describe('bodyRenderers', () => {
     test('renders a text/html body as a sandboxed preview', async () => {
         const target = await render({ 'content-type': 'text/html; charset=utf-8' }, '<p>hi</p>');
 
-        expect(target.content).toContain('<iframe class="html-view html-preview" data-view="preview" sandbox="" srcdoc="&lt;p&gt;hi&lt;/p&gt;"></iframe>');
+        expect(target.content).toContain('sandbox="" srcdoc="&lt;p&gt;hi&lt;/p&gt;"></iframe>');
     });
 
     test('renders an application/xhtml+xml body as a preview', async () => {
@@ -138,10 +138,16 @@ describe('bodyRenderers', () => {
         expect(target.content).toContain('class="html-view html-preview"');
     });
 
-    test('keeps the HTML source next to the preview', async () => {
+    test('embeds the HTML body once', async () => {
         const target = await render({ 'content-type': 'text/html' }, '<p>hi</p>');
 
-        expect(target.content).toContain('<pre class="html-view text-body" data-view="source" hidden><code>&lt;p&gt;hi&lt;/p&gt;</code></pre>');
+        expect(target.content.split('&lt;p&gt;hi&lt;/p&gt;')).toHaveLength(2);
+    });
+
+    test('labels the HTML preview frame', async () => {
+        const target = await render({ 'content-type': 'text/html' }, '<p>hi</p>');
+
+        expect(target.content).toContain('title="Response preview"');
     });
 
     test('escapes quotes in the preview srcdoc', async () => {
@@ -150,7 +156,7 @@ describe('bodyRenderers', () => {
         expect(target.content).toContain('srcdoc="&lt;a href=&quot;x&quot; onclick=&#039;y&#039;&gt;"');
     });
 
-    test.each(['<!DOCTYPE html><html></html>', '  \n<html lang="en"></html>', '\uFEFF<html>'])('renders a body without content-type that is an HTML document as a preview: %j', async (body) => {
+    test.each(['<!DOCTYPE html><html></html>', '  \n<html lang="en"></html>', '\uFEFF<html>', '<!-- generated -->\n<!DOCTYPE html><html>', '<?xml version="1.0"?>\n<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"><html>'])('renders a body without content-type that is an HTML document as a preview: %j', async (body) => {
         const target = await render({}, body);
 
         expect(target.content).toContain('class="html-view html-preview"');
@@ -162,24 +168,73 @@ describe('bodyRenderers', () => {
         expect(target.content).toBe('<pre class="text-body"><code>&lt;p&gt;hi&lt;/p&gt;</code></pre>');
     });
 
+    test.each(['<!-- a --><p>hi</p>', '<!-- unterminated <html>', '<?xml version="1.0"?><root/>'])('renders a body without content-type whose leading markup is not followed by an html tag as text: %j', async (body) => {
+        const target = await render({}, body);
+
+        expect(target.content).not.toContain('html-preview');
+    });
+
+    test('detects HTML after many leading comments in linear time', async () => {
+        const body = '<!---->'.repeat(200_000) + 'x';
+
+        const started = Date.now();
+        const target = await render({}, body);
+
+        expect(target.content).not.toContain('html-preview');
+        expect(Date.now() - started).toBeLessThan(1000);
+    });
+
     test('renders a text/plain HTML document as text', async () => {
         const target = await render({ 'content-type': 'text/plain' }, '<!doctype html><html></html>');
 
         expect(target.content).toBe('<pre class="text-body"><code>&lt;!doctype html&gt;&lt;html&gt;&lt;/html&gt;</code></pre>');
     });
 
-    test('switches between the HTML preview and source', async () => {
+    const htmlViewDocument = (srcdoc: string) => {
+        const preview = { dataset: { view: 'preview' }, hidden: false, srcdoc, srcdocAssignments: 0 };
+        const trackedPreview = new Proxy(preview, {
+            set(target, property, value) {
+                if (property === 'srcdoc') {
+                    target.srcdocAssignments += 1;
+                }
+                return Reflect.set(target, property, value);
+            }
+        });
+        const source = { dataset: { view: 'source' }, hidden: true };
+        const sourceCode = { textContent: '' };
+        const buttons = ['preview', 'source'].map(view => ({ dataset: { view }, classList: { toggle: jest.fn() } }));
+        const document = {
+            querySelector: (selector: string) => selector === '.html-preview' ? trackedPreview : sourceCode,
+            querySelectorAll: (selector: string) => selector === '.html-view-btn' ? buttons : [trackedPreview, source]
+        };
+        return { document, preview, source, sourceCode, buttons };
+    };
+
+    const showHtmlView = async (view: string) => {
         const target = await render({ 'content-type': 'text/html' }, '<p>hi</p>');
-        const elements = [
-            { dataset: { view: 'preview' }, hidden: false, classList: { toggle: jest.fn() } },
-            { dataset: { view: 'source' }, hidden: true, classList: { toggle: jest.fn() } }
-        ];
-        const document = { querySelectorAll: () => elements };
+        const page = htmlViewDocument('<p>hi</p>');
+        new Function('document', `${target.script}\nshowHtmlView('${view}');`)(page.document);
+        return page;
+    };
 
-        new Function('document', `${target.script}\nshowHtmlView('source');`)(document);
+    test('shows the HTML source and hides the preview', async () => {
+        const target = await showHtmlView('source');
 
-        expect(elements.map(element => element.hidden)).toEqual([true, false]);
-        expect(elements[1].classList.toggle).toHaveBeenCalledWith('active', true);
+        expect([target.preview.hidden, target.source.hidden]).toEqual([true, false]);
+        expect(target.buttons[1].classList.toggle).toHaveBeenCalledWith('active', true);
+    });
+
+    test('fills the HTML source from the preview on first show', async () => {
+        const target = await showHtmlView('source');
+
+        expect(target.sourceCode.textContent).toBe('<p>hi</p>');
+    });
+
+    test('reloads the response into the preview when it is shown again', async () => {
+        const target = await showHtmlView('preview');
+
+        expect(target.preview.srcdocAssignments).toBe(1);
+        expect(target.preview.srcdoc).toBe('<p>hi</p>');
     });
 
     test('escapes HTML in a text body', async () => {

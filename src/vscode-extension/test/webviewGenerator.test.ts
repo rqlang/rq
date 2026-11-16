@@ -59,7 +59,7 @@ describe('webviewGenerator', () => {
         expect(html).toContain('200');
 
         expect(html).toContain('id="json-body"');
-        expect(html).toContain('const jsonTree = ["o","key","value"];');
+        expect(html).toContain('const jsonTree = JSON.parse("[\\"o\\",\\"key\\",\\"value\\"]");');
         expect(html).toContain(mockRenderer);
     });
 

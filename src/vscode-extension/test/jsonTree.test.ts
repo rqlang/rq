@@ -1,4 +1,4 @@
-import { parseJsonTree } from '../src/ui/jsonTree';
+import { parseJsonTree, serializeJsonTree } from '../src/ui/jsonTree';
 
 describe('jsonTree', () => {
     test('keeps the text of a number', () => {
@@ -80,5 +80,21 @@ describe('jsonTree', () => {
     ])('rejects %j as JSON.parse does', (body) => {
         expect(() => JSON.parse(body)).toThrow();
         expect(parseJsonTree(body)).toBeUndefined();
+    });
+
+    test('serializes a tree as JSON.stringify does', () => {
+        const tree = parseJsonTree('{"a":[1,"x\\"y",{},[]],"b":null,"c":{"d":true}}');
+
+        const target = serializeJsonTree(tree!);
+
+        expect(target).toBe(JSON.stringify(tree));
+    });
+
+    test('serializes nesting deeper than the call stack', () => {
+        const depth = 200_000;
+
+        const target = serializeJsonTree(parseJsonTree('['.repeat(depth) + ']'.repeat(depth))!);
+
+        expect(target).toBe('["a",'.repeat(depth - 1) + '["a"]' + ']'.repeat(depth - 1));
     });
 });

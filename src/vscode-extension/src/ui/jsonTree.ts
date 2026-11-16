@@ -13,6 +13,25 @@ export function parseJsonTree(text: string): JsonNode | undefined {
     }
 }
 
+export function serializeJsonTree(tree: JsonNode): string {
+    const output: string[] = [];
+    const pending: (JsonNode | { text: string })[] = [tree];
+    for (let piece = pending.pop(); piece !== undefined; piece = pending.pop()) {
+        if (typeof piece === 'string' || Array.isArray(piece) && piece.length === 1) {
+            output.push(JSON.stringify(piece));
+        } else if (!Array.isArray(piece)) {
+            output.push(piece.text);
+        } else {
+            output.push(`[${JSON.stringify(piece[0])}`);
+            pending.push({ text: ']' });
+            for (let index = piece.length - 1; index > 0; index--) {
+                pending.push(piece[index], { text: ',' });
+            }
+        }
+    }
+    return output.join('');
+}
+
 class JsonTreeParser {
     private position = 0;
     private readonly open: JsonContainer[] = [];

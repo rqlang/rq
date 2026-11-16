@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { escapeHtml } from './html';
-import { parseJsonTree } from './jsonTree';
+import { parseJsonTree, serializeJsonTree } from './jsonTree';
 
 export interface RenderedBody {
     content: string;
@@ -24,7 +24,7 @@ function jsonRenderer(mediaType: string | undefined, body: string): BodyRenderer
             return {
                 content: '<div id="json-body"></div>',
                 script: `
-        const jsonTree = ${JSON.stringify(tree).replace(/</g, '\\u003c')};
+        const jsonTree = JSON.parse(${JSON.stringify(serializeJsonTree(tree)).replace(/</g, '\\u003c')});
 
         ${rendererScript}
 

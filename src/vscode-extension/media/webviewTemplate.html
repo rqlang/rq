@@ -152,6 +152,11 @@
             font-family: var(--vscode-editor-font-family);
         }
 
+        .text-body {
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+        }
+
         /* JSON renderer styles */
         #json-body {
             font-family: var(--vscode-editor-font-family);
@@ -370,7 +375,7 @@
             content.classList.toggle('collapsed');
         }
 
-        {{JSON_SCRIPT}}
+        {{BODY_SCRIPT}}
     </script>
 </body>
 

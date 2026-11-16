@@ -33,6 +33,10 @@ fn main() {
             test_request_print_body_omits_meta,
         ),
         Trial::test(
+            "request_print_body_is_the_raw_body",
+            test_request_print_body_is_the_raw_body,
+        ),
+        Trial::test(
             "request_print_filters_json_fields",
             test_request_print_filters_json_fields,
         ),
@@ -432,6 +436,20 @@ fn test_request_print_body_omits_meta() -> Result<(), Failed> {
     let stdout = String::from_utf8_lossy(&output.stdout);
     if !output.status.success() || !stdout.starts_with('{') || stdout.contains("200 OK") {
         return Err(format!("Unexpected output: {stdout}").into());
+    }
+    Ok(())
+}
+
+fn test_request_print_body_is_the_raw_body() -> Result<(), Failed> {
+    let text = run_basic_with(&["-p", "b"])?;
+    let json = run_basic_with(&["-p", "b", "-f", "json"])?;
+    let raw_body = parse_first_result(&json)?["body"]
+        .as_str()
+        .ok_or("Missing body in json output")?
+        .to_string();
+    let stdout = String::from_utf8_lossy(&text.stdout);
+    if stdout.strip_suffix('\n') != Some(raw_body.as_str()) {
+        return Err(format!("Expected the raw body {raw_body:?}, got {stdout:?}").into());
     }
     Ok(())
 }

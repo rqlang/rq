@@ -3,7 +3,7 @@ use crate::commands::shared::{
 };
 use crate::commands::validators;
 use crate::core::error::RqError;
-use crate::core::formatter::{pretty_body, render, to_json, OutputFormat, TextBlock};
+use crate::core::formatter::{render, to_json, OutputFormat, TextBlock};
 use clap::{Args, Subcommand};
 use rq_lib::client::models::{PreparedRequest, RequestDetails, RequestTarget};
 use rq_lib::lint::LintScope;
@@ -449,9 +449,7 @@ fn render_execution_result(result: &RequestExecutionResult, parts: PrintParts) -
         parts
             .headers
             .then(|| render_headers(&result.response_headers)),
-        parts
-            .body
-            .then(|| pretty_body(&result.body).trim_end().to_string()),
+        parts.body.then(|| result.body.clone()),
     ];
     let rendered = sections
         .into_iter()
@@ -459,7 +457,7 @@ fn render_execution_result(result: &RequestExecutionResult, parts: PrintParts) -
         .filter(|section| !section.is_empty())
         .collect::<Vec<_>>()
         .join("\n\n");
-    if rendered.is_empty() {
+    if rendered.is_empty() || rendered.ends_with('\n') {
         rendered
     } else {
         format!("{rendered}\n")
@@ -533,7 +531,43 @@ fn is_yes(answer: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::is_yes;
+    use super::{is_yes, render_execution_result, PrintParts, RequestExecutionResult};
+    use std::collections::HashMap;
+    use std::str::FromStr;
+
+    fn result_with_body(body: &str) -> RequestExecutionResult {
+        RequestExecutionResult {
+            request_name: "r".to_string(),
+            method: "GET".to_string(),
+            url: "http://localhost".to_string(),
+            status: 200,
+            elapsed_ms: 1,
+            request_headers: HashMap::new(),
+            response_headers: HashMap::new(),
+            body: body.to_string(),
+        }
+    }
+
+    fn render_body(body: &str) -> Result<String, String> {
+        Ok(render_execution_result(
+            &result_with_body(body),
+            PrintParts::from_str("b")?,
+        ))
+    }
+
+    #[test]
+    fn body_keeps_its_trailing_whitespace() -> Result<(), String> {
+        let target = render_body("text  \n\n")?;
+        assert_eq!(target, "text  \n\n");
+        Ok(())
+    }
+
+    #[test]
+    fn body_without_trailing_newline_gets_one() -> Result<(), String> {
+        let target = render_body("text")?;
+        assert_eq!(target, "text\n");
+        Ok(())
+    }
 
     #[test]
     fn accepts_y_and_yes_in_any_case() {

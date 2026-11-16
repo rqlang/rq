@@ -83,7 +83,7 @@ function renderJSON(data, container) {
                 const line = document.createElement('div');
                 line.className = 'json-line';
                 
-                line.innerHTML += '<span class="json-key">"' + key + '"</span>: ';
+                line.innerHTML += '<span class="json-key">"' + escapeHtml(key) + '"</span>: ';
                 renderJSON(data[key], line);
                 
                 if (index < keys.length - 1) {
@@ -109,7 +109,12 @@ function renderJSON(data, container) {
 }
 
 function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+    const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+    };
+    return text.replace(/[&<>"']/g, m => map[m]);
 }

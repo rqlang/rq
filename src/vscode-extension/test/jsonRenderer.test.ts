@@ -29,12 +29,16 @@ function allHtml(element: FakeElement): string {
     return element.innerHTML + element.children.map(allHtml).join('');
 }
 
-function renderJson(body: string): string {
+function renderTree(body: string): FakeElement {
     const source = fs.readFileSync(path.join(__dirname, '..', 'media', 'jsonRenderer.js'), 'utf8');
     const renderJSON = new Function('document', `${source}\nreturn renderJSON;`)({ createElement });
     const container = createElement();
     renderJSON(parseJsonTree(body), container);
-    return allHtml(container);
+    return container;
+}
+
+function renderJson(body: string): string {
+    return allHtml(renderTree(body));
 }
 
 describe('jsonRenderer', () => {
@@ -81,5 +85,26 @@ describe('jsonRenderer', () => {
 
         expect(target).toContain('<span class="json-number">1.50</span>');
         expect(target).toContain('<span class="json-number">1e3</span>');
+    });
+
+    test('appends the comma after the nested value of its line', () => {
+        const target = renderTree('[[1],2]');
+
+        const [first, second] = target.children[2].children;
+        expect(first.children.map(child => child.className))
+            .toEqual(['json-toggle', 'json-bracket', 'json-content', 'json-bracket', 'json-comma']);
+        expect(second.children).toHaveLength(0);
+    });
+
+    test('renders nesting deeper than the call stack', () => {
+        const depth = 200_000;
+
+        const target = renderTree('['.repeat(depth) + '1' + ']'.repeat(depth));
+
+        let element = target;
+        for (let level = 0; level < depth; level++) {
+            element = element.children[2].children[0];
+        }
+        expect(element.innerHTML).toBe('<span class="json-number">1</span>');
     });
 });

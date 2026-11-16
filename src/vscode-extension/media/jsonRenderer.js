@@ -1,13 +1,17 @@
-function renderJSON(node, container) {
+function renderJSON(root, container) {
+    const tasks = [() => renderNode(root, container, tasks)];
+    while (tasks.length > 0) {
+        tasks.pop()();
+    }
+}
+
+function renderNode(node, container, tasks) {
     if (typeof node === 'string') {
         container.innerHTML += '<span class="json-string">"' + escapeHtml(node) + '"</span>';
     } else if (node[0] === 'a') {
-        renderCollection(node.slice(1), '[', ']', container, (item, line) => renderJSON(item, line));
+        renderCollection(node.slice(1).map(value => ({ value })), '[', ']', container, tasks);
     } else if (node[0] === 'o') {
-        renderCollection(entriesOf(node), '{', '}', container, ([key, value], line) => {
-            line.innerHTML += '<span class="json-key">"' + escapeHtml(key) + '"</span>: ';
-            renderJSON(value, line);
-        });
+        renderCollection(entriesOf(node), '{', '}', container, tasks);
     } else {
         container.innerHTML += '<span class="' + literalClass(node[0]) + '">' + escapeHtml(node[0]) + '</span>';
     }
@@ -16,7 +20,7 @@ function renderJSON(node, container) {
 function entriesOf(node) {
     const entries = [];
     for (let index = 1; index < node.length; index += 2) {
-        entries.push([node[index], node[index + 1]]);
+        entries.push({ key: node[index], value: node[index + 1] });
     }
     return entries;
 }
@@ -28,7 +32,7 @@ function literalClass(text) {
     return text === 'true' || text === 'false' ? 'json-boolean' : 'json-number';
 }
 
-function renderCollection(children, open, close, container, renderChild) {
+function renderCollection(children, open, close, container, tasks) {
     if (children.length === 0) {
         container.innerHTML += '<span class="json-bracket">' + open + close + '</span>';
         return;
@@ -52,18 +56,22 @@ function renderCollection(children, open, close, container, renderChild) {
     const content = document.createElement('div');
     content.className = 'json-content';
 
-    children.forEach((child, index) => {
+    const lines = children.map(({ key }) => {
         const line = document.createElement('div');
         line.className = 'json-line';
-        renderChild(child, line);
-        if (index < children.length - 1) {
-            const comma = document.createElement('span');
-            comma.className = 'json-comma';
-            comma.textContent = ',';
-            line.appendChild(comma);
+        if (key !== undefined) {
+            line.innerHTML += '<span class="json-key">"' + escapeHtml(key) + '"</span>: ';
         }
         content.appendChild(line);
+        return line;
     });
+
+    for (let index = children.length - 1; index >= 0; index--) {
+        if (index < children.length - 1) {
+            tasks.push(() => appendComma(lines[index]));
+        }
+        tasks.push(() => renderNode(children[index].value, lines[index], tasks));
+    }
 
     const closeBracket = document.createElement('div');
     closeBracket.className = 'json-bracket';
@@ -73,6 +81,13 @@ function renderCollection(children, open, close, container, renderChild) {
     container.appendChild(bracket);
     container.appendChild(content);
     container.appendChild(closeBracket);
+}
+
+function appendComma(line) {
+    const comma = document.createElement('span');
+    comma.className = 'json-comma';
+    comma.textContent = ',';
+    line.appendChild(comma);
 }
 
 function escapeHtml(text) {

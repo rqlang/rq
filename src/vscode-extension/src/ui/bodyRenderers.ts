@@ -58,8 +58,10 @@ function mediaTypeOf(headers: Record<string, string>): string | undefined {
     return mediaType ? mediaType : undefined;
 }
 
+const jsonMediaTypes = ['application/json', 'text/json', 'application/x-json'];
+
 function isJsonMediaType(mediaType: string): boolean {
-    return mediaType === 'application/json' || mediaType.endsWith('+json');
+    return jsonMediaTypes.includes(mediaType) || mediaType.endsWith('+json');
 }
 
 function parsesAsJson(body: string): boolean {

@@ -45,6 +45,12 @@ describe('bodyRenderers', () => {
         expect(target.content).toContain('id="json-body"');
     });
 
+    test.each(['text/json', 'application/x-json'])('renders a %s body as a JSON tree', async (mediaType) => {
+        const target = await render({ 'content-type': mediaType }, '{"a":1}');
+
+        expect(target.content).toContain('id="json-body"');
+    });
+
     test('ignores media type parameters and header name case', async () => {
         const target = await render({ 'Content-Type': 'Application/JSON; charset=utf-8' }, '{"a":1}');
 

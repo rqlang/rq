@@ -446,10 +446,9 @@ fn test_request_print_body_is_the_raw_body() -> Result<(), Failed> {
     let raw_body = parse_first_result(&json)?["body"]
         .as_str()
         .ok_or("Missing body in json output")?
-        .trim_end()
         .to_string();
     let stdout = String::from_utf8_lossy(&text.stdout);
-    if stdout != format!("{raw_body}\n") {
+    if stdout.strip_suffix('\n') != Some(raw_body.as_str()) {
         return Err(format!("Expected the raw body {raw_body:?}, got {stdout:?}").into());
     }
     Ok(())

@@ -147,6 +147,13 @@ describe('webviewGenerator', () => {
             expect(html).not.toContain('class="method"');
         });
 
+        test('keeps replacement patterns in the error message literal', async () => {
+            const html = await getErrorWebviewContent(mockContext, 'my-request', 'bad $& value');
+
+            expect(html).toContain('bad $&amp; value');
+            expect(html).not.toContain('{{ERROR_MESSAGE}}');
+        });
+
         test('escapes HTML special characters in error message', async () => {
             const html = await getErrorWebviewContent(mockContext, 'my-request', '<script>alert("xss")</script>');
 
@@ -220,6 +227,23 @@ describe('webviewGenerator', () => {
 
             expect(html).toContain('XY');
             expect(html).not.toContain('{{REQUEST_HEADERS_COPY_ALL}}');
+        });
+
+        test('keeps replacement patterns in a header value literal', async () => {
+            const html = await renderWith('{{RESPONSE_HEADERS_HTML}}{{BODY_CONTENT}}', {
+                response_headers: { 'X-Price': '5$&tax' }
+            });
+
+            expect(html).toContain('<td class="header-value">5$&amp;tax</td>');
+        });
+
+        test('leaves a placeholder inside a header value untouched', async () => {
+            const html = await renderWith('{{RESPONSE_HEADERS_HTML}}<main>{{BODY_CONTENT}}</main>', {
+                response_headers: { 'X-Debug': '{{BODY_CONTENT}}' }
+            });
+
+            expect(html).toContain('<td class="header-value">{{BODY_CONTENT}}</td>');
+            expect(html).toContain('<main><pre class="text-body"><code>plain text</code></pre></main>');
         });
 
         test('escapes special characters in header copy data', async () => {

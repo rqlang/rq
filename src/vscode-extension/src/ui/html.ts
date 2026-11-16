@@ -8,3 +8,8 @@ export function escapeHtml(text: string): string {
     };
     return text.replace(/[&<>"']/g, m => map[m]);
 }
+
+export function fillTemplate(template: string, values: Record<string, string>): string {
+    return template.replace(/\{\{(\w+)\}\}/g, (placeholder, name: string) =>
+        Object.prototype.hasOwnProperty.call(values, name) ? values[name] : placeholder);
+}

@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as rqClient from '../rqClient';
 import { getBodyRenderer } from './bodyRenderers';
-import { escapeHtml } from './html';
+import { escapeHtml, fillTemplate } from './html';
 
 const COPY_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
 
@@ -51,11 +51,12 @@ export async function getErrorWebviewContent(
     const templateBuffer = await vscode.workspace.fs.readFile(templateUri);
     const html = new TextDecoder().decode(templateBuffer);
 
-    return html
-        .replace('{{REQUEST_NAME}}', escapeHtml(requestName))
-        .replace('{{REQUEST_INFO}}', requestInfoHtml)
-        .replace('{{HEADERS_SECTION}}', headersSection)
-        .replace('{{ERROR_MESSAGE}}', escapeHtml(errorMessage));
+    return fillTemplate(html, {
+        REQUEST_NAME: escapeHtml(requestName),
+        REQUEST_INFO: requestInfoHtml,
+        HEADERS_SECTION: headersSection,
+        ERROR_MESSAGE: escapeHtml(errorMessage)
+    });
 }
 
 export async function getWebviewContent(context: vscode.ExtensionContext, result: rqClient.RequestExecutionResult): Promise<string> {
@@ -74,26 +75,24 @@ export async function getWebviewContent(context: vscode.ExtensionContext, result
         .map(([key, value]) => headerRowHtml(key, value))
         .join('\n');
     
-    // Read template file
     const templateUri = vscode.Uri.joinPath(context.extensionUri, 'media', 'webviewTemplate.html');
     const templateBuffer = await vscode.workspace.fs.readFile(templateUri);
-    let html = new TextDecoder().decode(templateBuffer);
+    const html = new TextDecoder().decode(templateBuffer);
 
-    // Replace placeholders
-    html = html.replace('{{REQUEST_NAME}}', escapeHtml(result.request_name))
-               .replace('{{METHOD}}', escapeHtml(result.method))
-               .replace(/\{\{URL\}\}/g, escapeHtml(result.url))
-               .replace('{{STATUS_CLASS}}', statusClass)
-               .replace('{{STATUS}}', result.status.toString())
-               .replace('{{ELAPSED_MS}}', result.elapsed_ms.toString())
-               .replace('{{REQUEST_HEADERS_COUNT}}', Object.keys(result.request_headers).length.toString())
-               .replace('{{REQUEST_HEADERS_COPY_ALL}}', copyAllHeadersButton(result.request_headers))
-               .replace('{{REQUEST_HEADERS_HTML}}', requestHeadersHtml)
-               .replace('{{RESPONSE_HEADERS_COUNT}}', Object.keys(result.response_headers).length.toString())
-               .replace('{{RESPONSE_HEADERS_COPY_ALL}}', copyAllHeadersButton(result.response_headers))
-               .replace('{{RESPONSE_HEADERS_HTML}}', responseHeadersHtml)
-               .replace('{{BODY_CONTENT}}', () => renderedBody.content)
-               .replace('{{BODY_SCRIPT}}', () => renderedBody.script);
-
-    return html;
+    return fillTemplate(html, {
+        REQUEST_NAME: escapeHtml(result.request_name),
+        METHOD: escapeHtml(result.method),
+        URL: escapeHtml(result.url),
+        STATUS_CLASS: statusClass,
+        STATUS: result.status.toString(),
+        ELAPSED_MS: result.elapsed_ms.toString(),
+        REQUEST_HEADERS_COUNT: Object.keys(result.request_headers).length.toString(),
+        REQUEST_HEADERS_COPY_ALL: copyAllHeadersButton(result.request_headers),
+        REQUEST_HEADERS_HTML: requestHeadersHtml,
+        RESPONSE_HEADERS_COUNT: Object.keys(result.response_headers).length.toString(),
+        RESPONSE_HEADERS_COPY_ALL: copyAllHeadersButton(result.response_headers),
+        RESPONSE_HEADERS_HTML: responseHeadersHtml,
+        BODY_CONTENT: renderedBody.content,
+        BODY_SCRIPT: renderedBody.script
+    });
 }

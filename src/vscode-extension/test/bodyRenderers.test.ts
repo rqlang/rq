@@ -18,6 +18,9 @@ describe('bodyRenderers', () => {
     const render = (headers: Record<string, string>, body: string) =>
         getBodyRenderer(headers, body).render(mockContext, body);
 
+    const embeddedTree = (script: string) =>
+        new Function('document', `${script}\nreturn jsonTree;`)({ getElementById: () => null });
+
     test('renders a text/plain body that looks like JSON as text', async () => {
         const target = await render({ 'content-type': 'text/plain' }, '42');
 
@@ -29,14 +32,20 @@ describe('bodyRenderers', () => {
         const target = await render({ 'content-type': 'application/json' }, '{"a":1}');
 
         expect(target.content).toContain('id="json-body"');
-        expect(target.script).toContain('const jsonData = {\n  "a": 1\n}');
+        expect(embeddedTree(target.script)).toEqual(['o', 'a', ['1']]);
+    });
+
+    test('embeds an object key named __proto__ as a string', async () => {
+        const target = await render({ 'content-type': 'application/json' }, '{"__proto__":1}');
+
+        expect(embeddedTree(target.script)).toEqual(['o', '__proto__', ['1']]);
     });
 
     test('keeps a closing script tag in a JSON body inside the script', async () => {
         const target = await render({ 'content-type': 'application/json' }, '{"a":"</script><script>x()</script>"}');
 
         expect(target.script).not.toContain('</script>');
-        expect(target.script).toContain('"\\u003c/script>\\u003cscript>x()\\u003c/script>"');
+        expect(embeddedTree(target.script)).toEqual(['o', 'a', '</script><script>x()</script>']);
     });
 
     test('renders a +json media type as a JSON tree', async () => {
@@ -79,6 +88,26 @@ describe('bodyRenderers', () => {
         const target = await render({ 'content-type': 'application/xml' }, '{"a":1}');
 
         expect(target.content).toBe('<pre class="text-body"><code>{&quot;a&quot;:1}</code></pre>');
+    });
+
+    test('embeds a JSON tree no larger than twice the body', async () => {
+        const body = JSON.stringify(Array.from({ length: 1000 }, (_, index) => ({ id: index, name: `n${index}`, ok: true })));
+
+        const target = await render({ 'content-type': 'application/json' }, body);
+
+        expect(target.script.length).toBeLessThan(2 * body.length);
+    });
+
+    test('embeds a tree nested deeper than the call stack', async () => {
+        const depth = 200_000;
+
+        const target = await render({ 'content-type': 'application/json' }, '['.repeat(depth) + ']'.repeat(depth));
+
+        let node = embeddedTree(target.script);
+        for (let level = 1; level < depth; level++) {
+            node = node[1];
+        }
+        expect(node).toEqual(['a']);
     });
 
     test('reads the JSON renderer script once', async () => {

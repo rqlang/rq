@@ -81,6 +81,22 @@ describe('bodyRenderers', () => {
         expect(target.content).toBe('<pre class="text-body"><code>{&quot;a&quot;:1}</code></pre>');
     });
 
+    test('reads the JSON renderer script once', async () => {
+        const readFile = jest.fn().mockResolvedValue(new TextEncoder().encode('function renderJSON() {}'));
+        let isolatedGetBodyRenderer: typeof getBodyRenderer = getBodyRenderer;
+        jest.isolateModules(() => {
+            const isolatedVscode = require('vscode');
+            isolatedVscode.workspace.fs = { readFile };
+            isolatedVscode.Uri.joinPath = (vscode.Uri as any).joinPath;
+            isolatedGetBodyRenderer = require('../src/ui/bodyRenderers').getBodyRenderer;
+        });
+
+        await isolatedGetBodyRenderer({}, '{}').render(mockContext, '{}');
+        await isolatedGetBodyRenderer({}, '[]').render(mockContext, '[]');
+
+        expect(readFile).toHaveBeenCalledTimes(1);
+    });
+
     test('escapes HTML in a text body', async () => {
         const target = await render({ 'content-type': 'text/plain' }, '<b>hi</b>');
 

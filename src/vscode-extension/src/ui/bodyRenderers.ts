@@ -7,18 +7,20 @@ export interface RenderedBody {
 }
 
 export interface BodyRenderer {
-    accepts(mediaType: string | undefined, body: string): boolean;
     render(context: vscode.ExtensionContext, body: string): Promise<RenderedBody>;
 }
 
-const jsonRenderer: BodyRenderer = {
+interface MediaTypeRenderer extends BodyRenderer {
+    accepts(mediaType: string | undefined, body: string): boolean;
+}
+
+const jsonRenderer: MediaTypeRenderer = {
     accepts(mediaType: string | undefined, body: string): boolean {
         return (mediaType === undefined || isJsonMediaType(mediaType)) && parsesAsJson(body);
     },
     async render(context: vscode.ExtensionContext, body: string): Promise<RenderedBody> {
         const formattedBody = JSON.stringify(JSON.parse(body), null, 2).replace(/</g, '\\u003c');
-        const rendererUri = vscode.Uri.joinPath(context.extensionUri, 'media', 'jsonRenderer.js');
-        const rendererScript = new TextDecoder().decode(await vscode.workspace.fs.readFile(rendererUri));
+        const rendererScript = await readJsonRendererScript(context);
         return {
             content: '<div id="json-body"></div>',
             script: `
@@ -33,9 +35,6 @@ const jsonRenderer: BodyRenderer = {
 };
 
 const textRenderer: BodyRenderer = {
-    accepts(): boolean {
-        return true;
-    },
     async render(_context: vscode.ExtensionContext, body: string): Promise<RenderedBody> {
         return {
             content: `<pre class="text-body"><code>${escapeHtml(body)}</code></pre>`,
@@ -44,11 +43,26 @@ const textRenderer: BodyRenderer = {
     }
 };
 
-const bodyRenderers: BodyRenderer[] = [jsonRenderer, textRenderer];
+const mediaTypeRenderers: MediaTypeRenderer[] = [jsonRenderer];
+
+let jsonRendererScript: Promise<string> | undefined;
 
 export function getBodyRenderer(headers: Record<string, string>, body: string): BodyRenderer {
     const mediaType = mediaTypeOf(headers);
-    return bodyRenderers.find(renderer => renderer.accepts(mediaType, body)) ?? textRenderer;
+    return mediaTypeRenderers.find(renderer => renderer.accepts(mediaType, body)) ?? textRenderer;
+}
+
+function readJsonRendererScript(context: vscode.ExtensionContext): Promise<string> {
+    jsonRendererScript ??= readMediaFile(context, 'jsonRenderer.js').catch((error: unknown) => {
+        jsonRendererScript = undefined;
+        throw error;
+    });
+    return jsonRendererScript;
+}
+
+async function readMediaFile(context: vscode.ExtensionContext, name: string): Promise<string> {
+    const uri = vscode.Uri.joinPath(context.extensionUri, 'media', name);
+    return new TextDecoder().decode(await vscode.workspace.fs.readFile(uri));
 }
 
 function mediaTypeOf(headers: Record<string, string>): string | undefined {

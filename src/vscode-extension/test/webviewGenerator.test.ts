@@ -27,7 +27,6 @@ describe('webviewGenerator', () => {
     });
 
     test('getWebviewContent generates HTML with correct replacements', async () => {
-        // Mock template and renderer script
         const mockTemplate = '<html><body>{{REQUEST_NAME}} {{METHOD}} {{URL}} {{STATUS}} {{BODY_CONTENT}} {{BODY_SCRIPT}}</body></html>';
         const mockRenderer = 'function render() {}';
         
@@ -58,11 +57,10 @@ describe('webviewGenerator', () => {
         expect(html).toContain('GET');
         expect(html).toContain('https://api.example.com');
         expect(html).toContain('200');
-        
-        // Check JSON specific content
-        expect(html).toContain('id="json-body"'); // From {{BODY_CONTENT}} for JSON
-        expect(html).toContain('const jsonData = {'); // From {{BODY_SCRIPT}}
-        expect(html).toContain(mockRenderer); // Injected renderer script
+
+        expect(html).toContain('id="json-body"');
+        expect(html).toContain('const jsonData = {');
+        expect(html).toContain(mockRenderer);
     });
 
     describe('getErrorWebviewContent', () => {

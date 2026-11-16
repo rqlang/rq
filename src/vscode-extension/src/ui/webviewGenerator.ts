@@ -65,12 +65,10 @@ export async function getWebviewContent(context: vscode.ExtensionContext, result
     
     const renderedBody = await getBodyRenderer(result.response_headers, result.body).render(context, result.body);
 
-    // Format request headers as HTML table
     const requestHeadersHtml = Object.entries(result.request_headers)
         .map(([key, value]) => headerRowHtml(key, value))
         .join('\n');
 
-    // Format response headers as HTML table
     const responseHeadersHtml = Object.entries(result.response_headers)
         .map(([key, value]) => headerRowHtml(key, value))
         .join('\n');

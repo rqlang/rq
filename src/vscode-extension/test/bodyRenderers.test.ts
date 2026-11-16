@@ -29,13 +29,13 @@ describe('bodyRenderers', () => {
         const target = await render({ 'content-type': 'application/json' }, '{"a":1}');
 
         expect(target.content).toContain('id="json-body"');
-        expect(target.script).toContain('const jsonTree = {"type":"object","entries":[["a",{"type":"number","text":"1"}]]};');
+        expect(target.script).toContain('const jsonTree = ["o","a",["1"]];');
     });
 
     test('embeds an object key named __proto__ as a string', async () => {
         const target = await render({ 'content-type': 'application/json' }, '{"__proto__":1}');
 
-        expect(target.script).toContain('"entries":[["__proto__",');
+        expect(target.script).toContain('const jsonTree = ["o","__proto__",["1"]];');
     });
 
     test('keeps a closing script tag in a JSON body inside the script', async () => {
@@ -85,6 +85,14 @@ describe('bodyRenderers', () => {
         const target = await render({ 'content-type': 'application/xml' }, '{"a":1}');
 
         expect(target.content).toBe('<pre class="text-body"><code>{&quot;a&quot;:1}</code></pre>');
+    });
+
+    test('embeds a JSON tree no larger than twice the body', async () => {
+        const body = JSON.stringify(Array.from({ length: 1000 }, (_, index) => ({ id: index, name: `n${index}`, ok: true })));
+
+        const target = await render({ 'content-type': 'application/json' }, body);
+
+        expect(target.script.length).toBeLessThan(2 * body.length);
     });
 
     test('reads the JSON renderer script once', async () => {

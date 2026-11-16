@@ -1,21 +1,31 @@
-/**
- * Render a JSON tree, built from the raw body text, into a collapsible tree structure
- * @param {object} node - The JSON tree node to render
- * @param {HTMLElement} container - The container element
- */
 function renderJSON(node, container) {
-    if (node.type === 'string') {
-        container.innerHTML += '<span class="json-string">"' + escapeHtml(node.value) + '"</span>';
-    } else if (node.type === 'array') {
-        renderCollection(node.items, '[', ']', container, (item, line) => renderJSON(item, line));
-    } else if (node.type === 'object') {
-        renderCollection(node.entries, '{', '}', container, ([key, value], line) => {
+    if (typeof node === 'string') {
+        container.innerHTML += '<span class="json-string">"' + escapeHtml(node) + '"</span>';
+    } else if (node[0] === 'a') {
+        renderCollection(node.slice(1), '[', ']', container, (item, line) => renderJSON(item, line));
+    } else if (node[0] === 'o') {
+        renderCollection(entriesOf(node), '{', '}', container, ([key, value], line) => {
             line.innerHTML += '<span class="json-key">"' + escapeHtml(key) + '"</span>: ';
             renderJSON(value, line);
         });
     } else {
-        container.innerHTML += '<span class="json-' + node.type + '">' + escapeHtml(node.text) + '</span>';
+        container.innerHTML += '<span class="' + literalClass(node[0]) + '">' + escapeHtml(node[0]) + '</span>';
     }
+}
+
+function entriesOf(node) {
+    const entries = [];
+    for (let index = 1; index < node.length; index += 2) {
+        entries.push([node[index], node[index + 1]]);
+    }
+    return entries;
+}
+
+function literalClass(text) {
+    if (text === 'null') {
+        return 'json-null';
+    }
+    return text === 'true' || text === 'false' ? 'json-boolean' : 'json-number';
 }
 
 function renderCollection(children, open, close, container, renderChild) {

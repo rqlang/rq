@@ -1,11 +1,8 @@
-export type JsonNode =
-    | { type: 'null' | 'boolean' | 'number'; text: string }
-    | { type: 'string'; value: string }
-    | { type: 'array'; items: JsonNode[] }
-    | { type: 'object'; entries: [string, JsonNode][] };
+export type JsonNode = string | [string] | JsonContainer;
+type JsonContainer = ['a' | 'o', ...JsonNode[]];
 
 const whitespacePattern = /[ \t\n\r]*/y;
-const stringPattern = /"(?:[^"\\]|\\.)*"/y;
+const stringPattern = /"[^"\\]*(?:\\.[^"\\]*)*"/y;
 const literalPattern = /-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null/y;
 
 export function parseJsonTree(text: string): JsonNode | undefined {
@@ -18,69 +15,67 @@ export function parseJsonTree(text: string): JsonNode | undefined {
 
 class JsonTreeParser {
     private position = 0;
+    private readonly open: JsonContainer[] = [];
 
     constructor(private readonly text: string) {}
 
     parse(): JsonNode {
-        const node = this.value();
+        let node = this.startValue();
+        for (;;) {
+            const container = this.open[this.open.length - 1];
+            if (container === undefined) {
+                return this.finish(node);
+            } else if (node === undefined) {
+                node = this.consume(closerOf(container)) ? this.open.pop() : this.startEntry(container);
+            } else {
+                container.push(node);
+                node = this.consume(',') ? this.startEntry(container) : this.close(container);
+            }
+        }
+    }
+
+    private startEntry(container: JsonContainer): JsonNode | undefined {
+        if (container[0] === 'o') {
+            this.skipWhitespace();
+            container.push(this.string());
+            this.expect(':');
+        }
+        return this.startValue();
+    }
+
+    private startValue(): JsonNode | undefined {
         this.skipWhitespace();
-        if (this.position !== this.text.length) {
+        switch (this.text[this.position]) {
+            case '[':
+                this.position++;
+                this.open.push(['a']);
+                return undefined;
+            case '{':
+                this.position++;
+                this.open.push(['o']);
+                return undefined;
+            case '"':
+                return this.string();
+            default:
+                return [this.match(literalPattern)];
+        }
+    }
+
+    private close(container: JsonContainer): JsonNode | undefined {
+        this.expect(closerOf(container));
+        return this.open.pop();
+    }
+
+    private finish(node: JsonNode | undefined): JsonNode {
+        this.skipWhitespace();
+        if (node === undefined || this.position !== this.text.length) {
             throw new SyntaxError(`Unexpected content at ${this.position}`);
         }
         return node;
     }
 
-    private value(): JsonNode {
-        this.skipWhitespace();
-        switch (this.text[this.position]) {
-            case '{':
-                return this.object();
-            case '[':
-                return this.array();
-            case '"':
-                return { type: 'string', value: this.string() };
-            default:
-                return this.literal();
-        }
-    }
-
-    private object(): JsonNode {
-        const entries: [string, JsonNode][] = [];
-        this.position++;
-        if (this.consume('}')) {
-            return { type: 'object', entries };
-        }
-        do {
-            this.skipWhitespace();
-            const key = this.string();
-            this.expect(':');
-            entries.push([key, this.value()]);
-        } while (this.consume(','));
-        this.expect('}');
-        return { type: 'object', entries };
-    }
-
-    private array(): JsonNode {
-        const items: JsonNode[] = [];
-        this.position++;
-        if (this.consume(']')) {
-            return { type: 'array', items };
-        }
-        do {
-            items.push(this.value());
-        } while (this.consume(','));
-        this.expect(']');
-        return { type: 'array', items };
-    }
-
     private string(): string {
         return JSON.parse(this.match(stringPattern));
-    }
-
-    private literal(): JsonNode {
-        const text = this.match(literalPattern);
-        const type = text === 'null' ? 'null' : text === 'true' || text === 'false' ? 'boolean' : 'number';
-        return { type, text };
     }
 
     private match(pattern: RegExp): string {
@@ -111,4 +106,8 @@ class JsonTreeParser {
     private skipWhitespace(): void {
         this.match(whitespacePattern);
     }
+}
+
+function closerOf(container: JsonContainer): string {
+    return container[0] === 'a' ? ']' : '}';
 }

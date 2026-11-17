@@ -30,6 +30,10 @@ const FALLBACK_FILE_STEM: &str = "response";
 const FALLBACK_EXTENSION: &str = "bin";
 const RESERVED_FILE_NAME_CHARS: &[char] = &['<', '>', ':', '"', '|', '?', '*'];
 const MAX_FILE_NAME_BYTES: usize = 255;
+#[cfg(unix)]
+const PRIVATE_DIR_MODE: u32 = 0o700;
+#[cfg(unix)]
+const PRIVATE_FILE_MODE: u32 = 0o600;
 const WINDOWS_RESERVED_FILE_STEMS: &[&str] = &[
     "con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8",
     "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
@@ -114,11 +118,12 @@ impl ResponseBody {
 
 impl BinaryBody {
     pub fn save_in(&self, dir: &Path) -> Result<PathBuf, RqError> {
+        create_private_dir_all(dir)?;
         let path = self.info.download_path(dir);
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
+            create_private_dir(parent)?;
         }
-        std::fs::write(&path, &self.bytes)?;
+        write_private_file(&path, &self.bytes)?;
         Ok(path)
     }
 }
@@ -152,6 +157,52 @@ impl BinaryBodyInfo {
 
 pub fn temp_download_dir() -> PathBuf {
     std::env::temp_dir().join(DOWNLOAD_DIR_NAME)
+}
+
+#[cfg(unix)]
+fn create_private_dir_all(dir: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
+    std::fs::DirBuilder::new()
+        .recursive(true)
+        .mode(PRIVATE_DIR_MODE)
+        .create(dir)?;
+    if !std::fs::symlink_metadata(dir)?.is_dir() {
+        return Err(std::io::Error::other(format!(
+            "{} is not a directory",
+            dir.display()
+        )));
+    }
+    std::fs::set_permissions(dir, std::fs::Permissions::from_mode(PRIVATE_DIR_MODE))
+}
+
+#[cfg(not(unix))]
+fn create_private_dir_all(dir: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dir)
+}
+
+#[cfg(unix)]
+fn create_private_dir(dir: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::DirBuilderExt;
+    std::fs::DirBuilder::new()
+        .mode(PRIVATE_DIR_MODE)
+        .create(dir)
+}
+
+#[cfg(not(unix))]
+fn create_private_dir(dir: &Path) -> std::io::Result<()> {
+    std::fs::create_dir(dir)
+}
+
+fn write_private_file(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(PRIVATE_FILE_MODE);
+    }
+    options.open(path)?.write_all(bytes)
 }
 
 fn header<'a>(headers: &'a HashMap<String, String>, name: &str) -> Option<&'a str> {
@@ -597,6 +648,51 @@ mod tests {
             "r",
         );
         assert_eq!(target, ResponseBody::Text("a\u{fffd}".to_string()));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn saved_files_are_private_to_the_user() -> Result<(), Box<dyn std::error::Error>> {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir()?;
+        let root = dir.path().join("rq");
+        std::fs::create_dir(&root)?;
+        std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o777))?;
+        let ResponseBody::Binary(body) = ResponseBody::from_response(
+            &headers(&[("content-type", "image/png")]),
+            PNG_BYTES.to_vec(),
+            "logo",
+        ) else {
+            return Err("expected a binary body".into());
+        };
+        let path = body.save_in(&root)?;
+        let parent = path.parent().ok_or("no parent")?;
+        let target = [root.as_path(), parent, path.as_path()]
+            .map(|p| std::fs::metadata(p).map(|m| m.permissions().mode() & 0o777));
+        assert_eq!(
+            target.into_iter().collect::<Result<Vec<_>, _>>()?,
+            vec![0o700, 0o700, 0o600]
+        );
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_download_root_that_is_a_symlink_is_refused() -> Result<(), Box<dyn std::error::Error>> {
+        let dir = tempfile::tempdir()?;
+        let elsewhere = dir.path().join("elsewhere");
+        std::fs::create_dir(&elsewhere)?;
+        let root = dir.path().join("rq");
+        std::os::unix::fs::symlink(&elsewhere, &root)?;
+        let ResponseBody::Binary(body) = ResponseBody::from_response(
+            &headers(&[("content-type", "image/png")]),
+            PNG_BYTES.to_vec(),
+            "logo",
+        ) else {
+            return Err("expected a binary body".into());
+        };
+        assert!(body.save_in(&root).is_err());
+        Ok(())
     }
 
     #[test]

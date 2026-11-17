@@ -144,20 +144,24 @@ impl<'a> PrintedResultView<'a> {
 
 #[derive(Serialize)]
 struct SavedBodyView {
-    path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    save_error: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     media_type: Option<String>,
     size: usize,
 }
 
 impl SavedBodyView {
-    fn save(body: &BinaryBody) -> Result<Self, RqError> {
-        let path = body.save_in(&temp_download_dir())?;
-        Ok(Self {
-            path: path.display().to_string(),
+    fn save(body: &BinaryBody) -> Self {
+        let saved = body.save_in(&temp_download_dir());
+        Self {
+            path: saved.as_ref().ok().map(|path| path.display().to_string()),
+            save_error: saved.err().map(|e| e.to_string()),
             media_type: body.info.media_type.clone(),
             size: body.info.size,
-        })
+        }
     }
 
     fn to_text(&self) -> String {
@@ -165,7 +169,13 @@ impl SavedBodyView {
             Some(media_type) => format!("{media_type}, {} bytes", self.size),
             None => format!("{} bytes", self.size),
         };
-        format!("binary body ({description}) saved to {}", self.path)
+        match (&self.path, &self.save_error) {
+            (Some(path), _) => format!("binary body ({description}) saved to {path}"),
+            (None, Some(error)) => {
+                format!("binary body ({description}) could not be saved: {error}")
+            }
+            (None, None) => format!("binary body ({description}) not saved"),
+        }
     }
 }
 
@@ -175,12 +185,12 @@ struct ExecutionOutput {
 }
 
 impl ExecutionOutput {
-    fn new(result: RequestExecutionResult, parts: PrintParts) -> Result<Self, RqError> {
+    fn new(result: RequestExecutionResult, parts: PrintParts) -> Self {
         let saved_body = match &result.body {
-            ResponseBody::Binary(body) if parts.body => Some(SavedBodyView::save(body)?),
+            ResponseBody::Binary(body) if parts.body => Some(SavedBodyView::save(body)),
             _ => None,
         };
-        Ok(Self { result, saved_body })
+        Self { result, saved_body }
     }
 }
 
@@ -415,7 +425,7 @@ pub async fn execute_run(args: &RunArgs) -> Result<(), Box<dyn std::error::Error
         .map_err(|e| with_typed_request_name(e, typed_name))?;
 
     let view = ExecutionResultsView {
-        results: vec![ExecutionOutput::new(result, args.print)?],
+        results: vec![ExecutionOutput::new(result, args.print)],
         parts: args.print,
     };
     print!("{}", view.render(args.format.format));
@@ -622,7 +632,8 @@ mod tests {
 
     fn saved_body(media_type: Option<&str>) -> SavedBodyView {
         SavedBodyView {
-            path: "/tmp/rq/id/logo.png".to_string(),
+            path: Some("/tmp/rq/id/logo.png".to_string()),
+            save_error: None,
             media_type: media_type.map(str::to_string),
             size: 42,
         }
@@ -665,9 +676,22 @@ mod tests {
     }
 
     #[test]
+    fn unsaved_binary_body_shows_why() {
+        let target = SavedBodyView {
+            path: None,
+            save_error: Some("File name too long".to_string()),
+            ..saved_body(Some("image/png"))
+        }
+        .to_text();
+        assert_eq!(
+            target,
+            "binary body (image/png, 42 bytes) could not be saved: File name too long"
+        );
+    }
+
+    #[test]
     fn binary_body_is_not_saved_when_the_body_is_not_printed() -> Result<(), String> {
-        let target = ExecutionOutput::new(result_with(binary_body()), PrintParts::from_str("mh")?)
-            .map_err(|e| e.to_string())?;
+        let target = ExecutionOutput::new(result_with(binary_body()), PrintParts::from_str("mh")?);
         assert!(target.saved_body.is_none());
         Ok(())
     }

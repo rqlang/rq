@@ -5,6 +5,8 @@ import path from 'node:path';
 import { after, before, beforeEach, describe, it } from 'node:test';
 import { callJson, connect, tempWorkspace } from './client.mjs';
 
+const PNG_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0xff]);
+
 let api;
 let received;
 let workspace;
@@ -39,6 +41,8 @@ function apiSource(port) {
         '}',
         '',
         'rq big("{{base_url}}/big");',
+        '',
+        'rq logo("{{base_url}}/logo.png");',
         '',
         'let stamp = random.guid();',
         '',
@@ -89,6 +93,11 @@ before(async () => {
         }
         if (req.url === '/endless') {
             res.write('x'.repeat(300_000));
+            return;
+        }
+        if (req.url === '/logo.png') {
+            res.setHeader('content-type', 'image/png');
+            res.end(PNG_BYTES);
             return;
         }
         if (req.url === '/slow') {
@@ -386,6 +395,11 @@ describe('run_request', () => {
     it('truncates a long response body', async () => {
         const target = await callJson(client, 'run_request', { name: 'big', file: file(), env: 'local' });
         assert.deepEqual([target.response.body.length, target.response.body_truncated], [50_000, true]);
+    });
+
+    it('returns a binary body as its media type and size, without its bytes', async () => {
+        const target = await callJson(client, 'run_request', { name: 'logo', file: file(), env: 'local' });
+        assert.deepEqual([target.response.body, target.response.binary_body], [null, { media_type: 'image/png', size: PNG_BYTES.length }]);
     });
 
     it('reports a request that does not exist as a tool error', async () => {

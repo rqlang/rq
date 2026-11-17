@@ -12,7 +12,8 @@ jest.mock('../../src/wasm/rq_wasm', () => ({
     list_requests: mockListRequests
 }), { virtual: true });
 
-import { Diagnostic, lintRq, validateRq, listRequests, draftPath, workspaceFor, isUnscoped, redactSecrets } from '../../src/mcp/tools';
+import { Diagnostic, lintRq, validateRq, listRequests, draftPath, workspaceFor, isUnscoped, redactSecrets, responseBodyOf, MAX_RESPONSE_BODY_LENGTH } from '../../src/mcp/tools';
+import { RequestExecutionResult } from '../../src/execution';
 
 let workspace: string;
 
@@ -28,6 +29,25 @@ beforeEach(() => jest.clearAllMocks());
 describe('redactSecrets', () => {
     it('redacts a whole secret that contains a shorter one listed before it', () => {
         expect(redactSecrets('token=issued-token-1', ['token-1', 'issued-token-1'])).toBe('token=[redacted]');
+    });
+});
+
+describe('responseBodyOf', () => {
+    const result = (overrides: Partial<RequestExecutionResult>): RequestExecutionResult => ({
+        request_name: 'r', method: 'GET', url: 'http://x', status: 200, elapsed_ms: 1,
+        request_headers: {}, response_headers: {}, body: '', ...overrides
+    });
+
+    it('returns a binary body as its media type and size only', () => {
+        const target = responseBodyOf(result({ binary_body: { media_type: 'image/png', file_name: 'r.png', size: 42 } }));
+
+        expect(target).toEqual({ body: null, binary_body: { media_type: 'image/png', size: 42 }, body_truncated: false });
+    });
+
+    it('truncates a long text body', () => {
+        const target = responseBodyOf(result({ body: 'x'.repeat(MAX_RESPONSE_BODY_LENGTH + 1) }));
+
+        expect(target).toEqual({ body: 'x'.repeat(MAX_RESPONSE_BODY_LENGTH), body_truncated: true });
     });
 });
 

@@ -4,7 +4,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { setWasmTransport, wasmCall } from '../wasmHost';
 import { buildSecretsMap, draftsJson, isDirectory, normalizePath } from '../utils';
-import { CancellationSignal, ExecuteRequestOptions, ExecuteRequestResult, PreparedRequest, checkOverrides, OverrideCheck, prepareRequest, requestDefinition, RequestScope, requestScope, sendRequest, withAcquiredToken } from '../execution';
+import { CancellationSignal, ExecuteRequestOptions, ExecuteRequestResult, PreparedRequest, RequestExecutionResult, checkOverrides, OverrideCheck, prepareRequest, requestDefinition, RequestScope, requestScope, sendRequest, withAcquiredToken } from '../execution';
 import { Authorization, Authorize, isInteractiveAuth, McpAuthorizationError } from './authorization';
 import { fill, RESOURCE_BODIES, surface } from './surface';
 
@@ -330,9 +330,17 @@ function overridesOf(variables: Record<string, string> | undefined, runtimeInput
     return Object.fromEntries(Object.entries(variables ?? {}).filter(([name]) => !runtimeInputs.has(name)));
 }
 
+export function responseBodyOf(result: RequestExecutionResult): Record<string, unknown> {
+    if (result.binary_body) {
+        const { media_type, size } = result.binary_body;
+        return { body: null, binary_body: { media_type: media_type ?? null, size }, body_truncated: Boolean(result.body_truncated) };
+    }
+    const body = result.body.length > MAX_RESPONSE_BODY_LENGTH ? result.body.slice(0, MAX_RESPONSE_BODY_LENGTH) : result.body;
+    return { body, body_truncated: Boolean(result.body_truncated) || body.length < result.body.length };
+}
+
 function sentResult(sent: ExecuteRequestResult, { summary, secrets }: ApprovableRequest): unknown {
     const [result] = sent.results;
-    const body = result.body.length > MAX_RESPONSE_BODY_LENGTH ? result.body.slice(0, MAX_RESPONSE_BODY_LENGTH) : result.body;
     return {
         status: 'sent',
         sent: true,
@@ -347,8 +355,7 @@ function sentResult(sent: ExecuteRequestResult, { summary, secrets }: Approvable
             status: result.status,
             elapsed_ms: result.elapsed_ms,
             headers: redactHeaders(result.response_headers, secrets),
-            body,
-            body_truncated: Boolean(result.body_truncated) || body.length < result.body.length
+            ...responseBodyOf(result)
         }
     };
 }

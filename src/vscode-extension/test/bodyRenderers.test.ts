@@ -38,6 +38,13 @@ describe('bodyRenderers', () => {
         expect(target.content).not.toContain('openBody');
     });
 
+    test('says why a binary body could not be saved', async () => {
+        const target = await binaryBodyRenderer({ media_type: 'image/png', file_name: 'a.png', size: 3, save_error: 'EACCES <denied>' }).render(mockContext, '');
+
+        expect(target.content).toContain('Could not be saved: EACCES &lt;denied&gt;');
+        expect(target.content).not.toContain('openBody');
+    });
+
     test('renders a text/plain body that looks like JSON as text', async () => {
         const target = await render({ 'content-type': 'text/plain' }, '42');
 

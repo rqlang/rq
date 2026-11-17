@@ -394,6 +394,17 @@ describe('executeRequest', () => {
             expect(target.results[0].binary_body?.path).toBe('/downloads/id/test-req.png');
         });
 
+        test('returns the response with the reason when the binary body cannot be written', async () => {
+            mockPrepareRequest.mockReturnValue(prepared());
+            mockBinaryResponseBody.mockReturnValue(JSON.stringify({ media_type: 'image/png', file_name: 'test-req.png', size: 4, path: '/downloads/id/test-req.png' }));
+            (fs.promises.writeFile as jest.Mock).mockRejectedValueOnce(new Error('ENAMETOOLONG'));
+            makeHttpsMock(200, BINARY);
+
+            const target = await executeRequest({ requestName: 'test-req', sourceDirectory: '/tmp/project', downloadDir: '/downloads' });
+
+            expect([target.results[0].status, target.results[0].binary_body]).toEqual([200, { media_type: 'image/png', file_name: 'test-req.png', size: 4, save_error: 'ENAMETOOLONG' }]);
+        });
+
         test('does not write a binary body without a download folder', async () => {
             mockPrepareRequest.mockReturnValue(prepared());
             mockBinaryResponseBody.mockReturnValue(JSON.stringify({ media_type: 'image/png', file_name: 'test-req.png', size: 4 }));

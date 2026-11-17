@@ -49,6 +49,7 @@ export interface BinaryBody {
     file_name: string;
     size: number;
     path?: string;
+    save_error?: string;
 }
 
 export interface ExecuteRequestResult {
@@ -164,11 +165,17 @@ async function binaryBodyOf(response: NodeHttpResponse, requestName: string, dow
     const binaryBody = JSON.parse(
         await wasmCall('binary_response_body', [JSON.stringify(response.headers), response.body, requestName, downloadDir])
     ) as BinaryBody | null;
-    if (binaryBody?.path) {
+    if (!binaryBody?.path) {
+        return binaryBody ?? undefined;
+    }
+    try {
         await fs.promises.mkdir(path.dirname(binaryBody.path), { recursive: true });
         await fs.promises.writeFile(binaryBody.path, response.body);
+        return binaryBody;
+    } catch (error) {
+        const { media_type, file_name, size } = binaryBody;
+        return { media_type, file_name, size, save_error: error instanceof Error ? error.message : String(error) };
     }
-    return binaryBody ?? undefined;
 }
 
 function toNodeHeaders(pairs: [string, string][]): Record<string, string | string[]> {

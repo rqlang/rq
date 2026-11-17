@@ -81,8 +81,9 @@ const textRenderer: BodyRenderer = {
 
 export function binaryBodyRenderer(body: BinaryBody): BodyRenderer {
     const description = body.media_type ? `${body.media_type}, ${body.size} bytes` : `${body.size} bytes`;
+    const notSaved = body.save_error === undefined ? 'Not saved' : `Could not be saved: ${escapeHtml(body.save_error)}`;
     const location = body.path === undefined
-        ? '<p class="binary-location">Not saved</p>'
+        ? `<p class="binary-location">${notSaved}</p>`
         : `<p class="binary-location">Saved to <code>${escapeHtml(body.path)}</code></p>
             <div class="binary-actions">
                 <button class="html-view-btn active" onclick="vscode.postMessage({ command: 'openBody' })">Open</button>

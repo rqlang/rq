@@ -332,11 +332,17 @@ function overridesOf(variables: Record<string, string> | undefined, runtimeInput
 
 export function responseBodyOf(result: RequestExecutionResult): Record<string, unknown> {
     if (result.binary_body) {
-        const { media_type, size } = result.binary_body;
-        return { body: null, binary_body: { media_type: media_type ?? null, size }, body_truncated: Boolean(result.body_truncated) };
+        const size = result.body_truncated ? contentLengthOf(result.response_headers) : result.binary_body.size;
+        const binaryBody = { media_type: result.binary_body.media_type ?? null, ...(size === undefined ? {} : { size }) };
+        return { body: null, binary_body: binaryBody, body_truncated: Boolean(result.body_truncated) };
     }
     const body = result.body.length > MAX_RESPONSE_BODY_LENGTH ? result.body.slice(0, MAX_RESPONSE_BODY_LENGTH) : result.body;
     return { body, body_truncated: Boolean(result.body_truncated) || body.length < result.body.length };
+}
+
+function contentLengthOf(headers: Record<string, string>): number | undefined {
+    const value = Object.entries(headers).find(([name]) => name.toLowerCase() === 'content-length')?.[1]?.trim();
+    return value !== undefined && /^\d+$/.test(value) ? Number(value) : undefined;
 }
 
 function sentResult(sent: ExecuteRequestResult, { summary, secrets }: ApprovableRequest): unknown {

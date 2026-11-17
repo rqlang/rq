@@ -35,16 +35,54 @@ function jsonRenderer(mediaType: string | undefined, body: string): BodyRenderer
     };
 }
 
+function htmlRenderer(mediaType: string | undefined, body: string): BodyRenderer | undefined {
+    const isHtml = mediaType === undefined ? isHtmlDocument(body) : htmlMediaTypes.includes(mediaType);
+    if (!isHtml) {
+        return undefined;
+    }
+    return {
+        async render(): Promise<RenderedBody> {
+            return {
+                content: `<div class="html-body">
+            <div class="html-view-toggle">
+                <button class="html-view-btn active" data-view="preview" onclick="showHtmlView('preview')">Preview</button>
+                <button class="html-view-btn" data-view="source" onclick="showHtmlView('source')">Source</button>
+            </div>
+            <iframe class="html-view html-preview" data-view="preview" title="Response preview" sandbox="" srcdoc="${escapeHtml(body)}"></iframe>
+            <div class="html-view html-source" data-view="source" hidden>${textBodyHtml('')}</div>
+        </div>`,
+                script: `
+        function showHtmlView(view) {
+            const preview = document.querySelector('.html-preview');
+            const sourceCode = document.querySelector('.html-source code');
+            if (view === 'preview') {
+                preview.srcdoc = preview.srcdoc;
+            } else if (!sourceCode.textContent) {
+                sourceCode.textContent = preview.srcdoc;
+            }
+            document.querySelectorAll('.html-view-btn').forEach(button => button.classList.toggle('active', button.dataset.view === view));
+            document.querySelectorAll('.html-view').forEach(element => { element.hidden = element.dataset.view !== view; });
+        }
+    `
+            };
+        }
+    };
+}
+
 const textRenderer: BodyRenderer = {
     async render(_context: vscode.ExtensionContext, body: string): Promise<RenderedBody> {
         return {
-            content: `<pre class="text-body"><code>${escapeHtml(body)}</code></pre>`,
+            content: textBodyHtml(escapeHtml(body)),
             script: ''
         };
     }
 };
 
-const mediaTypeRenderers: MediaTypeRenderer[] = [jsonRenderer];
+function textBodyHtml(escapedText: string): string {
+    return `<pre class="text-body"><code>${escapedText}</code></pre>`;
+}
+
+const mediaTypeRenderers: MediaTypeRenderer[] = [jsonRenderer, htmlRenderer];
 
 let jsonRendererScript: Promise<string> | undefined;
 
@@ -83,4 +121,37 @@ const jsonMediaTypes = ['application/json', 'text/json', 'application/x-json'];
 
 function isJsonMediaType(mediaType: string): boolean {
     return jsonMediaTypes.includes(mediaType) || mediaType.endsWith('+json');
+}
+
+const htmlMediaTypes = ['text/html', 'application/xhtml+xml'];
+
+const htmlDocumentStart = /<!doctype\s+html|<html[\s>]/iy;
+const leadingWhitespace = /\s*/y;
+const leadingMarkup = [['<?xml', '?>'], ['<!--', '-->']];
+
+function isHtmlDocument(body: string): boolean {
+    let position = skipWhitespace(body, 0);
+    let markupEnd = skipLeadingMarkup(body, position);
+    while (markupEnd !== undefined) {
+        position = skipWhitespace(body, markupEnd);
+        markupEnd = skipLeadingMarkup(body, position);
+    }
+    htmlDocumentStart.lastIndex = position;
+    return htmlDocumentStart.test(body);
+}
+
+function skipWhitespace(text: string, position: number): number {
+    leadingWhitespace.lastIndex = position;
+    leadingWhitespace.test(text);
+    return leadingWhitespace.lastIndex;
+}
+
+function skipLeadingMarkup(text: string, position: number): number | undefined {
+    const markup = leadingMarkup.find(([open]) => text.startsWith(open, position));
+    if (markup === undefined) {
+        return undefined;
+    }
+    const [open, close] = markup;
+    const end = text.indexOf(close, position + open.length);
+    return end < 0 ? undefined : end + close.length;
 }

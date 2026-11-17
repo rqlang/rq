@@ -254,6 +254,12 @@ describe('webviewGenerator', () => {
         });
     });
 
+    test('result template blocks network loads and frame navigation', () => {
+        const template = require('fs').readFileSync(require('path').join(__dirname, '../media/webviewTemplate.html'), 'utf8');
+
+        expect(template).toContain(`<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; script-src 'unsafe-inline'; frame-src 'none'">`);
+    });
+
     test('getWebviewContent handles non-JSON body', async () => {
         const mockTemplate = '{{BODY_CONTENT}} {{BODY_SCRIPT}}';
         mockFs.readFile.mockResolvedValue(new TextEncoder().encode(mockTemplate));

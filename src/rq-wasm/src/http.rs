@@ -148,13 +148,13 @@ async fn fetch(
 
     let response_headers = read_response_headers(&response);
 
-    let text_fn = Reflect::get(&response, &JsValue::from_str("text"))
-        .map_err(|_| RqError::Generic("Failed to get response.text method".to_string()))?;
-    let text_fn = Function::from(text_fn);
-    let text_promise = text_fn
+    let array_buffer_fn = Reflect::get(&response, &JsValue::from_str("arrayBuffer"))
+        .map_err(|_| RqError::Generic("Failed to get response.arrayBuffer method".to_string()))?;
+    let array_buffer_fn = Function::from(array_buffer_fn);
+    let array_buffer_promise = array_buffer_fn
         .call0(&response)
-        .map_err(|_| RqError::Generic("Call to response.text() failed".to_string()))?;
-    let text_val = JsFuture::from(Promise::from(text_promise))
+        .map_err(|_| RqError::Generic("Call to response.arrayBuffer() failed".to_string()))?;
+    let array_buffer = JsFuture::from(Promise::from(array_buffer_promise))
         .await
         .map_err(|e| {
             RqError::Generic(format!("Reading response body failed: {}", js_val_str(&e)))
@@ -163,7 +163,7 @@ async fn fetch(
     Ok(HttpResponse {
         status,
         headers: response_headers,
-        body: text_val.as_string().unwrap_or_default(),
+        body: js_sys::Uint8Array::new(&array_buffer).to_vec(),
     })
 }
 

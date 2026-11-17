@@ -7,7 +7,8 @@ use crate::core::formatter::{render, to_json, OutputFormat, TextBlock};
 use clap::{Args, Subcommand};
 use rq_lib::client::models::{PreparedRequest, RequestDetails, RequestTarget};
 use rq_lib::lint::LintScope;
-use rq_lib::{RequestExecutionResult, RqClient};
+use rq_lib::response_body::{temp_download_dir, BinaryBody};
+use rq_lib::{RequestExecutionResult, ResponseBody, RqClient};
 use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::io::{IsTerminal, Write};
@@ -117,10 +118,17 @@ struct PrintedResultView<'a> {
     response_headers: Option<&'a HashMap<String, String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     body: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    body_file: Option<&'a SavedBodyView>,
 }
 
 impl<'a> PrintedResultView<'a> {
-    fn new(result: &'a RequestExecutionResult, parts: PrintParts) -> Self {
+    fn new(output: &'a ExecutionOutput, parts: PrintParts) -> Self {
+        let result = &output.result;
+        let text_body = match &result.body {
+            ResponseBody::Text(text) => Some(text.as_str()),
+            ResponseBody::Binary(_) => None,
+        };
         Self {
             request_name: parts.meta.then_some(result.request_name.as_str()),
             method: parts.meta.then_some(result.method.as_str()),
@@ -128,13 +136,66 @@ impl<'a> PrintedResultView<'a> {
             status: parts.meta.then_some(result.status),
             elapsed_ms: parts.meta.then_some(result.elapsed_ms),
             response_headers: parts.headers.then_some(&result.response_headers),
-            body: parts.body.then_some(result.body.as_str()),
+            body: text_body.filter(|_| parts.body),
+            body_file: output.saved_body.as_ref(),
         }
     }
 }
 
+#[derive(Serialize)]
+struct SavedBodyView {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    save_error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    media_type: Option<String>,
+    size: usize,
+}
+
+impl SavedBodyView {
+    fn save(body: &BinaryBody) -> Self {
+        let saved = body.save_in(&temp_download_dir());
+        Self {
+            path: saved.as_ref().ok().map(|path| path.display().to_string()),
+            save_error: saved.err().map(|e| e.to_string()),
+            media_type: body.info.media_type.clone(),
+            size: body.info.size,
+        }
+    }
+
+    fn to_text(&self) -> String {
+        let description = match &self.media_type {
+            Some(media_type) => format!("{media_type}, {} bytes", self.size),
+            None => format!("{} bytes", self.size),
+        };
+        match (&self.path, &self.save_error) {
+            (Some(path), _) => format!("binary body ({description}) saved to {path}"),
+            (None, Some(error)) => {
+                format!("binary body ({description}) could not be saved: {error}")
+            }
+            (None, None) => format!("binary body ({description}) not saved"),
+        }
+    }
+}
+
+struct ExecutionOutput {
+    result: RequestExecutionResult,
+    saved_body: Option<SavedBodyView>,
+}
+
+impl ExecutionOutput {
+    fn new(result: RequestExecutionResult, parts: PrintParts) -> Self {
+        let saved_body = match &result.body {
+            ResponseBody::Binary(body) if parts.body => Some(SavedBodyView::save(body)),
+            _ => None,
+        };
+        Self { result, saved_body }
+    }
+}
+
 struct ExecutionResultsView {
-    results: Vec<RequestExecutionResult>,
+    results: Vec<ExecutionOutput>,
     parts: PrintParts,
 }
 
@@ -364,7 +425,7 @@ pub async fn execute_run(args: &RunArgs) -> Result<(), Box<dyn std::error::Error
         .map_err(|e| with_typed_request_name(e, typed_name))?;
 
     let view = ExecutionResultsView {
-        results: vec![result],
+        results: vec![ExecutionOutput::new(result, args.print)],
         parts: args.print,
     };
     print!("{}", view.render(args.format.format));
@@ -443,13 +504,14 @@ fn with_typed_request_name(error: RqError, typed_name: &str) -> RqError {
     }
 }
 
-fn render_execution_result(result: &RequestExecutionResult, parts: PrintParts) -> String {
+fn render_execution_result(output: &ExecutionOutput, parts: PrintParts) -> String {
+    let result = &output.result;
     let sections = [
         parts.meta.then(|| render_meta(result)),
         parts
             .headers
             .then(|| render_headers(&result.response_headers)),
-        parts.body.then(|| result.body.clone()),
+        parts.body.then(|| render_body(output)),
     ];
     let rendered = sections
         .into_iter()
@@ -461,6 +523,14 @@ fn render_execution_result(result: &RequestExecutionResult, parts: PrintParts) -
         rendered
     } else {
         format!("{rendered}\n")
+    }
+}
+
+fn render_body(output: &ExecutionOutput) -> String {
+    match (&output.result.body, &output.saved_body) {
+        (ResponseBody::Text(text), _) => text.clone(),
+        (ResponseBody::Binary(_), Some(saved_body)) => saved_body.to_text(),
+        (ResponseBody::Binary(_), None) => String::new(),
     }
 }
 
@@ -531,11 +601,15 @@ fn is_yes(answer: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_yes, render_execution_result, PrintParts, RequestExecutionResult};
+    use super::{
+        is_yes, render_execution_result, ExecutionOutput, PrintParts, RequestExecutionResult,
+        SavedBodyView,
+    };
+    use rq_lib::ResponseBody;
     use std::collections::HashMap;
     use std::str::FromStr;
 
-    fn result_with_body(body: &str) -> RequestExecutionResult {
+    fn result_with(body: ResponseBody) -> RequestExecutionResult {
         RequestExecutionResult {
             request_name: "r".to_string(),
             method: "GET".to_string(),
@@ -544,15 +618,29 @@ mod tests {
             elapsed_ms: 1,
             request_headers: HashMap::new(),
             response_headers: HashMap::new(),
-            body: body.to_string(),
+            body,
         }
     }
 
     fn render_body(body: &str) -> Result<String, String> {
-        Ok(render_execution_result(
-            &result_with_body(body),
-            PrintParts::from_str("b")?,
-        ))
+        let output = ExecutionOutput {
+            result: result_with(ResponseBody::Text(body.to_string())),
+            saved_body: None,
+        };
+        Ok(render_execution_result(&output, PrintParts::from_str("b")?))
+    }
+
+    fn saved_body(media_type: Option<&str>) -> SavedBodyView {
+        SavedBodyView {
+            path: Some("/tmp/rq/id/logo.png".to_string()),
+            save_error: None,
+            media_type: media_type.map(str::to_string),
+            size: 42,
+        }
+    }
+
+    fn binary_body() -> ResponseBody {
+        ResponseBody::from_response(&HashMap::new(), vec![0, 0xff], "r")
     }
 
     #[test]
@@ -566,6 +654,45 @@ mod tests {
     fn body_without_trailing_newline_gets_one() -> Result<(), String> {
         let target = render_body("text")?;
         assert_eq!(target, "text\n");
+        Ok(())
+    }
+
+    #[test]
+    fn saved_binary_body_shows_media_type_size_and_path() {
+        let target = saved_body(Some("image/png")).to_text();
+        assert_eq!(
+            target,
+            "binary body (image/png, 42 bytes) saved to /tmp/rq/id/logo.png"
+        );
+    }
+
+    #[test]
+    fn saved_binary_body_without_media_type_shows_size_and_path() {
+        let target = saved_body(None).to_text();
+        assert_eq!(
+            target,
+            "binary body (42 bytes) saved to /tmp/rq/id/logo.png"
+        );
+    }
+
+    #[test]
+    fn unsaved_binary_body_shows_why() {
+        let target = SavedBodyView {
+            path: None,
+            save_error: Some("File name too long".to_string()),
+            ..saved_body(Some("image/png"))
+        }
+        .to_text();
+        assert_eq!(
+            target,
+            "binary body (image/png, 42 bytes) could not be saved: File name too long"
+        );
+    }
+
+    #[test]
+    fn binary_body_is_not_saved_when_the_body_is_not_printed() -> Result<(), String> {
+        let target = ExecutionOutput::new(result_with(binary_body()), PrintParts::from_str("mh")?);
+        assert!(target.saved_body.is_none());
         Ok(())
     }
 

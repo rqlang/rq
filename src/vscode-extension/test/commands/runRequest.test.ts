@@ -1,5 +1,8 @@
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import * as vscode from 'vscode';
-import { confirmRequest, RequestRunner } from '../../src/commands/runRequest';
+import { clearDownloads, confirmRequest, RequestRunner } from '../../src/commands/runRequest';
 import { RequestExplorerProvider } from '../../src/requestExplorer';
 import { createExplorerState } from '../memento-mock';
 import * as cliService from '../../src/rqClient';
@@ -31,6 +34,8 @@ jest.mock('../../src/ui/webviewGenerator');
 // Import RequestTreeItem after mocking
 import { RequestTreeItem } from '../../src/requestExplorer';
 
+const STORAGE_DIR = path.join(os.tmpdir(), 'rq-run-request-test-storage');
+
 describe('runRequest Commands', () => {
     let context: vscode.ExtensionContext;
     let provider: RequestExplorerProvider;
@@ -43,7 +48,8 @@ describe('runRequest Commands', () => {
 
         // Mock context
         context = {
-            subscriptions: []
+            subscriptions: [],
+            globalStorageUri: { fsPath: STORAGE_DIR }
         } as unknown as vscode.ExtensionContext;
 
         // Mock provider
@@ -248,7 +254,7 @@ describe('runRequest Commands', () => {
     });
 
     describe('webview messages', () => {
-        const runAndGetMessageHandler = async (): Promise<(message: any) => void> => {
+        const runAndGetMessageHandler = async (response: Record<string, unknown> = { body: '{"key":"value"}' }): Promise<(message: any) => void> => {
             const request = { name: 'test-req', endpoint: 'GET /', file: 'test.rq', request_file: 'test.rq', line: 0, character: 0 };
             const item = new RequestTreeItem('test-req', request, 0);
 
@@ -256,12 +262,12 @@ describe('runRequest Commands', () => {
                 results: [{
                     request_name: 'test-req',
                     status: 200,
-                    body: '{"key":"value"}',
                     elapsed_ms: 100,
                     method: 'GET',
                     url: 'http://localhost',
                     response_headers: {},
-                    request_headers: {}
+                    request_headers: {},
+                    ...response
                 }],
                 stderr: ''
             });
@@ -295,6 +301,78 @@ describe('runRequest Commands', () => {
 
             expect(vscode.env.clipboard.writeText).toHaveBeenCalledWith('{"key":"value"}');
             expect(vscode.window.showInformationMessage).toHaveBeenCalledWith('Body copied to clipboard');
+        });
+
+        const binaryResponse = { body: '', binary_body: { media_type: 'image/png', file_name: 'logo.png', size: 3, path: '/downloads/id/logo.png' } };
+
+        test('openBody opens the saved binary body', async () => {
+            const handler = await runAndGetMessageHandler(binaryResponse);
+
+            handler({ command: 'openBody' });
+
+            expect(vscode.commands.executeCommand).toHaveBeenCalledWith('vscode.open', { fsPath: '/downloads/id/logo.png' });
+        });
+
+        test('revealBody reveals the saved binary body in the file explorer', async () => {
+            const handler = await runAndGetMessageHandler(binaryResponse);
+
+            handler({ command: 'revealBody' });
+
+            expect(vscode.commands.executeCommand).toHaveBeenCalledWith('revealFileInOS', { fsPath: '/downloads/id/logo.png' });
+        });
+
+        test('copyBody copies the path of a saved binary body', async () => {
+            const handler = await runAndGetMessageHandler(binaryResponse);
+
+            handler({ command: 'copyBody' });
+
+            expect(vscode.env.clipboard.writeText).toHaveBeenCalledWith('/downloads/id/logo.png');
+        });
+
+        test('openBody does nothing for a text body', async () => {
+            const handler = await runAndGetMessageHandler();
+
+            handler({ command: 'openBody' });
+
+            expect(vscode.commands.executeCommand).not.toHaveBeenCalledWith('vscode.open', expect.anything());
+        });
+
+        test('runs the request with the downloads folder of the extension storage', async () => {
+            await runAndGetMessageHandler();
+
+            expect(cliService.executeRequest).toHaveBeenCalledWith(expect.objectContaining({
+                downloadDir: path.join(STORAGE_DIR, 'downloads')
+            }));
+        });
+    });
+
+    describe('clearDownloads', () => {
+        const downloads = path.join(os.tmpdir(), 'rq-clear-downloads-test');
+        const old = path.join(downloads, 'old');
+        const recent = path.join(downloads, 'recent');
+
+        beforeEach(async () => {
+            await fs.promises.rm(downloads, { recursive: true, force: true });
+            await fs.promises.mkdir(old, { recursive: true });
+            await fs.promises.mkdir(recent, { recursive: true });
+            const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+            await fs.promises.utimes(old, twoDaysAgo, twoDaysAgo);
+        });
+
+        afterAll(async () => {
+            await fs.promises.rm(downloads, { recursive: true, force: true });
+        });
+
+        test('removes every download of a workspace', async () => {
+            await clearDownloads(downloads, false);
+
+            expect(fs.existsSync(downloads)).toBe(false);
+        });
+
+        test('keeps the recent downloads of the storage other windows share', async () => {
+            await clearDownloads(downloads, true);
+
+            expect([fs.existsSync(old), fs.existsSync(recent)]).toEqual([false, true]);
         });
     });
 

@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { getBodyRenderer } from '../src/ui/bodyRenderers';
+import { binaryBodyRenderer, getBodyRenderer } from '../src/ui/bodyRenderers';
 
 describe('bodyRenderers', () => {
     const mockContext = {
@@ -20,6 +20,30 @@ describe('bodyRenderers', () => {
 
     const embeddedTree = (script: string) =>
         new Function('document', `${script}\nreturn jsonTree;`)({ getElementById: () => null });
+
+    test('describes a saved binary body with its media type, size, path and actions', async () => {
+        const target = await binaryBodyRenderer({ media_type: 'image/png', file_name: 'a.png', size: 3, path: '/tmp/<id>/a.png' }).render(mockContext, '');
+
+        expect(target.content).toContain('Binary body (image/png, 3 bytes)');
+        expect(target.content).toContain('<code>/tmp/&lt;id&gt;/a.png</code>');
+        expect(target.content).toContain("command: 'openBody'");
+        expect(target.content).toContain("command: 'revealBody'");
+    });
+
+    test('describes a binary body without media type or path', async () => {
+        const target = await binaryBodyRenderer({ media_type: null, file_name: 'a.bin', size: 3 }).render(mockContext, '');
+
+        expect(target.content).toContain('Binary body (3 bytes)');
+        expect(target.content).toContain('Not saved');
+        expect(target.content).not.toContain('openBody');
+    });
+
+    test('says why a binary body could not be saved', async () => {
+        const target = await binaryBodyRenderer({ media_type: 'image/png', file_name: 'a.png', size: 3, save_error: 'EACCES <denied>' }).render(mockContext, '');
+
+        expect(target.content).toContain('Could not be saved: EACCES &lt;denied&gt;');
+        expect(target.content).not.toContain('openBody');
+    });
 
     test('renders a text/plain body that looks like JSON as text', async () => {
         const target = await render({ 'content-type': 'text/plain' }, '42');

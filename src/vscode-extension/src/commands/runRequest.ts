@@ -1,3 +1,5 @@
+import * as fs from 'fs';
+import * as path from 'path';
 import * as vscode from 'vscode';
 import * as rqClient from '../rqClient';
 import { RequestExplorerProvider, RequestTreeItem } from '../requestExplorer';
@@ -11,6 +13,8 @@ import { CANCELLED_MESSAGE } from '../utils';
 const RUN_CONFIRMATION = 'Run';
 
 const RUNNING_CONTEXT_KEY = 'rq.requestRunning';
+
+const SHARED_DOWNLOAD_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 interface RequestExecutionContext {
     requestName: string;
@@ -28,6 +32,7 @@ interface RequestRun {
 interface ResultsData {
     run: RequestRun;
     body: string | undefined;
+    bodyFile?: string;
 }
 
 type RequestResultsSession = ResultsSession<ResultsData>;
@@ -43,6 +48,7 @@ export class RequestRunner {
     private logger!: Logger;
     private provider: RequestExplorerProvider | undefined;
     private activeExecution: ActiveExecution | undefined;
+    private downloadsCleared: Promise<void> = Promise.resolve();
 
     constructor(
         private context: vscode.ExtensionContext,
@@ -51,6 +57,7 @@ export class RequestRunner {
 
     public registerCommands(provider: RequestExplorerProvider) {
         this.provider = provider;
+        this.downloadsCleared = clearDownloads(this.downloadDir(), this.context.storageUri === undefined).catch(() => undefined);
         this.context.subscriptions.push(
             vscode.commands.registerCommand('rq.runRequest', (item) => this.runRequest(item, provider)),
             vscode.commands.registerCommand('rq.runRequestWithVariables', (item) => this.runRequestWithVariables(item, provider)),
@@ -136,6 +143,10 @@ export class RequestRunner {
         } finally {
             this.endExecution();
         }
+    }
+
+    private downloadDir(): string {
+        return path.join((this.context.storageUri ?? this.context.globalStorageUri).fsPath, 'downloads');
     }
 
     private getSourceDirectory(): string | undefined {
@@ -287,6 +298,7 @@ export class RequestRunner {
         }, async (_progress, token) => {
             const subscription = token.onCancellationRequested(() => this.cancelActiveExecution());
             try {
+                await this.downloadsCleared;
                 const result = await rqClient.executeRequest({
                     requestName,
                     sourceDirectory,
@@ -294,6 +306,7 @@ export class RequestRunner {
                     environment,
                     variables,
                     cancellation: execution.cancellationSource.token,
+                    downloadDir: this.downloadDir(),
                     acquireToken: (auth) => this.acquireInteractiveToken(auth, execution.cancellationSource.token),
                     confirm: (prepared) => confirmRequest(prepared, environment)
                 });
@@ -318,7 +331,8 @@ export class RequestRunner {
         }
 
         const html = await getWebviewContent(this.context, result.results[0]);
-        this.showResult(execution, html, result.results[0].body);
+        const bodyFile = result.results[0].binary_body?.path;
+        this.showResult(execution, html, bodyFile ?? result.results[0].body, bodyFile);
     }
 
     private async handleFailedExecution(execution: ActiveExecution, result: rqClient.ExecuteRequestResult) {
@@ -348,6 +362,12 @@ export class RequestRunner {
         if (message.command === 'copyBody' && session.data?.body !== undefined) {
             vscode.env.clipboard.writeText(session.data.body);
             vscode.window.showInformationMessage('Body copied to clipboard');
+        }
+        if (message.command === 'openBody' && session.data?.bodyFile !== undefined) {
+            vscode.commands.executeCommand('vscode.open', vscode.Uri.file(session.data.bodyFile));
+        }
+        if (message.command === 'revealBody' && session.data?.bodyFile !== undefined) {
+            vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(session.data.bodyFile));
         }
         if (message.command === 'copy' && typeof message.text === 'string') {
             vscode.env.clipboard.writeText(message.text);
@@ -423,10 +443,10 @@ export class RequestRunner {
         this.showResult(execution, html, undefined);
     }
 
-    private showResult(execution: ActiveExecution, html: string, body: string | undefined) {
+    private showResult(execution: ActiveExecution, html: string, body: string | undefined, bodyFile?: string) {
         const { session, run } = execution;
         const panel = this.resultsPanels.show(session, run.executionContext.requestName);
-        session.data = { run, body };
+        session.data = { run, body, bodyFile };
         panel.webview.html = html;
     }
 
@@ -459,6 +479,22 @@ export class RequestRunner {
 
         return lines.length > 0 ? lines.join('\n') : stderr;
     }
+}
+
+export async function clearDownloads(downloadDir: string, shared: boolean): Promise<void> {
+    if (!shared) {
+        await fs.promises.rm(downloadDir, { recursive: true, force: true });
+        return;
+    }
+    const cutoff = Date.now() - SHARED_DOWNLOAD_MAX_AGE_MS;
+    const entries = await fs.promises.readdir(downloadDir);
+    await Promise.all(entries.map(async (entry) => {
+        const entryPath = path.join(downloadDir, entry);
+        const { mtimeMs } = await fs.promises.stat(entryPath);
+        if (mtimeMs < cutoff) {
+            await fs.promises.rm(entryPath, { recursive: true, force: true });
+        }
+    }));
 }
 
 export async function confirmRequest(prepared: rqClient.PreparedRequest, environment?: string): Promise<boolean> {

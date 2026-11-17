@@ -4,7 +4,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { setWasmTransport, wasmCall } from '../wasmHost';
 import { buildSecretsMap, draftsJson, isDirectory, normalizePath } from '../utils';
-import { CancellationSignal, ExecuteRequestOptions, ExecuteRequestResult, PreparedRequest, checkOverrides, OverrideCheck, prepareRequest, requestDefinition, RequestScope, requestScope, sendRequest, withAcquiredToken } from '../execution';
+import { CancellationSignal, ExecuteRequestOptions, ExecuteRequestResult, PreparedRequest, RequestExecutionResult, checkOverrides, OverrideCheck, prepareRequest, requestDefinition, RequestScope, requestScope, sendRequest, withAcquiredToken } from '../execution';
 import { Authorization, Authorize, isInteractiveAuth, McpAuthorizationError } from './authorization';
 import { fill, RESOURCE_BODIES, surface } from './surface';
 
@@ -330,9 +330,23 @@ function overridesOf(variables: Record<string, string> | undefined, runtimeInput
     return Object.fromEntries(Object.entries(variables ?? {}).filter(([name]) => !runtimeInputs.has(name)));
 }
 
+export function responseBodyOf(result: RequestExecutionResult): Record<string, unknown> {
+    if (result.binary_body) {
+        const size = result.body_truncated ? contentLengthOf(result.response_headers) : result.binary_body.size;
+        const binaryBody = { media_type: result.binary_body.media_type ?? null, ...(size === undefined ? {} : { size }) };
+        return { body: null, binary_body: binaryBody, body_truncated: Boolean(result.body_truncated) };
+    }
+    const body = result.body.length > MAX_RESPONSE_BODY_LENGTH ? result.body.slice(0, MAX_RESPONSE_BODY_LENGTH) : result.body;
+    return { body, body_truncated: Boolean(result.body_truncated) || body.length < result.body.length };
+}
+
+function contentLengthOf(headers: Record<string, string>): number | undefined {
+    const value = Object.entries(headers).find(([name]) => name.toLowerCase() === 'content-length')?.[1]?.trim();
+    return value !== undefined && /^\d+$/.test(value) ? Number(value) : undefined;
+}
+
 function sentResult(sent: ExecuteRequestResult, { summary, secrets }: ApprovableRequest): unknown {
     const [result] = sent.results;
-    const body = result.body.length > MAX_RESPONSE_BODY_LENGTH ? result.body.slice(0, MAX_RESPONSE_BODY_LENGTH) : result.body;
     return {
         status: 'sent',
         sent: true,
@@ -347,8 +361,7 @@ function sentResult(sent: ExecuteRequestResult, { summary, secrets }: Approvable
             status: result.status,
             elapsed_ms: result.elapsed_ms,
             headers: redactHeaders(result.response_headers, secrets),
-            body,
-            body_truncated: Boolean(result.body_truncated) || body.length < result.body.length
+            ...responseBodyOf(result)
         }
     };
 }

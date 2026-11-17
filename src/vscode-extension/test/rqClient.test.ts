@@ -9,6 +9,7 @@ const mockListEnvironments = jest.fn();
 const mockListAuth = jest.fn();
 const mockAuthFields = jest.fn();
 const mockGetRequestDetails = jest.fn();
+const mockBinaryResponseBody = jest.fn();
 
 jest.mock('../src/wasm/rq_wasm', () => ({
     prepare_request: mockPrepareRequest,
@@ -19,6 +20,7 @@ jest.mock('../src/wasm/rq_wasm', () => ({
     list_auth: mockListAuth,
     auth_fields: mockAuthFields,
     get_request_details: mockGetRequestDetails,
+    binary_response_body: mockBinaryResponseBody,
 }), { virtual: true });
 
 const mockBuildSecretsMap = jest.fn(async () => JSON.stringify({ env_file: null, os_vars: [] }));
@@ -28,7 +30,10 @@ jest.mock('../src/utils', () => ({
     buildSecretsMap: mockBuildSecretsMap,
 }));
 
-jest.mock('fs');
+jest.mock('fs', () => ({
+    ...jest.createMockFromModule<typeof import('fs')>('fs'),
+    promises: { mkdir: jest.fn(), writeFile: jest.fn() },
+}));
 jest.mock('https');
 
 import * as vscode from 'vscode';
@@ -59,14 +64,14 @@ function prepared(overrides: Partial<typeof BASE_PREPARED> = {}): string {
     return JSON.stringify({ ...BASE_PREPARED, ...overrides });
 }
 
-function makeHttpsMock(statusCode = 200) {
+function makeHttpsMock(statusCode = 200, body = Buffer.from('{}')) {
     const mockResponse = {
         statusCode,
         headers: { 'content-type': 'application/json' },
         on: jest.fn(),
     };
     mockResponse.on.mockImplementation((event: string, cb: (...args: any[]) => void) => {
-        if (event === 'data') cb(Buffer.from('{}'));
+        if (event === 'data') cb(body);
         if (event === 'end') cb();
         return mockResponse;
     });
@@ -80,6 +85,7 @@ function makeHttpsMock(statusCode = 200) {
 
 beforeEach(() => {
     jest.clearAllMocks();
+    mockBinaryResponseBody.mockReturnValue('null');
     (fs.statSync as jest.Mock).mockReturnValue({ isDirectory: () => true });
     (fs.readdirSync as jest.Mock).mockReturnValue([]);
     (fs.readFileSync as jest.Mock).mockImplementation((p: string) => {
@@ -351,6 +357,63 @@ describe('executeRequest', () => {
             const target = await executeRequest({ requestName: 'test-req', sourceDirectory: '/tmp/project' });
 
             expect(target.results[0].request_headers.Accept).toBe('text/plain, application/json');
+        });
+    });
+
+    describe('response body', () => {
+        const BINARY = Buffer.from([0x89, 0x50, 0x00, 0xff]);
+
+        test('asks rq-lib whether the raw bytes are binary, with the download folder', async () => {
+            mockPrepareRequest.mockReturnValue(prepared());
+            makeHttpsMock(200, BINARY);
+
+            await executeRequest({ requestName: 'test-req', sourceDirectory: '/tmp/project', downloadDir: '/downloads' });
+
+            expect(mockBinaryResponseBody).toHaveBeenCalledWith('{"content-type":"application/json"}', BINARY, 'test-req', '/downloads');
+        });
+
+        test('decodes a text body as UTF-8', async () => {
+            mockPrepareRequest.mockReturnValue(prepared());
+            makeHttpsMock(200, Buffer.from('héllo'));
+
+            const target = await executeRequest({ requestName: 'test-req', sourceDirectory: '/tmp/project' });
+
+            expect([target.results[0].body, target.results[0].binary_body]).toEqual(['héllo', undefined]);
+        });
+
+        test('writes a binary body to the path rq-lib chose and leaves the text empty', async () => {
+            mockPrepareRequest.mockReturnValue(prepared());
+            mockBinaryResponseBody.mockReturnValue(JSON.stringify({ media_type: 'image/png', file_name: 'test-req.png', size: 4, path: '/downloads/id/test-req.png' }));
+            makeHttpsMock(200, BINARY);
+
+            const target = await executeRequest({ requestName: 'test-req', sourceDirectory: '/tmp/project', downloadDir: '/downloads' });
+
+            expect(fs.promises.mkdir).toHaveBeenCalledWith('/downloads/id', { recursive: true });
+            expect(fs.promises.writeFile).toHaveBeenCalledWith('/downloads/id/test-req.png', BINARY);
+            expect(target.results[0].body).toBe('');
+            expect(target.results[0].binary_body?.path).toBe('/downloads/id/test-req.png');
+        });
+
+        test('returns the response with the reason when the binary body cannot be written', async () => {
+            mockPrepareRequest.mockReturnValue(prepared());
+            mockBinaryResponseBody.mockReturnValue(JSON.stringify({ media_type: 'image/png', file_name: 'test-req.png', size: 4, path: '/downloads/id/test-req.png' }));
+            (fs.promises.writeFile as jest.Mock).mockRejectedValueOnce(new Error('ENAMETOOLONG'));
+            makeHttpsMock(200, BINARY);
+
+            const target = await executeRequest({ requestName: 'test-req', sourceDirectory: '/tmp/project', downloadDir: '/downloads' });
+
+            expect([target.results[0].status, target.results[0].binary_body]).toEqual([200, { media_type: 'image/png', file_name: 'test-req.png', size: 4, save_error: 'ENAMETOOLONG' }]);
+        });
+
+        test('does not write a binary body without a download folder', async () => {
+            mockPrepareRequest.mockReturnValue(prepared());
+            mockBinaryResponseBody.mockReturnValue(JSON.stringify({ media_type: 'image/png', file_name: 'test-req.png', size: 4 }));
+            makeHttpsMock(200, BINARY);
+
+            const target = await executeRequest({ requestName: 'test-req', sourceDirectory: '/tmp/project' });
+
+            expect(fs.promises.writeFile).not.toHaveBeenCalled();
+            expect(target.results[0].binary_body?.size).toBe(4);
         });
     });
 

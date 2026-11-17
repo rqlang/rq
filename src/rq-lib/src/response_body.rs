@@ -30,7 +30,6 @@ const FALLBACK_FILE_STEM: &str = "response";
 const FALLBACK_EXTENSION: &str = "bin";
 const RESERVED_FILE_NAME_CHARS: &[char] = &['<', '>', ':', '"', '|', '?', '*'];
 const MAX_FILE_NAME_BYTES: usize = 255;
-const MAX_KEPT_EXTENSION_BYTES: usize = 16;
 const WINDOWS_RESERVED_FILE_STEMS: &[&str] = &[
     "con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8",
     "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
@@ -313,7 +312,7 @@ fn truncate_file_name(name: &str) -> String {
         return name.to_string();
     }
     let (stem, suffix) = match name.rsplit_once('.') {
-        Some((stem, extension)) if extension.len() <= MAX_KEPT_EXTENSION_BYTES => {
+        Some((stem, extension)) if extension.len() + 1 < MAX_FILE_NAME_BYTES => {
             (stem, format!(".{extension}"))
         }
         _ => (name, String::new()),
@@ -546,6 +545,28 @@ mod tests {
         )])
         .unwrap_or_default();
         assert!(target.len() <= 255 && target.len() > 250 && target.ends_with("ñ.pdf"));
+    }
+
+    #[test]
+    fn a_long_extension_is_kept_when_the_name_is_truncated() {
+        let name = format!("{}.application-long", "a".repeat(300));
+        let target = file_name(&[(
+            "content-disposition",
+            &format!("attachment; filename=\"{name}\""),
+        )])
+        .unwrap_or_default();
+        assert!(target.len() == 255 && target.ends_with("a.application-long"));
+    }
+
+    #[test]
+    fn an_extension_longer_than_the_cap_is_truncated_with_the_name() {
+        let name = format!("a.{}", "b".repeat(300));
+        let target = file_name(&[(
+            "content-disposition",
+            &format!("attachment; filename=\"{name}\""),
+        )])
+        .unwrap_or_default();
+        assert!(target.len() == 255 && target.starts_with("a.b"));
     }
 
     #[test]

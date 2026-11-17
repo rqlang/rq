@@ -11,6 +11,7 @@ use crate::error::RqError;
 use crate::http::HttpClient;
 use crate::lint::{lint_rq_file, LintDiagnostic, LintScope, WorkspaceCollector, WorkspaceFile};
 use crate::logger::Logger;
+use crate::response_body::ResponseBody;
 use crate::syntax::auth::Config as AuthConfig;
 use crate::syntax::parse_result::{
     AuthLocation, RequestScope, RequestWithVariables, RequiredVariable,
@@ -78,6 +79,7 @@ impl RqClient {
         Self::log_response(&response, elapsed.as_millis());
 
         let request = authorized.request;
+        let body = ResponseBody::from_response(&response.headers, response.body, &request.name);
         let result = RequestExecutionResult {
             request_name: request.name,
             method: request.method.as_str().to_string(),
@@ -86,7 +88,7 @@ impl RqClient {
             elapsed_ms: elapsed.as_millis() as u64,
             request_headers: request.headers.into_iter().collect(),
             response_headers: response.headers,
-            body: response.body,
+            body,
         };
         Ok(result)
     }
@@ -3271,7 +3273,7 @@ mod prepare_tests {
                 Ok(HttpResponse {
                     status: 200,
                     headers: HashMap::new(),
-                    body: String::new(),
+                    body: Vec::new(),
                 })
             })
         }

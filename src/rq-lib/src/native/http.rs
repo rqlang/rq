@@ -50,9 +50,10 @@ async fn execute_with_reqwest(
     }
 
     let body = response
-        .text()
+        .bytes()
         .await
-        .map_err(|e| RqError::Network(error_chain(&e)))?;
+        .map_err(|e| RqError::Network(error_chain(&e)))?
+        .to_vec();
 
     Ok(HttpResponse {
         status,

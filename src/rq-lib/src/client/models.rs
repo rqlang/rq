@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use serde::Serialize;
 
+use crate::response_body::ResponseBody;
 use crate::syntax::auth::Config;
 use crate::syntax::ui_color::UiColor;
 use crate::syntax::variable_context::{VariableContext, VariableValue};
@@ -78,7 +79,7 @@ pub struct VariableEntry {
     pub source: String,
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Clone)]
 pub struct RequestExecutionResult {
     pub request_name: String,
     pub method: String,
@@ -87,7 +88,7 @@ pub struct RequestExecutionResult {
     pub elapsed_ms: u64,
     pub request_headers: HashMap<String, String>,
     pub response_headers: HashMap<String, String>,
-    pub body: String,
+    pub body: ResponseBody,
 }
 
 #[derive(Debug, Clone, Serialize)]

@@ -8,7 +8,7 @@ use std::time::Duration;
 pub struct HttpResponse {
     pub status: u16,
     pub headers: std::collections::HashMap<String, String>,
-    pub body: String,
+    pub body: Vec<u8>,
 }
 
 pub trait HttpClient: Send + Sync {

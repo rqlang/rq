@@ -1,7 +1,7 @@
 // Integration tests for rq CLI
 use libtest_mimic::{run, Arguments, Failed, Trial};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 mod common;
 use common::{rq_cmd, validate_json_response};
@@ -195,6 +195,10 @@ fn main() {
         Trial::test(
             "request_run_json_reports_the_saved_binary_body",
             test_request_run_json_reports_the_saved_binary_body,
+        ),
+        Trial::test(
+            "request_run_reports_a_binary_body_it_could_not_save",
+            test_request_run_reports_a_binary_body_it_could_not_save,
         ),
         Trial::test(
             "request_run_names_the_saved_body_after_content_disposition",
@@ -409,10 +413,22 @@ fn run_basic_with(extra: &[&str]) -> Result<std::process::Output, Failed> {
 
 const BINARY_BODY: &[u8] = &[0x89, b'P', b'N', b'G', 0x00, 0xff, 0xfe, b'\n'];
 
+fn temp_dir_for(name: &str) -> Result<PathBuf, Failed> {
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR"))
+        .join("temp")
+        .join(name);
+    if dir.exists() {
+        fs::remove_dir_all(&dir)?;
+    }
+    fs::create_dir_all(&dir)?;
+    Ok(dir)
+}
+
 fn run_against_binary_response(
     name: &str,
     response: ResponseTemplate,
     extra: &[&str],
+    temp_dir: &Path,
 ) -> Result<std::process::Output, Failed> {
     let runtime = tokio::runtime::Runtime::new()?;
     let server = runtime.block_on(async {
@@ -428,6 +444,9 @@ fn run_against_binary_response(
     let output = rq_cmd()
         .args(["request", "run", "--no-lint", "-s", &rq_path, "-n", name])
         .args(extra)
+        .env("TMPDIR", temp_dir)
+        .env("TMP", temp_dir)
+        .env("TEMP", temp_dir)
         .output()?;
     if !output.status.success() {
         return Err(format!(
@@ -449,14 +468,17 @@ fn saved_path_in_text(output: &std::process::Output) -> Result<String, Failed> {
 }
 
 fn test_request_run_saves_an_unlabelled_binary_body() -> Result<(), Failed> {
+    let temp_dir = temp_dir_for("unlabelled_binary")?;
     let output = run_against_binary_response(
         "unlabelled_binary",
         ResponseTemplate::new(200).set_body_bytes(BINARY_BODY),
         &["-p", "b"],
+        &temp_dir,
     )?;
     let stdout = String::from_utf8_lossy(&output.stdout);
     let path = saved_path_in_text(&output)?;
     if !stdout.starts_with(&format!("binary body ({} bytes)", BINARY_BODY.len()))
+        || !Path::new(&path).starts_with(&temp_dir)
         || !path.ends_with("unlabelled_binary.bin")
         || fs::read(&path)? != BINARY_BODY
     {
@@ -466,10 +488,12 @@ fn test_request_run_saves_an_unlabelled_binary_body() -> Result<(), Failed> {
 }
 
 fn test_request_run_json_reports_the_saved_binary_body() -> Result<(), Failed> {
+    let temp_dir = temp_dir_for("json_binary")?;
     let output = run_against_binary_response(
         "json_binary",
         ResponseTemplate::new(200).set_body_raw(BINARY_BODY, "image/png"),
         &["-f", "json"],
+        &temp_dir,
     )?;
     let result = parse_first_result(&output)?;
     let body_file = &result["body_file"];
@@ -486,6 +510,7 @@ fn test_request_run_json_reports_the_saved_binary_body() -> Result<(), Failed> {
 }
 
 fn test_request_run_names_the_saved_body_after_content_disposition() -> Result<(), Failed> {
+    let temp_dir = temp_dir_for("disposition_binary")?;
     let output = run_against_binary_response(
         "disposition_binary",
         ResponseTemplate::new(200)
@@ -495,6 +520,7 @@ fn test_request_run_names_the_saved_body_after_content_disposition() -> Result<(
                 "attachment; filename=\"../report.pdf\"",
             ),
         &["-p", "b"],
+        &temp_dir,
     )?;
     let path = saved_path_in_text(&output)?;
     let saved = Path::new(&path);
@@ -502,6 +528,28 @@ fn test_request_run_names_the_saved_body_after_content_disposition() -> Result<(
         || fs::read(saved)? != BINARY_BODY
     {
         return Err(format!("Unexpected path: {path}").into());
+    }
+    Ok(())
+}
+
+fn test_request_run_reports_a_binary_body_it_could_not_save() -> Result<(), Failed> {
+    let temp_dir = temp_dir_for("unsaved_binary")?;
+    let not_a_directory = temp_dir.join("file");
+    fs::write(&not_a_directory, "")?;
+    let output = run_against_binary_response(
+        "unsaved_binary",
+        ResponseTemplate::new(200).set_body_raw(BINARY_BODY, "image/png"),
+        &["-p", "mb"],
+        &not_a_directory,
+    )?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    if !stdout.contains("200")
+        || !stdout.contains(&format!(
+            "binary body (image/png, {} bytes) could not be saved: ",
+            BINARY_BODY.len()
+        ))
+    {
+        return Err(format!("Unexpected output: {stdout}").into());
     }
     Ok(())
 }

@@ -29,6 +29,12 @@ const DOWNLOAD_DIR_NAME: &str = "rq";
 const FALLBACK_FILE_STEM: &str = "response";
 const FALLBACK_EXTENSION: &str = "bin";
 const RESERVED_FILE_NAME_CHARS: &[char] = &['<', '>', ':', '"', '|', '?', '*'];
+const MAX_FILE_NAME_BYTES: usize = 255;
+const MAX_KEPT_EXTENSION_BYTES: usize = 16;
+const WINDOWS_RESERVED_FILE_STEMS: &[&str] = &[
+    "con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8",
+    "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
+];
 
 const TEXT_MEDIA_TYPES: &[&str] = &[
     "application/json",
@@ -212,14 +218,46 @@ fn extension_of(media_type: Option<&str>) -> &'static str {
 fn disposition_file_name(value: &str) -> Option<String> {
     let mut plain = None;
     let mut extended = None;
-    for (key, value) in value.split(';').skip(1).filter_map(|p| p.split_once('=')) {
+    for (key, value) in disposition_parameters(value)
+        .into_iter()
+        .skip(1)
+        .filter_map(|p| p.split_once('='))
+    {
         match key.trim().to_ascii_lowercase().as_str() {
             "filename*" => extended = extended_value(value.trim()),
-            "filename" => plain = Some(value.trim().trim_matches('"').to_string()),
+            "filename" => plain = Some(unquote(value.trim())),
             _ => {}
         }
     }
     extended.or(plain)
+}
+
+fn disposition_parameters(value: &str) -> Vec<&str> {
+    let mut parameters = Vec::new();
+    let mut start = 0;
+    let mut quoted = false;
+    let mut escaped = false;
+    for (index, c) in value.char_indices() {
+        match c {
+            _ if escaped => escaped = false,
+            '\\' if quoted => escaped = true,
+            '"' => quoted = !quoted,
+            ';' if !quoted => {
+                parameters.extend(value.get(start..index));
+                start = index + 1;
+            }
+            _ => {}
+        }
+    }
+    parameters.extend(value.get(start..));
+    parameters
+}
+
+fn unquote(value: &str) -> String {
+    value
+        .strip_prefix('"')
+        .and_then(|rest| rest.strip_suffix('"'))
+        .map_or_else(|| value.to_string(), |inner| inner.replace("\\\"", "\""))
 }
 
 fn extended_value(value: &str) -> Option<String> {
@@ -255,7 +293,40 @@ fn sanitize_file_name(name: &str) -> Option<String> {
         })
         .collect();
     let trimmed = cleaned.trim_matches(|c: char| c.is_whitespace() || c == '.');
-    (!trimmed.is_empty()).then(|| trimmed.to_string())
+    (!trimmed.is_empty()).then(|| truncate_file_name(&avoid_reserved_stem(trimmed)))
+}
+
+fn avoid_reserved_stem(name: &str) -> String {
+    let stem = name.split('.').next().unwrap_or(name).trim_end();
+    if WINDOWS_RESERVED_FILE_STEMS
+        .iter()
+        .any(|reserved| reserved.eq_ignore_ascii_case(stem))
+    {
+        format!("_{name}")
+    } else {
+        name.to_string()
+    }
+}
+
+fn truncate_file_name(name: &str) -> String {
+    if name.len() <= MAX_FILE_NAME_BYTES {
+        return name.to_string();
+    }
+    let (stem, suffix) = match name.rsplit_once('.') {
+        Some((stem, extension)) if extension.len() <= MAX_KEPT_EXTENSION_BYTES => {
+            (stem, format!(".{extension}"))
+        }
+        _ => (name, String::new()),
+    };
+    let budget = MAX_FILE_NAME_BYTES - suffix.len();
+    let mut truncated = String::with_capacity(MAX_FILE_NAME_BYTES);
+    for c in stem.chars() {
+        if truncated.len() + c.len_utf8() > budget {
+            break;
+        }
+        truncated.push(c);
+    }
+    truncated + &suffix
 }
 
 #[cfg(test)]
@@ -431,6 +502,50 @@ mod tests {
             "attachment; filename=\"a:b*c?\u{7}.png\"",
         )]);
         assert_eq!(target, Some("a_b_c__.png".to_string()));
+    }
+
+    #[test]
+    fn a_quoted_semicolon_stays_in_the_file_name() {
+        let target = file_name(&[(
+            "content-disposition",
+            "attachment; filename=\"informe;2024.pdf\"; size=10",
+        )]);
+        assert_eq!(target, Some("informe;2024.pdf".to_string()));
+    }
+
+    #[test]
+    fn an_escaped_quote_in_the_file_name_is_replaced() {
+        let target = file_name(&[("content-disposition", "attachment; filename=\"a\\\"b.pdf\"")]);
+        assert_eq!(target, Some("a_b.pdf".to_string()));
+    }
+
+    #[test]
+    fn a_windows_reserved_name_is_prefixed() {
+        let target = ["CON.pdf", "nul", "Lpt1 .txt"].map(|name| {
+            file_name(&[(
+                "content-disposition",
+                &format!("attachment; filename=\"{name}\""),
+            )])
+        });
+        assert_eq!(
+            target,
+            [
+                Some("_CON.pdf".to_string()),
+                Some("_nul".to_string()),
+                Some("_Lpt1 .txt".to_string())
+            ]
+        );
+    }
+
+    #[test]
+    fn a_long_file_name_is_truncated_keeping_its_extension() {
+        let name = format!("{}.pdf", "ñ".repeat(200));
+        let target = file_name(&[(
+            "content-disposition",
+            &format!("attachment; filename=\"{name}\""),
+        )])
+        .unwrap_or_default();
+        assert!(target.len() <= 255 && target.len() > 250 && target.ends_with("ñ.pdf"));
     }
 
     #[test]

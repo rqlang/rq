@@ -1,7 +1,8 @@
+import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { confirmRequest, RequestRunner } from '../../src/commands/runRequest';
+import { clearDownloads, confirmRequest, RequestRunner } from '../../src/commands/runRequest';
 import { RequestExplorerProvider } from '../../src/requestExplorer';
 import { createExplorerState } from '../memento-mock';
 import * as cliService from '../../src/rqClient';
@@ -342,6 +343,36 @@ describe('runRequest Commands', () => {
             expect(cliService.executeRequest).toHaveBeenCalledWith(expect.objectContaining({
                 downloadDir: path.join(STORAGE_DIR, 'downloads')
             }));
+        });
+    });
+
+    describe('clearDownloads', () => {
+        const downloads = path.join(os.tmpdir(), 'rq-clear-downloads-test');
+        const old = path.join(downloads, 'old');
+        const recent = path.join(downloads, 'recent');
+
+        beforeEach(async () => {
+            await fs.promises.rm(downloads, { recursive: true, force: true });
+            await fs.promises.mkdir(old, { recursive: true });
+            await fs.promises.mkdir(recent, { recursive: true });
+            const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+            await fs.promises.utimes(old, twoDaysAgo, twoDaysAgo);
+        });
+
+        afterAll(async () => {
+            await fs.promises.rm(downloads, { recursive: true, force: true });
+        });
+
+        test('removes every download of a workspace', async () => {
+            await clearDownloads(downloads, false);
+
+            expect(fs.existsSync(downloads)).toBe(false);
+        });
+
+        test('keeps the recent downloads of the storage other windows share', async () => {
+            await clearDownloads(downloads, true);
+
+            expect([fs.existsSync(old), fs.existsSync(recent)]).toEqual([false, true]);
         });
     });
 

@@ -14,6 +14,8 @@ const RUN_CONFIRMATION = 'Run';
 
 const RUNNING_CONTEXT_KEY = 'rq.requestRunning';
 
+const SHARED_DOWNLOAD_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
 interface RequestExecutionContext {
     requestName: string;
     sourceDirectory: string | undefined;
@@ -46,6 +48,7 @@ export class RequestRunner {
     private logger!: Logger;
     private provider: RequestExplorerProvider | undefined;
     private activeExecution: ActiveExecution | undefined;
+    private downloadsCleared: Promise<void> = Promise.resolve();
 
     constructor(
         private context: vscode.ExtensionContext,
@@ -54,7 +57,7 @@ export class RequestRunner {
 
     public registerCommands(provider: RequestExplorerProvider) {
         this.provider = provider;
-        fs.promises.rm(this.downloadDir(), { recursive: true, force: true }).catch(() => undefined);
+        this.downloadsCleared = clearDownloads(this.downloadDir(), this.context.storageUri === undefined).catch(() => undefined);
         this.context.subscriptions.push(
             vscode.commands.registerCommand('rq.runRequest', (item) => this.runRequest(item, provider)),
             vscode.commands.registerCommand('rq.runRequestWithVariables', (item) => this.runRequestWithVariables(item, provider)),
@@ -295,6 +298,7 @@ export class RequestRunner {
         }, async (_progress, token) => {
             const subscription = token.onCancellationRequested(() => this.cancelActiveExecution());
             try {
+                await this.downloadsCleared;
                 const result = await rqClient.executeRequest({
                     requestName,
                     sourceDirectory,
@@ -475,6 +479,22 @@ export class RequestRunner {
 
         return lines.length > 0 ? lines.join('\n') : stderr;
     }
+}
+
+export async function clearDownloads(downloadDir: string, shared: boolean): Promise<void> {
+    if (!shared) {
+        await fs.promises.rm(downloadDir, { recursive: true, force: true });
+        return;
+    }
+    const cutoff = Date.now() - SHARED_DOWNLOAD_MAX_AGE_MS;
+    const entries = await fs.promises.readdir(downloadDir);
+    await Promise.all(entries.map(async (entry) => {
+        const entryPath = path.join(downloadDir, entry);
+        const { mtimeMs } = await fs.promises.stat(entryPath);
+        if (mtimeMs < cutoff) {
+            await fs.promises.rm(entryPath, { recursive: true, force: true });
+        }
+    }));
 }
 
 export async function confirmRequest(prepared: rqClient.PreparedRequest, environment?: string): Promise<boolean> {

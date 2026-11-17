@@ -79,6 +79,7 @@ A request marked `[confirm]` — on the request, its endpoint or the selected en
 After a request runs, the extension opens a **response panel** showing the status code, response headers, and formatted body.
 
 - Use the **Copy** button in the panel to copy the response body to the clipboard.
+- A binary body, such as an image, a PDF or an archive, is saved to a file instead of being shown, under the same rules as the [CLI](CLI.md#rq-request-run). The panel shows its media type, size and path, with **Open**, which opens it in VS Code (images and PDFs in their viewers), and **Reveal in file explorer**; **Copy** copies the path. The files are kept in the extension's storage folder for the workspace and deleted the next time the extension starts.
 - For execution errors (network failures, interpolation issues, auth problems), check the **RQ** output channel via **View → Output → RQ** for the full details.
 
 The `rq.results.tabMode` setting chooses which tab a result opens in:

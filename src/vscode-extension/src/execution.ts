@@ -4,7 +4,6 @@ import * as http from 'http';
 import * as https from 'https';
 import * as crypto from 'crypto';
 import * as forge from 'node-forge';
-import { StringDecoder } from 'string_decoder';
 import { buildSecretsMap, CANCELLED_MESSAGE, draftsJson } from './utils';
 import { wasmCall } from './wasmHost';
 import type { AuthShowOutput } from './rqClient';
@@ -26,6 +25,7 @@ export interface ExecuteRequestOptions {
     variables?: Record<string, string>;
     cancellation?: CancellationSignal;
     maxResponseLength?: number;
+    downloadDir?: string;
     acquireToken?: (auth: PreparedAuth) => Promise<string>;
     confirm?: (prepared: PreparedRequest) => Promise<boolean>;
 }
@@ -40,7 +40,15 @@ export interface RequestExecutionResult {
     request_body?: string;
     response_headers: Record<string, string>;
     body: string;
+    binary_body?: BinaryBody;
     body_truncated?: boolean;
+}
+
+export interface BinaryBody {
+    media_type?: string | null;
+    file_name: string;
+    size: number;
+    path?: string;
 }
 
 export interface ExecuteRequestResult {
@@ -133,6 +141,7 @@ export async function sendRequest(scope: RequestScope, options: ExecuteRequestOp
     const startTime = Date.now();
     const response = await nodeHttpRequest(prepared.url, prepared.method, headers, body, prepared.timeout_ms ?? undefined, options.cancellation, options.maxResponseLength);
     const elapsed = Date.now() - startTime;
+    const binaryBody = await binaryBodyOf(response, prepared.name, options.downloadDir);
 
     return {
         results: [{
@@ -144,10 +153,22 @@ export async function sendRequest(scope: RequestScope, options: ExecuteRequestOp
             request_headers: joinHeaderValues(headers),
             request_body: body,
             response_headers: response.headers,
-            body: response.body,
+            body: binaryBody ? '' : new TextDecoder().decode(response.body),
+            binary_body: binaryBody,
             body_truncated: response.truncated,
         }],
     };
+}
+
+async function binaryBodyOf(response: NodeHttpResponse, requestName: string, downloadDir?: string): Promise<BinaryBody | undefined> {
+    const binaryBody = JSON.parse(
+        await wasmCall('binary_response_body', [JSON.stringify(response.headers), response.body, requestName, downloadDir])
+    ) as BinaryBody | null;
+    if (binaryBody?.path) {
+        await fs.promises.mkdir(path.dirname(binaryBody.path), { recursive: true });
+        await fs.promises.writeFile(binaryBody.path, response.body);
+    }
+    return binaryBody ?? undefined;
 }
 
 function toNodeHeaders(pairs: [string, string][]): Record<string, string | string[]> {
@@ -187,7 +208,7 @@ const MAX_TIMER_DELAY_MS = 2_147_483_647;
 interface NodeHttpResponse {
     status: number;
     headers: Record<string, string>;
-    body: string;
+    body: Buffer;
     truncated: boolean;
 }
 
@@ -250,27 +271,27 @@ function nodeHttpRequest(url: string, method: string, reqHeaders: Record<string,
                     responseHeaders[k] = Array.isArray(v) ? v.join(', ') : v;
                 }
             }
-            const decoder = new StringDecoder('utf8');
-            let text = '';
+            const chunks: Buffer[] = [];
+            let received = 0;
             const finish = (truncated: boolean) => {
                 cleanup();
                 resolve({
                     status: res.statusCode ?? 0,
                     headers: responseHeaders,
-                    body: text.slice(0, maxBodyLength),
+                    body: Buffer.concat(chunks).subarray(0, maxBodyLength),
                     truncated,
                 });
             };
             res.on('data', (chunk: Buffer) => {
-                text += decoder.write(chunk);
-                if (text.length > maxBodyLength) {
+                chunks.push(chunk);
+                received += chunk.length;
+                if (received > maxBodyLength) {
                     finish(true);
                     res.destroy();
                 }
             });
             res.on('end', () => {
-                text += decoder.end();
-                finish(text.length > maxBodyLength);
+                finish(received > maxBodyLength);
             });
             res.on('error', (err) => { cleanup(); reject(err); });
         });
@@ -308,14 +329,7 @@ async function fetchClientCredentialsToken(fields: Record<string, string>, authF
         const response = await nodeHttpRequest(token_url, 'POST', {
             'content-type': 'application/x-www-form-urlencoded',
         }, params.toString());
-        if (response.status < 200 || response.status >= 300) {
-            throw new Error(`Token request failed with status ${response.status}: ${response.body}`);
-        }
-        const data = JSON.parse(response.body) as { access_token?: string };
-        if (!data.access_token) {
-            throw new Error(`Token response missing access_token: ${response.body}`);
-        }
-        return data.access_token;
+        return accessTokenOf(response);
     }
 
     const params = new URLSearchParams({ grant_type: 'client_credentials', client_id, client_secret });
@@ -323,12 +337,17 @@ async function fetchClientCredentialsToken(fields: Record<string, string>, authF
     const response = await nodeHttpRequest(token_url, 'POST', {
         'content-type': 'application/x-www-form-urlencoded',
     }, params.toString());
+    return accessTokenOf(response);
+}
+
+function accessTokenOf(response: NodeHttpResponse): string {
+    const body = response.body.toString('utf8');
     if (response.status < 200 || response.status >= 300) {
-        throw new Error(`Token request failed with status ${response.status}: ${response.body}`);
+        throw new Error(`Token request failed with status ${response.status}: ${body}`);
     }
-    const data = JSON.parse(response.body) as { access_token?: string };
+    const data = JSON.parse(body) as { access_token?: string };
     if (!data.access_token) {
-        throw new Error(`Token response missing access_token: ${response.body}`);
+        throw new Error(`Token response missing access_token: ${body}`);
     }
     return data.access_token;
 }

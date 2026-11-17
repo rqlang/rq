@@ -1,3 +1,5 @@
+import * as fs from 'fs';
+import * as path from 'path';
 import * as vscode from 'vscode';
 import * as rqClient from '../rqClient';
 import { RequestExplorerProvider, RequestTreeItem } from '../requestExplorer';
@@ -28,6 +30,7 @@ interface RequestRun {
 interface ResultsData {
     run: RequestRun;
     body: string | undefined;
+    bodyFile?: string;
 }
 
 type RequestResultsSession = ResultsSession<ResultsData>;
@@ -51,6 +54,7 @@ export class RequestRunner {
 
     public registerCommands(provider: RequestExplorerProvider) {
         this.provider = provider;
+        fs.promises.rm(this.downloadDir(), { recursive: true, force: true }).catch(() => undefined);
         this.context.subscriptions.push(
             vscode.commands.registerCommand('rq.runRequest', (item) => this.runRequest(item, provider)),
             vscode.commands.registerCommand('rq.runRequestWithVariables', (item) => this.runRequestWithVariables(item, provider)),
@@ -136,6 +140,10 @@ export class RequestRunner {
         } finally {
             this.endExecution();
         }
+    }
+
+    private downloadDir(): string {
+        return path.join((this.context.storageUri ?? this.context.globalStorageUri).fsPath, 'downloads');
     }
 
     private getSourceDirectory(): string | undefined {
@@ -294,6 +302,7 @@ export class RequestRunner {
                     environment,
                     variables,
                     cancellation: execution.cancellationSource.token,
+                    downloadDir: this.downloadDir(),
                     acquireToken: (auth) => this.acquireInteractiveToken(auth, execution.cancellationSource.token),
                     confirm: (prepared) => confirmRequest(prepared, environment)
                 });
@@ -318,7 +327,8 @@ export class RequestRunner {
         }
 
         const html = await getWebviewContent(this.context, result.results[0]);
-        this.showResult(execution, html, result.results[0].body);
+        const bodyFile = result.results[0].binary_body?.path;
+        this.showResult(execution, html, bodyFile ?? result.results[0].body, bodyFile);
     }
 
     private async handleFailedExecution(execution: ActiveExecution, result: rqClient.ExecuteRequestResult) {
@@ -348,6 +358,12 @@ export class RequestRunner {
         if (message.command === 'copyBody' && session.data?.body !== undefined) {
             vscode.env.clipboard.writeText(session.data.body);
             vscode.window.showInformationMessage('Body copied to clipboard');
+        }
+        if (message.command === 'openBody' && session.data?.bodyFile !== undefined) {
+            vscode.commands.executeCommand('vscode.open', vscode.Uri.file(session.data.bodyFile));
+        }
+        if (message.command === 'revealBody' && session.data?.bodyFile !== undefined) {
+            vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(session.data.bodyFile));
         }
         if (message.command === 'copy' && typeof message.text === 'string') {
             vscode.env.clipboard.writeText(message.text);
@@ -423,10 +439,10 @@ export class RequestRunner {
         this.showResult(execution, html, undefined);
     }
 
-    private showResult(execution: ActiveExecution, html: string, body: string | undefined) {
+    private showResult(execution: ActiveExecution, html: string, body: string | undefined, bodyFile?: string) {
         const { session, run } = execution;
         const panel = this.resultsPanels.show(session, run.executionContext.requestName);
-        session.data = { run, body };
+        session.data = { run, body, bodyFile };
         panel.webview.html = html;
     }
 

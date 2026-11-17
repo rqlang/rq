@@ -5,6 +5,7 @@ use rq_lib::client::models::{
 };
 use rq_lib::error::RqError;
 use rq_lib::logger::Logger;
+use rq_lib::response_body::BinaryBodyInfo;
 use rq_lib::RqClient;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -701,6 +702,34 @@ pub fn auth_fields() -> Result<String, JsError> {
         })
         .collect();
     serde_json::to_string(&types).map_err(|e| JsError::new(&e.to_string()))
+}
+
+#[derive(Serialize)]
+struct BinaryBodyView {
+    #[serde(flatten)]
+    info: BinaryBodyInfo,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    path: Option<String>,
+}
+
+#[wasm_bindgen]
+pub fn binary_response_body(
+    headers_json: &str,
+    body: &[u8],
+    request_name: &str,
+    download_dir: Option<String>,
+) -> Result<String, JsError> {
+    let headers: HashMap<String, String> = serde_json::from_str(headers_json)
+        .map_err(|e| JsError::new(&format!("Invalid headers: {e}")))?;
+    let view = BinaryBodyInfo::of_response(&headers, body, request_name).map(|info| {
+        let path = download_dir.as_deref().map(|dir| {
+            info.download_path(Path::new(dir))
+                .to_string_lossy()
+                .into_owned()
+        });
+        BinaryBodyView { info, path }
+    });
+    serde_json::to_string(&view).map_err(|e| JsError::new(&e.to_string()))
 }
 
 #[wasm_bindgen]

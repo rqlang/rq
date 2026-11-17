@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import type { BinaryBody } from '../execution';
 import { escapeHtml } from './html';
 import { parseJsonTree, serializeJsonTree } from './jsonTree';
 
@@ -77,6 +78,28 @@ const textRenderer: BodyRenderer = {
         };
     }
 };
+
+export function binaryBodyRenderer(body: BinaryBody): BodyRenderer {
+    const description = body.media_type ? `${body.media_type}, ${body.size} bytes` : `${body.size} bytes`;
+    const location = body.path === undefined
+        ? '<p class="binary-location">Not saved</p>'
+        : `<p class="binary-location">Saved to <code>${escapeHtml(body.path)}</code></p>
+            <div class="binary-actions">
+                <button class="html-view-btn active" onclick="vscode.postMessage({ command: 'openBody' })">Open</button>
+                <button class="html-view-btn" onclick="vscode.postMessage({ command: 'revealBody' })">Reveal in file explorer</button>
+            </div>`;
+    return {
+        async render(): Promise<RenderedBody> {
+            return {
+                content: `<div class="binary-body">
+            <p class="binary-summary">Binary body (${escapeHtml(description)})</p>
+            ${location}
+        </div>`,
+                script: ''
+            };
+        }
+    };
+}
 
 function textBodyHtml(escapedText: string): string {
     return `<pre class="text-body"><code>${escapedText}</code></pre>`;

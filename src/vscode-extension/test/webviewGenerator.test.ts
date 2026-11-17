@@ -281,6 +281,25 @@ describe('webviewGenerator', () => {
         expect(html).not.toContain('const jsonTree =');
     });
 
+    test('getWebviewContent renders a binary body instead of its text', async () => {
+        mockFs.readFile.mockResolvedValue(new TextEncoder().encode('{{BODY_CONTENT}}'));
+
+        const html = await getWebviewContent(mockContext, {
+            request_name: 'Test',
+            method: 'GET',
+            url: 'http://test',
+            status: 200,
+            elapsed_ms: 50,
+            request_headers: {},
+            response_headers: { 'content-type': 'application/json' },
+            body: '',
+            binary_body: { media_type: 'application/pdf', file_name: 'a.pdf', size: 8, path: '/tmp/a.pdf' }
+        });
+
+        expect(html).toContain('Binary body (application/pdf, 8 bytes)');
+        expect(html).not.toContain('json-body');
+    });
+
     test('getWebviewContent keeps replacement patterns in a text body literal', async () => {
         mockFs.readFile.mockResolvedValue(new TextEncoder().encode('{{BODY_CONTENT}}'));
 

@@ -46,6 +46,10 @@ const TEXT_MEDIA_TYPES: &[&str] = &[
 
 const TEXT_MEDIA_TYPE_SUFFIXES: &[&str] = &["+json", "+xml", "+yaml"];
 
+const BINARY_MEDIA_TYPE_PREFIXES: &[&str] = &["image/", "audio/", "video/", "font/"];
+
+const BINARY_MEDIA_TYPES: &[&str] = &["application/octet-stream"];
+
 const EXTENSIONS: &[(&str, &str)] = &[
     ("image/png", "png"),
     ("image/jpeg", "jpg"),
@@ -125,8 +129,9 @@ impl BinaryBodyInfo {
         }
         let media_type = media_type(headers);
         let binary = match media_type.as_deref() {
-            Some(media_type) => !is_text_media_type(media_type),
-            None => !looks_like_text(bytes),
+            Some(media_type) if is_text_media_type(media_type) => false,
+            Some(media_type) if is_binary_media_type(media_type) => true,
+            _ => !looks_like_text(bytes),
         };
         binary.then(|| Self {
             file_name: file_name(headers, media_type.as_deref(), request_name),
@@ -165,8 +170,17 @@ fn is_text_media_type(media_type: &str) -> bool {
             .any(|suffix| media_type.ends_with(suffix))
 }
 
+fn is_binary_media_type(media_type: &str) -> bool {
+    BINARY_MEDIA_TYPE_PREFIXES
+        .iter()
+        .any(|prefix| media_type.starts_with(prefix))
+        || BINARY_MEDIA_TYPES.contains(&media_type)
+        || EXTENSIONS.iter().any(|(known, _)| *known == media_type)
+}
+
 fn looks_like_text(bytes: &[u8]) -> bool {
-    !bytes.contains(&0) && std::str::from_utf8(bytes).is_ok()
+    !bytes.contains(&0)
+        && std::str::from_utf8(bytes).map_or_else(|e| e.error_len().is_none(), |_| true)
 }
 
 fn file_name(
@@ -323,6 +337,39 @@ mod tests {
     #[test]
     fn without_content_type_a_nul_byte_is_binary() {
         let target = info(&[], b"abc\0def");
+        assert!(target.is_some());
+    }
+
+    #[test]
+    fn without_content_type_text_cut_mid_character_is_text() {
+        let target = info(&[], &"héllo".as_bytes()[..2]);
+        assert_eq!(target, None);
+    }
+
+    #[test]
+    fn an_unknown_media_type_with_utf8_text_is_text() {
+        let target = info(
+            &[("content-type", "application/jwt")],
+            b"eyJhbGciOiJIUzI1NiJ9",
+        );
+        assert_eq!(target, None);
+    }
+
+    #[test]
+    fn an_unknown_media_type_with_invalid_utf8_is_binary() {
+        let target = info(&[("content-type", "application/x-custom")], PNG_BYTES);
+        assert!(target.is_some());
+    }
+
+    #[test]
+    fn an_octet_stream_is_binary_even_when_it_is_utf8() {
+        let target = info(&[("content-type", "application/octet-stream")], b"abc");
+        assert!(target.is_some());
+    }
+
+    #[test]
+    fn an_image_media_type_is_binary_even_when_it_is_utf8() {
+        let target = info(&[("content-type", "image/x-portable-graymap")], b"P2 1 1");
         assert!(target.is_some());
     }
 

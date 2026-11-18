@@ -76,6 +76,70 @@ pub fn resolve_under_workspace(logical: &Path, workspace: Option<&Path>) -> Path
     root.join(logical)
 }
 
+pub fn join_lexically(base: &str, path: &str) -> String {
+    if base.is_empty() || is_absolute(Path::new(path)) {
+        return path.to_string();
+    }
+    format!("{}/{path}", base.trim_end_matches(['/', '\\']))
+}
+
+pub fn normalize_lexically(path: &str) -> String {
+    LexicalPath::parse(path).render()
+}
+
+pub fn depth_below(path: &str, root: &str) -> Option<usize> {
+    let path = LexicalPath::parse(path);
+    let root = LexicalPath::parse(root);
+    if !path.root.eq_ignore_ascii_case(&root.root) {
+        return None;
+    }
+    let below = path.parts.strip_prefix(root.parts.as_slice())?;
+    (!below.iter().any(|part| part == "..")).then_some(below.len())
+}
+
+struct LexicalPath {
+    root: String,
+    parts: Vec<String>,
+}
+
+impl LexicalPath {
+    fn parse(text: &str) -> Self {
+        let (root, rest) = Self::split_root(text);
+        let mut parts: Vec<String> = Vec::new();
+        for part in rest.split(['/', '\\']) {
+            match part {
+                "" | "." => {}
+                ".." if parts.last().is_some_and(|last| last != "..") => {
+                    parts.pop();
+                }
+                ".." if !root.is_empty() => {}
+                _ => parts.push(part.to_string()),
+            }
+        }
+        Self { root, parts }
+    }
+
+    fn split_root(text: &str) -> (String, &str) {
+        let separator = std::path::MAIN_SEPARATOR.to_string();
+        if let Some(drive) = drive_letter(Path::new(text)) {
+            let rest = text.get(3..).unwrap_or_default();
+            return (format!("{}:{separator}", drive.to_ascii_uppercase()), rest);
+        }
+        match text.strip_prefix(['/', '\\']) {
+            Some(rest) => (separator, rest),
+            None => (String::new(), text),
+        }
+    }
+
+    fn render(&self) -> String {
+        if self.root.is_empty() && self.parts.is_empty() {
+            return ".".to_string();
+        }
+        let separator = std::path::MAIN_SEPARATOR.to_string();
+        format!("{}{}", self.root, self.parts.join(&separator))
+    }
+}
+
 fn is_absolute(path: &Path) -> bool {
     path.is_absolute() || drive_letter(path).is_some()
 }
@@ -370,8 +434,8 @@ pub(crate) mod overflowing {
 #[cfg(test)]
 mod tests {
     use super::{
-        resolve_under_workspace, upper_drive_letter, walk_rq_files, walk_rq_files_up_to,
-        IGNORE_FILE,
+        depth_below, join_lexically, normalize_lexically, resolve_under_workspace,
+        upper_drive_letter, walk_rq_files, walk_rq_files_up_to, IGNORE_FILE,
     };
     use crate::native::NativeFs;
     use std::path::{Path, PathBuf};
@@ -675,5 +739,80 @@ mod tests {
         std::fs::write(&workspace_file, "").expect("write");
         let target = resolve_under_workspace(Path::new("users.rq"), Some(&workspace_file));
         assert_eq!(target, dir.path().join("users.rq"));
+    }
+
+    fn native(path: &str) -> String {
+        path.replace('/', std::path::MAIN_SEPARATOR_STR)
+    }
+
+    #[test]
+    fn normalize_lexically_drops_dots_and_resolves_parent_segments() {
+        assert_eq!(
+            normalize_lexically("api/./downloads/../reports//x.pdf"),
+            native("api/reports/x.pdf")
+        );
+    }
+
+    #[test]
+    fn normalize_lexically_keeps_parent_segments_a_relative_path_cannot_resolve() {
+        assert_eq!(normalize_lexically("../a/../../b"), native("../../b"));
+    }
+
+    #[test]
+    fn normalize_lexically_stops_parent_segments_at_the_root() {
+        assert_eq!(normalize_lexically("/../etc"), native("/etc"));
+    }
+
+    #[test]
+    fn normalize_lexically_keeps_a_drive_root() {
+        assert_eq!(normalize_lexically("c:\\repo\\..\\out"), native("C:/out"));
+    }
+
+    #[test]
+    fn normalize_lexically_of_nothing_is_the_current_folder() {
+        assert_eq!(normalize_lexically("a/.."), ".");
+    }
+
+    #[test]
+    fn join_lexically_appends_a_relative_path() {
+        assert_eq!(join_lexically("api/", "out/x.pdf"), "api/out/x.pdf");
+    }
+
+    #[test]
+    fn join_lexically_keeps_an_absolute_path() {
+        assert_eq!(join_lexically("api", "/tmp/x.pdf"), "/tmp/x.pdf");
+        assert_eq!(join_lexically("api", "D:\\x.pdf"), "D:\\x.pdf");
+    }
+
+    #[test]
+    fn join_lexically_onto_nothing_is_the_path() {
+        assert_eq!(join_lexically("", "x.pdf"), "x.pdf");
+    }
+
+    #[test]
+    fn depth_below_counts_the_segments_under_the_root() {
+        assert_eq!(depth_below("/repo/api/out/x.pdf", "/repo/api"), Some(2));
+        assert_eq!(depth_below("/repo/api", "/repo/api/"), Some(0));
+    }
+
+    #[test]
+    fn depth_below_rejects_a_path_that_climbs_out_of_the_root() {
+        assert_eq!(depth_below("/repo/api/../secrets", "/repo/api"), None);
+        assert_eq!(depth_below("../x.pdf", ""), None);
+    }
+
+    #[test]
+    fn depth_below_rejects_a_sibling_sharing_the_root_prefix() {
+        assert_eq!(depth_below("/repo/api-old/x", "/repo/api"), None);
+    }
+
+    #[test]
+    fn depth_below_rejects_an_absolute_path_under_a_relative_root() {
+        assert_eq!(depth_below("/tmp/x", "api"), None);
+    }
+
+    #[test]
+    fn depth_below_ignores_the_case_of_the_drive() {
+        assert_eq!(depth_below("c:/repo/x", "C:\\repo"), Some(1));
     }
 }

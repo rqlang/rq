@@ -1,28 +1,60 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::error::RqError;
+use crate::paths::{depth_below, join_lexically, normalize_lexically};
+use crate::syntax::parse_result::OutputPath;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ResponseBody {
     Text(String),
     Binary(BinaryBody),
+    Output(OutputBody),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BinaryBody {
-    pub info: BinaryBodyInfo,
+    pub info: BodyFileInfo,
     pub bytes: Vec<u8>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OutputBody {
+    pub info: BodyFileInfo,
+    pub bytes: Vec<u8>,
+    pub path: PathBuf,
+    pub binary: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct BinaryBodyInfo {
+pub struct BodyFileInfo {
     pub media_type: Option<String>,
     pub file_name: String,
     pub size: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OutputTarget {
+    pub path: String,
+    pub is_folder: bool,
+    pub applies_to_every_body: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct OutputSkipped {
+    pub path: String,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RoutedBody {
+    pub body: ResponseBody,
+    pub output_skipped: Option<OutputSkipped>,
 }
 
 const DOWNLOAD_DIR_NAME: &str = "rq";
@@ -55,11 +87,30 @@ const TEXT_MEDIA_TYPES: &[&str] = &[
 
 const TEXT_MEDIA_TYPE_SUFFIXES: &[&str] = &["+json", "+xml", "+yaml"];
 
+const SUCCESS_STATUSES: std::ops::Range<u16> = 200..300;
+
 const BINARY_MEDIA_TYPE_PREFIXES: &[&str] = &["image/", "audio/", "video/", "font/"];
 
 const BINARY_MEDIA_TYPES: &[&str] = &["application/octet-stream"];
 
 const EXTENSIONS: &[(&str, &str)] = &[
+    ("application/json", "json"),
+    ("application/x-ndjson", "ndjson"),
+    ("application/xml", "xml"),
+    ("text/xml", "xml"),
+    ("application/yaml", "yaml"),
+    ("application/x-yaml", "yaml"),
+    ("text/yaml", "yaml"),
+    ("application/toml", "toml"),
+    ("application/javascript", "js"),
+    ("text/javascript", "js"),
+    ("application/sql", "sql"),
+    ("application/graphql", "graphql"),
+    ("text/plain", "txt"),
+    ("text/csv", "csv"),
+    ("text/html", "html"),
+    ("text/css", "css"),
+    ("text/markdown", "md"),
     ("image/png", "png"),
     ("image/jpeg", "jpg"),
     ("image/gif", "gif"),
@@ -106,13 +157,112 @@ impl ResponseBody {
         bytes: Vec<u8>,
         request_name: &str,
     ) -> Self {
-        match BinaryBodyInfo::of_response(headers, &bytes, request_name) {
+        match BodyFileInfo::of_response(headers, &bytes, request_name) {
             Some(info) => Self::Binary(BinaryBody { info, bytes }),
             None => Self::Text(
                 String::from_utf8(bytes)
                     .unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned()),
             ),
         }
+    }
+
+    pub fn route(
+        headers: &HashMap<String, String>,
+        bytes: Vec<u8>,
+        request_name: &str,
+        status: u16,
+        output: Option<&OutputTarget>,
+    ) -> RoutedBody {
+        let Some(output) = output.filter(|output| output.covers(headers, &bytes, request_name))
+        else {
+            return RoutedBody::unrouted(Self::from_response(headers, bytes, request_name));
+        };
+        if let Some(reason) = output.skip_reason(status, &bytes) {
+            return RoutedBody {
+                body: Self::from_response(headers, bytes, request_name),
+                output_skipped: Some(OutputSkipped {
+                    path: output.path.clone(),
+                    reason,
+                }),
+            };
+        }
+        let binary = BodyFileInfo::of_response(headers, &bytes, request_name).is_some();
+        let info = BodyFileInfo::describe(headers, &bytes, request_name);
+        let path = output.destination(&info.file_name);
+        RoutedBody::unrouted(Self::Output(OutputBody {
+            info,
+            bytes,
+            path,
+            binary,
+        }))
+    }
+}
+
+impl RoutedBody {
+    fn unrouted(body: ResponseBody) -> Self {
+        Self {
+            body,
+            output_skipped: None,
+        }
+    }
+}
+
+impl OutputBody {
+    pub fn save(&self) -> Result<PathBuf, RqError> {
+        if let Some(parent) = self.path.parent().filter(|p| !p.as_os_str().is_empty()) {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(&self.path, &self.bytes)?;
+        Ok(self.path.clone())
+    }
+}
+
+impl OutputTarget {
+    pub fn resolve(chain: &[OutputPath], root: &str) -> Option<Self> {
+        let last = chain.last()?;
+        let composed = chain.iter().fold(None::<String>, |base, output| {
+            let base = base.unwrap_or_else(|| output.base_dir.clone());
+            Some(join_lexically(&base, &output.path))
+        })?;
+        let path = normalize_lexically(&composed);
+        let error = match depth_below(&path, root) {
+            Some(depth) if depth > 0 || last.is_folder => None,
+            _ => Some(format!(
+                "{path} is outside the source folder {}",
+                normalize_lexically(root)
+            )),
+        };
+        Some(Self {
+            path,
+            is_folder: last.is_folder,
+            applies_to_every_body: last.applies_to_every_body,
+            error,
+        })
+    }
+
+    pub fn destination(&self, file_name: &str) -> PathBuf {
+        if self.is_folder {
+            Path::new(&self.path).join(file_name)
+        } else {
+            PathBuf::from(&self.path)
+        }
+    }
+
+    fn covers(&self, headers: &HashMap<String, String>, bytes: &[u8], request_name: &str) -> bool {
+        self.applies_to_every_body
+            || BodyFileInfo::of_response(headers, bytes, request_name).is_some()
+    }
+
+    fn skip_reason(&self, status: u16, bytes: &[u8]) -> Option<String> {
+        if let Some(error) = &self.error {
+            return Some(error.clone());
+        }
+        if !SUCCESS_STATUSES.contains(&status) {
+            return Some(format!("the response status is {status}"));
+        }
+        bytes
+            .is_empty()
+            .then(|| "the response has no body".to_string())
     }
 }
 
@@ -128,7 +278,7 @@ impl BinaryBody {
     }
 }
 
-impl BinaryBodyInfo {
+impl BodyFileInfo {
     pub fn of_response(
         headers: &HashMap<String, String>,
         bytes: &[u8],
@@ -143,11 +293,16 @@ impl BinaryBodyInfo {
             Some(media_type) if is_binary_media_type(media_type) => true,
             _ => !looks_like_text(bytes),
         };
-        binary.then(|| Self {
+        binary.then(|| Self::describe(headers, bytes, request_name))
+    }
+
+    pub fn describe(headers: &HashMap<String, String>, bytes: &[u8], request_name: &str) -> Self {
+        let media_type = media_type(headers);
+        Self {
             file_name: file_name(headers, media_type.as_deref(), request_name),
             media_type,
             size: bytes.len(),
-        })
+        }
     }
 
     pub fn download_path(&self, dir: &Path) -> PathBuf {
@@ -261,8 +416,16 @@ fn extension_of(media_type: Option<&str>) -> &'static str {
                 .iter()
                 .find(|(known, _)| *known == media_type)
                 .map(|(_, extension)| *extension)
+                .or_else(|| suffix_extension(media_type))
         })
         .unwrap_or(FALLBACK_EXTENSION)
+}
+
+fn suffix_extension(media_type: &str) -> Option<&'static str> {
+    TEXT_MEDIA_TYPE_SUFFIXES
+        .iter()
+        .find(|suffix| media_type.ends_with(*suffix))
+        .and_then(|suffix| suffix.strip_prefix('+'))
 }
 
 fn disposition_file_name(value: &str) -> Option<String> {
@@ -381,8 +544,10 @@ fn truncate_file_name(name: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{BinaryBodyInfo, ResponseBody};
+    use super::{BodyFileInfo, OutputSkipped, OutputTarget, ResponseBody};
+    use crate::syntax::parse_result::OutputPath;
     use std::collections::HashMap;
+    use std::path::{Path, PathBuf};
 
     const PNG_BYTES: &[u8] = &[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0xff];
 
@@ -393,8 +558,8 @@ mod tests {
             .collect()
     }
 
-    fn info(pairs: &[(&str, &str)], bytes: &[u8]) -> Option<BinaryBodyInfo> {
-        BinaryBodyInfo::of_response(&headers(pairs), bytes, "download")
+    fn info(pairs: &[(&str, &str)], bytes: &[u8]) -> Option<BodyFileInfo> {
+        BodyFileInfo::of_response(&headers(pairs), bytes, "download")
     }
 
     fn file_name(pairs: &[(&str, &str)]) -> Option<String> {
@@ -406,7 +571,7 @@ mod tests {
         let target = info(&[("content-type", "image/png")], PNG_BYTES);
         assert_eq!(
             target,
-            Some(BinaryBodyInfo {
+            Some(BodyFileInfo {
                 media_type: Some("image/png".to_string()),
                 file_name: "download.png".to_string(),
                 size: PNG_BYTES.len(),
@@ -631,7 +796,7 @@ mod tests {
 
     #[test]
     fn an_endpoint_request_name_becomes_a_dotted_file_name() {
-        let target = BinaryBodyInfo::of_response(
+        let target = BodyFileInfo::of_response(
             &headers(&[("content-type", "application/pdf")]),
             b"%PDF",
             "reports/monthly",
@@ -711,6 +876,299 @@ mod tests {
         assert_eq!(std::fs::read(&first)?, PNG_BYTES);
         assert_ne!(first, second);
         assert_eq!(first.file_name(), second.file_name());
+        Ok(())
+    }
+
+    fn segment(path: &str, base_dir: &str, applies_to_every_body: bool) -> OutputPath {
+        OutputPath {
+            path: path.to_string(),
+            base_dir: base_dir.to_string(),
+            is_folder: path.ends_with(['/', '\\']),
+            applies_to_every_body,
+        }
+    }
+
+    fn output_target(path: &str, is_folder: bool, applies_to_every_body: bool) -> OutputTarget {
+        OutputTarget {
+            path: path.to_string(),
+            is_folder,
+            applies_to_every_body,
+            error: None,
+        }
+    }
+
+    fn native(path: &str) -> String {
+        path.replace('/', std::path::MAIN_SEPARATOR_STR)
+    }
+
+    fn route(
+        pairs: &[(&str, &str)],
+        bytes: &[u8],
+        status: u16,
+        output: &OutputTarget,
+    ) -> (ResponseBody, Option<OutputSkipped>) {
+        let routed = ResponseBody::route(
+            &headers(pairs),
+            bytes.to_vec(),
+            "report",
+            status,
+            Some(output),
+        );
+        (routed.body, routed.output_skipped)
+    }
+
+    fn output_path(body: &ResponseBody) -> Option<&Path> {
+        match body {
+            ResponseBody::Output(output) => Some(output.path.as_path()),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn json_and_its_suffix_types_get_a_json_extension() {
+        let json = BodyFileInfo::describe(
+            &headers(&[("content-type", "application/json")]),
+            b"{}",
+            "users",
+        );
+        let problem = BodyFileInfo::describe(
+            &headers(&[("content-type", "application/problem+json")]),
+            b"{}",
+            "users",
+        );
+        assert_eq!(
+            (json.file_name, problem.file_name),
+            ("users.json".to_string(), "users.json".to_string())
+        );
+    }
+
+    #[test]
+    fn output_resolves_a_request_file_against_the_folder_of_its_file() {
+        let target = OutputTarget::resolve(&[segment("out/x.pdf", "api", true)], "api");
+        assert_eq!(
+            target,
+            Some(output_target(&native("api/out/x.pdf"), false, true))
+        );
+    }
+
+    #[test]
+    fn output_appends_each_level_to_the_folder_it_inherits() {
+        let chain = [
+            segment("downloads/", "api/shared", false),
+            segment("reports/", "api", false),
+            segment("report.pdf", "api", true),
+        ];
+        let target = OutputTarget::resolve(&chain, "api");
+        assert_eq!(
+            target.map(|t| t.path),
+            Some(native("api/shared/downloads/reports/report.pdf"))
+        );
+    }
+
+    #[test]
+    fn an_absolute_level_ignores_the_folder_it_inherits() {
+        let chain = [
+            segment("downloads/", "/repo", false),
+            segment("/repo/out/x.pdf", "/repo", true),
+        ];
+        let target = OutputTarget::resolve(&chain, "/repo");
+        assert_eq!(target.map(|t| t.path), Some(native("/repo/out/x.pdf")));
+    }
+
+    #[test]
+    fn only_endpoint_folders_apply_to_binary_bodies_only() {
+        let target = OutputTarget::resolve(&[segment("downloads/", "api", false)], "api");
+        assert_eq!(
+            target,
+            Some(output_target(&native("api/downloads"), true, false))
+        );
+    }
+
+    #[test]
+    fn output_that_climbs_out_of_the_source_folder_carries_an_error() {
+        let target =
+            OutputTarget::resolve(&[segment("../secrets/x", "/repo/api", true)], "/repo/api");
+        assert_eq!(
+            target.and_then(|t| t.error),
+            Some(format!(
+                "{} is outside the source folder {}",
+                native("/repo/secrets/x"),
+                native("/repo/api")
+            ))
+        );
+    }
+
+    #[test]
+    fn output_file_that_is_the_source_folder_itself_carries_an_error() {
+        let target = OutputTarget::resolve(&[segment("api", "", true)], "api");
+        assert!(target.and_then(|t| t.error).is_some());
+    }
+
+    #[test]
+    fn request_without_output_has_no_target() {
+        assert_eq!(OutputTarget::resolve(&[], "api"), None);
+    }
+
+    #[test]
+    fn request_output_writes_a_text_body_to_its_file() {
+        let (body, skipped) = route(
+            &[("content-type", "application/json")],
+            b"{}",
+            200,
+            &output_target("out/users.json", false, true),
+        );
+        assert_eq!(
+            (output_path(&body), skipped),
+            (Some(Path::new("out/users.json")), None)
+        );
+    }
+
+    #[test]
+    fn request_output_folder_keeps_the_automatic_file_name() {
+        let (body, _) = route(
+            &[("content-type", "application/json")],
+            b"{}",
+            200,
+            &output_target("out", true, true),
+        );
+        assert_eq!(
+            output_path(&body),
+            Some(PathBuf::from("out").join("report.json").as_path())
+        );
+    }
+
+    #[test]
+    fn endpoint_output_leaves_a_text_body_to_be_printed() {
+        let (body, skipped) = route(
+            &[("content-type", "application/json")],
+            b"{}",
+            200,
+            &output_target("out", true, false),
+        );
+        assert_eq!(
+            (body, skipped),
+            (ResponseBody::Text("{}".to_string()), None)
+        );
+    }
+
+    #[test]
+    fn endpoint_output_takes_a_binary_body() {
+        let (body, _) = route(
+            &[("content-type", "image/png")],
+            PNG_BYTES,
+            200,
+            &output_target("out", true, false),
+        );
+        assert_eq!(
+            output_path(&body),
+            Some(PathBuf::from("out").join("report.png").as_path())
+        );
+    }
+
+    #[test]
+    fn output_body_keeps_the_exact_bytes_of_invalid_utf8_text() {
+        let bytes = [b'a', 0xe9, b'b'];
+        let (body, _) = route(
+            &[("content-type", "text/plain; charset=latin1")],
+            &bytes,
+            200,
+            &output_target("x.txt", false, true),
+        );
+        let ResponseBody::Output(output) = body else {
+            panic!("expected an output body");
+        };
+        assert_eq!(output.bytes, bytes);
+    }
+
+    #[test]
+    fn an_error_response_is_not_written_and_says_why() {
+        let (body, skipped) = route(
+            &[("content-type", "application/json")],
+            b"{}",
+            404,
+            &output_target("x.json", false, true),
+        );
+        assert_eq!(
+            (body, skipped),
+            (
+                ResponseBody::Text("{}".to_string()),
+                Some(OutputSkipped {
+                    path: "x.json".to_string(),
+                    reason: "the response status is 404".to_string()
+                })
+            )
+        );
+    }
+
+    #[test]
+    fn an_error_response_to_an_endpoint_output_is_silent_when_its_body_is_text() {
+        let (_, skipped) = route(
+            &[("content-type", "application/json")],
+            b"{}",
+            500,
+            &output_target("out", true, false),
+        );
+        assert_eq!(skipped, None);
+    }
+
+    #[test]
+    fn a_binary_error_response_to_an_endpoint_output_says_why() {
+        let (body, skipped) = route(
+            &[("content-type", "image/png")],
+            PNG_BYTES,
+            500,
+            &output_target("out", true, false),
+        );
+        assert!(matches!(body, ResponseBody::Binary(_)));
+        assert_eq!(
+            skipped.map(|s| s.reason),
+            Some("the response status is 500".to_string())
+        );
+    }
+
+    #[test]
+    fn an_empty_success_is_not_written_and_says_why() {
+        let (_, skipped) = route(&[], b"", 204, &output_target("x.json", false, true));
+        assert_eq!(
+            skipped.map(|s| s.reason),
+            Some("the response has no body".to_string())
+        );
+    }
+
+    #[test]
+    fn an_output_outside_the_source_is_not_written_and_says_why() {
+        let output = OutputTarget {
+            error: Some("outside".to_string()),
+            ..output_target("x.json", false, true)
+        };
+        let (_, skipped) = route(&[], b"{}", 200, &output);
+        assert_eq!(skipped.map(|s| s.reason), Some("outside".to_string()));
+    }
+
+    fn saved_output(file: &Path) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+        let output = output_target(&file.to_string_lossy(), false, true);
+        let (body, _) = route(&[("content-type", "application/json")], b"{}", 200, &output);
+        let ResponseBody::Output(body) = body else {
+            return Err("expected an output body".into());
+        };
+        body.save()?;
+        Ok(std::fs::read(file)?)
+    }
+
+    #[test]
+    fn saving_an_output_body_creates_its_folders() -> Result<(), Box<dyn std::error::Error>> {
+        let dir = tempfile::tempdir()?;
+        assert_eq!(saved_output(&dir.path().join("a/b/x.json"))?, b"{}");
+        Ok(())
+    }
+
+    #[test]
+    fn saving_an_output_body_overwrites_an_existing_file() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let dir = tempfile::tempdir()?;
+        let file = dir.path().join("x.json");
+        std::fs::write(&file, "old")?;
+        assert_eq!(saved_output(&file)?, b"{}");
         Ok(())
     }
 }

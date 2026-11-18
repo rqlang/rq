@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use serde::Serialize;
 
-use crate::response_body::ResponseBody;
+use crate::response_body::{OutputSkipped, OutputTarget, ResponseBody};
 use crate::syntax::auth::Config;
 use crate::syntax::ui_color::UiColor;
 use crate::syntax::variable_context::{VariableContext, VariableValue};
@@ -28,6 +28,7 @@ pub struct RequestDetails {
     pub description: Option<String>,
     pub required_variables: Vec<String>,
     pub confirmation_required: bool,
+    pub output: Option<OutputTarget>,
     pub file: String,
     pub request_file: String,
     pub line: usize,
@@ -89,6 +90,7 @@ pub struct RequestExecutionResult {
     pub request_headers: HashMap<String, String>,
     pub response_headers: HashMap<String, String>,
     pub body: ResponseBody,
+    pub output_skipped: Option<OutputSkipped>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -107,6 +109,7 @@ pub struct PreparedRequest {
     pub request: Request,
     pub timeout: Option<Duration>,
     pub auth: Option<PreparedAuth>,
+    pub output: Option<OutputTarget>,
     pub confirmation_required: bool,
     pub agent_confirmation_required: bool,
     pub(crate) context: VariableContext,

@@ -5,7 +5,7 @@ use rq_lib::client::models::{
 };
 use rq_lib::error::RqError;
 use rq_lib::logger::Logger;
-use rq_lib::response_body::BinaryBodyInfo;
+use rq_lib::response_body::BodyFileInfo;
 use rq_lib::RqClient;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -707,7 +707,7 @@ pub fn auth_fields() -> Result<String, JsError> {
 #[derive(Serialize)]
 struct BinaryBodyView {
     #[serde(flatten)]
-    info: BinaryBodyInfo,
+    info: BodyFileInfo,
     #[serde(skip_serializing_if = "Option::is_none")]
     path: Option<String>,
 }
@@ -721,7 +721,7 @@ pub fn binary_response_body(
 ) -> Result<String, JsError> {
     let headers: HashMap<String, String> = serde_json::from_str(headers_json)
         .map_err(|e| JsError::new(&format!("Invalid headers: {e}")))?;
-    let view = BinaryBodyInfo::of_response(&headers, body, request_name).map(|info| {
+    let view = BodyFileInfo::of_response(&headers, body, request_name).map(|info| {
         let path = download_dir.as_deref().map(|dir| {
             info.download_path(Path::new(dir))
                 .to_string_lossy()

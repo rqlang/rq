@@ -1,0 +1,9 @@
+let report_name = "7";
+
+[output("downloads/")]
+ep files("http://localhost:8080") {
+  [output("{{report_name}}.pdf")]
+  rq report("/report");
+
+  rq logo("/logo");
+}

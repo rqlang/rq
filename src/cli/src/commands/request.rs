@@ -7,12 +7,14 @@ use crate::core::formatter::{render, to_json, OutputFormat, TextBlock};
 use clap::{Args, Subcommand};
 use rq_lib::client::models::{PreparedRequest, RequestDetails, RequestTarget};
 use rq_lib::lint::LintScope;
-use rq_lib::response_body::{temp_download_dir, BinaryBody};
+use rq_lib::response_body::{
+    temp_download_dir, BinaryBody, BodyFileInfo, OutputBody, OutputSkipped, OutputTarget,
+};
 use rq_lib::{RequestExecutionResult, ResponseBody, RqClient};
 use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::io::{IsTerminal, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 #[derive(Serialize)]
@@ -37,8 +39,37 @@ struct RequestDetailsView {
     #[serde(skip_serializing_if = "Option::is_none")]
     auth: Option<AuthConfigView>,
     confirmation_required: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    output: Option<OutputView>,
     #[serde(flatten)]
     location: Location,
+}
+
+#[derive(Serialize)]
+struct OutputView {
+    path: String,
+    applies_to: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+}
+
+impl From<OutputTarget> for OutputView {
+    fn from(target: OutputTarget) -> Self {
+        let path = if target.is_folder {
+            format!("{}{}", target.path, std::path::MAIN_SEPARATOR)
+        } else {
+            target.path
+        };
+        Self {
+            path,
+            applies_to: if target.applies_to_every_body {
+                "every body"
+            } else {
+                "binary bodies"
+            },
+            error: target.error,
+        }
+    }
 }
 
 impl From<RequestDetails> for RequestDetailsView {
@@ -57,6 +88,7 @@ impl From<RequestDetails> for RequestDetailsView {
             timeout: details.timeout,
             auth,
             confirmation_required: details.confirmation_required,
+            output: details.output.map(OutputView::from),
             location: Location::from_zero_based(
                 details.request_file,
                 details.line,
@@ -127,7 +159,7 @@ impl<'a> PrintedResultView<'a> {
         let result = &output.result;
         let text_body = match &result.body {
             ResponseBody::Text(text) => Some(text.as_str()),
-            ResponseBody::Binary(_) => None,
+            ResponseBody::Binary(_) | ResponseBody::Output(_) => None,
         };
         Self {
             request_name: parts.meta.then_some(result.request_name.as_str()),
@@ -137,7 +169,7 @@ impl<'a> PrintedResultView<'a> {
             elapsed_ms: parts.meta.then_some(result.elapsed_ms),
             response_headers: parts.headers.then_some(&result.response_headers),
             body: text_body.filter(|_| parts.body),
-            body_file: output.saved_body.as_ref(),
+            body_file: output.saved_body.as_ref().filter(|_| parts.body),
         }
     }
 }
@@ -151,16 +183,30 @@ struct SavedBodyView {
     #[serde(skip_serializing_if = "Option::is_none")]
     media_type: Option<String>,
     size: usize,
+    #[serde(skip)]
+    binary: bool,
 }
 
 impl SavedBodyView {
     fn save(body: &BinaryBody) -> Self {
-        let saved = body.save_in(&temp_download_dir());
+        Self::new(body.save_in(&temp_download_dir()), &body.info, true)
+    }
+
+    fn write(body: &OutputBody) -> Self {
+        Self::new(body.save(), &body.info, body.binary)
+    }
+
+    fn new(
+        saved: Result<PathBuf, rq_lib::error::RqError>,
+        info: &BodyFileInfo,
+        binary: bool,
+    ) -> Self {
         Self {
             path: saved.as_ref().ok().map(|path| path.display().to_string()),
             save_error: saved.err().map(|e| e.to_string()),
-            media_type: body.info.media_type.clone(),
-            size: body.info.size,
+            media_type: info.media_type.clone(),
+            size: info.size,
+            binary,
         }
     }
 
@@ -169,12 +215,13 @@ impl SavedBodyView {
             Some(media_type) => format!("{media_type}, {} bytes", self.size),
             None => format!("{} bytes", self.size),
         };
+        let label = if self.binary { "binary body" } else { "body" };
         match (&self.path, &self.save_error) {
-            (Some(path), _) => format!("binary body ({description}) saved to {path}"),
+            (Some(path), _) => format!("{label} ({description}) saved to {path}"),
             (None, Some(error)) => {
-                format!("binary body ({description}) could not be saved: {error}")
+                format!("{label} ({description}) could not be saved: {error}")
             }
-            (None, None) => format!("binary body ({description}) not saved"),
+            (None, None) => format!("{label} ({description}) not saved"),
         }
     }
 }
@@ -188,6 +235,7 @@ impl ExecutionOutput {
     fn new(result: RequestExecutionResult, parts: PrintParts) -> Self {
         let saved_body = match &result.body {
             ResponseBody::Binary(body) if parts.body => Some(SavedBodyView::save(body)),
+            ResponseBody::Output(body) => Some(SavedBodyView::write(body)),
             _ => None,
         };
         Self { result, saved_body }
@@ -215,6 +263,18 @@ impl RequestDetailsView {
             .optional("timeout", self.timeout.as_deref())
             .optional("auth", auth)
             .field("confirmation_required", self.confirmation_required)
+            .optional(
+                "output",
+                self.output
+                    .as_ref()
+                    .map(|output| format!("{} ({})", output.path, output.applies_to)),
+            )
+            .optional(
+                "output_error",
+                self.output
+                    .as_ref()
+                    .and_then(|output| output.error.as_deref()),
+            )
             .field("location", &self.location)
             .build()
     }
@@ -423,6 +483,9 @@ pub async fn execute_run(args: &RunArgs) -> Result<(), Box<dyn std::error::Error
         )
         .await
         .map_err(|e| with_typed_request_name(e, typed_name))?;
+    if let Some(skipped) = &result.output_skipped {
+        print_warnings(&[output_skipped_warning(skipped)], args.format.format);
+    }
 
     let view = ExecutionResultsView {
         results: vec![ExecutionOutput::new(result, args.print)],
@@ -431,6 +494,13 @@ pub async fn execute_run(args: &RunArgs) -> Result<(), Box<dyn std::error::Error
     print!("{}", view.render(args.format.format));
 
     Ok(())
+}
+
+fn output_skipped_warning(skipped: &OutputSkipped) -> RqError {
+    RqError::Generic(format!(
+        "Body not written to {}: {}",
+        skipped.path, skipped.reason
+    ))
 }
 
 fn print_lint_summary(client: &RqClient, source: &str, output: OutputFormat) {
@@ -529,8 +599,8 @@ fn render_execution_result(output: &ExecutionOutput, parts: PrintParts) -> Strin
 fn render_body(output: &ExecutionOutput) -> String {
     match (&output.result.body, &output.saved_body) {
         (ResponseBody::Text(text), _) => text.clone(),
-        (ResponseBody::Binary(_), Some(saved_body)) => saved_body.to_text(),
-        (ResponseBody::Binary(_), None) => String::new(),
+        (_, Some(saved_body)) => saved_body.to_text(),
+        (_, None) => String::new(),
     }
 }
 
@@ -619,6 +689,7 @@ mod tests {
             request_headers: HashMap::new(),
             response_headers: HashMap::new(),
             body,
+            output_skipped: None,
         }
     }
 
@@ -636,6 +707,7 @@ mod tests {
             save_error: None,
             media_type: media_type.map(str::to_string),
             size: 42,
+            binary: true,
         }
     }
 
@@ -672,6 +744,20 @@ mod tests {
         assert_eq!(
             target,
             "binary body (42 bytes) saved to /tmp/rq/id/logo.png"
+        );
+    }
+
+    #[test]
+    fn body_written_to_its_output_is_not_called_binary() {
+        let target = SavedBodyView {
+            path: Some("out/users.json".to_string()),
+            binary: false,
+            ..saved_body(Some("application/json"))
+        }
+        .to_text();
+        assert_eq!(
+            target,
+            "body (application/json, 42 bytes) saved to out/users.json"
         );
     }
 

@@ -789,3 +789,51 @@ fn test_request_show_directory_warns_about_broken_file() -> Result<(), Box<dyn s
     assert!(output.status.success() && stdout.contains("name: list"));
     Ok(())
 }
+
+fn show_output(name: &str, format: &str) -> Result<String, Box<dyn std::error::Error>> {
+    let output = rq_cmd()
+        .args([
+            "request",
+            "show",
+            "-s",
+            "tests/fixtures/request_show_output.rq",
+            "-n",
+            name,
+            "-f",
+            format,
+        ])
+        .output()?;
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).into());
+    }
+    Ok(String::from_utf8(output.stdout)?)
+}
+
+#[test]
+fn test_request_show_output_of_a_request_applies_to_every_body(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixtures = std::fs::canonicalize("tests/fixtures")?;
+    let file = fixtures.join("downloads").join("7.pdf");
+    let stdout = show_output("files.report", "text")?;
+    assert!(
+        stdout.contains(&format!("output: {} (every body)\n", file.display())),
+        "{stdout}"
+    );
+    Ok(())
+}
+
+#[test]
+fn test_request_show_output_json_has_the_same_content() -> Result<(), Box<dyn std::error::Error>> {
+    let fixtures = std::fs::canonicalize("tests/fixtures")?;
+    let folder = format!(
+        "{}{}",
+        fixtures.join("downloads").display(),
+        std::path::MAIN_SEPARATOR
+    );
+    let json: Value = serde_json::from_str(&show_output("files.logo", "json")?)?;
+    assert_eq!(
+        json["output"],
+        serde_json::json!({"path": folder, "applies_to": "binary bodies"})
+    );
+    Ok(())
+}

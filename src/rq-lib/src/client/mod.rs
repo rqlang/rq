@@ -1470,7 +1470,46 @@ impl RqClient {
             .fs
             .canonicalize(folder)
             .unwrap_or_else(|_| folder.to_path_buf());
-        OutputTarget::resolve(&request.output, &crate::paths::clean_path(&root))
+        let root = crate::paths::clean_path(&root);
+        OutputTarget::resolve(&request.output, &root)
+            .map(|target| self.without_links_out_of(target, &root))
+    }
+
+    fn without_links_out_of(&self, target: OutputTarget, root: &str) -> OutputTarget {
+        if target.error.is_some() {
+            return target;
+        }
+        let real_root = self
+            .fs
+            .real_path(Path::new(root))
+            .map(|real| crate::paths::clean_path(&real))
+            .unwrap_or_else(|_| root.to_string());
+        let escaping = Path::new(&target.path)
+            .ancestors()
+            .take_while(|ancestor| {
+                crate::paths::depth_below(&ancestor.to_string_lossy(), root).is_some_and(|d| d > 0)
+            })
+            .find(|ancestor| self.fs.is_symlink(ancestor) && !self.leads_into(ancestor, &real_root))
+            .map(crate::paths::clean_path);
+        match escaping {
+            Some(link) => OutputTarget {
+                error: Some(format!(
+                    "{link} is a symbolic link that leads outside the source folder {root}"
+                )),
+                ..target
+            },
+            None => target,
+        }
+    }
+
+    fn leads_into(&self, link: &Path, real_root: &str) -> bool {
+        self.fs
+            .real_path(link)
+            .ok()
+            .filter(|real| real != link)
+            .is_some_and(|real| {
+                crate::paths::depth_below(&crate::paths::clean_path(&real), real_root).is_some()
+            })
     }
 
     async fn authorize(mut prepared: PreparedRequest) -> Result<PreparedRequest, RqError> {
@@ -3848,6 +3887,51 @@ mod prepare_tests {
             crate::response_body::ResponseBody::Output(ref output)
                 if output.path == std::fs::canonicalize(dir.path()).expect("canonicalize").join("out.json")
         ));
+    }
+
+    #[cfg(unix)]
+    fn output_error_through_link(link_target: &Path) -> Option<String> {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::os::unix::fs::symlink(link_target, dir.path().join("dl")).expect("symlink");
+        write(
+            dir.path(),
+            "main.rq",
+            "[output(\"dl/x.json\")]\nrq get(\"http://localhost\");\n",
+        );
+        prepare(dir.path(), "get", &[])
+            .output
+            .and_then(|output| output.error)
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn prepare_flags_an_output_through_a_link_that_leads_outside_the_source() {
+        let outside = tempfile::tempdir().expect("tempdir");
+        assert!(output_error_through_link(outside.path())
+            .is_some_and(|error| error.contains("symbolic link")));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn prepare_flags_an_output_through_a_broken_link() {
+        let outside = tempfile::tempdir().expect("tempdir");
+        assert!(output_error_through_link(&outside.path().join("missing")).is_some());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn prepare_accepts_an_output_through_a_link_that_stays_inside_the_source() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::create_dir(dir.path().join("real")).expect("mkdir");
+        std::os::unix::fs::symlink(dir.path().join("real"), dir.path().join("dl"))
+            .expect("symlink");
+        write(
+            dir.path(),
+            "main.rq",
+            "[output(\"dl/x.json\")]\nrq get(\"http://localhost\");\n",
+        );
+        let target = prepare(dir.path(), "get", &[]).output;
+        assert_eq!(target.and_then(|output| output.error), None);
     }
 
     struct BodyHttp;

@@ -149,6 +149,11 @@ impl Fs for WasmFs {
             Err(_) => Ok(PathBuf::from(key)),
         }
     }
+
+    fn is_symlink(&self, path: &Path) -> bool {
+        let key = Self::normalize(path);
+        !self.files.contains_key(&key) && self.disk.is_symlink(Path::new(&key))
+    }
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -183,6 +188,12 @@ mod node {
 
         #[wasm_bindgen(catch, js_name = realpathSync)]
         fn realpath_sync(path: &str) -> Result<String, JsValue>;
+
+        #[wasm_bindgen(catch, js_name = lstatSync)]
+        fn lstat_sync(path: &str) -> Result<Stats, JsValue>;
+
+        #[wasm_bindgen(method, js_name = isSymbolicLink)]
+        fn is_symbolic_link(this: &Stats) -> bool;
 
         #[wasm_bindgen(method, js_name = isDirectory)]
         fn is_directory(this: &Stats) -> bool;
@@ -231,6 +242,10 @@ mod node {
             realpath_sync(&path.to_string_lossy())
                 .map(PathBuf::from)
                 .map_err(message)
+        }
+
+        fn is_symlink(&self, path: &Path) -> bool {
+            lstat_sync(&path.to_string_lossy()).is_ok_and(|stats| stats.is_symbolic_link())
         }
     }
 

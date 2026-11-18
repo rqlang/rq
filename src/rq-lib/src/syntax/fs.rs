@@ -11,4 +11,7 @@ pub trait Fs: Send + Sync {
     fn real_path(&self, path: &Path) -> Result<PathBuf, String> {
         self.canonicalize(path)
     }
+    fn is_symlink(&self, _path: &Path) -> bool {
+        false
+    }
 }

@@ -39,4 +39,8 @@ impl Fs for NativeFs {
     fn canonicalize(&self, path: &Path) -> Result<PathBuf, String> {
         path.canonicalize().map_err(|e| e.to_string())
     }
+
+    fn is_symlink(&self, path: &Path) -> bool {
+        path.is_symlink()
+    }
 }

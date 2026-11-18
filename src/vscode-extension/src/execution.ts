@@ -195,12 +195,20 @@ async function savedBodyFile(file: BodyFile, body: Uint8Array): Promise<BodyFile
         return file;
     }
     try {
+        await refuseSymbolicLink(file.path);
         await fs.promises.mkdir(path.dirname(file.path), { recursive: true });
         await fs.promises.writeFile(file.path, body);
         return file;
     } catch (error) {
         const { media_type, file_name, size, binary } = file;
         return { media_type, file_name, size, binary, save_error: error instanceof Error ? error.message : String(error) };
+    }
+}
+
+async function refuseSymbolicLink(filePath: string): Promise<void> {
+    const stats = await fs.promises.lstat(filePath).catch(() => undefined);
+    if (stats?.isSymbolicLink()) {
+        throw new Error(`${filePath} is a symbolic link, which output never writes through`);
     }
 }
 

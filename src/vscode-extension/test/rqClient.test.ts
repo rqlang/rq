@@ -32,7 +32,7 @@ jest.mock('../src/utils', () => ({
 
 jest.mock('fs', () => ({
     ...jest.createMockFromModule<typeof import('fs')>('fs'),
-    promises: { mkdir: jest.fn(), writeFile: jest.fn() },
+    promises: { mkdir: jest.fn(), writeFile: jest.fn(), lstat: jest.fn(async () => { throw new Error('ENOENT'); }) },
 }));
 jest.mock('https');
 
@@ -403,6 +403,18 @@ describe('executeRequest', () => {
             const target = await executeRequest({ requestName: 'test-req', sourceDirectory: '/tmp/project', downloadDir: '/downloads' });
 
             expect([target.results[0].status, target.results[0].body_file]).toEqual([200, { media_type: 'image/png', file_name: 'test-req.png', size: 4, binary: true, save_error: 'ENAMETOOLONG' }]);
+        });
+
+        test('never writes a body through a symbolic link', async () => {
+            mockPrepareRequest.mockReturnValue(prepared());
+            mockRouteResponseBody.mockReturnValue(JSON.stringify({ file: { media_type: 'image/png', file_name: 'test-req.png', size: 4, binary: true, path: '/repo/dl/test-req.png' } }));
+            (fs.promises.lstat as jest.Mock).mockResolvedValueOnce({ isSymbolicLink: () => true });
+            makeHttpsMock(200, BINARY);
+
+            const target = await executeRequest({ requestName: 'test-req', sourceDirectory: '/tmp/project', downloadDir: '/downloads' });
+
+            expect(target.results[0].body_file?.save_error).toBe('/repo/dl/test-req.png is a symbolic link, which output never writes through');
+            expect(fs.promises.writeFile).not.toHaveBeenCalled();
         });
 
         test('does not write a binary body without a download folder', async () => {

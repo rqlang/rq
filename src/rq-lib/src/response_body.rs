@@ -209,6 +209,12 @@ impl RoutedBody {
 
 impl OutputBody {
     pub fn save(&self) -> Result<PathBuf, RqError> {
+        if self.path.is_symlink() {
+            return Err(RqError::Generic(format!(
+                "{} is a symbolic link, which output never writes through",
+                self.path.display()
+            )));
+        }
         if let Some(parent) = self.path.parent().filter(|p| !p.as_os_str().is_empty()) {
             std::fs::create_dir_all(parent)?;
         }
@@ -1169,6 +1175,20 @@ mod tests {
         let file = dir.path().join("x.json");
         std::fs::write(&file, "old")?;
         assert_eq!(saved_output(&file)?, b"{}");
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn saving_an_output_body_never_writes_through_a_link() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let dir = tempfile::tempdir()?;
+        let outside = dir.path().join("outside.json");
+        std::fs::write(&outside, "old")?;
+        let link = dir.path().join("x.json");
+        std::os::unix::fs::symlink(&outside, &link)?;
+        assert!(saved_output(&link).is_err());
+        assert_eq!(std::fs::read_to_string(&outside)?, "old");
         Ok(())
     }
 }

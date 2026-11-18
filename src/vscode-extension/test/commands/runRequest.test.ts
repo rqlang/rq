@@ -303,7 +303,7 @@ describe('runRequest Commands', () => {
             expect(vscode.window.showInformationMessage).toHaveBeenCalledWith('Body copied to clipboard');
         });
 
-        const binaryResponse = { body: '', binary_body: { media_type: 'image/png', file_name: 'logo.png', size: 3, path: '/downloads/id/logo.png' } };
+        const binaryResponse = { body: '', body_file: { media_type: 'image/png', file_name: 'logo.png', size: 3, binary: true, path: '/downloads/id/logo.png' } };
 
         test('openBody opens the saved binary body', async () => {
             const handler = await runAndGetMessageHandler(binaryResponse);

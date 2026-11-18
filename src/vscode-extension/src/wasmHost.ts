@@ -23,7 +23,7 @@ type WasmMethod =
     | 'version'
     | 'prepare_request'
     | 'check_overrides'
-    | 'binary_response_body'
+    | 'route_response_body'
     | 'set_debug_logging';
 
 interface PendingCall {

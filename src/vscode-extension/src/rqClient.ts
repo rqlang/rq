@@ -6,7 +6,7 @@ import { ExecuteRequestOptions, ExecuteRequestResult, requestScope, resolveScope
 import { wasmCall } from './wasmHost';
 import { UiColor } from './language/definitions';
 
-export type { BinaryBody, CancellationSignal, ExecuteRequestOptions, ExecuteRequestResult, PreparedAuth, PreparedRequest, RequestExecutionResult } from './execution';
+export type { BodyFile, CancellationSignal, OutputSkipped, ExecuteRequestOptions, ExecuteRequestResult, PreparedAuth, PreparedRequest, RequestExecutionResult } from './execution';
 
 // ---------------------------------------------------------------------------
 // Shared types

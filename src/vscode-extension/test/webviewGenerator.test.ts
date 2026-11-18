@@ -293,11 +293,29 @@ describe('webviewGenerator', () => {
             request_headers: {},
             response_headers: { 'content-type': 'application/json' },
             body: '',
-            binary_body: { media_type: 'application/pdf', file_name: 'a.pdf', size: 8, path: '/tmp/a.pdf' }
+            body_file: { media_type: 'application/pdf', file_name: 'a.pdf', size: 8, binary: true, path: '/tmp/a.pdf' }
         });
 
         expect(html).toContain('Binary body (application/pdf, 8 bytes)');
         expect(html).not.toContain('json-body');
+    });
+
+    test('getWebviewContent says why the body was not written to its output', async () => {
+        mockFs.readFile.mockResolvedValue(new TextEncoder().encode('{{BODY_CONTENT}}'));
+
+        const html = await getWebviewContent(mockContext, {
+            request_name: 'Test',
+            method: 'GET',
+            url: 'http://test',
+            status: 404,
+            elapsed_ms: 50,
+            request_headers: {},
+            response_headers: {},
+            body: 'missing',
+            output_skipped: { path: '/repo/<out>.json', reason: 'the response status is 404' }
+        });
+
+        expect(html).toContain('Body not written to <code>/repo/&lt;out&gt;.json</code>: the response status is 404');
     });
 
     test('getWebviewContent keeps replacement patterns in a text body literal', async () => {

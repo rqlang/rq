@@ -40,16 +40,35 @@ export interface RequestExecutionResult {
     request_body?: string;
     response_headers: Record<string, string>;
     body: string;
-    binary_body?: BinaryBody;
+    body_file?: BodyFile;
+    output_skipped?: OutputSkipped;
     body_truncated?: boolean;
 }
 
-export interface BinaryBody {
+export interface BodyFile {
     media_type?: string | null;
     file_name: string;
     size: number;
+    binary: boolean;
     path?: string;
     save_error?: string;
+}
+
+export interface OutputTarget {
+    path: string;
+    is_folder: boolean;
+    applies_to_every_body: boolean;
+    error?: string;
+}
+
+export interface OutputSkipped {
+    path: string;
+    reason: string;
+}
+
+interface RoutedBody {
+    file?: BodyFile;
+    output_skipped?: OutputSkipped;
 }
 
 export interface ExecuteRequestResult {
@@ -79,6 +98,7 @@ export interface PreparedRequest {
     confirmation_required: boolean;
     agent_confirmation_required: boolean;
     secret_values: string[];
+    output?: OutputTarget | null;
 }
 
 export interface OverrideCheck {
@@ -142,7 +162,7 @@ export async function sendRequest(scope: RequestScope, options: ExecuteRequestOp
     const startTime = Date.now();
     const response = await nodeHttpRequest(prepared.url, prepared.method, headers, body, prepared.timeout_ms ?? undefined, options.cancellation, options.maxResponseLength);
     const elapsed = Date.now() - startTime;
-    const binaryBody = await binaryBodyOf(response, prepared.name, options.downloadDir);
+    const routed = await routeBody(response, prepared, options.downloadDir);
 
     return {
         results: [{
@@ -154,27 +174,33 @@ export async function sendRequest(scope: RequestScope, options: ExecuteRequestOp
             request_headers: joinHeaderValues(headers),
             request_body: body,
             response_headers: response.headers,
-            body: binaryBody ? '' : new TextDecoder().decode(response.body),
-            binary_body: binaryBody,
+            body: routed.file ? '' : new TextDecoder().decode(response.body),
+            body_file: routed.file,
+            output_skipped: routed.output_skipped,
             body_truncated: response.truncated,
         }],
     };
 }
 
-async function binaryBodyOf(response: NodeHttpResponse, requestName: string, downloadDir?: string): Promise<BinaryBody | undefined> {
-    const binaryBody = JSON.parse(
-        await wasmCall('binary_response_body', [JSON.stringify(response.headers), response.body, requestName, downloadDir])
-    ) as BinaryBody | null;
-    if (!binaryBody?.path) {
-        return binaryBody ?? undefined;
+async function routeBody(response: NodeHttpResponse, prepared: PreparedRequest, downloadDir?: string): Promise<RoutedBody> {
+    const output = downloadDir && prepared.output ? JSON.stringify(prepared.output) : undefined;
+    const routed = JSON.parse(
+        await wasmCall('route_response_body', [JSON.stringify(response.headers), response.body, prepared.name, response.status, output, downloadDir])
+    ) as RoutedBody;
+    return { ...routed, file: routed.file && await savedBodyFile(routed.file, response.body) };
+}
+
+async function savedBodyFile(file: BodyFile, body: Uint8Array): Promise<BodyFile> {
+    if (!file.path) {
+        return file;
     }
     try {
-        await fs.promises.mkdir(path.dirname(binaryBody.path), { recursive: true });
-        await fs.promises.writeFile(binaryBody.path, response.body);
-        return binaryBody;
+        await fs.promises.mkdir(path.dirname(file.path), { recursive: true });
+        await fs.promises.writeFile(file.path, body);
+        return file;
     } catch (error) {
-        const { media_type, file_name, size } = binaryBody;
-        return { media_type, file_name, size, save_error: error instanceof Error ? error.message : String(error) };
+        const { media_type, file_name, size, binary } = file;
+        return { media_type, file_name, size, binary, save_error: error instanceof Error ? error.message : String(error) };
     }
 }
 

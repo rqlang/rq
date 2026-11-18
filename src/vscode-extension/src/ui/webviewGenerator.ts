@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as rqClient from '../rqClient';
-import { binaryBodyRenderer, getBodyRenderer } from './bodyRenderers';
+import { bodyFileRenderer, getBodyRenderer } from './bodyRenderers';
 import { escapeHtml, fillTemplate } from './html';
 
 const COPY_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
@@ -63,8 +63,8 @@ export async function getWebviewContent(context: vscode.ExtensionContext, result
     const statusClass = result.status >= 200 && result.status < 300 ? 'success' : 
                         result.status >= 400 ? 'error' : 'info';
     
-    const bodyRenderer = result.binary_body
-        ? binaryBodyRenderer(result.binary_body)
+    const bodyRenderer = result.body_file
+        ? bodyFileRenderer(result.body_file)
         : getBodyRenderer(result.response_headers, result.body);
     const renderedBody = await bodyRenderer.render(context, result.body);
 
@@ -93,7 +93,13 @@ export async function getWebviewContent(context: vscode.ExtensionContext, result
         RESPONSE_HEADERS_COUNT: Object.keys(result.response_headers).length.toString(),
         RESPONSE_HEADERS_COPY_ALL: copyAllHeadersButton(result.response_headers),
         RESPONSE_HEADERS_HTML: responseHeadersHtml,
-        BODY_CONTENT: renderedBody.content,
+        BODY_CONTENT: outputSkippedHtml(result.output_skipped) + renderedBody.content,
         BODY_SCRIPT: renderedBody.script
     });
+}
+
+function outputSkippedHtml(skipped?: rqClient.OutputSkipped): string {
+    return skipped
+        ? `<p class="output-skipped">Body not written to <code>${escapeHtml(skipped.path)}</code>: ${escapeHtml(skipped.reason)}</p>`
+        : '';
 }

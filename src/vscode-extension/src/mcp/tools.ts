@@ -331,9 +331,9 @@ function overridesOf(variables: Record<string, string> | undefined, runtimeInput
 }
 
 export function responseBodyOf(result: RequestExecutionResult): Record<string, unknown> {
-    if (result.binary_body) {
-        const size = result.body_truncated ? contentLengthOf(result.response_headers) : result.binary_body.size;
-        const binaryBody = { media_type: result.binary_body.media_type ?? null, ...(size === undefined ? {} : { size }) };
+    if (result.body_file) {
+        const size = result.body_truncated ? contentLengthOf(result.response_headers) : result.body_file.size;
+        const binaryBody = { media_type: result.body_file.media_type ?? null, ...(size === undefined ? {} : { size }) };
         return { body: null, binary_body: binaryBody, body_truncated: Boolean(result.body_truncated) };
     }
     const body = result.body.length > MAX_RESPONSE_BODY_LENGTH ? result.body.slice(0, MAX_RESPONSE_BODY_LENGTH) : result.body;

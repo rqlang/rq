@@ -331,7 +331,7 @@ export class RequestRunner {
         }
 
         const html = await getWebviewContent(this.context, result.results[0]);
-        const bodyFile = result.results[0].binary_body?.path;
+        const bodyFile = result.results[0].body_file?.path;
         this.showResult(execution, html, bodyFile ?? result.results[0].body, bodyFile);
     }
 
@@ -382,6 +382,7 @@ export class RequestRunner {
         this.logger.log(`Time: ${new Date().toISOString()}`);
         this.logger.log(`${'='.repeat(80)}`);
         this.logger.log(`${result.method} ${result.url} → ${result.status} (${result.elapsed_ms}ms)`);
+        if (result.output_skipped) { this.logger.log(`Body not written to ${result.output_skipped.path}: ${result.output_skipped.reason}`); }
         this.logger.debug(`\nRequest Headers:`);
         for (const [key, value] of Object.entries(result.request_headers)) {
             const display = key.toLowerCase() === 'authorization' ? Logger.redactAuthValue(value) : value;

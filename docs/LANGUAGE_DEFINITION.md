@@ -646,7 +646,7 @@ ep reports<base>("/reports") {
 - **What is written.** The body exactly as received, byte for byte. Missing folders are created and an existing file is overwritten.
 - **What is not written.** A response whose final status is not `2xx` is never written: it is shown as usual, its text printed and a binary body saved to the temporary folder. A `2xx` response without a body is not written either, so an existing file is left untouched. In both cases the request reports that the body was not written to `output`.
 - **Reporting.** Every tool shows where the body was written instead of showing the body, and if the file cannot be written, it still shows the rest of the response with the reason; a text body is then shown as if there were no `output`, so it is never lost. `rq request show` reports the resolved path and whether it applies to every body or only to binary ones.
-- The CLI's `-o/--output` overrides the attribute entirely (see [`rq request run`](CLI.md#rq-request-run)). The MCP server ignores it: it never writes files.
+- The MCP server ignores it: it never writes files.
 - It never changes what a request sends.
 
 ## Environments

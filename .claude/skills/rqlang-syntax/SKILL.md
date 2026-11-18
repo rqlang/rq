@@ -376,7 +376,7 @@ Where a response body is written to a file. One string with `{{...}}` interpolat
 - **Relative paths** resolve against the folder inherited from the `ep` and its template (composed like URLs), else against the directory of the `.rq` file where the attribute is written. Absolute paths ignore the inherited folder. The resolved path must stay inside the source (CLI `-s` folder, or the file's folder; the workspace folder in the extension), symbolic links included; the file is never written through a link.
 - Writes the body byte for byte, creates missing folders, overwrites an existing file.
 - Never writes a non-`2xx` response (shown as usual) or a `2xx` without a body (file left untouched).
-- CLI `-o/--output` overrides it entirely; the MCP server ignores it. It never changes what a request sends.
+- The MCP server ignores it. It never changes what a request sends.
 ```rq
 [output("downloads/")]
 ep base("https://api.example.com");

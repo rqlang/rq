@@ -187,21 +187,28 @@ async function routeBody(response: NodeHttpResponse, prepared: PreparedRequest, 
     const routed = JSON.parse(
         await wasmCall('route_response_body', [JSON.stringify(response.headers), response.body, prepared.name, response.status, output, downloadDir])
     ) as RoutedBody;
-    return { ...routed, file: routed.file && await savedBodyFile(routed.file, response.body) };
+    if (!routed.file?.path) {
+        return routed;
+    }
+    const saveError = await writeBody(routed.file.path, response.body);
+    if (saveError === undefined) {
+        return routed;
+    }
+    if (!routed.file.binary) {
+        return { output_skipped: { path: routed.file.path, reason: saveError } };
+    }
+    const { media_type, file_name, size, binary } = routed.file;
+    return { ...routed, file: { media_type, file_name, size, binary, save_error: saveError } };
 }
 
-async function savedBodyFile(file: BodyFile, body: Uint8Array): Promise<BodyFile> {
-    if (!file.path) {
-        return file;
-    }
+async function writeBody(filePath: string, body: Uint8Array): Promise<string | undefined> {
     try {
-        await refuseSymbolicLink(file.path);
-        await fs.promises.mkdir(path.dirname(file.path), { recursive: true });
-        await fs.promises.writeFile(file.path, body);
-        return file;
+        await refuseSymbolicLink(filePath);
+        await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+        await fs.promises.writeFile(filePath, body);
+        return undefined;
     } catch (error) {
-        const { media_type, file_name, size, binary } = file;
-        return { media_type, file_name, size, binary, save_error: error instanceof Error ? error.message : String(error) };
+        return error instanceof Error ? error.message : String(error);
     }
 }
 

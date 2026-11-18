@@ -460,6 +460,17 @@ describe('executeRequest', () => {
             expect(fs.promises.writeFile).toHaveBeenCalledWith(OUTPUT.path, json);
         });
 
+        test('shows a text body whose output file could not be written, with the reason', async () => {
+            mockPrepareRequest.mockReturnValue(prepared({ output: OUTPUT }));
+            mockRouteResponseBody.mockReturnValue(JSON.stringify({ file: { media_type: 'application/json', file_name: 'test-req.json', size: 2, binary: false, path: OUTPUT.path } }));
+            (fs.promises.writeFile as jest.Mock).mockRejectedValueOnce(new Error('EROFS'));
+            makeHttpsMock(201, Buffer.from('{}'));
+
+            const target = await executeRequest({ requestName: 'test-req', sourceDirectory: '/tmp/project', downloadDir: '/downloads' });
+
+            expect([target.results[0].body, target.results[0].body_file, target.results[0].output_skipped]).toEqual(['{}', undefined, { path: OUTPUT.path, reason: 'EROFS' }]);
+        });
+
         test('reports why the body was not written to its output', async () => {
             const skipped = { path: OUTPUT.path, reason: 'the response status is 404' };
             mockPrepareRequest.mockReturnValue(prepared({ output: OUTPUT }));

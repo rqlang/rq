@@ -232,13 +232,43 @@ struct ExecutionOutput {
 }
 
 impl ExecutionOutput {
-    fn new(result: RequestExecutionResult, parts: PrintParts) -> Self {
+    fn new(mut result: RequestExecutionResult, parts: PrintParts) -> Self {
         let saved_body = match &result.body {
             ResponseBody::Binary(body) if parts.body => Some(SavedBodyView::save(body)),
             ResponseBody::Output(body) => Some(SavedBodyView::write(body)),
             _ => None,
         };
-        Self { result, saved_body }
+        match Self::unwritten_text(&result.body, saved_body.as_ref()) {
+            Some((text, skipped)) => {
+                result.body = ResponseBody::Text(text);
+                result.output_skipped = Some(skipped);
+                Self {
+                    result,
+                    saved_body: None,
+                }
+            }
+            None => Self { result, saved_body },
+        }
+    }
+
+    fn unwritten_text(
+        body: &ResponseBody,
+        saved: Option<&SavedBodyView>,
+    ) -> Option<(String, OutputSkipped)> {
+        let (ResponseBody::Output(output), Some(error)) =
+            (body, saved.and_then(|saved| saved.save_error.as_ref()))
+        else {
+            return None;
+        };
+        (!output.binary).then(|| {
+            (
+                String::from_utf8_lossy(&output.bytes).into_owned(),
+                OutputSkipped {
+                    path: output.path.display().to_string(),
+                    reason: error.clone(),
+                },
+            )
+        })
     }
 }
 
@@ -483,12 +513,13 @@ pub async fn execute_run(args: &RunArgs) -> Result<(), Box<dyn std::error::Error
         )
         .await
         .map_err(|e| with_typed_request_name(e, typed_name))?;
-    if let Some(skipped) = &result.output_skipped {
+    let output = ExecutionOutput::new(result, args.print);
+    if let Some(skipped) = &output.result.output_skipped {
         print_warnings(&[output_skipped_warning(skipped)], args.format.format);
     }
 
     let view = ExecutionResultsView {
-        results: vec![ExecutionOutput::new(result, args.print)],
+        results: vec![output],
         parts: args.print,
     };
     print!("{}", view.render(args.format.format));
@@ -675,6 +706,7 @@ mod tests {
         is_yes, render_execution_result, ExecutionOutput, PrintParts, RequestExecutionResult,
         SavedBodyView,
     };
+    use rq_lib::response_body::{BodyFileInfo, OutputBody};
     use rq_lib::ResponseBody;
     use std::collections::HashMap;
     use std::str::FromStr;
@@ -759,6 +791,30 @@ mod tests {
             target,
             "body (application/json, 42 bytes) saved to out/users.json"
         );
+    }
+
+    #[test]
+    fn text_body_that_could_not_be_written_is_printed_with_the_reason() -> Result<(), String> {
+        let folder = std::env::temp_dir();
+        let body = ResponseBody::Output(OutputBody {
+            info: BodyFileInfo {
+                media_type: Some("application/json".to_string()),
+                file_name: "users.json".to_string(),
+                size: 2,
+            },
+            bytes: b"{}".to_vec(),
+            path: folder.clone(),
+            binary: false,
+        });
+        let target = ExecutionOutput::new(result_with(body), PrintParts::from_str("b")?);
+        assert_eq!(
+            (
+                render_execution_result(&target, PrintParts::from_str("b")?),
+                target.result.output_skipped.map(|skipped| skipped.path)
+            ),
+            ("{}\n".to_string(), Some(folder.display().to_string()))
+        );
+        Ok(())
     }
 
     #[test]

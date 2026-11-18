@@ -1,0 +1,4 @@
+[output("{{downloads_dir}}/")]
+ep reports("http://localhost:8080/reports") {
+  rq get();
+}

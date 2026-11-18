@@ -2649,6 +2649,7 @@ mod prepare_request_tests {
             timeout: None,
             description: None,
             confirm: false,
+            output: Vec::new(),
             required_variables: Vec::new(),
             source_path: None,
             related_files: Vec::new(),

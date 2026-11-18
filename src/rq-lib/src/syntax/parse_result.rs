@@ -13,6 +13,14 @@ pub struct AuthLocation {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct OutputPath {
+    pub path: String,
+    pub base_dir: String,
+    pub is_folder: bool,
+    pub applies_to_every_body: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct EndpointDefinition {
     pub name: String,
     pub url: String,
@@ -25,6 +33,7 @@ pub struct EndpointDefinition {
     pub timeout: Option<String>,
     pub description: Option<String>,
     pub confirm: bool,
+    pub output: Vec<OutputPath>,
     pub variables: Vec<Variable>,
     pub has_requests: bool,
     pub is_template: bool,
@@ -60,6 +69,7 @@ pub struct Request {
     pub timeout: Option<String>,
     pub description: Option<String>,
     pub confirm: bool,
+    pub output: Vec<OutputPath>,
     pub required_variables: Vec<RequiredVariable>,
     pub source_path: Option<String>,
     pub related_files: Vec<String>,

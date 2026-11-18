@@ -1,0 +1,4 @@
+[output("downloads/")]
+env local {
+  host: "http://localhost:8080",
+}

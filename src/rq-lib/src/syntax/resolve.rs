@@ -1121,6 +1121,9 @@ pub fn resolve_variables(
     if let Some(auth) = &request.auth {
         request.auth = Some(resolve_string(auth, context, source_files, fs)?);
     }
+    for output in &mut request.output {
+        output.path = resolve_string(&output.path, context, source_files, fs)?;
+    }
     Ok(request)
 }
 
@@ -1203,6 +1206,9 @@ pub fn collect_variable_errors(
     }
     if let Some(ref auth) = request.auth {
         try_resolve(auth);
+    }
+    for output in &request.output {
+        try_resolve(&output.path);
     }
     errors
 }

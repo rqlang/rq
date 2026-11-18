@@ -1,0 +1,2 @@
+[output(downloads)]
+rq report("http://localhost:8080/report");

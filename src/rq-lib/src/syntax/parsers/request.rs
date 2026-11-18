@@ -4,7 +4,7 @@ use super::{
     attributes::{
         parse_attributes, AttributeContext, AttributeParser, AuthAttributeParser,
         ConfirmAttributeParser, DescriptionAttributeParser, MethodAttributeParser,
-        RequiredAttributeParser, TimeoutAttributeParser,
+        OutputAttributeParser, RequiredAttributeParser, TimeoutAttributeParser,
     },
     parse_trait::Parse,
     utils::{
@@ -278,6 +278,7 @@ fn request_attribute_parsers() -> Vec<&'static dyn AttributeParser> {
         &RequiredAttributeParser,
         &DescriptionAttributeParser,
         &ConfirmAttributeParser,
+        &OutputAttributeParser { on_endpoint: false },
     ]
 }
 
@@ -376,6 +377,7 @@ fn parse_request_with_context(
         timeout: ctx.timeout,
         description: ctx.description,
         confirm: ctx.confirm,
+        output: ctx.output.into_iter().collect(),
         required_variables: ctx.required_variables,
         source_path: Some(file),
         related_files: Vec::new(),

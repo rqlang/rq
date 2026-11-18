@@ -602,3 +602,17 @@ describe('doc.description and confirm attribute completion', () => {
         expect(items.find((i: any) => i.label === 'doc.description').range).toEqual(new vscode.Range(0, 1, 0, 5));
     });
 });
+
+describe('output attribute completion', () => {
+    test('output item inserts a string literal snippet before a request', async () => {
+        const doc = makeDocument(['[', 'rq get("http://localhost");']);
+        const items = await provideCompletionItems(doc, new vscode.Position(0, 1));
+        expect(items.find((i: any) => i.label === 'output').insertText.value).toBe('output("$1")');
+    });
+
+    test('does not suggest output before an environment', async () => {
+        const doc = makeDocument(['[', 'env local {', '}']);
+        const items = await provideCompletionItems(doc, new vscode.Position(0, 1));
+        expect(items.some((i: any) => i.label === 'output')).toBe(false);
+    });
+});

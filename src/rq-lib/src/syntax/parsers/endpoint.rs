@@ -1,7 +1,8 @@
 use super::{
     attributes::{
         parse_attributes, AttributeContext, AttributeParser, AuthAttributeParser,
-        ConfirmAttributeParser, DescriptionAttributeParser, TimeoutAttributeParser,
+        ConfirmAttributeParser, DescriptionAttributeParser, OutputAttributeParser,
+        TimeoutAttributeParser,
     },
     parse_trait::Parse,
     request::{parse_scoped_request, RequestContext},
@@ -18,7 +19,7 @@ use crate::syntax::{
         KW_EP, KW_LET, KW_RQ, OP_GT, OP_LT, PUNC_COMMA, PUNC_LBRACE, PUNC_LBRACKET, PUNC_LPAREN,
         PUNC_RBRACE, PUNC_RPAREN, PUNC_SEMI,
     },
-    parse_result::{EndpointDefinition, ParseResult, RequestScope},
+    parse_result::{EndpointDefinition, OutputPath, ParseResult, RequestScope},
     reader::{expect, TokenReader},
     token::TokenType,
     types::{ParameterSlot, SlotBinding, SlotValue},
@@ -155,8 +156,10 @@ pub(crate) fn parse_endpoint_with_context(
         &TimeoutAttributeParser,
         &DescriptionAttributeParser,
         &ConfirmAttributeParser,
+        &OutputAttributeParser { on_endpoint: true },
     ];
     parse_attributes(r, &parsers, KW_EP, &mut ctx)?;
+    let mut ep_output: Vec<OutputPath> = ctx.output.take().into_iter().collect();
 
     expect(
         r,
@@ -305,6 +308,7 @@ pub(crate) fn parse_endpoint_with_context(
             ctx.timeout = parent.timeout;
         }
         ctx.confirm |= parent.confirm;
+        ep_output = parent.output.iter().cloned().chain(ep_output).collect();
         endpoint_variables = parent.variables.clone();
 
         if let Some(src) = &parent.source_path {
@@ -342,6 +346,7 @@ pub(crate) fn parse_endpoint_with_context(
                 timeout: ctx.timeout,
                 description: ctx.description,
                 confirm: ctx.confirm,
+                output: ep_output,
                 variables: endpoint_variables,
                 has_requests: false,
                 is_template: true,
@@ -469,6 +474,7 @@ pub(crate) fn parse_endpoint_with_context(
                 }
             }
             req.confirm |= ctx.confirm;
+            req.output = ep_output.iter().cloned().chain(req.output).collect();
 
             let current_src = r.file_path.to_string_lossy().to_string();
             if !req.related_files.contains(&current_src) {
@@ -518,6 +524,7 @@ pub(crate) fn parse_endpoint_with_context(
         timeout: ctx.timeout,
         description: ctx.description,
         confirm: ctx.confirm,
+        output: ep_output,
         variables: endpoint_variables,
         has_requests: !children.is_empty(),
         is_template: false,

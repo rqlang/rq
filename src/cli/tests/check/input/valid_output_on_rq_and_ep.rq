@@ -1,0 +1,14 @@
+[output("downloads/")]
+ep base("http://localhost:8080");
+
+[output('reports\\')]
+ep reports<base>("/reports") {
+  rq list();
+
+  [output("report-{{report_id}}.pdf")]
+  [required(report_id)]
+  rq get(report_id);
+}
+
+[output("logo.png")]
+rq logo("http://localhost:8080/logo");

@@ -525,6 +525,7 @@ fn test_request_run_json_reports_the_saved_binary_body() -> Result<(), Failed> {
     if result.get("body").is_some()
         || body_file["media_type"] != "image/png"
         || body_file["size"] != BINARY_BODY.len()
+        || body_file["binary"] != true
         || !path.ends_with("json_binary.png")
         || fs::read(path)? != BINARY_BODY
     {
@@ -650,6 +651,7 @@ fn test_request_run_json_reports_the_request_output_file() -> Result<(), Failed>
     if result.get("body").is_some()
         || result["body_file"]["path"] != file.display().to_string()
         || result["body_file"]["media_type"] != "application/json"
+        || result["body_file"]["binary"] != false
     {
         return Err(format!("Unexpected result: {result}").into());
     }

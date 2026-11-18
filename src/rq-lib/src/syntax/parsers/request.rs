@@ -288,6 +288,10 @@ fn parse_request_with_context(
     existing_requests: &[RequestWithVariables],
 ) -> Result<(Request, Vec<Variable>), SyntaxError> {
     let mut ctx = AttributeContext::default();
+    r.skip_ignorable();
+    let declaration_line = r
+        .cur()
+        .map_or(0, |t| r.get_line_col(t.span.start).0.saturating_sub(1));
     parse_attributes(r, &request_attribute_parsers(), KW_RQ, &mut ctx)?;
 
     expect(
@@ -377,6 +381,7 @@ fn parse_request_with_context(
         related_files: Vec::new(),
         line: req_line,
         character: req_character,
+        declaration_line,
     };
     Ok((request, vars))
 }

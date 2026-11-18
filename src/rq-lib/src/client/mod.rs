@@ -2654,6 +2654,7 @@ mod prepare_request_tests {
             related_files: Vec::new(),
             line: 0,
             character: 0,
+            declaration_line: 0,
         }
     }
 

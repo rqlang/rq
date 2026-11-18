@@ -1159,6 +1159,7 @@ pub fn collect_variable_errors(
     );
     let typed_variables = mistyped_variable_names(&request.slot_bindings, &errors);
     let request_line_1 = request.line + 1;
+    let declaration_line_1 = request.declaration_line + 1;
     let request_col_1 = request.character + 1;
     let mut error_index = 0usize;
     let mut try_resolve = |s: &str| {
@@ -1169,7 +1170,7 @@ pub fn collect_variable_errors(
             {
                 return;
             }
-            if !points_at_request_or_its_endpoint(&e, request_line_1, endpoint) {
+            if !points_at_request_or_its_endpoint(&e, declaration_line_1, endpoint) {
                 e.line = request_line_1;
                 e.column = request_col_1 + error_index;
                 if let Some(ref path) = request.source_path {
@@ -1222,13 +1223,13 @@ pub fn mistyped_variable_names(bindings: &[SlotBinding], errors: &[SyntaxError])
 
 fn points_at_request_or_its_endpoint(
     error: &SyntaxError,
-    request_line_1: usize,
+    declaration_line_1: usize,
     endpoint: Option<&EndpointDefinition>,
 ) -> bool {
     if error.line == 0 {
         return false;
     }
-    if error.line >= request_line_1 {
+    if error.line >= declaration_line_1 {
         return true;
     }
     let Some(endpoint) = endpoint else {

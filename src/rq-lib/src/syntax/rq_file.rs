@@ -262,4 +262,12 @@ mod tests {
             vec![vec!["id"]]
         );
     }
+
+    #[test]
+    fn request_declaration_starts_at_its_first_attribute() {
+        let target =
+            &requests_of("let a = \"1\";\n\n[timeout(5)]\n[auth(\"x\")]\nrq get(\"http://x\");\n")
+                [0];
+        assert_eq!((target.declaration_line, target.line), (2, 4));
+    }
 }

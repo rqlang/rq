@@ -65,6 +65,7 @@ pub struct Request {
     pub related_files: Vec<String>,
     pub line: usize,
     pub character: usize,
+    pub declaration_line: usize,
 }
 
 impl Request {

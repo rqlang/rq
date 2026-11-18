@@ -611,7 +611,7 @@ impl OutputAttributeParser {
 fn source_dir(r: &TokenReader) -> String {
     r.file_path
         .parent()
-        .map(|dir| dir.to_string_lossy().to_string())
+        .map(crate::paths::clean_path)
         .unwrap_or_default()
 }
 

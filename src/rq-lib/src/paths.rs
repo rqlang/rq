@@ -120,6 +120,10 @@ impl LexicalPath {
     }
 
     fn split_root(text: &str) -> (String, &str) {
+        let text = text
+            .strip_prefix(r"\\?\")
+            .or_else(|| text.strip_prefix("//?/"))
+            .unwrap_or(text);
         let separator = std::path::MAIN_SEPARATOR.to_string();
         if let Some(drive) = drive_letter(Path::new(text)) {
             let rest = text.get(3..).unwrap_or_default();
@@ -809,6 +813,19 @@ mod tests {
     #[test]
     fn depth_below_rejects_an_absolute_path_under_a_relative_root() {
         assert_eq!(depth_below("/tmp/x", "api"), None);
+    }
+
+    #[test]
+    fn normalize_lexically_drops_the_extended_length_prefix() {
+        assert_eq!(
+            normalize_lexically(r"\\?\C:\repo\out"),
+            native("C:/repo/out")
+        );
+    }
+
+    #[test]
+    fn depth_below_matches_an_extended_length_path_with_its_plain_root() {
+        assert_eq!(depth_below(r"\\?\C:\repo\out\x.json", r"C:\repo"), Some(2));
     }
 
     #[test]

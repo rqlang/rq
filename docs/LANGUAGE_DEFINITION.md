@@ -482,6 +482,7 @@ The following attributes are currently supported:
 - `required`
 - `doc.description`
 - `confirm` (on `rq`, `ep` and `env`, see [`confirm` attribute](#confirm-attribute))
+- `output` (on `rq` and `ep`, see [`output` attribute](#output-attribute))
 - `ui.color` (only on `env`, see [Marking an environment with a color](#marking-an-environment-with-a-color))
 
 ### `method` attribute
@@ -617,6 +618,37 @@ ep users("{{base_url}}/users") {
   - **MCP server** — an assistant asks the user before a marked request, and also before every write (`POST`, `PUT`, `PATCH`, `DELETE`) whether marked or not, since nobody is watching it type. See [`run_request`](MCP_SERVER.md#run_request).
 - `rq request show` reports the outcome for the chosen environment as `confirmation_required`.
 
+### `output` attribute
+
+`output` chooses where a response body is written to a file instead of the temporary folder or the screen:
+
+```
+[output("downloads/")]
+ep base("https://api.example.com");
+
+[output("reports/")]
+ep reports<base>("/reports") {
+  rq list();                         // JSON: printed; a binary body goes to downloads/reports/
+
+  [output("report-{{id}}.pdf")]
+  [required(id)]
+  rq get(id);                        // written to downloads/reports/report-<id>.pdf
+}
+```
+
+- The value is a single string, in double or single quotes, in which `{{...}}` is interpolated. It may appear at most once per statement, on `rq` and `ep` statements (templates included).
+- **Folder or file.** A value whose text ends with `/` (or `\`) names a folder; any other value names a file. It is decided on the text as written, so `"{{dir}}/"` is a folder and `"{{path}}"` is a file whatever the variables hold. A folder keeps the automatic file name: the `filename` of the `Content-Disposition` header, or else the request name with an extension that matches the `Content-Type`.
+- **Where it applies.**
+  - On an `rq`, every body of that request is written to the file, text or binary.
+  - On an `ep`, the value must be a folder. It only replaces the temporary folder for the binary bodies of its requests; a text body is still printed. A request with its own `output` follows the rule for `rq`.
+- **Relative paths.** A relative value is resolved against the folder inherited from the endpoint and its template, in that order, the same way a request URL is appended to its endpoint's. Without an inherited folder, it is resolved against the directory of the `.rq` file where the attribute is written. An absolute value ignores the inherited folder.
+- **Allowed locations.** After resolving `.` and `..`, the path must stay inside the source: the folder passed to `-s/--source` in the CLI (the file's folder when it is a file), the workspace folder in the VS Code extension. Otherwise nothing is written, and the request reports why.
+- **What is written.** The body exactly as received, byte for byte. Missing folders are created and an existing file is overwritten.
+- **What is not written.** A response whose final status is not `2xx` is never written: it is shown as usual, its text printed and a binary body saved to the temporary folder. A `2xx` response without a body is not written either, so an existing file is left untouched. In both cases the request reports that the body was not written to `output`.
+- **Reporting.** Every tool shows where the body was written instead of showing the body, and if the file cannot be written, it still shows the rest of the response with the reason. `rq request show` reports the resolved path and whether it applies to every body or only to binary ones.
+- The CLI's `-o/--output` overrides the attribute entirely (see [`rq request run`](CLI.md#rq-request-run)). The MCP server ignores it: it never writes files.
+- It never changes what a request sends.
+
 ## Environments
 
 Environments allow you to group variable values under a named context (such as `local`, `dev`, or `production`) and then run the same `.rq` file against different backends or settings without changing the file itself.
@@ -674,7 +706,7 @@ env production {
 
 The value is one of a fixed palette, written as a bare lowercase identifier: `red`, `orange`, `yellow`, `green`, `blue` or `purple`. Strings, variables and interpolation are not accepted.
 
-- `ui.color` is valid only on `env` statements; using it on `rq` or `ep` is a parse error, and so is using `method`, `timeout`, `auth`, `required` or `doc.description` on an `env`. `confirm` is the only other attribute an `env` accepts.
+- `ui.color` is valid only on `env` statements; using it on `rq` or `ep` is a parse error, and so is using `method`, `timeout`, `auth`, `required`, `doc.description` or `output` on an `env`. `confirm` is the only other attribute an `env` accepts.
 - It may appear at most once per environment.
 - It is UI metadata only: it does not define a variable and never changes what a request sends.
 - The VS Code extension paints the selected environment in the Requests view with this color (see [Environment color](VSCODE_EXTENSION.md#environment-color)).
@@ -827,9 +859,10 @@ Not all attributes are valid on both `ep` and `rq` statements. The table below s
 | `required`| no   | yes  |
 | `doc.description` | yes | yes |
 | `confirm` | yes | yes |
+| `output`  | yes (folder only) | yes |
 | `ui.color`| no   | no   |
 
-When an attribute is placed on an `ep` statement, it applies as a default to all `rq` requests inside that endpoint block (except `doc.description`, which only describes the endpoint itself; `confirm` is inherited too). An `rq` statement can override or extend those defaults with its own attributes.
+When an attribute is placed on an `ep` statement, it applies as a default to all `rq` requests inside that endpoint block (except `doc.description`, which only describes the endpoint itself; `confirm` is inherited too, and `output` is a folder that the request's own `output` is resolved against). An `rq` statement can override or extend those defaults with its own attributes.
 
 ```
 [timeout(20)]

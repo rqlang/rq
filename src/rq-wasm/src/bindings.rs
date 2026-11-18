@@ -116,6 +116,8 @@ struct RequestDetailsJson {
     required_variables: Vec<String>,
     #[serde(rename = "ConfirmationRequired")]
     confirmation_required: bool,
+    #[serde(rename = "Output", skip_serializing_if = "Option::is_none")]
+    output: Option<OutputTarget>,
     file: String,
     request_file: String,
     line: usize,
@@ -408,6 +410,7 @@ pub fn get_request_details(
         auth,
         required_variables: details.required_variables,
         confirmation_required: details.confirmation_required,
+        output: details.output,
         file: details.file,
         request_file: details.request_file,
         line: details.line,

@@ -637,7 +637,7 @@ ep reports<base>("/reports") {
 ```
 
 - The value is a single string, in double or single quotes, in which `{{...}}` is interpolated. It may appear at most once per statement, on `rq` and `ep` statements (templates included).
-- **Folder or file.** A value whose text ends with `/` (or `\`) names a folder; any other value names a file. It is decided on the text as written, so `"{{dir}}/"` is a folder and `"{{path}}"` is a file whatever the variables hold. A folder keeps the automatic file name: the `filename` of the `Content-Disposition` header, or else the request name with an extension that matches the `Content-Type`.
+- **Folder or file.** A value whose text ends with `/` (or `\`), or whose last segment is `.` or `..`, names a folder; any other value names a file. It is decided on the text as written, so `"{{dir}}/"` and `"{{dir}}/."` are folders and `"{{path}}"` is a file whatever the variables hold. A folder keeps the automatic file name: the `filename` of the `Content-Disposition` header, or else the request name with an extension that matches the `Content-Type`.
 - **Where it applies.**
   - On an `rq`, every body of that request is written to the file, text or binary.
   - On an `ep`, the value must be a folder. It only replaces the temporary folder for the binary bodies of its requests; a text body is still printed. A request with its own `output` follows the rule for `rq`.

@@ -591,7 +591,7 @@ impl OutputAttributeParser {
                 path_tok.span.clone(),
             ));
         }
-        let is_folder = path.ends_with(['/', '\\']);
+        let is_folder = crate::paths::names_folder(&path);
         if self.on_endpoint && !is_folder {
             return Err(r.create_error(
                 "Output on an ep statement must be a folder ending with '/' or '\\'".to_string(),

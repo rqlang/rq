@@ -93,8 +93,31 @@ pub fn depth_below(path: &str, root: &str) -> Option<usize> {
     if !path.root.eq_ignore_ascii_case(&root.root) {
         return None;
     }
-    let below = path.parts.strip_prefix(root.parts.as_slice())?;
+    let ignore_case = cfg!(windows) || path.root.contains(':');
+    let below = strip_parts(&path.parts, &root.parts, ignore_case)?;
     (!below.iter().any(|part| part == "..")).then_some(below.len())
+}
+
+fn strip_parts<'a>(
+    parts: &'a [String],
+    prefix: &[String],
+    ignore_case: bool,
+) -> Option<&'a [String]> {
+    if parts.len() < prefix.len() {
+        return None;
+    }
+    let (head, below) = parts.split_at(prefix.len());
+    let same = |a: &String, b: &String| {
+        if ignore_case {
+            a.to_lowercase() == b.to_lowercase()
+        } else {
+            a == b
+        }
+    };
+    head.iter()
+        .zip(prefix)
+        .all(|(a, b)| same(a, b))
+        .then_some(below)
 }
 
 struct LexicalPath {
@@ -831,5 +854,19 @@ mod tests {
     #[test]
     fn depth_below_ignores_the_case_of_the_drive() {
         assert_eq!(depth_below("c:/repo/x", "C:\\repo"), Some(1));
+    }
+
+    #[test]
+    fn depth_below_ignores_the_case_of_folders_on_a_drive() {
+        assert_eq!(
+            depth_below(r"C:\WORKSPACE\out.json", r"C:\Workspace"),
+            Some(1)
+        );
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn depth_below_keeps_the_case_of_folders_without_a_drive() {
+        assert_eq!(depth_below("/WORKSPACE/out.json", "/workspace"), None);
     }
 }

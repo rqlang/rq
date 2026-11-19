@@ -594,7 +594,7 @@ impl OutputAttributeParser {
         let is_folder = path.ends_with(['/', '\\']);
         if self.on_endpoint && !is_folder {
             return Err(r.create_error(
-                "Output on an ep statement must be a folder ending with '/'".to_string(),
+                "Output on an ep statement must be a folder ending with '/' or '\\'".to_string(),
                 path_tok.span.clone(),
             ));
         }

@@ -4,7 +4,7 @@ mod commands;
 mod core;
 
 use commands::Commands;
-use core::error::{error_to_json, CheckFailed, RqError};
+use core::error::{error_to_json, CheckFailed};
 use core::exit_code::ExitCode;
 use core::formatter::OutputFormat;
 use core::logger::log_finished;
@@ -54,11 +54,9 @@ fn extract_output_format(args: &[String]) -> OutputFormat {
     for (arg, next) in pairs {
         let inline_value = arg
             .strip_prefix("--format=")
-            .or_else(|| arg.strip_prefix("--output="))
-            .or_else(|| arg.strip_prefix("-f").filter(|value| !value.is_empty()))
-            .or_else(|| arg.strip_prefix("-o").filter(|value| !value.is_empty()));
+            .or_else(|| arg.strip_prefix("-f").filter(|value| !value.is_empty()));
         let value = match arg.as_str() {
-            "-f" | "--format" | "-o" | "--output" => next.map(String::as_str),
+            "-f" | "--format" => next.map(String::as_str),
             _ => inline_value,
         };
         if value.is_some_and(|value| value.eq_ignore_ascii_case("json")) {
@@ -68,22 +66,8 @@ fn extract_output_format(args: &[String]) -> OutputFormat {
     OutputFormat::Text
 }
 
-fn reject_legacy_output_flag(args: &[String]) -> Result<(), RqError> {
-    let uses_legacy_flag = args
-        .iter()
-        .skip(1)
-        .any(|arg| arg == "--output" || arg.starts_with("--output=") || arg.starts_with("-o"));
-    if uses_legacy_flag {
-        return Err(RqError::Generic(
-            "-o/--output was renamed to -f/--format".to_string(),
-        ));
-    }
-    Ok(())
-}
-
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
-    reject_legacy_output_flag(&args)?;
     let is_subcommand = args.len() > 1
         && (args[1] == "env"
             || args[1] == "auth"

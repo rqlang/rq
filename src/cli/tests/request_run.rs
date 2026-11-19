@@ -23,10 +23,6 @@ fn main() {
             test_request_text_output_starts_with_status,
         ),
         Trial::test(
-            "request_legacy_output_flag_points_to_format",
-            test_request_legacy_output_flag_points_to_format,
-        ),
-        Trial::test(
             "request_print_headers_omits_meta_and_body",
             test_request_print_headers_omits_meta_and_body,
         ),
@@ -394,27 +390,6 @@ fn test_request_text_output_starts_with_status() -> Result<(), Failed> {
         || !status_line.ends_with(" ms")
     {
         return Err(format!("Unexpected output: {stdout}").into());
-    }
-    Ok(())
-}
-
-fn test_request_legacy_output_flag_points_to_format() -> Result<(), Failed> {
-    let output = rq_cmd()
-        .args([
-            "request",
-            "run",
-            "-s",
-            "tests/request/run/input/basic.rq",
-            "-n",
-            "basic",
-            "-o",
-            "json",
-        ])
-        .output()
-        .map_err(|e| format!("Failed to execute: {e}"))?;
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    if output.status.success() || !stderr.contains("-o/--output was renamed to -f/--format") {
-        return Err(format!("Unexpected stderr: {stderr}").into());
     }
     Ok(())
 }

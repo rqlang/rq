@@ -164,7 +164,7 @@ export const ATTRIBUTE_DEFINITIONS: AttributeDefinition[] = [
     {
         name: 'output',
         signature: '[output("path")]',
-        description: 'Writes the response body to a file. A path ending with / is a folder that keeps the automatic file name. On an rq it writes every body; on an ep it must be a folder, and only binary bodies of its requests go there. Responses that are not 2xx are never written.',
+        description: 'Writes the response body to a file. A path ending with / or with a . or .. segment is a folder that keeps the automatic file name. On an rq it writes every body; on an ep it must be a folder, and only binary bodies of its requests go there. Responses that are not 2xx are never written.',
         targets: 'rq, ep'
     }
 ];

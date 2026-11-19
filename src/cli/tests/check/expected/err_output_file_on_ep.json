@@ -4,7 +4,7 @@
       "file": "{{*}}",
       "line": 1,
       "column": 9,
-      "message": "Output on an ep statement must be a folder ending with '/' or '\\'"
+      "message": "Output on an ep statement must be a folder: end it with '/' or '\\', or with a '.' or '..' segment"
     }
   ]
 }

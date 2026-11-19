@@ -6,7 +6,6 @@ import * as crypto from 'crypto';
 import * as forge from 'node-forge';
 import { buildSecretsMap, CANCELLED_MESSAGE, draftsJson } from './utils';
 import { wasmCall } from './wasmHost';
-import { routeResponseBody } from './rqClient';
 import type { AuthShowOutput } from './rqClient';
 
 export interface CancellationSignal {
@@ -182,6 +181,11 @@ export async function sendRequest(scope: RequestScope, options: ExecuteRequestOp
             body_truncated: response.truncated,
         }],
     };
+}
+
+export async function routeResponseBody(headers: Record<string, string>, body: Uint8Array, requestName: string, status: number, output?: OutputTarget, downloadDir?: string): Promise<RoutedBody> {
+    const raw = await wasmCall('route_response_body', [JSON.stringify(headers), body, requestName, status, output && JSON.stringify(output), downloadDir]);
+    return JSON.parse(raw) as RoutedBody;
 }
 
 async function routeBody(response: NodeHttpResponse, prepared: PreparedRequest, options: ExecuteRequestOptions): Promise<RoutedBody> {

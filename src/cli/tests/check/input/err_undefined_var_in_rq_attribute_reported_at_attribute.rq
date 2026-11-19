@@ -1,0 +1,2 @@
+[auth("{{ghost_auth}}")]
+rq get_thing("http://localhost:8080/thing");

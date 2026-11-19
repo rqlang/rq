@@ -204,6 +204,30 @@ fn main() {
             "request_run_names_the_saved_body_after_content_disposition",
             test_request_run_names_the_saved_body_after_content_disposition,
         ),
+        Trial::test(
+            "request_run_writes_a_text_body_to_the_request_output",
+            test_request_run_writes_a_text_body_to_the_request_output,
+        ),
+        Trial::test(
+            "request_run_json_reports_the_request_output_file",
+            test_request_run_json_reports_the_request_output_file,
+        ),
+        Trial::test(
+            "request_run_writes_a_binary_body_to_the_endpoint_folder",
+            test_request_run_writes_a_binary_body_to_the_endpoint_folder,
+        ),
+        Trial::test(
+            "request_run_prints_a_text_body_despite_the_endpoint_folder",
+            test_request_run_prints_a_text_body_despite_the_endpoint_folder,
+        ),
+        Trial::test(
+            "request_run_does_not_write_an_error_response_to_the_output",
+            test_request_run_does_not_write_an_error_response_to_the_output,
+        ),
+        Trial::test(
+            "request_run_does_not_write_outside_the_source_folder",
+            test_request_run_does_not_write_outside_the_source_folder,
+        ),
     ];
 
     // Discover tests from organized directories
@@ -501,6 +525,7 @@ fn test_request_run_json_reports_the_saved_binary_body() -> Result<(), Failed> {
     if result.get("body").is_some()
         || body_file["media_type"] != "image/png"
         || body_file["size"] != BINARY_BODY.len()
+        || body_file["binary"] != true
         || !path.ends_with("json_binary.png")
         || fs::read(path)? != BINARY_BODY
     {
@@ -550,6 +575,159 @@ fn test_request_run_reports_a_binary_body_it_could_not_save() -> Result<(), Fail
         ))
     {
         return Err(format!("Unexpected output: {stdout}").into());
+    }
+    Ok(())
+}
+
+const JSON_BODY: &str = "{\"users\":[]}";
+
+fn run_with_output(
+    name: &str,
+    rq_source: impl Fn(&str) -> String,
+    response: ResponseTemplate,
+    extra: &[&str],
+) -> Result<(std::process::Output, PathBuf), Failed> {
+    let runtime = tokio::runtime::Runtime::new()?;
+    let server = runtime.block_on(async {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(response)
+            .mount(&server)
+            .await;
+        server
+    });
+    let source = temp_dir_for(name)?.join("api");
+    fs::create_dir_all(&source)?;
+    let source = fs::canonicalize(source)?;
+    fs::write(source.join("api.rq"), rq_source(&server.uri()))?;
+    let output = rq_cmd()
+        .args(["request", "run", "--no-lint", "-s"])
+        .arg(&source)
+        .args(extra)
+        .output()?;
+    if !output.status.success() {
+        return Err(format!(
+            "Command failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
+    }
+    Ok((output, source))
+}
+
+fn json_response(status: u16) -> ResponseTemplate {
+    ResponseTemplate::new(status).set_body_raw(JSON_BODY, "application/json")
+}
+
+fn test_request_run_writes_a_text_body_to_the_request_output() -> Result<(), Failed> {
+    let (output, source) = run_with_output(
+        "output_text",
+        |uri| format!("[output(\"out/users.json\")]\nrq users(\"{uri}/users\");\n"),
+        json_response(200),
+        &["-n", "users", "-p", "b"],
+    )?;
+    let file = source.join("out").join("users.json");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let expected = format!(
+        "body (application/json, {} bytes) saved to {}\n",
+        JSON_BODY.len(),
+        file.display()
+    );
+    if stdout != expected || fs::read_to_string(&file)? != JSON_BODY {
+        return Err(format!("Unexpected output: {stdout}").into());
+    }
+    Ok(())
+}
+
+fn test_request_run_json_reports_the_request_output_file() -> Result<(), Failed> {
+    let (output, source) = run_with_output(
+        "output_json",
+        |uri| format!("[output(\"out/\")]\nrq users(\"{uri}/users\");\n"),
+        json_response(200),
+        &["-n", "users", "-f", "json"],
+    )?;
+    let result = parse_first_result(&output)?;
+    let file = source.join("out").join("users.json");
+    if result.get("body").is_some()
+        || result["body_file"]["path"] != file.display().to_string()
+        || result["body_file"]["media_type"] != "application/json"
+        || result["body_file"]["binary"] != false
+    {
+        return Err(format!("Unexpected result: {result}").into());
+    }
+    Ok(())
+}
+
+fn test_request_run_writes_a_binary_body_to_the_endpoint_folder() -> Result<(), Failed> {
+    let (output, source) = run_with_output(
+        "output_endpoint_binary",
+        |uri| {
+            format!("[output(\"downloads/\")]\nep files(\"{uri}\") {{\n  rq logo(\"/logo\");\n}}\n")
+        },
+        ResponseTemplate::new(200).set_body_raw(BINARY_BODY, "image/png"),
+        &["-n", "files.logo", "-p", "b"],
+    )?;
+    let file = source.join("downloads").join("files.logo.png");
+    if !String::from_utf8_lossy(&output.stdout).starts_with("binary body (image/png")
+        || saved_path_in_text(&output)? != file.display().to_string()
+        || fs::read(&file)? != BINARY_BODY
+    {
+        return Err(format!(
+            "Unexpected output: {}",
+            String::from_utf8_lossy(&output.stdout)
+        )
+        .into());
+    }
+    Ok(())
+}
+
+fn test_request_run_prints_a_text_body_despite_the_endpoint_folder() -> Result<(), Failed> {
+    let (output, source) = run_with_output(
+        "output_endpoint_text",
+        |uri| {
+            format!("[output(\"downloads/\")]\nep api(\"{uri}\") {{\n  rq users(\"/users\");\n}}\n")
+        },
+        json_response(200),
+        &["-n", "api.users", "-p", "b"],
+    )?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    if stdout != format!("{JSON_BODY}\n") || source.join("downloads").exists() {
+        return Err(format!("Unexpected output: {stdout}").into());
+    }
+    Ok(())
+}
+
+fn test_request_run_does_not_write_an_error_response_to_the_output() -> Result<(), Failed> {
+    let (output, source) = run_with_output(
+        "output_error_status",
+        |uri| format!("[output(\"users.json\")]\nrq users(\"{uri}/users\");\n"),
+        json_response(404),
+        &["-n", "users", "-p", "b"],
+    )?;
+    let file = source.join("users.json");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let warning = format!(
+        "Warning: Body not written to {}: the response status is 404\n",
+        file.display()
+    );
+    if stdout != format!("{JSON_BODY}\n") || stderr != warning || file.exists() {
+        return Err(format!("Unexpected output: {stdout}{stderr}").into());
+    }
+    Ok(())
+}
+
+fn test_request_run_does_not_write_outside_the_source_folder() -> Result<(), Failed> {
+    let (output, source) = run_with_output(
+        "output_outside",
+        |uri| format!("[output(\"../users.json\")]\nrq users(\"{uri}/users\");\n"),
+        json_response(200),
+        &["-n", "users", "-p", "b"],
+    )?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let outside = source.parent().ok_or("parent")?.join("users.json");
+    if !stderr.contains("is outside the source folder") || outside.exists() {
+        return Err(format!("Unexpected output: {stderr}").into());
     }
     Ok(())
 }

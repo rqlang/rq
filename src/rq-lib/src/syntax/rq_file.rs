@@ -101,7 +101,7 @@ impl RqFile {
 mod tests {
     use super::RqFile;
     use crate::native::NativeFs;
-    use crate::syntax::parse_result::{Request, RequestScope, RequiredVariable};
+    use crate::syntax::parse_result::{OutputPath, Request, RequestScope, RequiredVariable};
     use std::path::PathBuf;
 
     fn parse(source: &str) -> RqFile {
@@ -261,5 +261,79 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![vec!["id"]]
         );
+    }
+
+    fn output_of(request: &Request) -> Vec<(&str, bool, bool)> {
+        request
+            .output
+            .iter()
+            .map(|output| {
+                (
+                    output.path.as_str(),
+                    output.is_folder,
+                    output.applies_to_every_body,
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn request_output_applies_to_every_body_from_the_folder_of_its_file() {
+        let target = RqFile::from_content_lenient(
+            PathBuf::from("api/test.rq"),
+            "[output(\"logo.png\")]\nrq logo(\"http://x/logo\");\n",
+            &NativeFs,
+        );
+        assert_eq!(
+            target.requests[0].request.output,
+            vec![OutputPath {
+                path: "logo.png".to_string(),
+                base_dir: "api".to_string(),
+                is_folder: false,
+                applies_to_every_body: true,
+            }]
+        );
+    }
+
+    #[test]
+    fn output_chains_template_endpoint_and_request_outermost_first() {
+        let source = "[output(\"downloads/\")]\nep base(\"http://x\");\n\n[output(\"reports/\")]\nep reports<base>(\"/reports\") {\n  [output(\"report.pdf\")]\n  rq get();\n}\n";
+        let target = &requests_of(source)[0];
+        assert_eq!(
+            output_of(target),
+            vec![
+                ("downloads/", true, false),
+                ("reports/", true, false),
+                ("report.pdf", false, true),
+            ]
+        );
+    }
+
+    #[test]
+    fn endpoint_request_without_output_inherits_only_the_folders() {
+        let source = "[output(\"downloads/\")]\nep reports(\"http://x\") {\n  rq list();\n}\n";
+        let target = &requests_of(source)[0];
+        assert_eq!(output_of(target), vec![("downloads/", true, false)]);
+    }
+
+    #[test]
+    fn output_ending_with_a_backslash_is_a_folder() {
+        let target = &requests_of("[output('downloads\\\\')]\nrq get(\"http://x\");\n")[0];
+        assert_eq!(output_of(target), vec![("downloads\\", true, true)]);
+    }
+
+    #[test]
+    fn output_folder_is_decided_on_the_written_text() {
+        let source = "let dir = \"downloads/\";\n[output(\"{{dir}}\")]\nrq get(\"http://x\");\n";
+        let target = &requests_of(source)[0];
+        assert_eq!(output_of(target), vec![("{{dir}}", false, true)]);
+    }
+
+    #[test]
+    fn request_declaration_starts_at_its_first_attribute() {
+        let target =
+            &requests_of("let a = \"1\";\n\n[timeout(5)]\n[auth(\"x\")]\nrq get(\"http://x\");\n")
+                [0];
+        assert_eq!((target.declaration_line, target.line), (2, 4));
     }
 }

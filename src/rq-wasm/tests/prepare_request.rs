@@ -199,3 +199,39 @@ fn the_check_overrides_binding_asks_for_consent_when_the_host_changes() {
         serde_json::Value::Bool(true)
     );
 }
+
+fn prepare_output(request_source: &str) -> Option<rq_lib::response_body::OutputTarget> {
+    let files = HashMap::from([(REQUEST_FILE.to_string(), request_source.to_string())]);
+    let client = RqClient::new(
+        Arc::new(WasmFs::with_root(files, Path::new(WORKSPACE))),
+        Arc::new(WasmSecretProvider::new(None, Vec::new())),
+        Arc::new(WasmHttpClient),
+    );
+    let target =
+        RequestTarget::new(Path::new(WORKSPACE), "get").in_file(Some(Path::new(REQUEST_FILE)));
+    client
+        .prepare_request(target, None, &[])
+        .expect("prepare_request failed")
+        .output
+}
+
+#[test]
+fn prepared_output_is_resolved_against_the_request_file() {
+    let target = prepare_output("[output(\"out/report.json\")]\nrq get(\"http://x\");\n");
+    assert_eq!(
+        target.map(|output| (output.path.replace('\\', "/"), output.error)),
+        Some(("/workspace/sub/out/report.json".to_string(), None))
+    );
+}
+
+#[test]
+fn prepared_output_may_climb_up_to_the_workspace_folder() {
+    let target = prepare_output("[output(\"../report.json\")]\nrq get(\"http://x\");\n");
+    assert_eq!(target.and_then(|output| output.error), None);
+}
+
+#[test]
+fn prepared_output_outside_the_workspace_folder_carries_an_error() {
+    let target = prepare_output("[output(\"../../report.json\")]\nrq get(\"http://x\");\n");
+    assert!(target.and_then(|output| output.error).is_some());
+}

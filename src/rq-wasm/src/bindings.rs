@@ -5,7 +5,7 @@ use rq_lib::client::models::{
 };
 use rq_lib::error::RqError;
 use rq_lib::logger::Logger;
-use rq_lib::response_body::BinaryBodyInfo;
+use rq_lib::response_body::{BodyFileInfo, OutputSkipped, OutputTarget, ResponseBody};
 use rq_lib::RqClient;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -116,6 +116,8 @@ struct RequestDetailsJson {
     required_variables: Vec<String>,
     #[serde(rename = "ConfirmationRequired")]
     confirmation_required: bool,
+    #[serde(rename = "Output", skip_serializing_if = "Option::is_none")]
+    output: Option<OutputTarget>,
     file: String,
     request_file: String,
     line: usize,
@@ -134,6 +136,7 @@ struct PreparedRequestJson {
     confirmation_required: bool,
     agent_confirmation_required: bool,
     secret_values: Vec<String>,
+    output: Option<OutputTarget>,
 }
 
 #[derive(Serialize)]
@@ -407,6 +410,7 @@ pub fn get_request_details(
         auth,
         required_variables: details.required_variables,
         confirmation_required: details.confirmation_required,
+        output: details.output,
         file: details.file,
         request_file: details.request_file,
         line: details.line,
@@ -457,6 +461,7 @@ pub fn prepare_request(
     });
     let confirmation_required = prepared.confirmation_required;
     let agent_confirmation_required = prepared.agent_confirmation_required;
+    let output = prepared.output;
     let request = prepared.request;
     let view = PreparedRequestJson {
         name: request.name,
@@ -469,6 +474,7 @@ pub fn prepare_request(
         confirmation_required,
         agent_confirmation_required,
         secret_values,
+        output,
     };
     serde_json::to_string(&view).map_err(|e| JsError::new(&e.to_string()))
 }
@@ -705,31 +711,72 @@ pub fn auth_fields() -> Result<String, JsError> {
 }
 
 #[derive(Serialize)]
-struct BinaryBodyView {
+struct BodyFileView {
     #[serde(flatten)]
-    info: BinaryBodyInfo,
+    info: BodyFileInfo,
+    binary: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     path: Option<String>,
 }
 
+#[derive(Serialize)]
+struct RoutedBodyView {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    file: Option<BodyFileView>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    output_skipped: Option<OutputSkipped>,
+}
+
 #[wasm_bindgen]
-pub fn binary_response_body(
+pub fn route_response_body(
     headers_json: &str,
     body: &[u8],
     request_name: &str,
+    status: u16,
+    output_json: Option<String>,
     download_dir: Option<String>,
 ) -> Result<String, JsError> {
     let headers: HashMap<String, String> = serde_json::from_str(headers_json)
         .map_err(|e| JsError::new(&format!("Invalid headers: {e}")))?;
-    let view = BinaryBodyInfo::of_response(&headers, body, request_name).map(|info| {
-        let path = download_dir.as_deref().map(|dir| {
-            info.download_path(Path::new(dir))
-                .to_string_lossy()
-                .into_owned()
-        });
-        BinaryBodyView { info, path }
-    });
+    let output: Option<OutputTarget> = output_json
+        .as_deref()
+        .map(serde_json::from_str)
+        .transpose()
+        .map_err(|e| JsError::new(&format!("Invalid output: {e}")))?;
+    let routed = ResponseBody::route(
+        &headers,
+        body.to_vec(),
+        request_name,
+        status,
+        output.as_ref(),
+    );
+    let view = RoutedBodyView {
+        file: body_file_view(routed.body, download_dir.as_deref()),
+        output_skipped: routed.output_skipped,
+    };
     serde_json::to_string(&view).map_err(|e| JsError::new(&e.to_string()))
+}
+
+fn body_file_view(body: ResponseBody, download_dir: Option<&str>) -> Option<BodyFileView> {
+    match body {
+        ResponseBody::Text(_) => None,
+        ResponseBody::Binary(binary) => Some(BodyFileView {
+            path: download_dir.map(|dir| {
+                binary
+                    .info
+                    .download_path(Path::new(dir))
+                    .to_string_lossy()
+                    .into_owned()
+            }),
+            info: binary.info,
+            binary: true,
+        }),
+        ResponseBody::Output(output) => Some(BodyFileView {
+            path: Some(output.path.to_string_lossy().into_owned()),
+            info: output.info,
+            binary: output.binary,
+        }),
+    }
 }
 
 #[wasm_bindgen]

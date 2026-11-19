@@ -39,19 +39,19 @@ describe('responseBodyOf', () => {
     });
 
     it('returns a binary body as its media type and size only', () => {
-        const target = responseBodyOf(result({ binary_body: { media_type: 'image/png', file_name: 'r.png', size: 42 } }));
+        const target = responseBodyOf(result({ body_file: { media_type: 'image/png', file_name: 'r.png', size: 42, binary: true } }));
 
         expect(target).toEqual({ body: null, binary_body: { media_type: 'image/png', size: 42 }, body_truncated: false });
     });
 
     it('reports the Content-Length of a truncated binary body as its size', () => {
-        const target = responseBodyOf(result({ response_headers: { 'Content-Length': '2097152' }, body_truncated: true, binary_body: { media_type: 'application/pdf', file_name: 'r.pdf', size: 50000 } }));
+        const target = responseBodyOf(result({ response_headers: { 'Content-Length': '2097152' }, body_truncated: true, body_file: { media_type: 'application/pdf', file_name: 'r.pdf', size: 50000, binary: true } }));
 
         expect(target).toEqual({ body: null, binary_body: { media_type: 'application/pdf', size: 2097152 }, body_truncated: true });
     });
 
     it('leaves out the size of a truncated binary body without Content-Length', () => {
-        const target = responseBodyOf(result({ body_truncated: true, binary_body: { media_type: 'application/pdf', file_name: 'r.pdf', size: 50000 } }));
+        const target = responseBodyOf(result({ body_truncated: true, body_file: { media_type: 'application/pdf', file_name: 'r.pdf', size: 50000, binary: true } }));
 
         expect(target).toEqual({ body: null, binary_body: { media_type: 'application/pdf' }, body_truncated: true });
     });

@@ -498,7 +498,12 @@ export const attributeHandler: CompletionHandler = {
         descriptionItem.filterText = 'doc.description';
         descriptionItem.range = new vscode.Range(position.line, bracketOffset + 1, position.line, position.character);
 
-        return [methodItem, timeoutItem, authItem, requiredItem, descriptionItem, confirmAttributeItem()];
+        const outputItem = new vscode.CompletionItem('output', vscode.CompletionItemKind.Keyword);
+        outputItem.detail = 'Write the response body to a file';
+        outputItem.documentation = new vscode.MarkdownString('Writes the body of the next `rq` to a file, or sets the folder for the binary bodies of an `ep`. A path ending with `/` is a folder.\n\n**Example:** `[output("downloads/report.pdf")]`');
+        outputItem.insertText = new vscode.SnippetString('output("$1")');
+
+        return [methodItem, timeoutItem, authItem, requiredItem, descriptionItem, confirmAttributeItem(), outputItem];
     },
 };
 

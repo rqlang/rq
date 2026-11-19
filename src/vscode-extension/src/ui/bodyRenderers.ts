@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import type { BinaryBody } from '../execution';
+import type { BodyFile } from '../execution';
 import { escapeHtml } from './html';
 import { parseJsonTree, serializeJsonTree } from './jsonTree';
 
@@ -79,7 +79,7 @@ const textRenderer: BodyRenderer = {
     }
 };
 
-export function binaryBodyRenderer(body: BinaryBody): BodyRenderer {
+export function bodyFileRenderer(body: BodyFile): BodyRenderer {
     const description = body.media_type ? `${body.media_type}, ${body.size} bytes` : `${body.size} bytes`;
     const notSaved = body.save_error === undefined ? 'Not saved' : `Could not be saved: ${escapeHtml(body.save_error)}`;
     const location = body.path === undefined
@@ -93,7 +93,7 @@ export function binaryBodyRenderer(body: BinaryBody): BodyRenderer {
         async render(): Promise<RenderedBody> {
             return {
                 content: `<div class="binary-body">
-            <p class="binary-summary">Binary body (${escapeHtml(description)})</p>
+            <p class="binary-summary">${body.binary ? 'Binary body' : 'Body'} (${escapeHtml(description)})</p>
             ${location}
         </div>`,
                 script: ''

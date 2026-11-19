@@ -397,6 +397,13 @@ describe('attribute hover', () => {
         expect((result!.contents as unknown as vscode.MarkdownString).value).toContain('**Applies to:** `rq, ep, env`');
     });
 
+    test('describes [output] as valid on rq and ep', async () => {
+        const doc = makeDocument(['[output("downloads/")]', 'rq report("/report");']);
+        const result = await provideHover(doc, pos(0, 3)) as vscode.Hover;
+        const value = (result!.contents as unknown as vscode.MarkdownString).value;
+        expect([value.includes('**Attribute: `output`**'), value.includes('**Applies to:** `rq, ep`')]).toEqual([true, true]);
+    });
+
     test('ignores an unknown attribute name', async () => {
         const doc = makeDocument(['[unknown(1)]', 'rq x("/x");']);
         const result = await provideHover(doc, pos(0, 2));

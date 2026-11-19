@@ -8,7 +8,7 @@ use crate::syntax::{
         KW_ENV, KW_RQ, PUNC_DOLLAR, PUNC_DOT, PUNC_LBRACKET, PUNC_LPAREN, PUNC_RBRACKET,
         PUNC_RPAREN,
     },
-    parse_result::{AuthLocation, RequiredVariable},
+    parse_result::{AuthLocation, OutputPath, RequiredVariable},
     reader::{expect, TokenReader},
     token::{Token, TokenType},
     ui_color::UiColor,
@@ -17,6 +17,7 @@ use crate::syntax::{
 pub const ATTR_UI_COLOR: &str = "ui.color";
 pub const ATTR_DESCRIPTION: &str = "doc.description";
 pub const ATTR_CONFIRM: &str = "confirm";
+pub const ATTR_OUTPUT: &str = "output";
 
 #[derive(Default)]
 pub struct AttributeContext {
@@ -28,6 +29,7 @@ pub struct AttributeContext {
     pub color: Option<UiColor>,
     pub description: Option<String>,
     pub confirm: bool,
+    pub output: Option<OutputPath>,
 }
 
 impl AttributeContext {
@@ -74,6 +76,13 @@ impl AttributeContext {
         self.confirm = true;
         Ok(())
     }
+    pub fn set_output(&mut self, output: OutputPath) -> Result<(), String> {
+        if self.output.is_some() {
+            return Err(format!("Duplicate attribute '{ATTR_OUTPUT}'"));
+        }
+        self.output = Some(output);
+        Ok(())
+    }
     pub fn add_required_variable(&mut self, name: String, line: usize, character: usize) {
         self.required_variables.push(RequiredVariable {
             name,
@@ -94,6 +103,7 @@ const ATTRIBUTE_TARGETS: &[(&str, &str)] = &[
     ("timeout", "rq or ep"),
     ("auth", "rq or ep"),
     (ATTR_DESCRIPTION, "rq or ep"),
+    (ATTR_OUTPUT, "rq or ep"),
     (ATTR_UI_COLOR, KW_ENV),
 ];
 
@@ -541,6 +551,68 @@ impl AttributeParser for ConfirmAttributeParser {
             .map_err(|msg| r.create_error_with_file(msg, name_span))?;
         Ok(())
     }
+}
+
+pub struct OutputAttributeParser {
+    pub on_endpoint: bool,
+}
+impl AttributeParser for OutputAttributeParser {
+    fn name(&self) -> &str {
+        ATTR_OUTPUT
+    }
+
+    fn parse(&self, r: &mut TokenReader, ctx: &mut AttributeContext) -> Result<(), SyntaxError> {
+        r.advance();
+        r.skip_ignorable();
+        let name_span = expect_attribute_name(r, ATTR_OUTPUT)?;
+        expect_punctuation(r, PUNC_LPAREN)?;
+        let output = self.parse_output_path(r)?;
+        expect_punctuation(r, PUNC_RPAREN)?;
+        expect_punctuation(r, PUNC_RBRACKET)?;
+
+        ctx.set_output(output)
+            .map_err(|msg| r.create_error_with_file(msg, name_span))?;
+        Ok(())
+    }
+}
+
+impl OutputAttributeParser {
+    fn parse_output_path(&self, r: &mut TokenReader) -> Result<OutputPath, SyntaxError> {
+        r.skip_ignorable();
+        let path_tok = expect_at_token(
+            r,
+            |t| t.token_type == TokenType::String,
+            "Expected output path string literal".to_string(),
+        )?;
+        let path = unescape_string(string_literal_content(&path_tok.value));
+        if path.trim().is_empty() {
+            return Err(r.create_error(
+                "Output path must not be empty".to_string(),
+                path_tok.span.clone(),
+            ));
+        }
+        let is_folder = path.ends_with(['/', '\\']);
+        if self.on_endpoint && !is_folder {
+            return Err(r.create_error(
+                "Output on an ep statement must be a folder ending with '/' or '\\'".to_string(),
+                path_tok.span.clone(),
+            ));
+        }
+        r.advance();
+        Ok(OutputPath {
+            path,
+            base_dir: source_dir(r),
+            is_folder,
+            applies_to_every_body: !self.on_endpoint,
+        })
+    }
+}
+
+fn source_dir(r: &TokenReader) -> String {
+    r.file_path
+        .parent()
+        .map(crate::paths::clean_path)
+        .unwrap_or_default()
 }
 
 fn parse_description_text(r: &mut TokenReader) -> Result<String, SyntaxError> {

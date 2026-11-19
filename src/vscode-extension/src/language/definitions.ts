@@ -160,6 +160,12 @@ export const ATTRIBUTE_DEFINITIONS: AttributeDefinition[] = [
         signature: '[confirm]',
         description: 'Asks for confirmation before the request is sent. On an ep it applies to every child request, and on an env to every request run against it.',
         targets: 'rq, ep, env'
+    },
+    {
+        name: 'output',
+        signature: '[output("path")]',
+        description: 'Writes the response body to a file. A path ending with / is a folder that keeps the automatic file name. On an rq it writes every body; on an ep it must be a folder, and only binary bodies of its requests go there. Responses that are not 2xx are never written.',
+        targets: 'rq, ep'
     }
 ];
 

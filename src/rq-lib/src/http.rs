@@ -64,11 +64,13 @@ mod tests {
             timeout: timeout.map(str::to_string),
             description: None,
             confirm: false,
+            output: Vec::new(),
             required_variables: Vec::new(),
             source_path: None,
             related_files: Vec::new(),
             line: 0,
             character: 0,
+            declaration_line: 0,
         }
     }
 

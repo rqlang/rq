@@ -11,7 +11,7 @@ use crate::error::RqError;
 use crate::http::HttpClient;
 use crate::lint::{lint_rq_file, LintDiagnostic, LintScope, WorkspaceCollector, WorkspaceFile};
 use crate::logger::Logger;
-use crate::response_body::ResponseBody;
+use crate::response_body::{OutputTarget, ResponseBody};
 use crate::syntax::auth::Config as AuthConfig;
 use crate::syntax::parse_result::{
     AuthLocation, RequestScope, RequestWithVariables, RequiredVariable,
@@ -69,6 +69,7 @@ impl RqClient {
         }
         let authorized = Self::authorize(prepared).await?;
         Self::log_request(&authorized.request);
+        let output = authorized.output.clone();
 
         let start_time = Instant::now();
         let response = self
@@ -79,7 +80,13 @@ impl RqClient {
         Self::log_response(&response, elapsed.as_millis());
 
         let request = authorized.request;
-        let body = ResponseBody::from_response(&response.headers, response.body, &request.name);
+        let routed = ResponseBody::route(
+            &response.headers,
+            response.body,
+            &request.name,
+            response.status,
+            output.as_ref(),
+        );
         let result = RequestExecutionResult {
             request_name: request.name,
             method: request.method.as_str().to_string(),
@@ -88,7 +95,8 @@ impl RqClient {
             elapsed_ms: elapsed.as_millis() as u64,
             request_headers: request.headers.into_iter().collect(),
             response_headers: response.headers,
-            body,
+            body: routed.body,
+            output_skipped: routed.output_skipped,
         };
         Ok(result)
     }
@@ -151,12 +159,14 @@ impl RqClient {
                 .and_then(|name| rq_file.auth_providers.get(name))
                 .map(|config| config.auth_type.as_str().to_string());
             let auth_name = auth_name.map(str::to_string);
+            let output = self.output_target(&req_with_vars.request, source_path);
             let details = Self::request_details(
                 req_with_vars.request,
                 auth_name,
                 auth_type,
                 &rq_file,
                 confirmation_required,
+                output,
             );
             return Ok((details, warnings));
         }
@@ -193,6 +203,7 @@ impl RqClient {
         let auth_config = Self::auth_config_of(&rq_file, &resolved)?;
         let auth_name = auth_config.map(|config| config.name.clone());
         let auth_type = auth_config.map(|config| config.auth_type.as_str().to_string());
+        let output = self.output_target(&resolved, source_path);
 
         let details = Self::request_details(
             resolved,
@@ -200,6 +211,7 @@ impl RqClient {
             auth_type,
             &rq_file,
             confirmation_required,
+            output,
         );
         Ok((details, warnings))
     }
@@ -1206,12 +1218,14 @@ impl RqClient {
         let request = Self::apply_request_defaults(authorized)?;
         let timeout = crate::http::request_timeout(&request)?;
         let confirmation_required = Self::confirmation_required(rq_file, &request, environment);
+        let output = self.output_target(&request, source_path);
         Ok(PreparedRequest {
             agent_confirmation_required: confirmation_required || !request.method.is_safe(),
             confirmation_required,
             request,
             timeout,
             auth,
+            output,
             context,
         })
     }
@@ -1446,6 +1460,58 @@ impl RqClient {
         })
     }
 
+    fn output_target(&self, request: &Request, source_path: &Path) -> Option<OutputTarget> {
+        let folder = if self.fs.is_file(source_path) {
+            source_path.parent().unwrap_or(source_path)
+        } else {
+            source_path
+        };
+        let root = self
+            .fs
+            .canonicalize(folder)
+            .unwrap_or_else(|_| folder.to_path_buf());
+        let root = crate::paths::clean_path(&root);
+        OutputTarget::resolve(&request.output, &root)
+            .map(|target| self.without_links_out_of(target, &root))
+    }
+
+    fn without_links_out_of(&self, target: OutputTarget, root: &str) -> OutputTarget {
+        if target.error.is_some() {
+            return target;
+        }
+        let real_root = self
+            .fs
+            .real_path(Path::new(root))
+            .map(|real| crate::paths::clean_path(&real))
+            .unwrap_or_else(|_| root.to_string());
+        let escaping = Path::new(&target.path)
+            .ancestors()
+            .take_while(|ancestor| {
+                crate::paths::depth_below(&ancestor.to_string_lossy(), root).is_some_and(|d| d > 0)
+            })
+            .find(|ancestor| self.fs.is_symlink(ancestor) && !self.leads_into(ancestor, &real_root))
+            .map(crate::paths::clean_path);
+        match escaping {
+            Some(link) => OutputTarget {
+                error: Some(format!(
+                    "{link} is a symbolic link that leads outside the source folder {root}"
+                )),
+                ..target
+            },
+            None => target,
+        }
+    }
+
+    fn leads_into(&self, link: &Path, real_root: &str) -> bool {
+        self.fs
+            .real_path(link)
+            .ok()
+            .filter(|real| real != link)
+            .is_some_and(|real| {
+                crate::paths::depth_below(&crate::paths::clean_path(&real), real_root).is_some()
+            })
+    }
+
     async fn authorize(mut prepared: PreparedRequest) -> Result<PreparedRequest, RqError> {
         let Some(auth) = prepared.auth.as_ref().filter(|auth| auth.token_required) else {
             return Ok(prepared);
@@ -1528,6 +1594,7 @@ impl RqClient {
         auth_type: Option<String>,
         rq_file: &RqFile,
         confirmation_required: bool,
+        output: Option<OutputTarget>,
     ) -> RequestDetails {
         let request_file = Self::declaring_file(rq_file, request.source_path.as_deref());
         RequestDetails {
@@ -1546,6 +1613,7 @@ impl RqClient {
                 .map(|required| required.name)
                 .collect(),
             confirmation_required,
+            output,
             file: crate::paths::clean_path(&rq_file.path),
             request_file,
             line: request.line,
@@ -2649,11 +2717,13 @@ mod prepare_request_tests {
             timeout: None,
             description: None,
             confirm: false,
+            output: Vec::new(),
             required_variables: Vec::new(),
             source_path: None,
             related_files: Vec::new(),
             line: 0,
             character: 0,
+            declaration_line: 0,
         }
     }
 
@@ -3735,6 +3805,154 @@ mod prepare_tests {
             &[],
         );
         assert!(target.is_err_and(|e| e.to_string().contains("Required variable(s) not set")));
+    }
+
+    #[test]
+    fn prepare_resolves_the_output_against_the_folder_of_the_request_file() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write(
+            dir.path(),
+            "main.rq",
+            "let folder = \"reports\";\n\n[output(\"{{folder}}/\")]\nep api(\"http://localhost\") {\n    [output(\"{{id}}.pdf\")]\n    [required(id)]\n    rq get(id);\n}\n",
+        );
+        let target = prepare(&dir.path().join("main.rq"), "api/get", &["id=7"]).output;
+        assert_eq!(
+            target.map(|output| (output.path, output.applies_to_every_body, output.error)),
+            Some((
+                std::fs::canonicalize(dir.path())
+                    .expect("canonicalize")
+                    .join("reports")
+                    .join("7.pdf")
+                    .to_string_lossy()
+                    .into_owned(),
+                true,
+                None
+            ))
+        );
+    }
+
+    #[test]
+    fn request_details_report_the_same_output_as_prepare() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write(
+            dir.path(),
+            "main.rq",
+            "let folder = \"reports\";\n\n[output(\"{{folder}}/\")]\nrq get(\"http://localhost\");\n",
+        );
+        let source = dir.path().join("main.rq");
+        let (details, _) = RqClient::default()
+            .get_request_details(RequestTarget::new(&source, "get"), None, true, false, &[])
+            .expect("details");
+        assert_eq!(details.output, prepare(&source, "get", &[]).output);
+    }
+
+    #[test]
+    fn prepare_flags_an_output_outside_the_source_folder() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::create_dir(dir.path().join("api")).expect("mkdir");
+        write(
+            &dir.path().join("api"),
+            "main.rq",
+            "[output(\"../leak.json\")]\nrq get(\"http://localhost\");\n",
+        );
+        let target = prepare(&dir.path().join("api"), "get", &[]).output;
+        assert!(target.and_then(|output| output.error).is_some());
+    }
+
+    #[tokio::test]
+    async fn run_routes_the_body_to_the_output() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write(
+            dir.path(),
+            "main.rq",
+            "[output(\"out.json\")]\nrq get(\"http://localhost\");\n",
+        );
+        let client = RqClient::new(
+            Arc::new(native::NativeFs),
+            Arc::new(native::NativeSecretProvider),
+            Arc::new(BodyHttp),
+        );
+        let target = client
+            .run(
+                RequestTarget::new(&dir.path().join("main.rq"), "get"),
+                None,
+                &[],
+                &|_| {},
+                &|_| Ok(()),
+            )
+            .await
+            .expect("run");
+        assert!(matches!(
+            target.body,
+            crate::response_body::ResponseBody::Output(ref output)
+                if output.path == std::fs::canonicalize(dir.path()).expect("canonicalize").join("out.json")
+        ));
+    }
+
+    #[cfg(unix)]
+    fn output_error_through_link(link_target: &Path) -> Option<String> {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::os::unix::fs::symlink(link_target, dir.path().join("dl")).expect("symlink");
+        write(
+            dir.path(),
+            "main.rq",
+            "[output(\"dl/x.json\")]\nrq get(\"http://localhost\");\n",
+        );
+        prepare(dir.path(), "get", &[])
+            .output
+            .and_then(|output| output.error)
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn prepare_flags_an_output_through_a_link_that_leads_outside_the_source() {
+        let outside = tempfile::tempdir().expect("tempdir");
+        assert!(output_error_through_link(outside.path())
+            .is_some_and(|error| error.contains("symbolic link")));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn prepare_flags_an_output_through_a_broken_link() {
+        let outside = tempfile::tempdir().expect("tempdir");
+        assert!(output_error_through_link(&outside.path().join("missing")).is_some());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn prepare_accepts_an_output_through_a_link_that_stays_inside_the_source() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::create_dir(dir.path().join("real")).expect("mkdir");
+        std::os::unix::fs::symlink(dir.path().join("real"), dir.path().join("dl"))
+            .expect("symlink");
+        write(
+            dir.path(),
+            "main.rq",
+            "[output(\"dl/x.json\")]\nrq get(\"http://localhost\");\n",
+        );
+        let target = prepare(dir.path(), "get", &[]).output;
+        assert_eq!(target.and_then(|output| output.error), None);
+    }
+
+    struct BodyHttp;
+
+    impl HttpClient for BodyHttp {
+        fn execute<'a>(
+            &'a self,
+            _request: &'a Request,
+            _timeout: Option<Duration>,
+        ) -> Pin<Box<dyn Future<Output = Result<HttpResponse, RqError>> + Send + 'a>> {
+            Box::pin(async {
+                Ok(HttpResponse {
+                    status: 200,
+                    headers: HashMap::from([(
+                        "content-type".to_string(),
+                        "application/json".to_string(),
+                    )]),
+                    body: b"{}".to_vec(),
+                })
+            })
+        }
     }
 }
 

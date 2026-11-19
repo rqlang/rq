@@ -303,7 +303,7 @@ describe('runRequest Commands', () => {
             expect(vscode.window.showInformationMessage).toHaveBeenCalledWith('Body copied to clipboard');
         });
 
-        const binaryResponse = { body: '', binary_body: { media_type: 'image/png', file_name: 'logo.png', size: 3, path: '/downloads/id/logo.png' } };
+        const binaryResponse = { body: '', body_file: { media_type: 'image/png', file_name: 'logo.png', size: 3, binary: true, path: '/downloads/id/logo.png' } };
 
         test('openBody opens the saved binary body', async () => {
             const handler = await runAndGetMessageHandler(binaryResponse);
@@ -335,6 +335,12 @@ describe('runRequest Commands', () => {
             handler({ command: 'openBody' });
 
             expect(vscode.commands.executeCommand).not.toHaveBeenCalledWith('vscode.open', expect.anything());
+        });
+
+        test('runs the request writing bodies to their output', async () => {
+            await runAndGetMessageHandler();
+
+            expect(cliService.executeRequest).toHaveBeenCalledWith(expect.objectContaining({ writeOutput: true }));
         });
 
         test('runs the request with the downloads folder of the extension storage', async () => {

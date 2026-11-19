@@ -298,7 +298,7 @@ Arrays are not a type — `let a = ["x"];` is rejected at the declaration. `$[..
 
 Annotations in square brackets placed immediately above an `rq`, `ep` or `env` statement. All take one argument in parentheses except `confirm`, which is written bare: `[confirm]`.
 
-Supported: `method`, `timeout`, `auth`, `required`, `doc.description` (on `rq`/`ep`), `confirm` (on `rq`/`ep`/`env`) and `ui.color` (on `env` only).
+Supported: `method`, `timeout`, `auth`, `required`, `doc.description` and `output` (on `rq`/`ep`), `confirm` (on `rq`/`ep`/`env`) and `ui.color` (on `env` only).
 
 ```rq
 [method(POST)]
@@ -368,6 +368,29 @@ ep users("{{base_url}}/users") {
 }
 ```
 
+### `output("path")`
+Where a response body is written to a file. One string with `{{...}}` interpolation; at most one per statement; valid on `rq` and `ep` (templates included).
+- **Folder or file:** text ending in `/` (or `\`) as written is a folder, which keeps the automatic name (`Content-Disposition` filename, else request name + extension from `Content-Type`); anything else is a file.
+- **On `rq`:** every body of that request is written, text or binary.
+- **On `ep`:** must be a folder; it only replaces the temporary folder for binary bodies of its requests. Text is still printed.
+- **Relative paths** resolve against the folder inherited from the `ep` and its template (composed like URLs), else against the directory of the `.rq` file where the attribute is written. Absolute paths ignore the inherited folder. The resolved path must stay inside the source (CLI `-s` folder, or the file's folder; the workspace folder in the extension), symbolic links included; the file is never written through a link.
+- Writes the body byte for byte, creates missing folders, overwrites an existing file.
+- Never writes a non-`2xx` response (shown as usual) or a `2xx` without a body (file left untouched).
+- The MCP server ignores it. It never changes what a request sends.
+```rq
+[output("downloads/")]
+ep base("https://api.example.com");
+
+[output("reports/")]
+ep reports<base>("/reports") {
+  rq list();                          // text printed; binary to downloads/reports/
+
+  [output("report-{{id}}.pdf")]
+  [required(id)]
+  rq get(id);                         // downloads/reports/report-<id>.pdf
+}
+```
+
 ### `ui.color(color)`
 Marks an `env` with a color from a fixed palette: `red`, `orange`, `yellow`, `green`, `blue`, `purple` (bare lowercase identifier, no quotes, no interpolation). It is UI metadata only: it defines no variable and does not change what any request sends. The VS Code extension paints the selected environment in the Requests view with it, typically to flag `production`. At most one per `env`.
 ```rq
@@ -387,6 +410,7 @@ env production {
 | `required` | **no** | yes | **no** |
 | `doc.description` | yes | yes | **no** |
 | `confirm` | yes | yes | yes |
+| `output` | yes (folder only) | yes | **no** |
 | `ui.color` | **no** | **no** | yes |
 
 Using an attribute where the table says **no** is a parse error.
@@ -481,7 +505,7 @@ ep api("http://localhost:8080/api", qs: "api-version=1") {
 ```
 
 ### Attributes inside endpoints
-`timeout` and `auth` on `ep` apply as defaults to all child requests; child `rq` can override. `doc.description` is not inherited; `confirm` is.
+`timeout` and `auth` on `ep` apply as defaults to all child requests; child `rq` can override. `doc.description` is not inherited; `confirm` is. An `ep`'s `output` folder is the base a child `rq`'s own `output` resolves against.
 
 ```rq
 [timeout(20)]

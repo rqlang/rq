@@ -42,6 +42,9 @@ pub fn validate_output(path: &str) -> Result<String, String> {
     if path.is_empty() {
         return Err("Output path must not be empty".to_string());
     }
+    if path == "-" {
+        return Err("Writing the body to stdout with '-' is not supported: use -p b".to_string());
+    }
     Ok(path.to_string())
 }
 
@@ -68,5 +71,10 @@ mod tests {
     #[test]
     fn test_validate_output_rejects_an_empty_path() {
         assert!(validate_output("").is_err());
+    }
+
+    #[test]
+    fn test_validate_output_rejects_a_dash() {
+        assert!(validate_output("-").is_err());
     }
 }

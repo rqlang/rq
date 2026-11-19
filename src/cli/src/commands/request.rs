@@ -239,7 +239,7 @@ impl ExecutionOutput {
             _ => None,
         };
         let write_error = Self::write_error(&result.body, saved_body.as_ref());
-        match Self::unwritten_text(&result.body, saved_body.as_ref()) {
+        match Self::unwritten_text(&result.body, write_error.as_ref()) {
             Some((text, skipped)) => {
                 result.body = ResponseBody::Text(text);
                 result.output_skipped = Some(skipped);
@@ -271,13 +271,17 @@ impl ExecutionOutput {
 
     fn unwritten_text(
         body: &ResponseBody,
-        saved: Option<&SavedBodyView>,
+        write_error: Option<&OutputSkipped>,
     ) -> Option<(String, OutputSkipped)> {
-        let ResponseBody::Output(output) = body else {
+        let (ResponseBody::Output(output), Some(skipped)) = (body, write_error) else {
             return None;
         };
-        let skipped = Self::write_error(body, saved)?;
-        (!output.binary).then(|| (String::from_utf8_lossy(&output.bytes).into_owned(), skipped))
+        (!output.binary).then(|| {
+            (
+                String::from_utf8_lossy(&output.bytes).into_owned(),
+                skipped.clone(),
+            )
+        })
     }
 }
 
@@ -523,11 +527,12 @@ pub async fn execute_run(args: &RunArgs) -> Result<(), Box<dyn std::error::Error
     }
     let result = client
         .run(
-            RequestTarget::new(source_path, &request_name).with_output(args.output.as_deref()),
+            RequestTarget::new(source_path, &request_name),
             args.env_args.environment.as_deref(),
             &args.variable,
             &|warnings| print_warnings(warnings, args.format.format),
             &|prepared| confirm_request(prepared, args.env_args.environment.as_deref(), args.yes),
+            args.output.as_deref(),
         )
         .await
         .map_err(|e| with_typed_request_name(e, typed_name))?;

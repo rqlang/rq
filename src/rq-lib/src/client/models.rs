@@ -161,7 +161,6 @@ pub struct RequestTarget<'a> {
     pub source: &'a Path,
     pub scope_file: Option<&'a Path>,
     pub name: &'a str,
-    pub output: Option<&'a str>,
 }
 
 impl<'a> RequestTarget<'a> {
@@ -170,15 +169,10 @@ impl<'a> RequestTarget<'a> {
             source,
             scope_file: None,
             name,
-            output: None,
         }
     }
 
     pub fn in_file(self, scope_file: Option<&'a Path>) -> Self {
         Self { scope_file, ..self }
-    }
-
-    pub fn with_output(self, output: Option<&'a str>) -> Self {
-        Self { output, ..self }
     }
 }

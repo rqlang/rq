@@ -62,8 +62,9 @@ impl RqClient {
         variables: &[String],
         warn: &dyn Fn(&[RqError]),
         confirm: &dyn Fn(&PreparedRequest) -> Result<(), RqError>,
+        output: Option<&str>,
     ) -> Result<RequestExecutionResult, RqError> {
-        let prepared = self.prepare_target(target, environment, variables, warn)?;
+        let prepared = self.prepare_target(target, environment, variables, warn, output)?;
         if prepared.confirmation_required {
             confirm(&prepared)?;
         }
@@ -222,7 +223,7 @@ impl RqClient {
         environment: Option<&str>,
         variables: &[String],
     ) -> Result<PreparedRequest, RqError> {
-        self.prepare_target(target, environment, variables, &|_| {})
+        self.prepare_target(target, environment, variables, &|_| {}, None)
     }
 
     pub fn check_overrides(
@@ -1146,9 +1147,9 @@ impl RqClient {
         environment: Option<&str>,
         variables: &[String],
         warn: &dyn Fn(&[RqError]),
+        output: Option<&str>,
     ) -> Result<PreparedRequest, RqError> {
         let source_path = target.source;
-        let chosen_output = target.output.map(OutputTarget::chosen);
         self.log_source(source_path);
         let (rq_file, req_with_vars, warnings) = self.load_request(target)?;
         warn(&warnings);
@@ -1163,13 +1164,11 @@ impl RqClient {
             source_path,
             environment,
         )?;
-        Ok(match chosen_output {
-            Some(output) => PreparedRequest {
-                output: Some(output),
-                ..prepared
-            },
-            None => prepared,
-        })
+        let output = match output {
+            Some(path) => Some(OutputTarget::chosen(path)),
+            None => self.output_target(&prepared.request, source_path),
+        };
+        Ok(PreparedRequest { output, ..prepared })
     }
 
     fn load_request(
@@ -1226,14 +1225,13 @@ impl RqClient {
         let request = Self::apply_request_defaults(authorized)?;
         let timeout = crate::http::request_timeout(&request)?;
         let confirmation_required = Self::confirmation_required(rq_file, &request, environment);
-        let output = self.output_target(&request, source_path);
         Ok(PreparedRequest {
             agent_confirmation_required: confirmation_required || !request.method.is_safe(),
             confirmation_required,
             request,
             timeout,
             auth,
-            output,
+            output: None,
             context,
         })
     }
@@ -3415,6 +3413,7 @@ mod prepare_tests {
                 &[],
                 &|_| {},
                 &|_| Ok(()),
+                None,
             )
             .await
             .expect("run failed");
@@ -3456,6 +3455,7 @@ mod prepare_tests {
                 &[],
                 &|_| {},
                 &confirm,
+                None,
             )
             .await
             .map(|_| ());
@@ -3508,6 +3508,7 @@ mod prepare_tests {
                 &[],
                 &|_| {},
                 &|_| Ok(()),
+                None,
             )
             .await
             .expect("run failed");
@@ -3543,6 +3544,7 @@ mod prepare_tests {
                 &[],
                 &|warnings| *warned.lock().expect("lock") += warnings.len(),
                 &|_| Ok(()),
+                None,
             )
             .await;
         let target = *warned.lock().expect("lock");
@@ -3887,6 +3889,7 @@ mod prepare_tests {
                 &[],
                 &|_| {},
                 &|_| Ok(()),
+                None,
             )
             .await
             .expect("run");
@@ -3913,18 +3916,19 @@ mod prepare_tests {
         );
         let target = client
             .run(
-                RequestTarget::new(&dir.path().join("main.rq"), "get").with_output(Some(&chosen)),
+                RequestTarget::new(&dir.path().join("main.rq"), "get"),
                 None,
                 &[],
                 &|_| {},
                 &|_| Ok(()),
+                Some(&chosen),
             )
             .await
             .expect("run");
         assert!(matches!(
             target.body,
             crate::response_body::ResponseBody::Output(ref output)
-                if output.path == Path::new(&crate::paths::normalize_lexically(&chosen))
+                if output.path == Path::new(&chosen)
         ));
     }
 

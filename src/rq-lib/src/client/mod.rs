@@ -1151,8 +1151,11 @@ impl RqClient {
     ) -> Result<PreparedRequest, RqError> {
         let source_path = target.source;
         self.log_source(source_path);
-        let (rq_file, req_with_vars, warnings) = self.load_request(target)?;
+        let (rq_file, mut req_with_vars, warnings) = self.load_request(target)?;
         warn(&warnings);
+        if output.is_some() {
+            req_with_vars.request.output.clear();
+        }
         Self::require_environment(&rq_file, environment)?;
         let file_context = self.file_context(&rq_file, source_path, environment);
         let cli_vars = Self::parse_cli_variables(variables)?;
@@ -3930,6 +3933,33 @@ mod prepare_tests {
             crate::response_body::ResponseBody::Output(ref output)
                 if output.path == Path::new(&chosen)
         ));
+    }
+
+    #[tokio::test]
+    async fn run_with_a_chosen_output_ignores_an_unresolvable_output_attribute() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write(
+            dir.path(),
+            "main.rq",
+            "[output(\"{{missing}}/\")]\nrq get(\"http://localhost\");\n",
+        );
+        let chosen = dir.path().join("chosen.json").display().to_string();
+        let client = RqClient::new(
+            Arc::new(native::NativeFs),
+            Arc::new(native::NativeSecretProvider),
+            Arc::new(BodyHttp),
+        );
+        let target = client
+            .run(
+                RequestTarget::new(&dir.path().join("main.rq"), "get"),
+                None,
+                &[],
+                &|_| {},
+                &|_| Ok(()),
+                Some(&chosen),
+            )
+            .await;
+        assert!(target.is_ok());
     }
 
     #[cfg(unix)]

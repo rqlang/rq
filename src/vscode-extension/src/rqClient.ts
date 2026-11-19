@@ -3,7 +3,7 @@ import * as path from 'path';
 import { normalizePath, draftsJson, buildSecretsMap, DraftFile, isInsideFolder } from './utils';
 import * as execution from './execution';
 import { ExecuteRequestOptions, ExecuteRequestResult, requestScope, resolveScopeFile } from './execution';
-import type { OutputTarget } from './execution';
+import type { OutputTarget, RoutedBody } from './execution';
 import { wasmCall } from './wasmHost';
 import { UiColor } from './language/definitions';
 
@@ -459,6 +459,11 @@ export async function unusedSuppressionRemoval(source: string, line: number, col
 export async function checkFolder(folderPath: string, envName?: string, drafts: DraftFile[] = []): Promise<CheckResult> {
     const result = await wasmCall('check', [draftsJson(drafts), await buildSecretsMap(folderPath), folderPath, envName]);
     return JSON.parse(result) as CheckResult;
+}
+
+export async function routeResponseBody(headers: Record<string, string>, body: Uint8Array, requestName: string, status: number, output?: OutputTarget, downloadDir?: string): Promise<RoutedBody> {
+    const raw = await wasmCall('route_response_body', [JSON.stringify(headers), body, requestName, status, output && JSON.stringify(output), downloadDir]);
+    return JSON.parse(raw) as RoutedBody;
 }
 
 export async function setDebugLogging(enabled: boolean): Promise<void> {

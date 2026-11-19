@@ -430,22 +430,22 @@ describe('executeRequest', () => {
 
         const OUTPUT = { path: '/tmp/project/out/users.json', is_folder: false, applies_to_every_body: true };
 
-        test('passes the prepared output to rq-lib when it saves bodies', async () => {
+        test('passes the prepared output to rq-lib when the caller writes it', async () => {
+            mockPrepareRequest.mockReturnValue(prepared({ output: OUTPUT }));
+            makeHttpsMock(200, BINARY);
+
+            await executeRequest({ requestName: 'test-req', sourceDirectory: '/tmp/project', downloadDir: '/downloads', writeOutput: true });
+
+            expect(mockRouteResponseBody).toHaveBeenCalledWith(expect.any(String), BINARY, 'test-req', 200, JSON.stringify(OUTPUT), '/downloads');
+        });
+
+        test('ignores the output unless the caller writes it, even when it saves bodies', async () => {
             mockPrepareRequest.mockReturnValue(prepared({ output: OUTPUT }));
             makeHttpsMock(200, BINARY);
 
             await executeRequest({ requestName: 'test-req', sourceDirectory: '/tmp/project', downloadDir: '/downloads' });
 
-            expect(mockRouteResponseBody).toHaveBeenCalledWith(expect.any(String), BINARY, 'test-req', 200, JSON.stringify(OUTPUT), '/downloads');
-        });
-
-        test('ignores the output when the caller does not save bodies', async () => {
-            mockPrepareRequest.mockReturnValue(prepared({ output: OUTPUT }));
-            makeHttpsMock(200, BINARY);
-
-            await executeRequest({ requestName: 'test-req', sourceDirectory: '/tmp/project' });
-
-            expect(mockRouteResponseBody).toHaveBeenCalledWith(expect.any(String), BINARY, 'test-req', 200, undefined, undefined);
+            expect(mockRouteResponseBody).toHaveBeenCalledWith(expect.any(String), BINARY, 'test-req', 200, undefined, '/downloads');
         });
 
         test('writes a text body to its output and leaves the text empty', async () => {
@@ -454,7 +454,7 @@ describe('executeRequest', () => {
             mockRouteResponseBody.mockReturnValue(JSON.stringify({ file: { media_type: 'application/json', file_name: 'test-req.json', size: 2, binary: false, path: OUTPUT.path } }));
             makeHttpsMock(200, json);
 
-            const target = await executeRequest({ requestName: 'test-req', sourceDirectory: '/tmp/project', downloadDir: '/downloads' });
+            const target = await executeRequest({ requestName: 'test-req', sourceDirectory: '/tmp/project', downloadDir: '/downloads', writeOutput: true });
 
             expect(target.results[0].body).toBe('');
             expect(fs.promises.writeFile).toHaveBeenCalledWith(OUTPUT.path, json);
@@ -466,7 +466,7 @@ describe('executeRequest', () => {
             (fs.promises.writeFile as jest.Mock).mockRejectedValueOnce(new Error('EROFS'));
             makeHttpsMock(201, Buffer.from('{}'));
 
-            const target = await executeRequest({ requestName: 'test-req', sourceDirectory: '/tmp/project', downloadDir: '/downloads' });
+            const target = await executeRequest({ requestName: 'test-req', sourceDirectory: '/tmp/project', downloadDir: '/downloads', writeOutput: true });
 
             expect([target.results[0].body, target.results[0].body_file, target.results[0].output_skipped]).toEqual(['{}', undefined, { path: OUTPUT.path, reason: 'EROFS' }]);
         });
@@ -477,7 +477,7 @@ describe('executeRequest', () => {
             mockRouteResponseBody.mockReturnValue(JSON.stringify({ output_skipped: skipped }));
             makeHttpsMock(404, Buffer.from('missing'));
 
-            const target = await executeRequest({ requestName: 'test-req', sourceDirectory: '/tmp/project', downloadDir: '/downloads' });
+            const target = await executeRequest({ requestName: 'test-req', sourceDirectory: '/tmp/project', downloadDir: '/downloads', writeOutput: true });
 
             expect([target.results[0].body, target.results[0].output_skipped]).toEqual(['missing', skipped]);
         });

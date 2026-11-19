@@ -337,6 +337,12 @@ describe('runRequest Commands', () => {
             expect(vscode.commands.executeCommand).not.toHaveBeenCalledWith('vscode.open', expect.anything());
         });
 
+        test('runs the request writing bodies to their output', async () => {
+            await runAndGetMessageHandler();
+
+            expect(cliService.executeRequest).toHaveBeenCalledWith(expect.objectContaining({ writeOutput: true }));
+        });
+
         test('runs the request with the downloads folder of the extension storage', async () => {
             await runAndGetMessageHandler();
 

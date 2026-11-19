@@ -6,6 +6,7 @@ import * as crypto from 'crypto';
 import * as forge from 'node-forge';
 import { buildSecretsMap, CANCELLED_MESSAGE, draftsJson } from './utils';
 import { wasmCall } from './wasmHost';
+import { routeResponseBody } from './rqClient';
 import type { AuthShowOutput } from './rqClient';
 
 export interface CancellationSignal {
@@ -26,6 +27,7 @@ export interface ExecuteRequestOptions {
     cancellation?: CancellationSignal;
     maxResponseLength?: number;
     downloadDir?: string;
+    writeOutput?: boolean;
     acquireToken?: (auth: PreparedAuth) => Promise<string>;
     confirm?: (prepared: PreparedRequest) => Promise<boolean>;
 }
@@ -66,7 +68,7 @@ export interface OutputSkipped {
     reason: string;
 }
 
-interface RoutedBody {
+export interface RoutedBody {
     file?: BodyFile;
     output_skipped?: OutputSkipped;
 }
@@ -162,7 +164,7 @@ export async function sendRequest(scope: RequestScope, options: ExecuteRequestOp
     const startTime = Date.now();
     const response = await nodeHttpRequest(prepared.url, prepared.method, headers, body, prepared.timeout_ms ?? undefined, options.cancellation, options.maxResponseLength);
     const elapsed = Date.now() - startTime;
-    const routed = await routeBody(response, prepared, options.downloadDir);
+    const routed = await routeBody(response, prepared, options);
 
     return {
         results: [{
@@ -182,11 +184,9 @@ export async function sendRequest(scope: RequestScope, options: ExecuteRequestOp
     };
 }
 
-async function routeBody(response: NodeHttpResponse, prepared: PreparedRequest, downloadDir?: string): Promise<RoutedBody> {
-    const output = downloadDir && prepared.output ? JSON.stringify(prepared.output) : undefined;
-    const routed = JSON.parse(
-        await wasmCall('route_response_body', [JSON.stringify(response.headers), response.body, prepared.name, response.status, output, downloadDir])
-    ) as RoutedBody;
+async function routeBody(response: NodeHttpResponse, prepared: PreparedRequest, options: ExecuteRequestOptions): Promise<RoutedBody> {
+    const output = options.writeOutput ? prepared.output ?? undefined : undefined;
+    const routed = await routeResponseBody(response.headers, response.body, prepared.name, response.status, output, options.downloadDir);
     if (!routed.file?.path) {
         return routed;
     }

@@ -307,6 +307,7 @@ export class RequestRunner {
                     variables,
                     cancellation: execution.cancellationSource.token,
                     downloadDir: this.downloadDir(),
+                    writeOutput: true,
                     acquireToken: (auth) => this.acquireInteractiveToken(auth, execution.cancellationSource.token),
                     confirm: (prepared) => confirmRequest(prepared, environment)
                 });

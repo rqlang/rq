@@ -38,6 +38,13 @@ pub fn validate_variable(variable: &str) -> Result<String, String> {
     Ok(variable.to_string())
 }
 
+pub fn validate_output(path: &str) -> Result<String, String> {
+    if path.is_empty() {
+        return Err("Output path must not be empty".to_string());
+    }
+    Ok(path.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -56,5 +63,10 @@ mod tests {
         assert!(validate_name("/invalid").is_err());
         assert!(validate_name("invalid name").is_err());
         assert!(validate_name("invalid!name").is_err());
+    }
+
+    #[test]
+    fn test_validate_output_rejects_an_empty_path() {
+        assert!(validate_output("").is_err());
     }
 }

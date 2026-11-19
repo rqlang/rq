@@ -2,7 +2,7 @@ use crate::commands::shared::{
     print_warnings, render_names, EnvArgs, FormatArgs, Location, SourceArgs,
 };
 use crate::commands::validators;
-use crate::core::error::RqError;
+use crate::core::error::{BodyNotWritten, RqError};
 use crate::core::formatter::{render, to_json, OutputFormat, TextBlock};
 use clap::{Args, Subcommand};
 use rq_lib::client::models::{PreparedRequest, RequestDetails, RequestTarget};
@@ -228,6 +228,7 @@ impl SavedBodyView {
 struct ExecutionOutput {
     result: RequestExecutionResult,
     saved_body: Option<SavedBodyView>,
+    write_error: Option<OutputSkipped>,
 }
 
 impl ExecutionOutput {
@@ -237,6 +238,7 @@ impl ExecutionOutput {
             ResponseBody::Output(body) => Some(SavedBodyView::write(body)),
             _ => None,
         };
+        let write_error = Self::write_error(&result.body, saved_body.as_ref());
         match Self::unwritten_text(&result.body, saved_body.as_ref()) {
             Some((text, skipped)) => {
                 result.body = ResponseBody::Text(text);
@@ -244,30 +246,38 @@ impl ExecutionOutput {
                 Self {
                     result,
                     saved_body: None,
+                    write_error,
                 }
             }
-            None => Self { result, saved_body },
+            None => Self {
+                result,
+                saved_body,
+                write_error,
+            },
         }
+    }
+
+    fn write_error(body: &ResponseBody, saved: Option<&SavedBodyView>) -> Option<OutputSkipped> {
+        let (ResponseBody::Output(output), Some(error)) =
+            (body, saved.and_then(|saved| saved.save_error.as_ref()))
+        else {
+            return None;
+        };
+        Some(OutputSkipped {
+            path: output.path.display().to_string(),
+            reason: error.clone(),
+        })
     }
 
     fn unwritten_text(
         body: &ResponseBody,
         saved: Option<&SavedBodyView>,
     ) -> Option<(String, OutputSkipped)> {
-        let (ResponseBody::Output(output), Some(error)) =
-            (body, saved.and_then(|saved| saved.save_error.as_ref()))
-        else {
+        let ResponseBody::Output(output) = body else {
             return None;
         };
-        (!output.binary).then(|| {
-            (
-                String::from_utf8_lossy(&output.bytes).into_owned(),
-                OutputSkipped {
-                    path: output.path.display().to_string(),
-                    reason: error.clone(),
-                },
-            )
-        })
+        let skipped = Self::write_error(body, saved)?;
+        (!output.binary).then(|| (String::from_utf8_lossy(&output.bytes).into_owned(), skipped))
     }
 }
 
@@ -425,6 +435,15 @@ pub struct RunArgs {
     pub print: PrintParts,
 
     #[arg(
+        short = 'o',
+        long = "output",
+        value_name = "PATH",
+        help = "Write the response body to PATH, or into it when PATH ends with a separator",
+        value_parser = validators::validate_output
+    )]
+    pub output: Option<String>,
+
+    #[arg(
         long = "no-lint",
         help = "Skip the lint summary printed before running"
     )]
@@ -504,7 +523,7 @@ pub async fn execute_run(args: &RunArgs) -> Result<(), Box<dyn std::error::Error
     }
     let result = client
         .run(
-            RequestTarget::new(source_path, &request_name),
+            RequestTarget::new(source_path, &request_name).with_output(args.output.as_deref()),
             args.env_args.environment.as_deref(),
             &args.variable,
             &|warnings| print_warnings(warnings, args.format.format),
@@ -513,7 +532,13 @@ pub async fn execute_run(args: &RunArgs) -> Result<(), Box<dyn std::error::Error
         .await
         .map_err(|e| with_typed_request_name(e, typed_name))?;
     let output = ExecutionOutput::new(result, args.print);
-    if let Some(skipped) = &output.result.output_skipped {
+    let unwritten_output = output.write_error.clone().filter(|_| args.output.is_some());
+    if let Some(skipped) = output
+        .result
+        .output_skipped
+        .as_ref()
+        .filter(|_| unwritten_output.is_none())
+    {
         print_warnings(&[output_skipped_warning(skipped)], args.format.format);
     }
 
@@ -523,7 +548,13 @@ pub async fn execute_run(args: &RunArgs) -> Result<(), Box<dyn std::error::Error
     };
     print!("{}", view.render(args.format.format));
 
-    Ok(())
+    match unwritten_output {
+        Some(skipped) => Err(Box::new(BodyNotWritten {
+            path: skipped.path,
+            reason: skipped.reason,
+        })),
+        None => Ok(()),
+    }
 }
 
 fn output_skipped_warning(skipped: &OutputSkipped) -> RqError {
@@ -728,6 +759,7 @@ mod tests {
         let output = ExecutionOutput {
             result: result_with(ResponseBody::Text(body.to_string())),
             saved_body: None,
+            write_error: None,
         };
         Ok(render_execution_result(&output, PrintParts::from_str("b")?))
     }

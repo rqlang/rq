@@ -1148,20 +1148,28 @@ impl RqClient {
         warn: &dyn Fn(&[RqError]),
     ) -> Result<PreparedRequest, RqError> {
         let source_path = target.source;
+        let chosen_output = target.output.map(OutputTarget::chosen);
         self.log_source(source_path);
         let (rq_file, req_with_vars, warnings) = self.load_request(target)?;
         warn(&warnings);
         Self::require_environment(&rq_file, environment)?;
         let file_context = self.file_context(&rq_file, source_path, environment);
         let cli_vars = Self::parse_cli_variables(variables)?;
-        self.prepare(
+        let prepared = self.prepare(
             &rq_file,
             &file_context,
             req_with_vars,
             cli_vars,
             source_path,
             environment,
-        )
+        )?;
+        Ok(match chosen_output {
+            Some(output) => PreparedRequest {
+                output: Some(output),
+                ..prepared
+            },
+            None => prepared,
+        })
     }
 
     fn load_request(
@@ -3886,6 +3894,37 @@ mod prepare_tests {
             target.body,
             crate::response_body::ResponseBody::Output(ref output)
                 if output.path == std::fs::canonicalize(dir.path()).expect("canonicalize").join("out.json")
+        ));
+    }
+
+    #[tokio::test]
+    async fn run_writes_the_body_to_the_chosen_output_instead_of_the_attribute() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write(
+            dir.path(),
+            "main.rq",
+            "[output(\"../leak.json\")]\nrq get(\"http://localhost\");\n",
+        );
+        let chosen = dir.path().join("chosen.json").display().to_string();
+        let client = RqClient::new(
+            Arc::new(native::NativeFs),
+            Arc::new(native::NativeSecretProvider),
+            Arc::new(BodyHttp),
+        );
+        let target = client
+            .run(
+                RequestTarget::new(&dir.path().join("main.rq"), "get").with_output(Some(&chosen)),
+                None,
+                &[],
+                &|_| {},
+                &|_| Ok(()),
+            )
+            .await
+            .expect("run");
+        assert!(matches!(
+            target.body,
+            crate::response_body::ResponseBody::Output(ref output)
+                if output.path == Path::new(&crate::paths::normalize_lexically(&chosen))
         ));
     }
 

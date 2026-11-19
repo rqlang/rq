@@ -224,6 +224,34 @@ fn main() {
             "request_run_does_not_write_outside_the_source_folder",
             test_request_run_does_not_write_outside_the_source_folder,
         ),
+        Trial::test(
+            "request_run_output_flag_writes_the_body_relative_to_the_current_directory",
+            test_request_run_output_flag_writes_the_body_relative_to_the_current_directory,
+        ),
+        Trial::test(
+            "request_run_output_flag_overwrites_an_existing_file",
+            test_request_run_output_flag_overwrites_an_existing_file,
+        ),
+        Trial::test(
+            "request_run_output_flag_replaces_the_output_attribute",
+            test_request_run_output_flag_replaces_the_output_attribute,
+        ),
+        Trial::test(
+            "request_run_output_flag_ending_with_a_separator_is_a_folder",
+            test_request_run_output_flag_ending_with_a_separator_is_a_folder,
+        ),
+        Trial::test(
+            "request_run_output_flag_json_reports_the_body_file",
+            test_request_run_output_flag_json_reports_the_body_file,
+        ),
+        Trial::test(
+            "request_run_output_flag_does_not_write_an_error_response",
+            test_request_run_output_flag_does_not_write_an_error_response,
+        ),
+        Trial::test(
+            "request_run_output_flag_that_cannot_be_written_exits_with_4",
+            test_request_run_output_flag_that_cannot_be_written_exits_with_4,
+        ),
     ];
 
     // Discover tests from organized directories
@@ -562,6 +590,23 @@ fn run_with_output(
     response: ResponseTemplate,
     extra: &[&str],
 ) -> Result<(std::process::Output, PathBuf), Failed> {
+    let (output, source) = run_in_source(name, rq_source, response, extra)?;
+    if !output.status.success() {
+        return Err(format!(
+            "Command failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
+    }
+    Ok((output, source))
+}
+
+fn run_in_source(
+    name: &str,
+    rq_source: impl Fn(&str) -> String,
+    response: ResponseTemplate,
+    extra: &[&str],
+) -> Result<(std::process::Output, PathBuf), Failed> {
     let runtime = tokio::runtime::Runtime::new()?;
     let server = runtime.block_on(async {
         let server = MockServer::start().await;
@@ -579,15 +624,132 @@ fn run_with_output(
         .args(["request", "run", "--no-lint", "-s"])
         .arg(&source)
         .args(extra)
+        .current_dir(&source)
         .output()?;
-    if !output.status.success() {
-        return Err(format!(
-            "Command failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        )
-        .into());
-    }
     Ok((output, source))
+}
+
+fn users_request(uri: &str) -> String {
+    format!("rq users(\"{uri}/users\");\n")
+}
+
+fn test_request_run_output_flag_writes_the_body_relative_to_the_current_directory(
+) -> Result<(), Failed> {
+    let (output, source) = run_with_output(
+        "output_flag_text",
+        users_request,
+        json_response(200),
+        &["-n", "users", "-p", "b", "-o", "out/users.json"],
+    )?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let expected = format!(
+        "body (application/json, {} bytes) saved to {}\n",
+        JSON_BODY.len(),
+        Path::new("out").join("users.json").display()
+    );
+    if stdout != expected || fs::read_to_string(source.join("out").join("users.json"))? != JSON_BODY
+    {
+        return Err(format!("Unexpected output: {stdout}").into());
+    }
+    Ok(())
+}
+
+fn test_request_run_output_flag_overwrites_an_existing_file() -> Result<(), Failed> {
+    let target = temp_dir_for("output_flag_existing")?.join("users.json");
+    fs::write(&target, "old")?;
+    let path = target.display().to_string();
+    run_with_output(
+        "output_flag_overwrite",
+        users_request,
+        json_response(200),
+        &["-n", "users", "-o", &path],
+    )?;
+    if fs::read_to_string(&target)? != JSON_BODY {
+        return Err("The existing file was not overwritten".into());
+    }
+    Ok(())
+}
+
+fn test_request_run_output_flag_replaces_the_output_attribute() -> Result<(), Failed> {
+    let (_, source) = run_with_output(
+        "output_flag_attribute",
+        |uri| format!("[output(\"attribute/\")]\nrq users(\"{uri}/users\");\n"),
+        json_response(200),
+        &["-n", "users", "-o", "chosen.json"],
+    )?;
+    if !source.join("chosen.json").exists() || source.join("attribute").exists() {
+        return Err("The output attribute was not replaced".into());
+    }
+    Ok(())
+}
+
+fn test_request_run_output_flag_ending_with_a_separator_is_a_folder() -> Result<(), Failed> {
+    let (_, source) = run_with_output(
+        "output_flag_folder",
+        users_request,
+        json_response(200),
+        &["-n", "users", "-o", "downloads/"],
+    )?;
+    if fs::read_to_string(source.join("downloads").join("users.json"))? != JSON_BODY {
+        return Err("The body was not written into the folder".into());
+    }
+    Ok(())
+}
+
+fn test_request_run_output_flag_json_reports_the_body_file() -> Result<(), Failed> {
+    let (output, _) = run_with_output(
+        "output_flag_json",
+        users_request,
+        json_response(200),
+        &["-n", "users", "-f", "json", "-o", "users.json"],
+    )?;
+    let result = parse_first_result(&output)?;
+    if result.get("body").is_some()
+        || result["body_file"]["path"] != "users.json"
+        || result["body_file"]["binary"] != false
+    {
+        return Err(format!("Unexpected result: {result}").into());
+    }
+    Ok(())
+}
+
+fn test_request_run_output_flag_does_not_write_an_error_response() -> Result<(), Failed> {
+    let (output, source) = run_with_output(
+        "output_flag_error_status",
+        users_request,
+        json_response(404),
+        &["-n", "users", "-p", "b", "-o", "users.json"],
+    )?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let warning = "Warning: Body not written to users.json: the response status is 404\n";
+    if stdout != format!("{JSON_BODY}\n") || stderr != warning || source.join("users.json").exists()
+    {
+        return Err(format!("Unexpected output: {stdout}{stderr}").into());
+    }
+    Ok(())
+}
+
+fn test_request_run_output_flag_that_cannot_be_written_exits_with_4() -> Result<(), Failed> {
+    let blocker = temp_dir_for("output_flag_blocker")?.join("blocker");
+    fs::write(&blocker, "")?;
+    let path = blocker.join("users.json").display().to_string();
+    let (output, _) = run_in_source(
+        "output_flag_unwritable",
+        users_request,
+        json_response(200),
+        &["-n", "users", "-p", "b", "-o", &path],
+    )?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if output.status.code() != Some(4)
+        || stdout != format!("{JSON_BODY}\n")
+        || !stderr.starts_with(&format!("Error: Body not written to {path}: "))
+        || stderr.contains("Warning")
+    {
+        return Err(format!("Unexpected output: {stdout}{stderr}").into());
+    }
+    Ok(())
 }
 
 fn json_response(status: u16) -> ResponseTemplate {

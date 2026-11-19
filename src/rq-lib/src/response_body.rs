@@ -246,6 +246,15 @@ impl OutputTarget {
         })
     }
 
+    pub fn chosen(path: &str) -> Self {
+        Self {
+            path: normalize_lexically(path),
+            is_folder: path.ends_with(['/', '\\']),
+            applies_to_every_body: true,
+            error: None,
+        }
+    }
+
     pub fn destination(&self, file_name: &str) -> PathBuf {
         if self.is_folder {
             Path::new(&self.path).join(file_name)
@@ -809,6 +818,36 @@ mod tests {
         )
         .map(|info| info.file_name);
         assert_eq!(target, Some("reports.monthly.pdf".to_string()));
+    }
+
+    #[test]
+    fn a_chosen_path_ending_with_a_separator_is_a_folder() {
+        let target = ["out/", "out\\"].map(|path| OutputTarget::chosen(path).is_folder);
+        assert_eq!(target, [true, true]);
+    }
+
+    #[test]
+    fn a_chosen_path_without_a_trailing_separator_is_a_file() {
+        let target = OutputTarget::chosen("out/users.json");
+        assert_eq!(
+            target.destination("ignored.json"),
+            Path::new("out").join("users.json")
+        );
+    }
+
+    #[test]
+    fn a_chosen_path_routes_a_text_body() {
+        let target = ResponseBody::route(
+            &headers(&[("content-type", "application/json")]),
+            b"{}".to_vec(),
+            "users",
+            200,
+            Some(&OutputTarget::chosen("out/")),
+        );
+        assert!(matches!(
+            target.body,
+            ResponseBody::Output(ref output) if output.path == Path::new("out").join("users.json")
+        ));
     }
 
     #[test]

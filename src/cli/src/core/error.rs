@@ -17,3 +17,17 @@ impl std::fmt::Display for CheckFailed {
 }
 
 impl std::error::Error for CheckFailed {}
+
+#[derive(Debug)]
+pub struct BodyNotWritten {
+    pub path: String,
+    pub reason: String,
+}
+
+impl std::fmt::Display for BodyNotWritten {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Body not written to {}: {}", self.path, self.reason)
+    }
+}
+
+impl std::error::Error for BodyNotWritten {}

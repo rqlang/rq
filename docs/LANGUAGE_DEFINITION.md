@@ -637,7 +637,7 @@ ep reports<base>("/reports") {
 ```
 
 - The value is a single string, in double or single quotes, in which `{{...}}` is interpolated. It may appear at most once per statement, on `rq` and `ep` statements (templates included).
-- **Folder or file.** A value whose text ends with `/` (or `\`) names a folder; any other value names a file. It is decided on the text as written, so `"{{dir}}/"` is a folder and `"{{path}}"` is a file whatever the variables hold. A folder keeps the automatic file name: the `filename` of the `Content-Disposition` header, or else the request name with an extension that matches the `Content-Type`.
+- **Folder or file.** A value whose text ends with `/` (or `\`), or whose last segment is `.` or `..`, names a folder; any other value names a file. It is decided on the text as written, so `"{{dir}}/"` and `"{{dir}}/."` are folders and `"{{path}}"` is a file whatever the variables hold. A folder keeps the automatic file name: the `filename` of the `Content-Disposition` header, or else the request name with an extension that matches the `Content-Type`.
 - **Where it applies.**
   - On an `rq`, every body of that request is written to the file, text or binary.
   - On an `ep`, the value must be a folder. It only replaces the temporary folder for the binary bodies of its requests; a text body is still printed. A request with its own `output` follows the rule for `rq`.
@@ -647,6 +647,7 @@ ep reports<base>("/reports") {
 - **What is not written.** A response whose final status is not `2xx` is never written: it is shown as usual, its text printed and a binary body saved to the temporary folder. A `2xx` response without a body is not written either, so an existing file is left untouched. In both cases the request reports that the body was not written to `output`.
 - **Reporting.** Every tool shows where the body was written instead of showing the body, and if the file cannot be written, it still shows the rest of the response with the reason; a text body is then shown as if there were no `output`, so it is never lost. `rq request show` reports the resolved path and whether it applies to every body or only to binary ones.
 - The MCP server ignores it: it never writes files.
+- `rq request run -o <PATH>` replaces it for that run, see [`rq request run`](CLI.md#rq-request-run).
 - It never changes what a request sends.
 
 ## Environments

@@ -62,8 +62,9 @@ impl RqClient {
         variables: &[String],
         warn: &dyn Fn(&[RqError]),
         confirm: &dyn Fn(&PreparedRequest) -> Result<(), RqError>,
+        output: Option<&str>,
     ) -> Result<RequestExecutionResult, RqError> {
-        let prepared = self.prepare_target(target, environment, variables, warn)?;
+        let prepared = self.prepare_target(target, environment, variables, warn, output)?;
         if prepared.confirmation_required {
             confirm(&prepared)?;
         }
@@ -222,7 +223,7 @@ impl RqClient {
         environment: Option<&str>,
         variables: &[String],
     ) -> Result<PreparedRequest, RqError> {
-        self.prepare_target(target, environment, variables, &|_| {})
+        self.prepare_target(target, environment, variables, &|_| {}, None)
     }
 
     pub fn check_overrides(
@@ -1146,22 +1147,31 @@ impl RqClient {
         environment: Option<&str>,
         variables: &[String],
         warn: &dyn Fn(&[RqError]),
+        output: Option<&str>,
     ) -> Result<PreparedRequest, RqError> {
         let source_path = target.source;
         self.log_source(source_path);
-        let (rq_file, req_with_vars, warnings) = self.load_request(target)?;
+        let (rq_file, mut req_with_vars, warnings) = self.load_request(target)?;
         warn(&warnings);
+        if output.is_some() {
+            req_with_vars.request.output.clear();
+        }
         Self::require_environment(&rq_file, environment)?;
         let file_context = self.file_context(&rq_file, source_path, environment);
         let cli_vars = Self::parse_cli_variables(variables)?;
-        self.prepare(
+        let prepared = self.prepare(
             &rq_file,
             &file_context,
             req_with_vars,
             cli_vars,
             source_path,
             environment,
-        )
+        )?;
+        let output = match output {
+            Some(path) => Some(OutputTarget::chosen(path)),
+            None => self.output_target(&prepared.request, source_path),
+        };
+        Ok(PreparedRequest { output, ..prepared })
     }
 
     fn load_request(
@@ -1218,14 +1228,13 @@ impl RqClient {
         let request = Self::apply_request_defaults(authorized)?;
         let timeout = crate::http::request_timeout(&request)?;
         let confirmation_required = Self::confirmation_required(rq_file, &request, environment);
-        let output = self.output_target(&request, source_path);
         Ok(PreparedRequest {
             agent_confirmation_required: confirmation_required || !request.method.is_safe(),
             confirmation_required,
             request,
             timeout,
             auth,
-            output,
+            output: None,
             context,
         })
     }
@@ -3407,6 +3416,7 @@ mod prepare_tests {
                 &[],
                 &|_| {},
                 &|_| Ok(()),
+                None,
             )
             .await
             .expect("run failed");
@@ -3448,6 +3458,7 @@ mod prepare_tests {
                 &[],
                 &|_| {},
                 &confirm,
+                None,
             )
             .await
             .map(|_| ());
@@ -3500,6 +3511,7 @@ mod prepare_tests {
                 &[],
                 &|_| {},
                 &|_| Ok(()),
+                None,
             )
             .await
             .expect("run failed");
@@ -3535,6 +3547,7 @@ mod prepare_tests {
                 &[],
                 &|warnings| *warned.lock().expect("lock") += warnings.len(),
                 &|_| Ok(()),
+                None,
             )
             .await;
         let target = *warned.lock().expect("lock");
@@ -3879,6 +3892,7 @@ mod prepare_tests {
                 &[],
                 &|_| {},
                 &|_| Ok(()),
+                None,
             )
             .await
             .expect("run");
@@ -3887,6 +3901,65 @@ mod prepare_tests {
             crate::response_body::ResponseBody::Output(ref output)
                 if output.path == std::fs::canonicalize(dir.path()).expect("canonicalize").join("out.json")
         ));
+    }
+
+    #[tokio::test]
+    async fn run_writes_the_body_to_the_chosen_output_instead_of_the_attribute() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write(
+            dir.path(),
+            "main.rq",
+            "[output(\"../leak.json\")]\nrq get(\"http://localhost\");\n",
+        );
+        let chosen = dir.path().join("chosen.json").display().to_string();
+        let client = RqClient::new(
+            Arc::new(native::NativeFs),
+            Arc::new(native::NativeSecretProvider),
+            Arc::new(BodyHttp),
+        );
+        let target = client
+            .run(
+                RequestTarget::new(&dir.path().join("main.rq"), "get"),
+                None,
+                &[],
+                &|_| {},
+                &|_| Ok(()),
+                Some(&chosen),
+            )
+            .await
+            .expect("run");
+        assert!(matches!(
+            target.body,
+            crate::response_body::ResponseBody::Output(ref output)
+                if output.path == Path::new(&chosen)
+        ));
+    }
+
+    #[tokio::test]
+    async fn run_with_a_chosen_output_ignores_an_unresolvable_output_attribute() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write(
+            dir.path(),
+            "main.rq",
+            "[output(\"{{missing}}/\")]\nrq get(\"http://localhost\");\n",
+        );
+        let chosen = dir.path().join("chosen.json").display().to_string();
+        let client = RqClient::new(
+            Arc::new(native::NativeFs),
+            Arc::new(native::NativeSecretProvider),
+            Arc::new(BodyHttp),
+        );
+        let target = client
+            .run(
+                RequestTarget::new(&dir.path().join("main.rq"), "get"),
+                None,
+                &[],
+                &|_| {},
+                &|_| Ok(()),
+                Some(&chosen),
+            )
+            .await;
+        assert!(target.is_ok());
     }
 
     #[cfg(unix)]

@@ -83,6 +83,10 @@ pub fn join_lexically(base: &str, path: &str) -> String {
     format!("{}/{path}", base.trim_end_matches(['/', '\\']))
 }
 
+pub fn names_folder(path: &str) -> bool {
+    path.ends_with(['/', '\\']) || matches!(path.rsplit(['/', '\\']).next(), Some("." | ".."))
+}
+
 pub fn normalize_lexically(path: &str) -> String {
     LexicalPath::parse(path).render()
 }
@@ -496,6 +500,18 @@ mod tests {
             .collect();
         names.sort();
         names
+    }
+
+    #[test]
+    fn a_path_ending_with_a_separator_or_a_dot_segment_names_a_folder() {
+        let target = ["out/", "out\\", ".", "..", "out/.", "out\\.."].map(super::names_folder);
+        assert_eq!(target, [true; 6]);
+    }
+
+    #[test]
+    fn a_path_ending_with_a_name_names_a_file() {
+        let target = ["out", "out/users.json", ".env", "out/..json"].map(super::names_folder);
+        assert_eq!(target, [false; 4]);
     }
 
     #[test]

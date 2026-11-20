@@ -296,6 +296,19 @@ mod tests {
     }
 
     #[test]
+    fn an_endpoint_output_ending_with_a_dot_segment_is_a_folder() {
+        let target = RqFile::from_content_lenient(
+            PathBuf::from("api/test.rq"),
+            "[output(\"downloads/.\")]\nep api(\"http://x\") {\n  rq get();\n}\n",
+            &NativeFs,
+        );
+        assert_eq!(
+            output_of(&target.requests[0].request),
+            vec![("downloads/.", true, false)]
+        );
+    }
+
+    #[test]
     fn output_chains_template_endpoint_and_request_outermost_first() {
         let source = "[output(\"downloads/\")]\nep base(\"http://x\");\n\n[output(\"reports/\")]\nep reports<base>(\"/reports\") {\n  [output(\"report.pdf\")]\n  rq get();\n}\n";
         let target = &requests_of(source)[0];

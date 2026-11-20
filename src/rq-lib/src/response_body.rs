@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::error::RqError;
-use crate::paths::{depth_below, join_lexically, normalize_lexically};
+use crate::paths::{depth_below, join_lexically, names_folder, normalize_lexically};
 use crate::syntax::parse_result::OutputPath;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -244,6 +244,21 @@ impl OutputTarget {
             applies_to_every_body: last.applies_to_every_body,
             error,
         })
+    }
+
+    pub fn chosen(path: &str) -> Self {
+        let trimmed = path.trim_end_matches(['/', '\\']);
+        let kept = if trimmed.is_empty() || trimmed.ends_with(':') {
+            path
+        } else {
+            trimmed
+        };
+        Self {
+            path: kept.to_string(),
+            is_folder: names_folder(path),
+            applies_to_every_body: true,
+            error: None,
+        }
     }
 
     pub fn destination(&self, file_name: &str) -> PathBuf {
@@ -809,6 +824,54 @@ mod tests {
         )
         .map(|info| info.file_name);
         assert_eq!(target, Some("reports.monthly.pdf".to_string()));
+    }
+
+    #[test]
+    fn a_chosen_path_ending_with_a_separator_is_a_folder() {
+        let target = ["out/", "out\\"].map(|path| OutputTarget::chosen(path).is_folder);
+        assert_eq!(target, [true, true]);
+    }
+
+    #[test]
+    fn a_chosen_path_ending_with_a_dot_segment_is_a_folder() {
+        let target = [".", "..", "out/."].map(|path| OutputTarget::chosen(path).is_folder);
+        assert_eq!(target, [true, true, true]);
+    }
+
+    #[test]
+    fn a_chosen_path_keeps_its_dot_dot_segments() {
+        let target = OutputTarget::chosen("downloads/../report.pdf");
+        assert_eq!(target.path, "downloads/../report.pdf");
+    }
+
+    #[test]
+    fn a_chosen_root_folder_keeps_its_separator() {
+        let target = OutputTarget::chosen("/");
+        assert_eq!((target.path.as_str(), target.is_folder), ("/", true));
+    }
+
+    #[test]
+    fn a_chosen_path_without_a_trailing_separator_is_a_file() {
+        let target = OutputTarget::chosen("out/users.json");
+        assert_eq!(
+            target.destination("ignored.json"),
+            Path::new("out").join("users.json")
+        );
+    }
+
+    #[test]
+    fn a_chosen_path_routes_a_text_body() {
+        let target = ResponseBody::route(
+            &headers(&[("content-type", "application/json")]),
+            b"{}".to_vec(),
+            "users",
+            200,
+            Some(&OutputTarget::chosen("out/")),
+        );
+        assert!(matches!(
+            target.body,
+            ResponseBody::Output(ref output) if output.path == Path::new("out").join("users.json")
+        ));
     }
 
     #[test]

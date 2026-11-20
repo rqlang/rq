@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { getWebviewContent, getErrorWebviewContent } from '../src/ui/webviewGenerator';
+import { getWebviewContent, getErrorWebviewContent, getViewPaneContent } from '../src/ui/webviewGenerator';
 import * as cliService from '../src/rqClient';
 
 describe('webviewGenerator', () => {
@@ -391,7 +391,33 @@ describe('webviewGenerator', () => {
         test('shows a template error with a button that opens the view at its line', async () => {
             const html = await getWebviewContent(mockContext, withView('<p></p>\n{% if %}'));
 
-            expect(html).toContain("vscode.postMessage({ command: 'openView', line: 2 })");
+            expect(html).toContain('vscode.postMessage({&quot;command&quot;:&quot;openView&quot;,&quot;line&quot;:2})');
+        });
+
+        test('offers no button to open a view that does not exist', async () => {
+            const result = { ...withView('<p></p>'), view: { path: path.join(dir, 'missing.html'), error: 'View missing.html not found' } };
+
+            const html = await getWebviewContent(mockContext, result);
+
+            expect([html.includes('View missing.html not found'), html.includes('openView')]).toEqual([true, false]);
+        });
+
+        test('gives the view tabs their own class so the HTML preview leaves them alone', async () => {
+            const html = await getWebviewContent(mockContext, withView('<p></p>'));
+
+            expect(html).toContain('<button class="body-tab active" data-pane="view"');
+        });
+
+        test('renders only the view pane for a refresh', async () => {
+            const pane = await getViewPaneContent(mockContext, withView('<p>{{ body.id }}</p>'));
+
+            expect([pane?.startsWith('<iframe class="response-view"'), pane?.includes('&lt;p&gt;7&lt;/p&gt;')]).toEqual([true, true]);
+        });
+
+        test('renders no view pane for a response the view does not apply to', async () => {
+            const pane = await getViewPaneContent(mockContext, withView('<p></p>', 404));
+
+            expect(pane).toBeUndefined();
         });
 
         test('explains why a view was not applied', async () => {

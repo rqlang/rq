@@ -99,30 +99,48 @@ export async function getWebviewContent(context: vscode.ExtensionContext, result
     });
 }
 
-async function withResponseView(context: vscode.ExtensionContext, result: rqClient.RequestExecutionResult, body: RenderedBody): Promise<RenderedBody> {
+export async function getViewPaneContent(context: vscode.ExtensionContext, result: rqClient.RequestExecutionResult): Promise<string | undefined> {
+    const view = await renderView(context, result);
+    return view === undefined || view.kind === 'skipped' ? undefined : responseViewHtml(view);
+}
+
+async function renderView(context: vscode.ExtensionContext, result: rqClient.RequestExecutionResult): Promise<ResponseView | undefined> {
     if (!result.view) {
-        return body;
+        return undefined;
     }
-    const view = await renderResponseView(result.view, result, {
+    return renderResponseView(result.view, result, {
         trusted: vscode.workspace.isTrusted,
         theme: isDarkTheme(vscode.window.activeColorTheme.kind) ? 'dark' : 'light',
         stylesheet: await readViewStylesheet(context)
     });
+}
+
+async function withResponseView(context: vscode.ExtensionContext, result: rqClient.RequestExecutionResult, body: RenderedBody): Promise<RenderedBody> {
+    const view = await renderView(context, result);
+    if (view === undefined) {
+        return body;
+    }
     if (view.kind === 'skipped') {
         return { ...body, content: `<p class="output-skipped">View not applied: ${escapeHtml(view.reason)}</p>${body.content}` };
     }
     return {
         content: `<div class="body-tabs">
-            <button class="html-view-btn active" data-pane="view" onclick="showBodyPane('view')">View</button>
-            <button class="html-view-btn" data-pane="body" onclick="showBodyPane('body')">Body</button>
+            <button class="body-tab active" data-pane="view" onclick="showBodyPane('view')">View</button>
+            <button class="body-tab" data-pane="body" onclick="showBodyPane('body')">Body</button>
         </div>
         <div class="body-pane" data-pane="view">${responseViewHtml(view)}</div>
         <div class="body-pane" data-pane="body" hidden>${body.content}</div>`,
         script: `${body.script}
         function showBodyPane(pane) {
-            document.querySelectorAll('.body-tabs .html-view-btn').forEach(button => button.classList.toggle('active', button.dataset.pane === pane));
+            document.querySelectorAll('.body-tab').forEach(button => button.classList.toggle('active', button.dataset.pane === pane));
             document.querySelectorAll('.body-pane').forEach(element => { element.hidden = element.dataset.pane !== pane; });
         }
+
+        window.addEventListener('message', event => {
+            if (event.data && event.data.command === 'updateView') {
+                document.querySelector('.body-pane[data-pane="view"]').innerHTML = event.data.html;
+            }
+        });
     `
     };
 }
@@ -131,10 +149,13 @@ function responseViewHtml(view: Exclude<ResponseView, { kind: 'skipped' }>): str
     if (view.kind === 'rendered') {
         return `<iframe class="response-view" title="Response view" sandbox="" srcdoc="${escapeHtml(view.document)}"></iframe>`;
     }
-    const message = view.line === undefined ? "{ command: 'openView' }" : `{ command: 'openView', line: ${view.line} }`;
+    const message = escapeHtml(JSON.stringify({ command: 'openView', line: view.line }));
+    const openButton = view.template === undefined
+        ? ''
+        : `<button class="body-tab active" onclick="vscode.postMessage(${message})">Open view</button>`;
     return `<div class="view-error">
             <p>${escapeHtml(view.message)}</p>
-            <button class="html-view-btn active" onclick="vscode.postMessage(${message})">Open view</button>
+            ${openButton}
         </div>`;
 }
 

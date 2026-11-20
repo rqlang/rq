@@ -6,7 +6,7 @@ import type { RequestExecutionResult, ViewTarget } from '../execution';
 export type ResponseView =
     | { kind: 'rendered'; document: string }
     | { kind: 'skipped'; reason: string }
-    | { kind: 'failed'; message: string; line?: number };
+    | { kind: 'failed'; message: string; template?: string; line?: number };
 
 export interface ViewEnvironment {
     trusted: boolean;
@@ -44,16 +44,12 @@ export async function renderResponseView(view: ViewTarget, result: RequestExecut
     if (!environment.trusted) {
         return { kind: 'skipped', reason: 'views are not rendered in an untrusted workspace' };
     }
+    const body = await jsonBodyOf(result);
+    if ('reason' in body) {
+        return { kind: 'skipped', reason: body.reason };
+    }
     if (view.error) {
         return { kind: 'failed', message: view.error };
-    }
-    const skipReason = skipReasonOf(result);
-    if (skipReason !== undefined) {
-        return { kind: 'skipped', reason: skipReason };
-    }
-    const body = parseJson(result.body);
-    if (body === undefined) {
-        return { kind: 'skipped', reason: 'the body is not JSON' };
     }
     let template: string;
     try {
@@ -65,26 +61,38 @@ export async function renderResponseView(view: ViewTarget, result: RequestExecut
         const rendered = await liquid.parseAndRender(template, viewContext(result, body.value));
         return { kind: 'rendered', document: viewDocument(rendered, environment) };
     } catch (error) {
-        return { kind: 'failed', message: messageOf(error), line: errorLine(error) };
+        return { kind: 'failed', message: messageOf(error), template: view.path, line: errorLine(error) };
     }
 }
 
-function skipReasonOf(result: RequestExecutionResult): string | undefined {
+async function jsonBodyOf(result: RequestExecutionResult): Promise<{ value: unknown } | { reason: string }> {
     if (result.status < 200 || result.status >= 300) {
-        return `the response status is ${result.status}`;
-    }
-    if (result.body_file) {
-        return 'the body is not JSON';
+        return { reason: `the response status is ${result.status}` };
     }
     if (result.body_truncated) {
-        return 'the body was truncated';
+        return { reason: 'the body was truncated' };
     }
-    return undefined;
-}
-
-function parseJson(text: string): { value: unknown } | undefined {
+    const text = await bodyTextOf(result);
+    if (text === undefined) {
+        return { reason: 'the body is binary' };
+    }
     try {
         return { value: JSON.parse(text) };
+    } catch {
+        return { reason: 'the body is not JSON' };
+    }
+}
+
+async function bodyTextOf(result: RequestExecutionResult): Promise<string | undefined> {
+    const file = result.body_file;
+    if (file === undefined) {
+        return result.body;
+    }
+    if (file.binary || file.path === undefined) {
+        return undefined;
+    }
+    try {
+        return await fs.promises.readFile(file.path, 'utf8');
     } catch {
         return undefined;
     }

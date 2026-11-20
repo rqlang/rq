@@ -90,14 +90,42 @@ describe('renderResponseView', () => {
         expect(target.kind).toBe('skipped');
     });
 
-    test('reports the error that rq-lib found for the view', async () => {
+    test('reports the error that rq-lib found for the view without a template to open', async () => {
         const target = await renderResponseView({ path: '/nowhere.html', error: 'View /nowhere.html not found' }, response(), ENVIRONMENT);
         expect(target).toEqual({ kind: 'failed', message: 'View /nowhere.html not found' });
+    });
+
+    test('explains a non-2xx response before the error of the view', async () => {
+        const target = await renderResponseView({ path: '/nowhere.html', error: 'View /nowhere.html not found' }, response({ status: 500 }), ENVIRONMENT);
+        expect(target).toEqual({ kind: 'skipped', reason: 'the response status is 500' });
+    });
+
+    test('renders a JSON body that output wrote to a file', async () => {
+        const bodyFile = path.join(dir, 'orders.json');
+        fs.writeFileSync(bodyFile, '{"items":[{"id":3}]}');
+        const target = await render('{{ body.items[0].id }}', {
+            body: '',
+            body_file: { media_type: 'application/json', file_name: 'orders.json', size: 20, binary: false, path: bodyFile }
+        });
+        expect(documentOf(target)).toContain('3');
+    });
+
+    test('skips a binary body', async () => {
+        const target = await render('<p></p>', {
+            body: '',
+            body_file: { media_type: 'image/png', file_name: 'logo.png', size: 4, binary: true, path: '/tmp/logo.png' }
+        });
+        expect(target).toEqual({ kind: 'skipped', reason: 'the body is binary' });
     });
 
     test('reports the line of a template syntax error', async () => {
         const target = await render('<p>ok</p>\n{% for item in %}');
         expect(target.kind === 'failed' && target.line).toBe(2);
+    });
+
+    test('names the template that failed so it can be opened', async () => {
+        const target = await render('{% if %}');
+        expect(target.kind === 'failed' && target.template).toBe(path.join(dir, 'view.html'));
     });
 
     test('reports an unknown filter', async () => {

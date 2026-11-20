@@ -349,6 +349,24 @@ Smoke-test pets on production.
 
 The requests stay in `.rq` files, versioned and reviewed with the code, and runnable on their own from the editor or the CLI; the skill only says in what order to call them and what to do with each answer. A change to the API is a change to one `.rq` file, and every procedure that uses it follows.
 
+## 10. A view for a response
+
+A [response view](VSCODE_EXTENSION.md#response-views) is an HTML template that the VS Code extension uses to present a JSON response. Writing one by hand means knowing the shape of the response; the assistant can learn it by running the request:
+
+**Prompt:**
+
+```text
+Make a view for pets/list: a table with the name, the status and the tags of each pet.
+```
+
+The assistant runs `pets/list` with `run_request` to see the body, writes `views/pets-list.html` next to `pets.rq` as plain HTML with [LiquidJS](https://liquidjs.com/tutorials/intro-to-liquid.html) tags over `body`, and adds `[ui.view("views/pets-list.html")]` above `rq list`. Run the request from the Request Explorer and the panel opens on the **View** tab, styled with [Pico CSS](https://picocss.com/docs/classless).
+
+Tell it what you know about views, since it cannot see them rendered:
+
+- A template sees `body`, `status`, `headers` and `request`, never variables or secrets.
+- Every `{{ … }}` is escaped, scripts never run and remote images are blocked, so ask for text and plain HTML elements.
+- `validate_rq` reports a view path that does not exist, but not a template error: those show up in the **View** tab, with the line, the first time the request runs.
+
 ## What it won't do
 
 - **Invent requests.** It runs only requests already in a `.rq` file, and asks before every write and every request marked `[confirm]`.

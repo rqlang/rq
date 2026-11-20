@@ -33,6 +33,7 @@ interface ResultsData {
     run: RequestRun;
     body: string | undefined;
     bodyFile?: string;
+    result?: rqClient.RequestExecutionResult;
 }
 
 type RequestResultsSession = ResultsSession<ResultsData>;
@@ -61,7 +62,9 @@ export class RequestRunner {
         this.context.subscriptions.push(
             vscode.commands.registerCommand('rq.runRequest', (item) => this.runRequest(item, provider)),
             vscode.commands.registerCommand('rq.runRequestWithVariables', (item) => this.runRequestWithVariables(item, provider)),
-            vscode.commands.registerCommand('rq.cancelRequest', () => this.cancelActiveExecution())
+            vscode.commands.registerCommand('rq.cancelRequest', () => this.cancelActiveExecution()),
+            vscode.workspace.onDidSaveTextDocument(document => this.refreshViews(session => session.data?.result?.view?.path === document.uri.fsPath)),
+            vscode.window.onDidChangeActiveColorTheme(() => this.refreshViews(() => true))
         );
     }
 
@@ -333,7 +336,27 @@ export class RequestRunner {
 
         const html = await getWebviewContent(this.context, result.results[0]);
         const bodyFile = result.results[0].body_file?.path;
-        this.showResult(execution, html, bodyFile ?? result.results[0].body, bodyFile);
+        this.showResult(execution, html, bodyFile ?? result.results[0].body, bodyFile, result.results[0]);
+    }
+
+    private async refreshViews(shows: (session: RequestResultsSession) => boolean) {
+        for (const session of this.resultsPanels.openSessions()) {
+            const result = session.data?.result;
+            if (result?.view && session.panel && shows(session)) {
+                session.panel.webview.html = await getWebviewContent(this.context, result);
+            }
+        }
+    }
+
+    private async openView(session: RequestResultsSession, line: unknown) {
+        const viewPath = session.data?.result?.view?.path;
+        if (viewPath === undefined) {
+            return;
+        }
+        const position = typeof line === 'number' && line > 0 ? new vscode.Position(line - 1, 0) : undefined;
+        await vscode.window.showTextDocument(vscode.Uri.file(viewPath), {
+            selection: position && new vscode.Range(position, position)
+        });
     }
 
     private async handleFailedExecution(execution: ActiveExecution, result: rqClient.ExecuteRequestResult) {
@@ -369,6 +392,9 @@ export class RequestRunner {
         }
         if (message.command === 'revealBody' && session.data?.bodyFile !== undefined) {
             vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(session.data.bodyFile));
+        }
+        if (message.command === 'openView') {
+            this.openView(session, message.line);
         }
         if (message.command === 'copy' && typeof message.text === 'string') {
             vscode.env.clipboard.writeText(message.text);
@@ -445,10 +471,10 @@ export class RequestRunner {
         this.showResult(execution, html, undefined);
     }
 
-    private showResult(execution: ActiveExecution, html: string, body: string | undefined, bodyFile?: string) {
+    private showResult(execution: ActiveExecution, html: string, body: string | undefined, bodyFile?: string, result?: rqClient.RequestExecutionResult) {
         const { session, run } = execution;
         const panel = this.resultsPanels.show(session, run.executionContext.requestName);
-        session.data = { run, body, bodyFile };
+        session.data = { run, body, bodyFile, result };
         panel.webview.html = html;
     }
 

@@ -202,6 +202,26 @@
             background-color: white;
         }
 
+        .body-tabs {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 8px;
+        }
+
+        .response-view {
+            width: 100%;
+            height: 70vh;
+            resize: vertical;
+            border: 1px solid var(--vscode-panel-border);
+            border-radius: 4px;
+        }
+
+        .view-error p {
+            margin: 0 0 8px;
+            color: var(--vscode-errorForeground);
+            white-space: pre-wrap;
+        }
+
         /* JSON renderer styles */
         #json-body {
             font-family: var(--vscode-editor-font-family);

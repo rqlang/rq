@@ -446,6 +446,16 @@ function uiColorAttributeItem(ctx: CompletionContext, bracketOffset: number): vs
     return item;
 }
 
+function uiViewAttributeItem(ctx: CompletionContext, bracketOffset: number): vscode.CompletionItem {
+    const item = new vscode.CompletionItem('ui.view', vscode.CompletionItemKind.Keyword);
+    item.detail = 'Present the JSON response with an HTML template';
+    item.documentation = new vscode.MarkdownString('Renders the JSON response of the next `rq` with a [LiquidJS](https://liquidjs.com/tutorials/intro-to-liquid.html) HTML template, shown in the **View** tab of the results.\n\n**Example:** `[ui.view("views/orders.html")]`');
+    item.insertText = new vscode.SnippetString('ui.view("$1")');
+    item.filterText = 'ui.view';
+    item.range = new vscode.Range(ctx.position.line, bracketOffset + 1, ctx.position.line, ctx.position.character);
+    return item;
+}
+
 function confirmAttributeItem(): vscode.CompletionItem {
     const item = new vscode.CompletionItem('confirm', vscode.CompletionItemKind.Keyword);
     item.detail = 'Ask before sending';
@@ -503,7 +513,8 @@ export const attributeHandler: CompletionHandler = {
         outputItem.documentation = new vscode.MarkdownString('Writes the body of the next `rq` to a file, or sets the folder for the binary bodies of an `ep`. A path ending with `/` is a folder.\n\n**Example:** `[output("downloads/report.pdf")]`');
         outputItem.insertText = new vscode.SnippetString('output("$1")');
 
-        return [methodItem, timeoutItem, authItem, requiredItem, descriptionItem, confirmAttributeItem(), outputItem];
+        const items = [methodItem, timeoutItem, authItem, requiredItem, descriptionItem, confirmAttributeItem(), outputItem];
+        return attributeTarget(textAfterLine(ctx)) === 'ep' ? items : [...items, uiViewAttributeItem(ctx, bracketOffset)];
     },
 };
 

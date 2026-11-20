@@ -823,6 +823,63 @@ describe('runRequest Commands', () => {
             expect(cliService.executeRequest).toHaveBeenLastCalledWith(expect.objectContaining({ environment: 'prod' }));
         });
 
+        function respondWithView(viewPath: string) {
+            (cliService.executeRequest as jest.Mock).mockResolvedValueOnce({
+                results: [{
+                    status: 200,
+                    body: '{"a":1}',
+                    elapsed_ms: 1,
+                    method: 'GET',
+                    url: 'http://localhost',
+                    response_headers: {},
+                    request_headers: {},
+                    view: { path: viewPath }
+                }],
+                stderr: ''
+            });
+        }
+
+        function saveHandler(): (document: any) => Promise<void> {
+            return (vscode.workspace.onDidSaveTextDocument as jest.Mock).mock.calls[0][0];
+        }
+
+        test('saving the view renders the panel that shows it again', async () => {
+            requestRunner.registerCommands(provider);
+            respondWithView('/w/views/orders.html');
+            await requestRunner.runRequest(makeItem('a'), provider);
+            (webviewGenerator.getWebviewContent as jest.Mock).mockResolvedValue('<html>edited view</html>');
+
+            saveHandler()({ uri: { fsPath: '/w/views/orders.html' } });
+            await settle();
+
+            expect(panels[0].webview.html).toBe('<html>edited view</html>');
+        });
+
+        test('saving another file leaves the panel as it was', async () => {
+            requestRunner.registerCommands(provider);
+            respondWithView('/w/views/orders.html');
+            await requestRunner.runRequest(makeItem('a'), provider);
+            (webviewGenerator.getWebviewContent as jest.Mock).mockResolvedValue('<html>edited view</html>');
+
+            saveHandler()({ uri: { fsPath: '/w/views/other.html' } });
+            await settle();
+
+            expect(panels[0].webview.html).toBe('<html></html>');
+        });
+
+        test('open view shows the template at the line of its error', async () => {
+            respondWithView('/w/views/orders.html');
+            await requestRunner.runRequest(makeItem('a'), provider);
+
+            messageHandler(panels[0])({ command: 'openView', line: 3 });
+            await settle();
+
+            expect(vscode.window.showTextDocument).toHaveBeenCalledWith(
+                { fsPath: '/w/views/orders.html' },
+                { selection: new vscode.Range(new vscode.Position(2, 0), new vscode.Position(2, 0)) }
+            );
+        });
+
         test('an error is shown in the tab of the failing request', async () => {
             useTabMode('perRequest');
             respondWith('{"a":1}');

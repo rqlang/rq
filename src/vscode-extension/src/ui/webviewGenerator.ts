@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
 import * as rqClient from '../rqClient';
-import { bodyFileRenderer, getBodyRenderer } from './bodyRenderers';
+import { bodyFileRenderer, getBodyRenderer, readMediaFile, RenderedBody } from './bodyRenderers';
 import { escapeHtml, fillTemplate } from './html';
+import { renderResponseView, ResponseView } from './responseView';
 
 const COPY_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
 
@@ -66,7 +67,7 @@ export async function getWebviewContent(context: vscode.ExtensionContext, result
     const bodyRenderer = result.body_file
         ? bodyFileRenderer(result.body_file)
         : getBodyRenderer(result.response_headers, result.body);
-    const renderedBody = await bodyRenderer.render(context, result.body);
+    const renderedBody = await withResponseView(context, result, await bodyRenderer.render(context, result.body));
 
     const requestHeadersHtml = Object.entries(result.request_headers)
         .map(([key, value]) => headerRowHtml(key, value))
@@ -96,6 +97,59 @@ export async function getWebviewContent(context: vscode.ExtensionContext, result
         BODY_CONTENT: outputSkippedHtml(result.output_skipped) + renderedBody.content,
         BODY_SCRIPT: renderedBody.script
     });
+}
+
+async function withResponseView(context: vscode.ExtensionContext, result: rqClient.RequestExecutionResult, body: RenderedBody): Promise<RenderedBody> {
+    if (!result.view) {
+        return body;
+    }
+    const view = await renderResponseView(result.view, result, {
+        trusted: vscode.workspace.isTrusted,
+        theme: isDarkTheme(vscode.window.activeColorTheme.kind) ? 'dark' : 'light',
+        stylesheet: await readViewStylesheet(context)
+    });
+    if (view.kind === 'skipped') {
+        return { ...body, content: `<p class="output-skipped">View not applied: ${escapeHtml(view.reason)}</p>${body.content}` };
+    }
+    return {
+        content: `<div class="body-tabs">
+            <button class="html-view-btn active" data-pane="view" onclick="showBodyPane('view')">View</button>
+            <button class="html-view-btn" data-pane="body" onclick="showBodyPane('body')">Body</button>
+        </div>
+        <div class="body-pane" data-pane="view">${responseViewHtml(view)}</div>
+        <div class="body-pane" data-pane="body" hidden>${body.content}</div>`,
+        script: `${body.script}
+        function showBodyPane(pane) {
+            document.querySelectorAll('.body-tabs .html-view-btn').forEach(button => button.classList.toggle('active', button.dataset.pane === pane));
+            document.querySelectorAll('.body-pane').forEach(element => { element.hidden = element.dataset.pane !== pane; });
+        }
+    `
+    };
+}
+
+function responseViewHtml(view: Exclude<ResponseView, { kind: 'skipped' }>): string {
+    if (view.kind === 'rendered') {
+        return `<iframe class="response-view" title="Response view" sandbox="" srcdoc="${escapeHtml(view.document)}"></iframe>`;
+    }
+    const message = view.line === undefined ? "{ command: 'openView' }" : `{ command: 'openView', line: ${view.line} }`;
+    return `<div class="view-error">
+            <p>${escapeHtml(view.message)}</p>
+            <button class="html-view-btn active" onclick="vscode.postMessage(${message})">Open view</button>
+        </div>`;
+}
+
+function isDarkTheme(kind: vscode.ColorThemeKind): boolean {
+    return kind === vscode.ColorThemeKind.Dark || kind === vscode.ColorThemeKind.HighContrast;
+}
+
+let viewStylesheet: Promise<string> | undefined;
+
+function readViewStylesheet(context: vscode.ExtensionContext): Promise<string> {
+    viewStylesheet ??= readMediaFile(context, 'pico.classless.min.css').catch((error: unknown) => {
+        viewStylesheet = undefined;
+        throw error;
+    });
+    return viewStylesheet;
 }
 
 function outputSkippedHtml(skipped?: rqClient.OutputSkipped): string {

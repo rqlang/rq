@@ -129,7 +129,7 @@ function readJsonRendererScript(context: vscode.ExtensionContext): Promise<strin
     return jsonRendererScript;
 }
 
-async function readMediaFile(context: vscode.ExtensionContext, name: string): Promise<string> {
+export async function readMediaFile(context: vscode.ExtensionContext, name: string): Promise<string> {
     const uri = vscode.Uri.joinPath(context.extensionUri, 'media', name);
     return new TextDecoder().decode(await vscode.workspace.fs.readFile(uri));
 }

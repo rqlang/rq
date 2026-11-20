@@ -616,3 +616,29 @@ describe('output attribute completion', () => {
         expect(items.some((i: any) => i.label === 'output')).toBe(false);
     });
 });
+
+describe('ui.view attribute completion', () => {
+    test('ui.view item inserts a string literal snippet before a request', async () => {
+        const doc = makeDocument(['[', 'rq get("http://localhost");']);
+        const items = await provideCompletionItems(doc, new vscode.Position(0, 1));
+        expect(items.find((i: any) => i.label === 'ui.view').insertText.value).toBe('ui.view("$1")');
+    });
+
+    test('suggests ui.view after the ui namespace is typed', async () => {
+        const doc = makeDocument(['[ui.', 'rq get("http://localhost");']);
+        const items = await provideCompletionItems(doc, new vscode.Position(0, 4));
+        expect(items.find((i: any) => i.label === 'ui.view').range).toEqual(new vscode.Range(0, 1, 0, 4));
+    });
+
+    test('does not suggest ui.view before an endpoint', async () => {
+        const doc = makeDocument(['[', 'ep users("http://localhost") {', '}']);
+        const items = await provideCompletionItems(doc, new vscode.Position(0, 1));
+        expect(items.some((i: any) => i.label === 'ui.view')).toBe(false);
+    });
+
+    test('does not suggest ui.view before an environment', async () => {
+        const doc = makeDocument(['[', 'env local {', '}']);
+        const items = await provideCompletionItems(doc, new vscode.Position(0, 1));
+        expect(items.some((i: any) => i.label === 'ui.view')).toBe(false);
+    });
+});

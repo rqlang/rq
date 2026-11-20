@@ -1,3 +1,6 @@
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import * as vscode from 'vscode';
 import { getWebviewContent, getErrorWebviewContent } from '../src/ui/webviewGenerator';
 import * as cliService from '../src/rqClient';
@@ -335,5 +338,66 @@ describe('webviewGenerator', () => {
         const html = await getWebviewContent(mockContext, result);
 
         expect(html).toContain('costs $&amp; and $&#039;');
+    });
+
+    describe('response views', () => {
+        let dir: string;
+
+        beforeEach(() => {
+            dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rq-webview-view-'));
+            mockFs.readFile.mockImplementation((uri: any) => {
+                if (uri.fsPath.endsWith('webviewTemplate.html')) {
+                    return Promise.resolve(new TextEncoder().encode('{{BODY_CONTENT}}<script>{{BODY_SCRIPT}}</script>'));
+                }
+                if (uri.fsPath.endsWith('pico.classless.min.css')) {
+                    return Promise.resolve(new TextEncoder().encode('main{}'));
+                }
+                return Promise.resolve(new TextEncoder().encode(''));
+            });
+        });
+
+        afterEach(() => {
+            fs.rmSync(dir, { recursive: true, force: true });
+        });
+
+        function withView(template: string, status = 200): cliService.RequestExecutionResult {
+            const file = path.join(dir, 'view.html');
+            fs.writeFileSync(file, template);
+            return {
+                request_name: 'list',
+                method: 'GET',
+                url: 'http://localhost',
+                status,
+                elapsed_ms: 1,
+                request_headers: {},
+                response_headers: { 'content-type': 'application/json' },
+                body: '{"id":7}',
+                view: { path: file }
+            };
+        }
+
+        test('shows the rendered view in a sandboxed frame before the body', async () => {
+            const html = await getWebviewContent(mockContext, withView('<p>{{ body.id }}</p>'));
+
+            expect(html.indexOf('<iframe class="response-view" title="Response view" sandbox=""')).toBeLessThan(html.indexOf('data-pane="body" hidden'));
+        });
+
+        test('keeps the body one tab away', async () => {
+            const html = await getWebviewContent(mockContext, withView('<p>{{ body.id }}</p>'));
+
+            expect(html).toContain('id="json-body"');
+        });
+
+        test('shows a template error with a button that opens the view at its line', async () => {
+            const html = await getWebviewContent(mockContext, withView('<p></p>\n{% if %}'));
+
+            expect(html).toContain("vscode.postMessage({ command: 'openView', line: 2 })");
+        });
+
+        test('explains why a view was not applied', async () => {
+            const html = await getWebviewContent(mockContext, withView('<p></p>', 500));
+
+            expect(html).toContain('View not applied: the response status is 500');
+        });
     });
 });

@@ -49,6 +49,8 @@ export const window = {
     createWebviewPanel: jest.fn(),
     registerUriHandler: jest.fn(),
     showTextDocument: jest.fn(),
+    activeColorTheme: { kind: 2 },
+    onDidChangeActiveColorTheme: jest.fn().mockReturnValue({ dispose: () => {} }),
     withProgress: jest.fn().mockImplementation(async (_options, task) => {
         return await task({ report: jest.fn() }, { isCancellationRequested: false, onCancellationRequested: jest.fn() });
     })
@@ -116,6 +118,8 @@ export const workspace = {
     }),
     workspaceFolders: [] as any[],
     textDocuments: [] as any[],
+    isTrusted: true,
+    onDidSaveTextDocument: jest.fn().mockReturnValue({ dispose: () => {} }),
     openTextDocument: jest.fn(),
     findFiles: jest.fn().mockResolvedValue([]),
     getWorkspaceFolder: jest.fn(),
@@ -150,6 +154,13 @@ export enum FileType {
     File = 1,
     Directory = 2,
     SymbolicLink = 64
+}
+
+export enum ColorThemeKind {
+    Light = 1,
+    Dark = 2,
+    HighContrast = 3,
+    HighContrastLight = 4
 }
 
 // Mock ViewColumn

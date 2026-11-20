@@ -1,0 +1,3 @@
+[ui.view("views/orders.html")]
+[ui.view("views/orders.html")]
+rq orders("http://localhost:8080/orders");

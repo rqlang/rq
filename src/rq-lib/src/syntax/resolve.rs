@@ -8,7 +8,7 @@ use super::{
     },
     parse_result::{EndpointDefinition, Request, RequestScope, RequiredVariable},
     parsers::{
-        attributes::{ATTR_DESCRIPTION, ATTR_UI_COLOR},
+        attributes::{ATTR_DESCRIPTION, ATTR_UI_COLOR, ATTR_UI_VIEW},
         utils::parse_system_function,
     },
     reader::{line_col_at, offset_at, TokenReader},
@@ -451,7 +451,7 @@ pub(crate) fn is_in_literal_attribute(tokens: &[Token], index: usize) -> bool {
             depth += 1;
         } else if is_punctuation(tokens, open, PUNC_LBRACKET) {
             if depth == 0 {
-                return [ATTR_UI_COLOR, ATTR_DESCRIPTION]
+                return [ATTR_UI_COLOR, ATTR_DESCRIPTION, ATTR_UI_VIEW]
                     .contains(&attribute_name_tokens(tokens, open).as_str());
             }
             depth -= 1;

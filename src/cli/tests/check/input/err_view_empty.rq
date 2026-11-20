@@ -1,0 +1,2 @@
+[ui.view("")]
+rq orders("http://localhost:8080/orders");

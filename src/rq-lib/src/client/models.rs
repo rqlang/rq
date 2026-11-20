@@ -16,6 +16,13 @@ pub struct AuthListEntry {
     pub auth_type: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ViewTarget {
+    pub path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
 pub struct RequestDetails {
     pub name: String,
     pub auth_name: Option<String>,
@@ -29,6 +36,7 @@ pub struct RequestDetails {
     pub required_variables: Vec<String>,
     pub confirmation_required: bool,
     pub output: Option<OutputTarget>,
+    pub view: Option<ViewTarget>,
     pub file: String,
     pub request_file: String,
     pub line: usize,
@@ -110,6 +118,7 @@ pub struct PreparedRequest {
     pub timeout: Option<Duration>,
     pub auth: Option<PreparedAuth>,
     pub output: Option<OutputTarget>,
+    pub view: Option<ViewTarget>,
     pub confirmation_required: bool,
     pub agent_confirmation_required: bool,
     pub(crate) context: VariableContext,

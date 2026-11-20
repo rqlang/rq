@@ -21,6 +21,14 @@ pub struct OutputPath {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct ViewPath {
+    pub path: String,
+    pub base_dir: String,
+    pub line: usize,
+    pub character: usize,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct EndpointDefinition {
     pub name: String,
     pub url: String,
@@ -70,6 +78,7 @@ pub struct Request {
     pub description: Option<String>,
     pub confirm: bool,
     pub output: Vec<OutputPath>,
+    pub view: Option<ViewPath>,
     pub required_variables: Vec<RequiredVariable>,
     pub source_path: Option<String>,
     pub related_files: Vec<String>,

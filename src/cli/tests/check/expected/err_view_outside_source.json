@@ -1,0 +1,10 @@
+{
+  "errors": [
+    {
+      "file": "{{*}}",
+      "line": 1,
+      "column": 10,
+      "message": "{{regex:^View .*outside\\.html is outside the source folder .*input$}}"
+    }
+  ]
+}

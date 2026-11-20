@@ -19,7 +19,7 @@ pub struct AuthListEntry {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ViewTarget {
     pub path: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }
 

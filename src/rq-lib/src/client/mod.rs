@@ -40,6 +40,11 @@ type AuthDetails = (
 
 const AUTH_TOKEN_VARIABLE: &str = "auth_token";
 
+struct SourceRoot {
+    path: String,
+    real: String,
+}
+
 pub struct RqClient {
     fs: Arc<dyn Fs>,
     secrets: Arc<dyn SecretProvider>,
@@ -160,8 +165,9 @@ impl RqClient {
                 .and_then(|name| rq_file.auth_providers.get(name))
                 .map(|config| config.auth_type.as_str().to_string());
             let auth_name = auth_name.map(str::to_string);
-            let output = self.output_target(&req_with_vars.request, source_path);
-            let view = self.view_target(&req_with_vars.request, source_path);
+            let root = self.source_root(source_path);
+            let output = self.output_target(&req_with_vars.request, &root);
+            let view = self.view_target(&req_with_vars.request, &root);
             let details = Self::request_details(
                 req_with_vars.request,
                 auth_name,
@@ -205,8 +211,9 @@ impl RqClient {
         let auth_config = Self::auth_config_of(&rq_file, &resolved)?;
         let auth_name = auth_config.map(|config| config.name.clone());
         let auth_type = auth_config.map(|config| config.auth_type.as_str().to_string());
-        let output = self.output_target(&resolved, source_path);
-        let view = self.view_target(&resolved, source_path);
+        let root = self.source_root(source_path);
+        let output = self.output_target(&resolved, &root);
+        let view = self.view_target(&resolved, &root);
 
         let details = Self::request_details(
             resolved,
@@ -1172,11 +1179,12 @@ impl RqClient {
             source_path,
             environment,
         )?;
+        let root = self.source_root(source_path);
         let output = match output {
             Some(path) => Some(OutputTarget::chosen(path)),
-            None => self.output_target(&prepared.request, source_path),
+            None => self.output_target(&prepared.request, &root),
         };
-        let view = self.view_target(&prepared.request, source_path);
+        let view = self.view_target(&prepared.request, &root);
         Ok(PreparedRequest {
             output,
             view,
@@ -1480,81 +1488,82 @@ impl RqClient {
         })
     }
 
-    fn output_target(&self, request: &Request, source_path: &Path) -> Option<OutputTarget> {
-        let root = self.source_root(source_path);
-        OutputTarget::resolve(&request.output, &root)
-            .map(|target| self.without_links_out_of(target, &root))
+    fn output_target(&self, request: &Request, root: &SourceRoot) -> Option<OutputTarget> {
+        OutputTarget::resolve(&request.output, &root.path)
+            .map(|target| self.without_links_out_of(target, root))
     }
 
-    fn view_target(&self, request: &Request, source_path: &Path) -> Option<ViewTarget> {
+    fn view_target(&self, request: &Request, root: &SourceRoot) -> Option<ViewTarget> {
         let view = request.view.as_ref()?;
-        let root = self.source_root(source_path);
         let path = crate::paths::normalize_lexically(&crate::paths::join_lexically(
             &view.base_dir,
             &view.path,
         ));
-        let error = self.view_error(&path, &root);
+        let error = self.view_error(&path, root);
         Some(ViewTarget { path, error })
     }
 
-    fn view_error(&self, path: &str, root: &str) -> Option<String> {
-        if crate::paths::depth_below(path, root).is_none_or(|depth| depth == 0) {
-            return Some(format!("View {path} is outside the source folder {root}"));
+    fn view_error(&self, path: &str, root: &SourceRoot) -> Option<String> {
+        if crate::paths::depth_below(path, &root.path).is_none_or(|depth| depth == 0) {
+            return Some(format!(
+                "View {path} is outside the source folder {}",
+                root.path
+            ));
         }
-        if !self.fs.is_file(Path::new(path)) {
-            return Some(format!("View {path} not found"));
+        if let Some(link_error) = self.link_out_of(path, root) {
+            return Some(link_error);
         }
-        let real_root = self
-            .fs
-            .real_path(Path::new(root))
-            .map(|real| crate::paths::clean_path(&real))
-            .unwrap_or_else(|_| root.to_string());
-        let leads_inside = self.fs.real_path(Path::new(path)).is_ok_and(|real| {
-            crate::paths::depth_below(&crate::paths::clean_path(&real), &real_root).is_some()
-        });
-        (!leads_inside).then(|| {
-            format!("View {path} is a symbolic link that leads outside the source folder {root}")
-        })
+        (!self.fs.is_file(Path::new(path))).then(|| format!("View {path} not found"))
     }
 
-    fn source_root(&self, source_path: &Path) -> String {
+    fn source_root(&self, source_path: &Path) -> SourceRoot {
         let folder = if self.fs.is_file(source_path) {
             source_path.parent().unwrap_or(source_path)
         } else {
             source_path
         };
-        let root = self
+        let path = crate::paths::clean_path(
+            &self
+                .fs
+                .canonicalize(folder)
+                .unwrap_or_else(|_| folder.to_path_buf()),
+        );
+        let real = self
             .fs
-            .canonicalize(folder)
-            .unwrap_or_else(|_| folder.to_path_buf());
-        crate::paths::clean_path(&root)
+            .real_path(Path::new(&path))
+            .map(|real| crate::paths::clean_path(&real))
+            .unwrap_or_else(|_| path.clone());
+        SourceRoot { path, real }
     }
 
-    fn without_links_out_of(&self, target: OutputTarget, root: &str) -> OutputTarget {
+    fn without_links_out_of(&self, target: OutputTarget, root: &SourceRoot) -> OutputTarget {
         if target.error.is_some() {
             return target;
         }
-        let real_root = self
-            .fs
-            .real_path(Path::new(root))
-            .map(|real| crate::paths::clean_path(&real))
-            .unwrap_or_else(|_| root.to_string());
-        let escaping = Path::new(&target.path)
-            .ancestors()
-            .take_while(|ancestor| {
-                crate::paths::depth_below(&ancestor.to_string_lossy(), root).is_some_and(|d| d > 0)
-            })
-            .find(|ancestor| self.fs.is_symlink(ancestor) && !self.leads_into(ancestor, &real_root))
-            .map(crate::paths::clean_path);
-        match escaping {
-            Some(link) => OutputTarget {
-                error: Some(format!(
-                    "{link} is a symbolic link that leads outside the source folder {root}"
-                )),
+        match self.link_out_of(&target.path, root) {
+            Some(error) => OutputTarget {
+                error: Some(error),
                 ..target
             },
             None => target,
         }
+    }
+
+    fn link_out_of(&self, path: &str, root: &SourceRoot) -> Option<String> {
+        Path::new(path)
+            .ancestors()
+            .take_while(|ancestor| {
+                crate::paths::depth_below(&ancestor.to_string_lossy(), &root.path)
+                    .is_some_and(|d| d > 0)
+            })
+            .find(|ancestor| self.fs.is_symlink(ancestor) && !self.leads_into(ancestor, &root.real))
+            .map(|link| {
+                format!(
+                    "{} is a symbolic link that leads outside the source folder {}",
+                    crate::paths::clean_path(link),
+                    root.path
+                )
+            })
     }
 
     fn leads_into(&self, link: &Path, real_root: &str) -> bool {
@@ -2047,6 +2056,7 @@ impl RqClient {
 
     fn check_views(&self, rq_file: &RqFile, source_path: &Path) -> Vec<RqError> {
         let file = rq_file.path.to_string_lossy().to_string();
+        let mut root = None;
         rq_file
             .requests
             .iter()
@@ -2054,7 +2064,8 @@ impl RqClient {
             .filter(|request| request.source_path.as_deref() == Some(file.as_str()))
             .filter_map(|request| {
                 let view = request.view.as_ref()?;
-                let error = self.view_target(request, source_path)?.error?;
+                let root = root.get_or_insert_with(|| self.source_root(source_path));
+                let error = self.view_target(request, root)?.error?;
                 Some(RqError::Syntax(
                     crate::syntax::error::SyntaxError::with_file(
                         error,
@@ -4157,6 +4168,24 @@ mod prepare_tests {
         assert!(target
             .and_then(|view| view.error)
             .is_some_and(|error| error.contains("symbolic link")));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn prepare_flags_a_view_through_a_broken_link_as_a_link() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let outside = tempfile::tempdir().expect("tempdir");
+        std::os::unix::fs::symlink(outside.path().join("missing"), dir.path().join("views"))
+            .expect("symlink");
+        write(
+            dir.path(),
+            "main.rq",
+            "[ui.view(\"views/users.html\")]\nrq list(\"http://localhost\");\n",
+        );
+        let target = prepare(dir.path(), "list", &[]).view;
+        assert!(target
+            .and_then(|view| view.error)
+            .is_some_and(|error| error.contains("views is a symbolic link")));
     }
 
     #[cfg(unix)]

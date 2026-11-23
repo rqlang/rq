@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 import * as rqClient from '../rqClient';
 import { bodyFileRenderer, getBodyRenderer, readMediaFile, RenderedBody } from './bodyRenderers';
 import { escapeHtml, fillTemplate } from './html';
-import { normalizePath } from '../utils';
+import { normalizePath, realPathOf } from '../utils';
 import { renderResponseView, ResponseView } from './responseView';
 
 const COPY_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
@@ -173,9 +173,27 @@ function responseViewHtml(view: Exclude<ResponseView, { kind: 'skipped' }>): str
 }
 
 async function readTemplate(file: string): Promise<string> {
-    const target = normalizePath(file);
-    const open = vscode.workspace.textDocuments.find(document => document.uri.scheme === 'file' && normalizePath(document.uri.fsPath) === target);
+    const open = await openDocumentOf(file);
     return open ? open.getText() : fs.promises.readFile(file, 'utf8');
+}
+
+async function openDocumentOf(file: string): Promise<vscode.TextDocument | undefined> {
+    const documents = vscode.workspace.textDocuments.filter(document => document.uri.scheme === 'file');
+    const target = normalizePath(file);
+    const spelled = documents.find(document => normalizePath(document.uri.fsPath) === target);
+    if (spelled || documents.length === 0) {
+        return spelled;
+    }
+    const real = await realPathOf(file);
+    if (real === undefined) {
+        return undefined;
+    }
+    for (const document of documents) {
+        if (await realPathOf(document.uri.fsPath) === real) {
+            return document;
+        }
+    }
+    return undefined;
 }
 
 function isDarkTheme(kind: vscode.ColorThemeKind): boolean {

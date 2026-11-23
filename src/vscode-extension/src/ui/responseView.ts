@@ -20,6 +20,8 @@ const MEMORY_LIMIT = 10_000_000;
 
 const VIEW_CSP = "default-src 'none'; style-src 'unsafe-inline'; img-src data:";
 
+const bodyFileTexts = new WeakMap<object, string>();
+
 const noTemplateFiles: FS = {
     exists: async () => false,
     existsSync: () => false,
@@ -93,8 +95,14 @@ async function bodyTextOf(result: RequestExecutionResult): Promise<string | { re
     if (file.binary || file.path === undefined) {
         return { reason: 'the body is binary' };
     }
+    const read = bodyFileTexts.get(file);
+    if (read !== undefined) {
+        return read;
+    }
     try {
-        return await fs.promises.readFile(file.path, 'utf8');
+        const text = await fs.promises.readFile(file.path, 'utf8');
+        bodyFileTexts.set(file, text);
+        return text;
     } catch (error) {
         return { reason: `the body file ${file.path} could not be read: ${messageOf(error)}` };
     }

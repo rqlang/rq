@@ -430,6 +430,25 @@ describe('webviewGenerator', () => {
             expect(pane).toContain('&lt;p&gt;unsaved&lt;/p&gt;');
         });
 
+        test('renders the template open in the editor under the real path of a linked view', async () => {
+            fs.mkdirSync(path.join(dir, 'real'));
+            fs.writeFileSync(path.join(dir, 'real', 'orders.html'), '<p>saved</p>');
+            fs.symlinkSync(path.join(dir, 'real'), path.join(dir, 'views'));
+            const result = { ...withView('<p></p>'), view: { path: path.join(dir, 'views', 'orders.html') } };
+            (vscode.workspace as any).textDocuments = [{ uri: { scheme: 'file', fsPath: path.join(dir, 'real', 'orders.html') }, getText: () => '<p>unsaved</p>' }];
+
+            const pane = await getViewPaneContent(mockContext, result);
+            (vscode.workspace as any).textDocuments = [];
+
+            expect(pane).toContain('&lt;p&gt;unsaved&lt;/p&gt;');
+        });
+
+        test('keeps the frames of the panel from loading any page a view links to', () => {
+            const target = fs.readFileSync(path.join(__dirname, '..', 'media', 'webviewTemplate.html'), 'utf8');
+
+            expect(target).toMatch(/Content-Security-Policy" content="[^"]*frame-src 'none'/);
+        });
+
         test('keeps the open view button out of the tabs', async () => {
             const html = await getWebviewContent(mockContext, withView('{% if %}'));
 

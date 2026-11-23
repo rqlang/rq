@@ -947,17 +947,16 @@ describe('runRequest Commands', () => {
             expect(viewUpdates(panels[0])).toEqual([{ command: 'updateView', html: '<p>second</p>' }]);
         });
 
-        test('a theme change renders the view again without resolving it', async () => {
+        test('a theme change renders the view where rq-lib resolves it now', async () => {
             requestRunner.registerCommands(provider);
             respondWithView('/w/views/orders.html');
             await requestRunner.runRequest(makeItem('a'), provider);
-            resolveViewTo({ path: '/w/views/orders.html' });
-            (cliService.showRequest as jest.Mock).mockClear();
+            resolveViewTo({ path: '/w/views/orders.html', error: 'views is a symbolic link that leads outside the source folder /w' });
 
             (vscode.window.onDidChangeActiveColorTheme as jest.Mock).mock.calls[0][0]();
             await settle();
 
-            expect([viewUpdates(panels[0]).length, (cliService.showRequest as jest.Mock).mock.calls.length]).toEqual([1, 0]);
+            expect((webviewGenerator.getViewPaneContent as jest.Mock).mock.calls[0][1].view.error).toContain('symbolic link');
         });
 
         test('saving the view under its real path refreshes a view reached through a link', async () => {

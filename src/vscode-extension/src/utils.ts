@@ -13,6 +13,14 @@ export function normalizePath(p: string): string {
     return normalized;
 }
 
+export async function realPathOf(file: string): Promise<string | undefined> {
+    try {
+        return normalizePath(await fs.promises.realpath(file));
+    } catch {
+        return undefined;
+    }
+}
+
 export async function isDirectory(target: string): Promise<boolean> {
     try {
         return (await fs.promises.stat(target)).isDirectory();

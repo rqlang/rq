@@ -120,6 +120,22 @@ describe('renderResponseView', () => {
         expect(documentOf(target)).toContain('3');
     });
 
+    test('renders again the body output wrote, even after the file is overwritten', async () => {
+        const bodyFile = path.join(dir, 'orders.json');
+        fs.writeFileSync(bodyFile, '{"id":1}');
+        const result = response({
+            body: '',
+            body_file: { media_type: 'application/json', file_name: 'orders.json', size: 8, binary: false, path: bodyFile }
+        });
+        const view = { path: viewFile('{{ body.id }}') };
+        await renderResponseView(view, result, ENVIRONMENT);
+        fs.writeFileSync(bodyFile, '{"id":2}');
+
+        const target = await renderResponseView(view, { ...result }, ENVIRONMENT);
+
+        expect(documentOf(target)).toContain('<main>\n1\n</main>');
+    });
+
     test('says when the file output wrote the body to cannot be read', async () => {
         const target = await render('<p></p>', {
             body: '',

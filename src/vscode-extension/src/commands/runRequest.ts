@@ -8,7 +8,7 @@ import { vscodeOAuthProvider } from '../auth/vscodeAuth';
 import { getWebviewContent, getErrorWebviewContent, getViewPaneContent } from '../ui/webviewGenerator';
 import { ResultsMessage, ResultsPanels, ResultsSession, readResultsTabMode } from '../ui/resultsPanels';
 import { Logger } from '../logger';
-import { CANCELLED_MESSAGE, normalizePath } from '../utils';
+import { CANCELLED_MESSAGE, normalizePath, realPathOf } from '../utils';
 
 const RUN_CONFIRMATION = 'Run';
 
@@ -56,14 +56,6 @@ async function isViewOf(session: RequestResultsSession, file: string): Promise<b
     return viewReal !== undefined && viewReal === fileReal;
 }
 
-async function realPathOf(file: string): Promise<string | undefined> {
-    try {
-        return normalizePath(await fs.promises.realpath(file));
-    } catch {
-        return undefined;
-    }
-}
-
 export class RequestRunner {
     private readonly resultsPanels = new ResultsPanels<ResultsData>((session, message) => this.handlePanelMessage(session, message));
     private logger!: Logger;
@@ -84,8 +76,8 @@ export class RequestRunner {
             vscode.commands.registerCommand('rq.runRequest', (item) => this.runRequest(item, provider)),
             vscode.commands.registerCommand('rq.runRequestWithVariables', (item) => this.runRequestWithVariables(item, provider)),
             vscode.commands.registerCommand('rq.cancelRequest', () => this.cancelActiveExecution()),
-            vscode.workspace.onDidSaveTextDocument(document => this.refreshViews(session => isViewOf(session, document.uri.fsPath), true)),
-            vscode.window.onDidChangeActiveColorTheme(() => this.refreshViews(async () => true, false))
+            vscode.workspace.onDidSaveTextDocument(document => this.refreshViews(session => isViewOf(session, document.uri.fsPath))),
+            vscode.window.onDidChangeActiveColorTheme(() => this.refreshViews(async () => true))
         );
     }
 
@@ -360,20 +352,20 @@ export class RequestRunner {
         this.showResult(execution, html, bodyFile ?? result.results[0].body, bodyFile, result.results[0]);
     }
 
-    private async refreshViews(shows: (session: RequestResultsSession) => Promise<boolean>, resolveView: boolean) {
+    private async refreshViews(shows: (session: RequestResultsSession) => Promise<boolean>) {
         await Promise.all(this.resultsPanels.openSessions().map(async session => {
             const data = session.data;
             if (this.activeExecution?.session !== session && data?.result?.view && await shows(session)) {
-                await this.refreshView(session, data, data.result, resolveView);
+                await this.refreshView(session, data, data.result);
             }
         }));
     }
 
-    private async refreshView(session: RequestResultsSession, data: ResultsData, previous: rqClient.RequestExecutionResult, resolveView: boolean) {
+    private async refreshView(session: RequestResultsSession, data: ResultsData, previous: rqClient.RequestExecutionResult) {
         const refresh = (this.viewRefreshes.get(session) ?? 0) + 1;
         this.viewRefreshes.set(session, refresh);
         try {
-            const result = resolveView ? await this.withCurrentView(data.run, previous) : previous;
+            const result = await this.withCurrentView(data.run, previous);
             const html = await getViewPaneContent(this.context, result);
             const latest = this.viewRefreshes.get(session) === refresh && session.data === data && this.activeExecution?.session !== session;
             if (html !== undefined && latest) {

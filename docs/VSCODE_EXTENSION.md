@@ -118,7 +118,7 @@ ep orders("{{base_url}}/orders") {
 </table>
 ```
 
-- **Template language.** Plain HTML with [LiquidJS](https://liquidjs.com/tutorials/intro-to-liquid.html) tags (`{% for %}`, `{% if %}`, `{% assign %}`…) and [filters](https://liquidjs.com/filters/overview.html) (`size`, `date`, `round`, `join`…). An unknown filter is an error. A view cannot include other templates: `include`, `render` and `layout` fail.
+- **Template language.** Write only the fragment that goes in the page, without `<!DOCTYPE>`, `<html>`, `<head>` or `<body>`: the extension wraps it in its own document. Plain HTML with [LiquidJS](https://liquidjs.com/tutorials/intro-to-liquid.html) tags (`{% for %}`, `{% if %}`, `{% assign %}`…) and [filters](https://liquidjs.com/filters/overview.html) (`size`, `date`, `round`, `join`…). An unknown filter is an error. A view cannot include other templates: `include`, `render` and `layout` fail.
 - **What a template sees.**
 
   | Name | Value |
@@ -129,7 +129,7 @@ ep orders("{{base_url}}/orders") {
   | `request` | `name`, `method` and `url` of the request that was sent |
 
   Variables, environments and secrets are not available, so a view never shows a secret. A field that does not exist renders as empty.
-- **Escaping.** Every `{{ … }}` is [HTML-escaped](https://liquidjs.com/tutorials/escaping.html), so markup coming from the response is shown as text and never interpreted.
+- **Escaping.** Every `{{ … }}` is [HTML-escaped](https://liquidjs.com/tutorials/escaping.html), so markup coming from the response is shown as text and never interpreted. The `raw` filter, which would skip that, is not available: a template that uses it fails with *undefined filter: raw*.
 - **Styles.** Views use [Pico CSS](https://picocss.com/docs/classless) in its classless version: plain `<h2>`, `<table>`, `<dl>`, `<code>`, `<article>` or `<details>` are styled without classes, in light or dark following the VS Code theme. A template can add its own `<style>`.
 - **Where it shows.** The panel opens on a **View** tab, with the usual body one click away on **Body**. Saving the template, or switching the VS Code theme, renders the last response again in the **View** tab without sending the request; a panel whose request is running is left until the run ends.
 - **When it applies.** Only to a `2xx` response with a JSON body that was received in full, also when [`output`](LANGUAGE_DEFINITION.md#output-attribute) wrote that body to a file. Any other response is shown as usual, with a note such as *View not applied: the response status is 404*.

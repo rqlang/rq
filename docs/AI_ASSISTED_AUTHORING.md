@@ -364,7 +364,8 @@ The assistant runs `pets/list` with `run_request` to see the body, writes `views
 Tell it what you know about views, since it cannot see them rendered:
 
 - A template sees `body`, `status`, `headers` and `request`, never variables or secrets.
-- Every `{{ … }}` is escaped, scripts never run and remote images are blocked, so ask for text and plain HTML elements.
+- A template is only the fragment that goes in the page, without `<html>`, `<head>` or `<body>`.
+- Every `{{ … }}` is escaped and the `raw` filter is not available, scripts never run and remote images are blocked, so ask for text and plain HTML elements.
 - `validate_rq` reports a view path that does not exist, but not a template error: those show up in the **View** tab, with the line, the first time the request runs.
 
 ## What it won't do

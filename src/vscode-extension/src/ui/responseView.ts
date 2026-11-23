@@ -39,6 +39,7 @@ const liquid = new Liquid({
     renderLimit: RENDER_LIMIT_MS,
     memoryLimit: MEMORY_LIMIT
 });
+delete liquid.filters.raw;
 
 export async function renderResponseView(view: ViewTarget, result: RequestExecutionResult, environment: ViewEnvironment): Promise<ResponseView> {
     if (!environment.trusted) {

@@ -45,6 +45,11 @@ describe('renderResponseView', () => {
         return view.kind === 'rendered' ? view.document : '';
     }
 
+    test('refuses the raw filter, which would skip the escaping', async () => {
+        const target = await render('{% if false %}{{ body.items[0].name | raw }}{% endif %}');
+        expect(target.kind === 'failed' && target.message).toContain('undefined filter: raw');
+    });
+
     test('renders the fields the template selects from the body', async () => {
         const target = await render('{% for item in body.items %}<td>{{ item.id }}</td>{% endfor %}');
         expect(documentOf(target)).toContain('<td>1</td>');

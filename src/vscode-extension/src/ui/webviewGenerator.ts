@@ -1,7 +1,9 @@
+import * as fs from 'fs';
 import * as vscode from 'vscode';
 import * as rqClient from '../rqClient';
 import { bodyFileRenderer, getBodyRenderer, readMediaFile, RenderedBody } from './bodyRenderers';
 import { escapeHtml, fillTemplate } from './html';
+import { normalizePath } from '../utils';
 import { renderResponseView, ResponseView } from './responseView';
 
 const COPY_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
@@ -101,7 +103,10 @@ export async function getWebviewContent(context: vscode.ExtensionContext, result
 
 export async function getViewPaneContent(context: vscode.ExtensionContext, result: rqClient.RequestExecutionResult): Promise<string | undefined> {
     const view = await renderView(context, result);
-    return view === undefined || view.kind === 'skipped' ? undefined : responseViewHtml(view);
+    if (view === undefined) {
+        return undefined;
+    }
+    return view.kind === 'skipped' ? viewNotAppliedHtml(view.reason) : responseViewHtml(view);
 }
 
 async function renderView(context: vscode.ExtensionContext, result: rqClient.RequestExecutionResult): Promise<ResponseView | undefined> {
@@ -111,7 +116,8 @@ async function renderView(context: vscode.ExtensionContext, result: rqClient.Req
     return renderResponseView(result.view, result, {
         trusted: vscode.workspace.isTrusted,
         theme: isDarkTheme(vscode.window.activeColorTheme.kind) ? 'dark' : 'light',
-        stylesheet: await readViewStylesheet(context)
+        stylesheet: await readViewStylesheet(context),
+        readTemplate
     });
 }
 
@@ -121,7 +127,7 @@ async function withResponseView(context: vscode.ExtensionContext, result: rqClie
         return body;
     }
     if (view.kind === 'skipped') {
-        return { ...body, content: `<p class="output-skipped">View not applied: ${escapeHtml(view.reason)}</p>${body.content}` };
+        return { ...body, content: viewNotAppliedHtml(view.reason) + body.content };
     }
     return {
         content: `<div class="body-tabs">
@@ -138,11 +144,18 @@ async function withResponseView(context: vscode.ExtensionContext, result: rqClie
 
         window.addEventListener('message', event => {
             if (event.data && event.data.command === 'updateView') {
-                document.querySelector('.body-pane[data-pane="view"]').innerHTML = event.data.html;
+                const pane = document.querySelector('.body-pane[data-pane="view"]');
+                if (pane) {
+                    pane.innerHTML = event.data.html;
+                }
             }
         });
     `
     };
+}
+
+function viewNotAppliedHtml(reason: string): string {
+    return `<p class="output-skipped">View not applied: ${escapeHtml(reason)}</p>`;
 }
 
 function responseViewHtml(view: Exclude<ResponseView, { kind: 'skipped' }>): string {
@@ -152,11 +165,17 @@ function responseViewHtml(view: Exclude<ResponseView, { kind: 'skipped' }>): str
     const message = escapeHtml(JSON.stringify({ command: 'openView', line: view.line }));
     const openButton = view.template === undefined
         ? ''
-        : `<button class="body-tab active" onclick="vscode.postMessage(${message})">Open view</button>`;
+        : `<button class="view-open" onclick="vscode.postMessage(${message})">Open view</button>`;
     return `<div class="view-error">
             <p>${escapeHtml(view.message)}</p>
             ${openButton}
         </div>`;
+}
+
+async function readTemplate(file: string): Promise<string> {
+    const target = normalizePath(file);
+    const open = vscode.workspace.textDocuments.find(document => document.uri.scheme === 'file' && normalizePath(document.uri.fsPath) === target);
+    return open ? open.getText() : fs.promises.readFile(file, 'utf8');
 }
 
 function isDarkTheme(kind: vscode.ColorThemeKind): boolean {

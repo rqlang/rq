@@ -12,6 +12,7 @@ export interface ViewEnvironment {
     trusted: boolean;
     theme: 'light' | 'dark';
     stylesheet: string;
+    readTemplate: (file: string) => Promise<string>;
 }
 
 const RENDER_LIMIT_MS = 2000;
@@ -54,7 +55,7 @@ export async function renderResponseView(view: ViewTarget, result: RequestExecut
     }
     let template: string;
     try {
-        template = await fs.promises.readFile(view.path, 'utf8');
+        template = await environment.readTemplate(view.path);
     } catch (error) {
         return { kind: 'failed', message: `View ${view.path} could not be read: ${messageOf(error)}` };
     }
@@ -74,8 +75,8 @@ async function jsonBodyOf(result: RequestExecutionResult): Promise<{ value: unkn
         return { reason: 'the body was truncated' };
     }
     const text = await bodyTextOf(result);
-    if (text === undefined) {
-        return { reason: 'the body is binary' };
+    if (typeof text !== 'string') {
+        return text;
     }
     try {
         return { value: JSON.parse(text) };
@@ -84,18 +85,18 @@ async function jsonBodyOf(result: RequestExecutionResult): Promise<{ value: unkn
     }
 }
 
-async function bodyTextOf(result: RequestExecutionResult): Promise<string | undefined> {
+async function bodyTextOf(result: RequestExecutionResult): Promise<string | { reason: string }> {
     const file = result.body_file;
     if (file === undefined) {
         return result.body;
     }
     if (file.binary || file.path === undefined) {
-        return undefined;
+        return { reason: 'the body is binary' };
     }
     try {
         return await fs.promises.readFile(file.path, 'utf8');
-    } catch {
-        return undefined;
+    } catch (error) {
+        return { reason: `the body file ${file.path} could not be read: ${messageOf(error)}` };
     }
 }
 

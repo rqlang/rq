@@ -414,10 +414,26 @@ describe('webviewGenerator', () => {
             expect([pane?.startsWith('<iframe class="response-view"'), pane?.includes('&lt;p&gt;7&lt;/p&gt;')]).toEqual([true, true]);
         });
 
-        test('renders no view pane for a response the view does not apply to', async () => {
+        test('explains in the view pane why a refreshed view no longer applies', async () => {
             const pane = await getViewPaneContent(mockContext, withView('<p></p>', 404));
 
-            expect(pane).toBeUndefined();
+            expect(pane).toBe('<p class="output-skipped">View not applied: the response status is 404</p>');
+        });
+
+        test('renders the template open in the editor instead of the one on disk', async () => {
+            const result = withView('<p>saved</p>');
+            (vscode.workspace as any).textDocuments = [{ uri: { scheme: 'file', fsPath: result.view!.path }, getText: () => '<p>unsaved</p>' }];
+
+            const pane = await getViewPaneContent(mockContext, result);
+            (vscode.workspace as any).textDocuments = [];
+
+            expect(pane).toContain('&lt;p&gt;unsaved&lt;/p&gt;');
+        });
+
+        test('keeps the open view button out of the tabs', async () => {
+            const html = await getWebviewContent(mockContext, withView('{% if %}'));
+
+            expect(html).toContain('<button class="view-open" onclick=');
         });
 
         test('explains why a view was not applied', async () => {

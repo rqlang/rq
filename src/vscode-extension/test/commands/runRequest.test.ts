@@ -927,6 +927,56 @@ describe('runRequest Commands', () => {
             expect((webviewGenerator.getViewPaneContent as jest.Mock).mock.calls[0][1].view.error).toContain('symbolic link');
         });
 
+        test('only the last of two overlapping refreshes reaches the panel', async () => {
+            requestRunner.registerCommands(provider);
+            respondWithView('/w/views/orders.html');
+            await requestRunner.runRequest(makeItem('a'), provider);
+            let resolveFirst: (details: unknown) => void = () => {};
+            (cliService.showRequest as jest.Mock)
+                .mockImplementationOnce(() => new Promise(resolve => { resolveFirst = resolve; }))
+                .mockResolvedValueOnce({ name: 'req', requiredVariables: [], view: { path: '/w/views/orders.html' } });
+            (webviewGenerator.getViewPaneContent as jest.Mock).mockResolvedValueOnce('<p>second</p>').mockResolvedValueOnce('<p>first</p>');
+
+            saveHandler()({ uri: { fsPath: '/w/views/orders.html' } });
+            await settle();
+            saveHandler()({ uri: { fsPath: '/w/views/orders.html' } });
+            await settle();
+            resolveFirst({ name: 'req', requiredVariables: [], view: { path: '/w/views/orders.html' } });
+            await settle();
+
+            expect(viewUpdates(panels[0])).toEqual([{ command: 'updateView', html: '<p>second</p>' }]);
+        });
+
+        test('a theme change renders the view again without resolving it', async () => {
+            requestRunner.registerCommands(provider);
+            respondWithView('/w/views/orders.html');
+            await requestRunner.runRequest(makeItem('a'), provider);
+            resolveViewTo({ path: '/w/views/orders.html' });
+            (cliService.showRequest as jest.Mock).mockClear();
+
+            (vscode.window.onDidChangeActiveColorTheme as jest.Mock).mock.calls[0][0]();
+            await settle();
+
+            expect([viewUpdates(panels[0]).length, (cliService.showRequest as jest.Mock).mock.calls.length]).toEqual([1, 0]);
+        });
+
+        test('saving the view under its real path refreshes a view reached through a link', async () => {
+            const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'rq-view-link-'));
+            fs.mkdirSync(path.join(workspace, 'real'));
+            fs.writeFileSync(path.join(workspace, 'real', 'orders.html'), '<p></p>');
+            fs.symlinkSync(path.join(workspace, 'real'), path.join(workspace, 'views'));
+            requestRunner.registerCommands(provider);
+            respondWithView(path.join(workspace, 'views', 'orders.html'));
+            await requestRunner.runRequest(makeItem('a'), provider);
+            resolveViewTo({ path: path.join(workspace, 'views', 'orders.html') });
+
+            saveHandler()({ uri: { fsPath: path.join(workspace, 'real', 'orders.html') } });
+            await settle();
+            fs.rmSync(workspace, { recursive: true, force: true });
+
+            expect(viewUpdates(panels[0])).toHaveLength(1);
+        });
+
         test('open view shows the template at the line of its error', async () => {
             respondWithView('/w/views/orders.html');
             await requestRunner.runRequest(makeItem('a'), provider);

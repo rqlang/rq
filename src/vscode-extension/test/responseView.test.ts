@@ -4,7 +4,12 @@ import * as path from 'path';
 import { renderResponseView, ResponseView, ViewEnvironment } from '../src/ui/responseView';
 import type { RequestExecutionResult } from '../src/execution';
 
-const ENVIRONMENT: ViewEnvironment = { trusted: true, theme: 'dark', stylesheet: 'main{}' };
+const ENVIRONMENT: ViewEnvironment = {
+    trusted: true,
+    theme: 'dark',
+    stylesheet: 'main{}',
+    readTemplate: file => fs.promises.readFile(file, 'utf8')
+};
 
 describe('renderResponseView', () => {
     let dir: string;
@@ -113,6 +118,14 @@ describe('renderResponseView', () => {
             body_file: { media_type: 'application/json', file_name: 'orders.json', size: 20, binary: false, path: bodyFile }
         });
         expect(documentOf(target)).toContain('3');
+    });
+
+    test('says when the file output wrote the body to cannot be read', async () => {
+        const target = await render('<p></p>', {
+            body: '',
+            body_file: { media_type: 'application/json', file_name: 'gone.json', size: 2, binary: false, path: path.join(dir, 'gone.json') }
+        });
+        expect(target.kind === 'skipped' && target.reason).toContain('could not be read');
     });
 
     test('skips a binary body', async () => {

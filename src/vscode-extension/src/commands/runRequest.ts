@@ -44,9 +44,24 @@ interface ActiveExecution {
     session: RequestResultsSession;
 }
 
-function isViewOf(session: RequestResultsSession, file: string): boolean {
+async function isViewOf(session: RequestResultsSession, file: string): Promise<boolean> {
     const viewPath = session.data?.result?.view?.path;
-    return viewPath !== undefined && normalizePath(viewPath) === normalizePath(file);
+    if (viewPath === undefined) {
+        return false;
+    }
+    if (normalizePath(viewPath) === normalizePath(file)) {
+        return true;
+    }
+    const [viewReal, fileReal] = await Promise.all([realPathOf(viewPath), realPathOf(file)]);
+    return viewReal !== undefined && viewReal === fileReal;
+}
+
+async function realPathOf(file: string): Promise<string | undefined> {
+    try {
+        return normalizePath(await fs.promises.realpath(file));
+    } catch {
+        return undefined;
+    }
 }
 
 export class RequestRunner {
@@ -55,6 +70,7 @@ export class RequestRunner {
     private provider: RequestExplorerProvider | undefined;
     private activeExecution: ActiveExecution | undefined;
     private downloadsCleared: Promise<void> = Promise.resolve();
+    private readonly viewRefreshes = new WeakMap<RequestResultsSession, number>();
 
     constructor(
         private context: vscode.ExtensionContext,
@@ -68,8 +84,8 @@ export class RequestRunner {
             vscode.commands.registerCommand('rq.runRequest', (item) => this.runRequest(item, provider)),
             vscode.commands.registerCommand('rq.runRequestWithVariables', (item) => this.runRequestWithVariables(item, provider)),
             vscode.commands.registerCommand('rq.cancelRequest', () => this.cancelActiveExecution()),
-            vscode.workspace.onDidSaveTextDocument(document => this.refreshViews(session => isViewOf(session, document.uri.fsPath))),
-            vscode.window.onDidChangeActiveColorTheme(() => this.refreshViews(() => true))
+            vscode.workspace.onDidSaveTextDocument(document => this.refreshViews(session => isViewOf(session, document.uri.fsPath), true)),
+            vscode.window.onDidChangeActiveColorTheme(() => this.refreshViews(async () => true, false))
         );
     }
 
@@ -344,20 +360,23 @@ export class RequestRunner {
         this.showResult(execution, html, bodyFile ?? result.results[0].body, bodyFile, result.results[0]);
     }
 
-    private async refreshViews(shows: (session: RequestResultsSession) => boolean) {
-        for (const session of this.resultsPanels.openSessions()) {
+    private async refreshViews(shows: (session: RequestResultsSession) => Promise<boolean>, resolveView: boolean) {
+        await Promise.all(this.resultsPanels.openSessions().map(async session => {
             const data = session.data;
-            if (this.activeExecution?.session !== session && data?.result?.view && shows(session)) {
-                await this.refreshView(session, data, data.result);
+            if (this.activeExecution?.session !== session && data?.result?.view && await shows(session)) {
+                await this.refreshView(session, data, data.result, resolveView);
             }
-        }
+        }));
     }
 
-    private async refreshView(session: RequestResultsSession, data: ResultsData, previous: rqClient.RequestExecutionResult) {
+    private async refreshView(session: RequestResultsSession, data: ResultsData, previous: rqClient.RequestExecutionResult, resolveView: boolean) {
+        const refresh = (this.viewRefreshes.get(session) ?? 0) + 1;
+        this.viewRefreshes.set(session, refresh);
         try {
-            const result = await this.withCurrentView(data.run, previous);
+            const result = resolveView ? await this.withCurrentView(data.run, previous) : previous;
             const html = await getViewPaneContent(this.context, result);
-            if (html !== undefined && session.data === data && this.activeExecution?.session !== session) {
+            const latest = this.viewRefreshes.get(session) === refresh && session.data === data && this.activeExecution?.session !== session;
+            if (html !== undefined && latest) {
                 data.result = result;
                 session.panel?.webview.postMessage({ command: 'updateView', html });
             }

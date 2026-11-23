@@ -4,7 +4,7 @@
       "file": "{{*}}",
       "line": 2,
       "column": 12,
-      "message": "{{regex:^View .*views/missing\\.html not found$}}"
+      "message": "{{regex:^View .*views[/\\\\]missing\\.html not found$}}"
     }
   ]
 }

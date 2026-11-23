@@ -338,13 +338,18 @@ pub fn check(
     secrets_json: &str,
     source: &str,
     env: Option<String>,
+    source_root: Option<String>,
 ) -> Result<String, JsError> {
     let errors = make_client(
         parse_files(files_json)?,
         parse_secrets(secrets_json),
         source,
     )
-    .check_path(Path::new(source), env.as_deref())
+    .check_path_in(
+        Path::new(source),
+        Path::new(source_root.as_deref().unwrap_or(source)),
+        env.as_deref(),
+    )
     .map_err(rq_err)?;
 
     let check_errors: Vec<CheckError> = errors

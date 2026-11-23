@@ -45,6 +45,12 @@ struct SourceRoot {
     real: String,
 }
 
+#[derive(Default)]
+struct SourceTargets {
+    output: Option<OutputTarget>,
+    view: Option<ViewTarget>,
+}
+
 pub struct RqClient {
     fs: Arc<dyn Fs>,
     secrets: Arc<dyn SecretProvider>,
@@ -165,16 +171,14 @@ impl RqClient {
                 .and_then(|name| rq_file.auth_providers.get(name))
                 .map(|config| config.auth_type.as_str().to_string());
             let auth_name = auth_name.map(str::to_string);
-            let root = self.source_root(source_path);
-            let output = self.output_target(&req_with_vars.request, &root);
-            let view = self.view_target(&req_with_vars.request, &root);
+            let targets = self.source_targets(&req_with_vars.request, source_path);
             let details = Self::request_details(
                 req_with_vars.request,
                 auth_name,
                 auth_type,
                 &rq_file,
                 confirmation_required,
-                (output, view),
+                targets,
             );
             return Ok((details, warnings));
         }
@@ -211,9 +215,7 @@ impl RqClient {
         let auth_config = Self::auth_config_of(&rq_file, &resolved)?;
         let auth_name = auth_config.map(|config| config.name.clone());
         let auth_type = auth_config.map(|config| config.auth_type.as_str().to_string());
-        let root = self.source_root(source_path);
-        let output = self.output_target(&resolved, &root);
-        let view = self.view_target(&resolved, &root);
+        let targets = self.source_targets(&resolved, source_path);
 
         let details = Self::request_details(
             resolved,
@@ -221,7 +223,7 @@ impl RqClient {
             auth_type,
             &rq_file,
             confirmation_required,
-            (output, view),
+            targets,
         );
         Ok((details, warnings))
     }
@@ -691,6 +693,15 @@ impl RqClient {
     }
 
     pub fn check_path(&self, path: &Path, env_name: Option<&str>) -> Result<Vec<RqError>, RqError> {
+        self.check_path_in(path, path, env_name)
+    }
+
+    pub fn check_path_in(
+        &self,
+        path: &Path,
+        source: &Path,
+        env_name: Option<&str>,
+    ) -> Result<Vec<RqError>, RqError> {
         self.log_source(path);
         let source_path = if self.fs.is_file(path) {
             path.parent().unwrap_or(path)
@@ -704,7 +715,7 @@ impl RqClient {
                 Ok(rq_file) => {
                     errors.extend(self.check_variables(&rq_file, source_path, env_name));
                     errors.extend(self.check_auth_references(&rq_file));
-                    errors.extend(self.check_views(&rq_file, source_path));
+                    errors.extend(self.check_views(&rq_file, source));
                 }
                 Err(e) => {
                     errors.push(e);
@@ -723,7 +734,7 @@ impl RqClient {
         for rq_file in &rq_files {
             errors.extend(self.check_variables(rq_file, source_path, env_name));
             errors.extend(self.check_auth_references(rq_file));
-            errors.extend(self.check_views(rq_file, source_path));
+            errors.extend(self.check_views(rq_file, source));
         }
         let errors = Self::dedup_syntax_errors(errors);
         Self::log_check_summary(file_count, &errors);
@@ -1179,15 +1190,10 @@ impl RqClient {
             source_path,
             environment,
         )?;
-        let root = self.source_root(source_path);
-        let output = match output {
-            Some(path) => Some(OutputTarget::chosen(path)),
-            None => self.output_target(&prepared.request, &root),
-        };
-        let view = self.view_target(&prepared.request, &root);
+        let targets = self.source_targets(&prepared.request, source_path);
         Ok(PreparedRequest {
-            output,
-            view,
+            output: output.map(OutputTarget::chosen).or(targets.output),
+            view: targets.view,
             ..prepared
         })
     }
@@ -1488,6 +1494,17 @@ impl RqClient {
         })
     }
 
+    fn source_targets(&self, request: &Request, source_path: &Path) -> SourceTargets {
+        if request.output.is_empty() && request.view.is_none() {
+            return SourceTargets::default();
+        }
+        let root = self.source_root(source_path);
+        SourceTargets {
+            output: self.output_target(request, &root),
+            view: self.view_target(request, &root),
+        }
+    }
+
     fn output_target(&self, request: &Request, root: &SourceRoot) -> Option<OutputTarget> {
         OutputTarget::resolve(&request.output, &root.path)
             .map(|target| self.without_links_out_of(target, root))
@@ -1658,7 +1675,7 @@ impl RqClient {
         auth_type: Option<String>,
         rq_file: &RqFile,
         confirmation_required: bool,
-        (output, view): (Option<OutputTarget>, Option<ViewTarget>),
+        targets: SourceTargets,
     ) -> RequestDetails {
         let request_file = Self::declaring_file(rq_file, request.source_path.as_deref());
         RequestDetails {
@@ -1677,8 +1694,8 @@ impl RqClient {
                 .map(|required| required.name)
                 .collect(),
             confirmation_required,
-            output,
-            view,
+            output: targets.output,
+            view: targets.view,
             file: crate::paths::clean_path(&rq_file.path),
             request_file,
             line: request.line,
@@ -4108,7 +4125,9 @@ mod prepare_tests {
             Some(ViewTarget {
                 path: std::fs::canonicalize(dir.path())
                     .expect("canonicalize")
-                    .join("api/views/users.html")
+                    .join("api")
+                    .join("views")
+                    .join("users.html")
                     .to_string_lossy()
                     .into_owned(),
                 error: None,

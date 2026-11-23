@@ -49,3 +49,35 @@ fn request_details_leave_out_a_request_without_view() {
     let target = details("orders/count");
     assert!(target.get("View").is_none() && target.get("Request").is_some());
 }
+
+const SHARED_VIEW: &str = r#"{"/workspace/api/orders.rq": "[ui.view(\"../views/orders.html\")]\nrq list(\"http://localhost:8080/orders\");\n", "/workspace/views/orders.html": "<p></p>\n"}"#;
+
+fn check_errors(source_root: Option<String>) -> Value {
+    bindings::check(
+        SHARED_VIEW,
+        "{}",
+        "/workspace/api/orders.rq",
+        None,
+        source_root,
+    )
+    .ok()
+    .and_then(|output| serde_json::from_str::<Value>(&output).ok())
+    .map(|result| result["errors"].clone())
+    .unwrap_or(Value::Null)
+}
+
+#[test]
+fn check_accepts_a_view_inside_the_source_root_it_is_given() {
+    assert_eq!(
+        check_errors(Some("/workspace".to_string())),
+        serde_json::json!([])
+    );
+}
+
+#[test]
+fn check_measures_a_view_against_the_folder_of_the_file_without_a_source_root() {
+    let target = check_errors(None);
+    assert!(target[0]["message"]
+        .as_str()
+        .is_some_and(|message| message.contains("is outside the source folder")));
+}

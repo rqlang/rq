@@ -92,7 +92,8 @@ export async function validateRq(args: {
     const draft = draftPath(workspace, args.path);
     const filesJson = draftsJson([{ path: draft, source: args.source }]);
     const secretsJson = await buildSecretsMap(workspace);
-    const raw = await wasmCall('check', [filesJson, secretsJson, draft, args.env]);
+    const sourceRoot = isUnscoped(workspace) ? undefined : workspace;
+    const raw = await wasmCall('check', [filesJson, secretsJson, draft, args.env, sourceRoot]);
     const parsed = JSON.parse(raw) as { errors: Diagnostic[] };
     const diagnostics = (parsed.errors ?? []).map(e => ({ ...e, severity: e.severity ?? 'error' }));
     return { ok: diagnostics.length === 0, diagnostics };

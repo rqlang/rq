@@ -483,6 +483,7 @@ The following attributes are currently supported:
 - `doc.description`
 - `confirm` (on `rq`, `ep` and `env`, see [`confirm` attribute](#confirm-attribute))
 - `output` (on `rq` and `ep`, see [`output` attribute](#output-attribute))
+- `ui.view` (only on `rq`, see [`ui.view` attribute](#uiview-attribute))
 - `ui.color` (only on `env`, see [Marking an environment with a color](#marking-an-environment-with-a-color))
 
 ### `method` attribute
@@ -650,6 +651,26 @@ ep reports<base>("/reports") {
 - `rq request run -o <PATH>` replaces it for that run, see [`rq request run`](CLI.md#rq-request-run).
 - It never changes what a request sends.
 
+### `ui.view` attribute
+
+`ui.view` names an HTML template that the VS Code extension uses to present the JSON response of a request, picking the fields it needs and laying them out, the way XSLT presents XML:
+
+```
+ep orders("{{base_url}}/orders") {
+  [ui.view("views/orders.html")]
+  rq list();
+}
+```
+
+- The value is a single string, in double or single quotes. It is a path taken literally: `{{...}}` inside it is not interpolated.
+- It is valid only on `rq` statements, at most once per request. Using it on an `ep` or an `env` is a parse error. It is not inherited: a view describes the response of one request.
+- A relative path is resolved against the directory of the `.rq` file where the attribute is written; an absolute path is used as is.
+- After resolving `.` and `..`, the file must be inside the source, as for [`output`](#output-attribute): the folder passed to `-s/--source` in the CLI (the file's folder when it is a file), the workspace folder in the VS Code extension. A symbolic link must lead inside the source too.
+- `rq check` reports a view that is outside the source or does not exist, at the position of the path. It does not read the template, so a template with errors is only reported when the extension renders it.
+- `rq request show` reports the resolved path as `view`, and `view_error` when the file cannot be used.
+- Only the VS Code extension renders it (see [Response views](VSCODE_EXTENSION.md#response-views)). The CLI and the MCP server print and return the response as usual.
+- It never changes what a request sends.
+
 ## Environments
 
 Environments allow you to group variable values under a named context (such as `local`, `dev`, or `production`) and then run the same `.rq` file against different backends or settings without changing the file itself.
@@ -707,7 +728,7 @@ env production {
 
 The value is one of a fixed palette, written as a bare lowercase identifier: `red`, `orange`, `yellow`, `green`, `blue` or `purple`. Strings, variables and interpolation are not accepted.
 
-- `ui.color` is valid only on `env` statements; using it on `rq` or `ep` is a parse error, and so is using `method`, `timeout`, `auth`, `required`, `doc.description` or `output` on an `env`. `confirm` is the only other attribute an `env` accepts.
+- `ui.color` is valid only on `env` statements; using it on `rq` or `ep` is a parse error, and so is using `method`, `timeout`, `auth`, `required`, `doc.description`, `output` or `ui.view` on an `env`. `confirm` is the only other attribute an `env` accepts.
 - It may appear at most once per environment.
 - It is UI metadata only: it does not define a variable and never changes what a request sends.
 - The VS Code extension paints the selected environment in the Requests view with this color (see [Environment color](VSCODE_EXTENSION.md#environment-color)).
@@ -861,6 +882,7 @@ Not all attributes are valid on both `ep` and `rq` statements. The table below s
 | `doc.description` | yes | yes |
 | `confirm` | yes | yes |
 | `output`  | yes (folder only) | yes |
+| `ui.view` | no   | yes  |
 | `ui.color`| no   | no   |
 
 When an attribute is placed on an `ep` statement, it applies as a default to all `rq` requests inside that endpoint block (except `doc.description`, which only describes the endpoint itself; `confirm` is inherited too, and `output` is a folder that the request's own `output` is resolved against). An `rq` statement can override or extend those defaults with its own attributes.
@@ -878,7 +900,7 @@ ep users("http://localhost:8080/api/users") {
 
 In this example, the endpoint `users` defines a base timeout of `20` seconds. The `rq list` action overrides that timeout with `10` seconds, while `rq get` does not specify a timeout and therefore inherits the endpoint-level `20` seconds. Both actions share the same base URL, and `get` also applies the `auth` configuration.
 
-Using `method` or `required` on an `ep` statement is a parse error.
+Using `method`, `required` or `ui.view` on an `ep` statement is a parse error.
 
 ### Templated endpoints
 

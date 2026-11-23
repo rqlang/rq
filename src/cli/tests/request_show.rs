@@ -837,3 +837,54 @@ fn test_request_show_output_json_has_the_same_content() -> Result<(), Box<dyn st
     );
     Ok(())
 }
+
+fn show_view(name: &str, format: &str) -> Result<String, Box<dyn std::error::Error>> {
+    let output = rq_cmd()
+        .args([
+            "request",
+            "show",
+            "-s",
+            "tests/fixtures/request_show_view.rq",
+            "-n",
+            name,
+            "-f",
+            format,
+        ])
+        .output()?;
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).into());
+    }
+    Ok(String::from_utf8(output.stdout)?)
+}
+
+#[test]
+fn test_request_show_view_reports_the_resolved_path() -> Result<(), Box<dyn std::error::Error>> {
+    let file = std::fs::canonicalize("tests/fixtures/views/order.html")?;
+    let stdout = show_view("order", "text")?;
+    assert!(
+        stdout.contains(&format!("view: {}\n", file.display())),
+        "{stdout}"
+    );
+    Ok(())
+}
+
+#[test]
+fn test_request_show_view_reports_a_missing_file() -> Result<(), Box<dyn std::error::Error>> {
+    let stdout = show_view("missing", "text")?;
+    assert!(
+        stdout.contains("view_error: View ") && stdout.contains("missing.html not found"),
+        "{stdout}"
+    );
+    Ok(())
+}
+
+#[test]
+fn test_request_show_view_json_has_the_same_content() -> Result<(), Box<dyn std::error::Error>> {
+    let file = std::fs::canonicalize("tests/fixtures/views/order.html")?;
+    let json: Value = serde_json::from_str(&show_view("order", "json")?)?;
+    assert_eq!(
+        json["view"],
+        serde_json::json!({"path": file.display().to_string()})
+    );
+    Ok(())
+}

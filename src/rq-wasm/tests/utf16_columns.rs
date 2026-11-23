@@ -36,7 +36,7 @@ fn check_reports_utf16_columns() {
     let file = workspace.path().join("a.rq");
     std::fs::write(&file, "rq get(url: \"http://x/😀\", body: not_found);\n").unwrap();
     let source = file.to_string_lossy().replace('\\', "/");
-    let output = bindings::check("{}", "{}", &source, None).unwrap_or_default();
+    let output = bindings::check("{}", "{}", &source, None, None).unwrap_or_default();
     let target: Value = serde_json::from_str(&output).unwrap_or(Value::Null);
     assert_eq!(target["errors"][0]["column"], Value::from(34), "{output}");
 }

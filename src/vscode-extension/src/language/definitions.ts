@@ -166,6 +166,12 @@ export const ATTRIBUTE_DEFINITIONS: AttributeDefinition[] = [
         signature: '[output("path")]',
         description: 'Writes the response body to a file. A path ending with / or with a . or .. segment is a folder that keeps the automatic file name. On an rq it writes every body; on an ep it must be a folder, and only binary bodies of its requests go there. Responses that are not 2xx are never written.',
         targets: 'rq, ep'
+    },
+    {
+        name: 'ui.view',
+        signature: '[ui.view("path")]',
+        description: 'Presents the JSON response of a 2xx request with an HTML template written in LiquidJS, in the View tab of the results. The path is relative to the .rq file, is not interpolated and must stay inside the workspace. Only the VS Code extension renders it.',
+        targets: 'rq'
     }
 ];
 

@@ -298,7 +298,7 @@ Arrays are not a type — `let a = ["x"];` is rejected at the declaration. `$[..
 
 Annotations in square brackets placed immediately above an `rq`, `ep` or `env` statement. All take one argument in parentheses except `confirm`, which is written bare: `[confirm]`.
 
-Supported: `method`, `timeout`, `auth`, `required`, `doc.description` and `output` (on `rq`/`ep`), `confirm` (on `rq`/`ep`/`env`) and `ui.color` (on `env` only).
+Supported: `method`, `timeout`, `auth`, `required`, `doc.description` and `output` (on `rq`/`ep`), `confirm` (on `rq`/`ep`/`env`), `ui.view` (on `rq` only) and `ui.color` (on `env` only).
 
 ```rq
 [method(POST)]
@@ -391,6 +391,18 @@ ep reports<base>("/reports") {
 }
 ```
 
+### `ui.view("path")`
+Names an HTML template that the VS Code extension uses to present the JSON response of one request. One string literal, taken literally (`{{...}}` is not interpolated); at most one per `rq`; valid only on `rq` (not on `ep` or `env`) and not inherited.
+- A relative path resolves against the directory of the `.rq` file where the attribute is written; after resolving `.` and `..` it must stay inside the source, symbolic links included.
+- `rq check` reports a view that is outside the source or missing, at the position of the path; it does not read the template.
+- Only the VS Code extension renders it. The CLI and the MCP server ignore it. It never changes what a request sends.
+```rq
+ep orders("{{base_url}}/orders") {
+  [ui.view("views/orders.html")]
+  rq list();
+}
+```
+
 ### `ui.color(color)`
 Marks an `env` with a color from a fixed palette: `red`, `orange`, `yellow`, `green`, `blue`, `purple` (bare lowercase identifier, no quotes, no interpolation). It is UI metadata only: it defines no variable and does not change what any request sends. The VS Code extension paints the selected environment in the Requests view with it, typically to flag `production`. At most one per `env`.
 ```rq
@@ -411,6 +423,7 @@ env production {
 | `doc.description` | yes | yes | **no** |
 | `confirm` | yes | yes | yes |
 | `output` | yes (folder only) | yes | **no** |
+| `ui.view` | **no** | yes | **no** |
 | `ui.color` | **no** | **no** | yes |
 
 Using an attribute where the table says **no** is a parse error.

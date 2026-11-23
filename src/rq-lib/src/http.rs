@@ -65,6 +65,7 @@ mod tests {
             description: None,
             confirm: false,
             output: Vec::new(),
+            view: None,
             required_variables: Vec::new(),
             source_path: None,
             related_files: Vec::new(),

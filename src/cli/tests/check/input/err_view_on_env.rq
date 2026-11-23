@@ -1,0 +1,4 @@
+[ui.view("views/orders.html")]
+env local {
+  host: "http://localhost:8080",
+}

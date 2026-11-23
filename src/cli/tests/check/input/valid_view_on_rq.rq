@@ -1,0 +1,7 @@
+[ui.view("views/orders.html")]
+rq orders("http://localhost:8080/orders");
+
+ep customers("http://localhost:8080/customers") {
+  [ui.view('./views/../views/orders.html')]
+  rq list();
+}

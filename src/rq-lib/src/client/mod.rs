@@ -5,7 +5,7 @@ use crate::native;
 use crate::client::models::ReferenceLocation;
 use crate::client::models::{
     OverrideCheck, PreparedAuth, PreparedRequest, RequestDetails, RequestExecutionResult,
-    RequestInfo, RequestTarget, VariableEntry,
+    RequestInfo, RequestTarget, VariableEntry, ViewTarget,
 };
 use crate::error::RqError;
 use crate::http::HttpClient;
@@ -39,6 +39,17 @@ type AuthDetails = (
 );
 
 const AUTH_TOKEN_VARIABLE: &str = "auth_token";
+
+struct SourceRoot {
+    path: String,
+    real: String,
+}
+
+#[derive(Default)]
+struct SourceTargets {
+    output: Option<OutputTarget>,
+    view: Option<ViewTarget>,
+}
 
 pub struct RqClient {
     fs: Arc<dyn Fs>,
@@ -160,14 +171,14 @@ impl RqClient {
                 .and_then(|name| rq_file.auth_providers.get(name))
                 .map(|config| config.auth_type.as_str().to_string());
             let auth_name = auth_name.map(str::to_string);
-            let output = self.output_target(&req_with_vars.request, source_path);
+            let targets = self.source_targets(&req_with_vars.request, source_path);
             let details = Self::request_details(
                 req_with_vars.request,
                 auth_name,
                 auth_type,
                 &rq_file,
                 confirmation_required,
-                output,
+                targets,
             );
             return Ok((details, warnings));
         }
@@ -204,7 +215,7 @@ impl RqClient {
         let auth_config = Self::auth_config_of(&rq_file, &resolved)?;
         let auth_name = auth_config.map(|config| config.name.clone());
         let auth_type = auth_config.map(|config| config.auth_type.as_str().to_string());
-        let output = self.output_target(&resolved, source_path);
+        let targets = self.source_targets(&resolved, source_path);
 
         let details = Self::request_details(
             resolved,
@@ -212,7 +223,7 @@ impl RqClient {
             auth_type,
             &rq_file,
             confirmation_required,
-            output,
+            targets,
         );
         Ok((details, warnings))
     }
@@ -682,6 +693,15 @@ impl RqClient {
     }
 
     pub fn check_path(&self, path: &Path, env_name: Option<&str>) -> Result<Vec<RqError>, RqError> {
+        self.check_path_in(path, path, env_name)
+    }
+
+    pub fn check_path_in(
+        &self,
+        path: &Path,
+        source: &Path,
+        env_name: Option<&str>,
+    ) -> Result<Vec<RqError>, RqError> {
         self.log_source(path);
         let source_path = if self.fs.is_file(path) {
             path.parent().unwrap_or(path)
@@ -695,6 +715,7 @@ impl RqClient {
                 Ok(rq_file) => {
                     errors.extend(self.check_variables(&rq_file, source_path, env_name));
                     errors.extend(self.check_auth_references(&rq_file));
+                    errors.extend(self.check_views(&rq_file, source));
                 }
                 Err(e) => {
                     errors.push(e);
@@ -713,6 +734,7 @@ impl RqClient {
         for rq_file in &rq_files {
             errors.extend(self.check_variables(rq_file, source_path, env_name));
             errors.extend(self.check_auth_references(rq_file));
+            errors.extend(self.check_views(rq_file, source));
         }
         let errors = Self::dedup_syntax_errors(errors);
         Self::log_check_summary(file_count, &errors);
@@ -731,6 +753,7 @@ impl RqClient {
             Ok(rq_file) => {
                 errors.extend(self.check_variables(&rq_file, source_path, env_name));
                 errors.extend(self.check_auth_references(&rq_file));
+                errors.extend(self.check_views(&rq_file, source_path));
             }
             Err(e) => errors.push(Self::map_parse_error(e)),
         }
@@ -1167,11 +1190,12 @@ impl RqClient {
             source_path,
             environment,
         )?;
-        let output = match output {
-            Some(path) => Some(OutputTarget::chosen(path)),
-            None => self.output_target(&prepared.request, source_path),
-        };
-        Ok(PreparedRequest { output, ..prepared })
+        let targets = self.source_targets(&prepared.request, source_path);
+        Ok(PreparedRequest {
+            output: output.map(OutputTarget::chosen).or(targets.output),
+            view: targets.view,
+            ..prepared
+        })
     }
 
     fn load_request(
@@ -1235,6 +1259,7 @@ impl RqClient {
             timeout,
             auth,
             output: None,
+            view: None,
             context,
         })
     }
@@ -1469,46 +1494,93 @@ impl RqClient {
         })
     }
 
-    fn output_target(&self, request: &Request, source_path: &Path) -> Option<OutputTarget> {
+    fn source_targets(&self, request: &Request, source_path: &Path) -> SourceTargets {
+        if request.output.is_empty() && request.view.is_none() {
+            return SourceTargets::default();
+        }
+        let root = self.source_root(source_path);
+        SourceTargets {
+            output: self.output_target(request, &root),
+            view: self.view_target(request, &root),
+        }
+    }
+
+    fn output_target(&self, request: &Request, root: &SourceRoot) -> Option<OutputTarget> {
+        OutputTarget::resolve(&request.output, &root.path)
+            .map(|target| self.without_links_out_of(target, root))
+    }
+
+    fn view_target(&self, request: &Request, root: &SourceRoot) -> Option<ViewTarget> {
+        let view = request.view.as_ref()?;
+        let path = crate::paths::normalize_lexically(&crate::paths::join_lexically(
+            &view.base_dir,
+            &view.path,
+        ));
+        let error = self.view_error(&path, root);
+        Some(ViewTarget { path, error })
+    }
+
+    fn view_error(&self, path: &str, root: &SourceRoot) -> Option<String> {
+        if crate::paths::depth_below(path, &root.path).is_none_or(|depth| depth == 0) {
+            return Some(format!(
+                "View {path} is outside the source folder {}",
+                root.path
+            ));
+        }
+        if let Some(link_error) = self.link_out_of(path, root) {
+            return Some(link_error);
+        }
+        (!self.fs.is_file(Path::new(path))).then(|| format!("View {path} not found"))
+    }
+
+    fn source_root(&self, source_path: &Path) -> SourceRoot {
         let folder = if self.fs.is_file(source_path) {
             source_path.parent().unwrap_or(source_path)
         } else {
             source_path
         };
-        let root = self
+        let path = crate::paths::clean_path(
+            &self
+                .fs
+                .canonicalize(folder)
+                .unwrap_or_else(|_| folder.to_path_buf()),
+        );
+        let real = self
             .fs
-            .canonicalize(folder)
-            .unwrap_or_else(|_| folder.to_path_buf());
-        let root = crate::paths::clean_path(&root);
-        OutputTarget::resolve(&request.output, &root)
-            .map(|target| self.without_links_out_of(target, &root))
+            .real_path(Path::new(&path))
+            .map(|real| crate::paths::clean_path(&real))
+            .unwrap_or_else(|_| path.clone());
+        SourceRoot { path, real }
     }
 
-    fn without_links_out_of(&self, target: OutputTarget, root: &str) -> OutputTarget {
+    fn without_links_out_of(&self, target: OutputTarget, root: &SourceRoot) -> OutputTarget {
         if target.error.is_some() {
             return target;
         }
-        let real_root = self
-            .fs
-            .real_path(Path::new(root))
-            .map(|real| crate::paths::clean_path(&real))
-            .unwrap_or_else(|_| root.to_string());
-        let escaping = Path::new(&target.path)
-            .ancestors()
-            .take_while(|ancestor| {
-                crate::paths::depth_below(&ancestor.to_string_lossy(), root).is_some_and(|d| d > 0)
-            })
-            .find(|ancestor| self.fs.is_symlink(ancestor) && !self.leads_into(ancestor, &real_root))
-            .map(crate::paths::clean_path);
-        match escaping {
-            Some(link) => OutputTarget {
-                error: Some(format!(
-                    "{link} is a symbolic link that leads outside the source folder {root}"
-                )),
+        match self.link_out_of(&target.path, root) {
+            Some(error) => OutputTarget {
+                error: Some(error),
                 ..target
             },
             None => target,
         }
+    }
+
+    fn link_out_of(&self, path: &str, root: &SourceRoot) -> Option<String> {
+        Path::new(path)
+            .ancestors()
+            .take_while(|ancestor| {
+                crate::paths::depth_below(&ancestor.to_string_lossy(), &root.path)
+                    .is_some_and(|d| d > 0)
+            })
+            .find(|ancestor| self.fs.is_symlink(ancestor) && !self.leads_into(ancestor, &root.real))
+            .map(|link| {
+                format!(
+                    "{} is a symbolic link that leads outside the source folder {}",
+                    crate::paths::clean_path(link),
+                    root.path
+                )
+            })
     }
 
     fn leads_into(&self, link: &Path, real_root: &str) -> bool {
@@ -1603,7 +1675,7 @@ impl RqClient {
         auth_type: Option<String>,
         rq_file: &RqFile,
         confirmation_required: bool,
-        output: Option<OutputTarget>,
+        targets: SourceTargets,
     ) -> RequestDetails {
         let request_file = Self::declaring_file(rq_file, request.source_path.as_deref());
         RequestDetails {
@@ -1622,7 +1694,8 @@ impl RqClient {
                 .map(|required| required.name)
                 .collect(),
             confirmation_required,
-            output,
+            output: targets.output,
+            view: targets.view,
             file: crate::paths::clean_path(&rq_file.path),
             request_file,
             line: request.line,
@@ -1993,6 +2066,31 @@ impl RqClient {
                     location.character + 1,
                     0..0,
                     crate::paths::clean_path(&rq_file.path),
+                ))
+            })
+            .collect()
+    }
+
+    fn check_views(&self, rq_file: &RqFile, source_path: &Path) -> Vec<RqError> {
+        let file = rq_file.path.to_string_lossy().to_string();
+        let mut root = None;
+        rq_file
+            .requests
+            .iter()
+            .map(|req| &req.request)
+            .filter(|request| request.source_path.as_deref() == Some(file.as_str()))
+            .filter_map(|request| {
+                let view = request.view.as_ref()?;
+                let root = root.get_or_insert_with(|| self.source_root(source_path));
+                let error = self.view_target(request, root)?.error?;
+                Some(RqError::Syntax(
+                    crate::syntax::error::SyntaxError::with_file(
+                        error,
+                        view.line + 1,
+                        view.character + 1,
+                        0..0,
+                        crate::paths::clean_path(&rq_file.path),
+                    ),
                 ))
             })
             .collect()
@@ -2727,6 +2825,7 @@ mod prepare_request_tests {
             description: None,
             confirm: false,
             output: Vec::new(),
+            view: None,
             required_variables: Vec::new(),
             source_path: None,
             related_files: Vec::new(),
@@ -3322,7 +3421,7 @@ mod variable_tests {
 
 #[cfg(all(test, feature = "native"))]
 mod prepare_tests {
-    use super::{native, RequestTarget, RqClient};
+    use super::{native, RequestTarget, RqClient, ViewTarget};
     use crate::error::RqError;
     use crate::http::{HttpClient, HttpResponse};
     use crate::syntax::Request;
@@ -3371,7 +3470,11 @@ mod prepare_tests {
     }
 
     fn write(dir: &Path, file: &str, content: &str) {
-        std::fs::write(dir.join(file), content).expect("write fixture");
+        let path = dir.join(file);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).expect("create fixture folder");
+        }
+        std::fs::write(path, content).expect("write fixture");
     }
 
     fn prepare(source: &Path, name: &str, variables: &[&str]) -> crate::client::PreparedRequest {
@@ -4005,6 +4108,119 @@ mod prepare_tests {
         );
         let target = prepare(dir.path(), "get", &[]).output;
         assert_eq!(target.and_then(|output| output.error), None);
+    }
+
+    #[test]
+    fn prepare_resolves_the_view_against_the_folder_of_the_request_file() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write(dir.path(), "api/views/users.html", "<p></p>\n");
+        write(
+            dir.path(),
+            "api/users.rq",
+            "[ui.view(\"views/users.html\")]\nrq list(\"http://localhost\");\n",
+        );
+        let target = prepare(dir.path(), "list", &[]).view;
+        assert_eq!(
+            target,
+            Some(ViewTarget {
+                path: std::fs::canonicalize(dir.path())
+                    .expect("canonicalize")
+                    .join("api")
+                    .join("views")
+                    .join("users.html")
+                    .to_string_lossy()
+                    .into_owned(),
+                error: None,
+            })
+        );
+    }
+
+    #[test]
+    fn request_details_report_the_same_view_as_prepare() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write(dir.path(), "views/users.html", "<p></p>\n");
+        write(
+            dir.path(),
+            "main.rq",
+            "[ui.view(\"views/users.html\")]\nrq list(\"http://localhost\");\n",
+        );
+        let (details, _) = RqClient::default()
+            .get_request_details(
+                RequestTarget::new(dir.path(), "list"),
+                None,
+                false,
+                false,
+                &[],
+            )
+            .expect("details");
+        assert_eq!(details.view, prepare(dir.path(), "list", &[]).view);
+    }
+
+    #[test]
+    fn prepare_flags_a_view_that_is_a_folder() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::create_dir(dir.path().join("views")).expect("mkdir");
+        write(
+            dir.path(),
+            "main.rq",
+            "[ui.view(\"views\")]\nrq list(\"http://localhost\");\n",
+        );
+        let target = prepare(dir.path(), "list", &[]).view;
+        assert!(target
+            .and_then(|view| view.error)
+            .is_some_and(|error| error.ends_with("not found")));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn prepare_flags_a_view_through_a_link_that_leads_outside_the_source() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let outside = tempfile::tempdir().expect("tempdir");
+        write(outside.path(), "secret.html", "<p></p>\n");
+        std::os::unix::fs::symlink(outside.path(), dir.path().join("views")).expect("symlink");
+        write(
+            dir.path(),
+            "main.rq",
+            "[ui.view(\"views/secret.html\")]\nrq list(\"http://localhost\");\n",
+        );
+        let target = prepare(dir.path(), "list", &[]).view;
+        assert!(target
+            .and_then(|view| view.error)
+            .is_some_and(|error| error.contains("symbolic link")));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn prepare_flags_a_view_through_a_broken_link_as_a_link() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let outside = tempfile::tempdir().expect("tempdir");
+        std::os::unix::fs::symlink(outside.path().join("missing"), dir.path().join("views"))
+            .expect("symlink");
+        write(
+            dir.path(),
+            "main.rq",
+            "[ui.view(\"views/users.html\")]\nrq list(\"http://localhost\");\n",
+        );
+        let target = prepare(dir.path(), "list", &[]).view;
+        assert!(target
+            .and_then(|view| view.error)
+            .is_some_and(|error| error.contains("views is a symbolic link")));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn prepare_accepts_a_view_through_a_link_that_stays_inside_the_source() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write(dir.path(), "real/users.html", "<p></p>\n");
+        std::os::unix::fs::symlink(dir.path().join("real"), dir.path().join("views"))
+            .expect("symlink");
+        write(
+            dir.path(),
+            "main.rq",
+            "[ui.view(\"views/users.html\")]\nrq list(\"http://localhost\");\n",
+        );
+        let target = prepare(dir.path(), "list", &[]).view;
+        assert_eq!(target.and_then(|view| view.error), None);
     }
 
     struct BodyHttp;

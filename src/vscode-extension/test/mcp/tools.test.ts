@@ -274,6 +274,24 @@ describe('validateRq', () => {
             .resolves.toEqual({ ok: true, diagnostics: [] });
     });
 
+    it('checks the views of the draft against the workspace, as the extension runs them', async () => {
+        mockCheck.mockReturnValue(JSON.stringify({ errors: [] }));
+
+        await validateRq({ source: 'x', path: 'api/users.rq', workspace_path: workspace });
+
+        expect(mockCheck.mock.calls[0][4]).toBe(workspace);
+    });
+
+    it('checks the views from the folder of the draft when there is no workspace', async () => {
+        mockCheck.mockReturnValue(JSON.stringify({ errors: [] }));
+        const cwd = jest.spyOn(process, 'cwd').mockReturnValue(os.homedir());
+
+        await validateRq({ source: 'rq ping("http://x");\n' });
+        cwd.mockRestore();
+
+        expect(mockCheck.mock.calls[0][4]).toBeUndefined();
+    });
+
     it('forwards the requested environment', async () => {
         mockCheck.mockReturnValue(JSON.stringify({ errors: [] }));
 

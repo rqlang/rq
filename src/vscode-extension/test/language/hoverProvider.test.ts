@@ -397,6 +397,13 @@ describe('attribute hover', () => {
         expect((result!.contents as unknown as vscode.MarkdownString).value).toContain('**Applies to:** `rq, ep, env`');
     });
 
+    test('describes [ui.view] as valid only on rq', async () => {
+        const doc = makeDocument(['[ui.view("views/report.html")]', 'rq report("/report");']);
+        const result = await provideHover(doc, pos(0, 4)) as vscode.Hover;
+        const value = (result!.contents as unknown as vscode.MarkdownString).value;
+        expect([value.includes('**Attribute: `ui.view`**'), value.includes('**Applies to:** `rq`')]).toEqual([true, true]);
+    });
+
     test('describes [output] as valid on rq and ep', async () => {
         const doc = makeDocument(['[output("downloads/")]', 'rq report("/report");']);
         const result = await provideHover(doc, pos(0, 3)) as vscode.Hover;

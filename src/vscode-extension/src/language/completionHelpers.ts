@@ -121,7 +121,7 @@ export function insideOpenBlock(text: string, blockPattern: RegExp): boolean {
     return depth > 0;
 }
 
-export const ATTRIBUTE_NAMES = ['method', 'timeout', 'auth', 'required', 'ui.color', 'doc.description', 'confirm', 'output'];
+export const ATTRIBUTE_NAMES = ['method', 'timeout', 'auth', 'required', 'ui.color', 'doc.description', 'confirm', 'output', 'ui.view'];
 
 export const HTTP_METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'];
 

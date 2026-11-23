@@ -1,0 +1,5 @@
+[ui.view("views/order.html")]
+rq order("http://localhost:8080/orders/1");
+
+[ui.view("views/missing.html")]
+rq missing("http://localhost:8080/orders/1");

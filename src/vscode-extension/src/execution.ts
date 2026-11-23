@@ -44,6 +44,7 @@ export interface RequestExecutionResult {
     body_file?: BodyFile;
     output_skipped?: OutputSkipped;
     body_truncated?: boolean;
+    view?: ViewTarget;
 }
 
 export interface BodyFile {
@@ -59,6 +60,11 @@ export interface OutputTarget {
     path: string;
     is_folder: boolean;
     applies_to_every_body: boolean;
+    error?: string;
+}
+
+export interface ViewTarget {
+    path: string;
     error?: string;
 }
 
@@ -100,6 +106,7 @@ export interface PreparedRequest {
     agent_confirmation_required: boolean;
     secret_values: string[];
     output?: OutputTarget | null;
+    view?: ViewTarget | null;
 }
 
 export interface OverrideCheck {
@@ -179,6 +186,7 @@ export async function sendRequest(scope: RequestScope, options: ExecuteRequestOp
             body_file: routed.file,
             output_skipped: routed.output_skipped,
             body_truncated: response.truncated,
+            view: prepared.view ?? undefined,
         }],
     };
 }

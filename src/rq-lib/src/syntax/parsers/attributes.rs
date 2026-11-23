@@ -8,7 +8,7 @@ use crate::syntax::{
         KW_ENV, KW_RQ, PUNC_DOLLAR, PUNC_DOT, PUNC_LBRACKET, PUNC_LPAREN, PUNC_RBRACKET,
         PUNC_RPAREN,
     },
-    parse_result::{AuthLocation, OutputPath, RequiredVariable},
+    parse_result::{AuthLocation, OutputPath, RequiredVariable, ViewPath},
     reader::{expect, TokenReader},
     token::{Token, TokenType},
     ui_color::UiColor,
@@ -18,6 +18,7 @@ pub const ATTR_UI_COLOR: &str = "ui.color";
 pub const ATTR_DESCRIPTION: &str = "doc.description";
 pub const ATTR_CONFIRM: &str = "confirm";
 pub const ATTR_OUTPUT: &str = "output";
+pub const ATTR_UI_VIEW: &str = "ui.view";
 
 #[derive(Default)]
 pub struct AttributeContext {
@@ -30,6 +31,7 @@ pub struct AttributeContext {
     pub description: Option<String>,
     pub confirm: bool,
     pub output: Option<OutputPath>,
+    pub view: Option<ViewPath>,
 }
 
 impl AttributeContext {
@@ -83,6 +85,13 @@ impl AttributeContext {
         self.output = Some(output);
         Ok(())
     }
+    pub fn set_view(&mut self, view: ViewPath) -> Result<(), String> {
+        if self.view.is_some() {
+            return Err(format!("Duplicate attribute '{ATTR_UI_VIEW}'"));
+        }
+        self.view = Some(view);
+        Ok(())
+    }
     pub fn add_required_variable(&mut self, name: String, line: usize, character: usize) {
         self.required_variables.push(RequiredVariable {
             name,
@@ -104,6 +113,7 @@ const ATTRIBUTE_TARGETS: &[(&str, &str)] = &[
     ("auth", "rq or ep"),
     (ATTR_DESCRIPTION, "rq or ep"),
     (ATTR_OUTPUT, "rq or ep"),
+    (ATTR_UI_VIEW, KW_RQ),
     (ATTR_UI_COLOR, KW_ENV),
 ];
 
@@ -606,6 +616,51 @@ impl OutputAttributeParser {
             applies_to_every_body: !self.on_endpoint,
         })
     }
+}
+
+pub struct UiViewAttributeParser;
+impl AttributeParser for UiViewAttributeParser {
+    fn name(&self) -> &str {
+        ATTR_UI_VIEW
+    }
+
+    fn parse(&self, r: &mut TokenReader, ctx: &mut AttributeContext) -> Result<(), SyntaxError> {
+        r.advance();
+        r.skip_ignorable();
+        let name_span = expect_attribute_name(r, ATTR_UI_VIEW)?;
+        expect_punctuation(r, PUNC_LPAREN)?;
+        let view = parse_view_path(r)?;
+        expect_punctuation(r, PUNC_RPAREN)?;
+        expect_punctuation(r, PUNC_RBRACKET)?;
+
+        ctx.set_view(view)
+            .map_err(|msg| r.create_error_with_file(msg, name_span))?;
+        Ok(())
+    }
+}
+
+fn parse_view_path(r: &mut TokenReader) -> Result<ViewPath, SyntaxError> {
+    r.skip_ignorable();
+    let path_tok = expect_at_token(
+        r,
+        |t| t.token_type == TokenType::String,
+        "Expected view path string literal".to_string(),
+    )?;
+    let path = unescape_string(string_literal_content(&path_tok.value));
+    if path.trim().is_empty() {
+        return Err(r.create_error(
+            "View path must not be empty".to_string(),
+            path_tok.span.clone(),
+        ));
+    }
+    let (line_1, column_1) = r.get_line_col(path_tok.span.start);
+    r.advance();
+    Ok(ViewPath {
+        path,
+        base_dir: source_dir(r),
+        line: line_1.saturating_sub(1),
+        character: column_1.saturating_sub(1),
+    })
 }
 
 fn source_dir(r: &TokenReader) -> String {

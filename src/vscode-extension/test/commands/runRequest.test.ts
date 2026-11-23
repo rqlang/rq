@@ -823,6 +823,183 @@ describe('runRequest Commands', () => {
             expect(cliService.executeRequest).toHaveBeenLastCalledWith(expect.objectContaining({ environment: 'prod' }));
         });
 
+        function respondWithView(viewPath: string) {
+            (cliService.executeRequest as jest.Mock).mockResolvedValueOnce({
+                results: [{
+                    status: 200,
+                    body: '{"a":1}',
+                    elapsed_ms: 1,
+                    method: 'GET',
+                    url: 'http://localhost',
+                    response_headers: {},
+                    request_headers: {},
+                    view: { path: viewPath }
+                }],
+                stderr: ''
+            });
+        }
+
+        function saveHandler(): (document: any) => Promise<void> {
+            return (vscode.workspace.onDidSaveTextDocument as jest.Mock).mock.calls[0][0];
+        }
+
+        function viewUpdates(panel: any): unknown[] {
+            return panel.webview.postMessage.mock.calls.map((call: any[]) => call[0]).filter((message: any) => message.command === 'updateView');
+        }
+
+        function resolveViewTo(view: { path: string; error?: string }) {
+            (cliService.showRequest as jest.Mock).mockResolvedValue({ name: 'req', requiredVariables: [], view });
+            (webviewGenerator.getViewPaneContent as jest.Mock).mockResolvedValue('<iframe>edited view</iframe>');
+        }
+
+        test('saving the view sends the new view to the panel that shows it', async () => {
+            requestRunner.registerCommands(provider);
+            respondWithView('/w/views/orders.html');
+            await requestRunner.runRequest(makeItem('a'), provider);
+            resolveViewTo({ path: '/w/views/orders.html' });
+
+            saveHandler()({ uri: { fsPath: '/w/views/orders.html' } });
+            await settle();
+
+            expect(viewUpdates(panels[0])).toEqual([{ command: 'updateView', html: '<iframe>edited view</iframe>' }]);
+        });
+
+        test('saving the view leaves the rest of the panel as it was', async () => {
+            requestRunner.registerCommands(provider);
+            respondWithView('/w/views/orders.html');
+            await requestRunner.runRequest(makeItem('a'), provider);
+            resolveViewTo({ path: '/w/views/orders.html' });
+
+            saveHandler()({ uri: { fsPath: '/w/views/orders.html' } });
+            await settle();
+
+            expect(panels[0].webview.html).toBe('<html></html>');
+        });
+
+        test('saving the view matches its path however it is spelled', async () => {
+            requestRunner.registerCommands(provider);
+            respondWithView('/w/views/../views/orders.html');
+            await requestRunner.runRequest(makeItem('a'), provider);
+            resolveViewTo({ path: '/w/views/orders.html' });
+
+            saveHandler()({ uri: { fsPath: '/w/views/orders.html' } });
+            await settle();
+
+            expect(viewUpdates(panels[0])).toHaveLength(1);
+        });
+
+        test('saving another file sends nothing', async () => {
+            requestRunner.registerCommands(provider);
+            respondWithView('/w/views/orders.html');
+            await requestRunner.runRequest(makeItem('a'), provider);
+            resolveViewTo({ path: '/w/views/orders.html' });
+
+            saveHandler()({ uri: { fsPath: '/w/views/other.html' } });
+            await settle();
+
+            expect(viewUpdates(panels[0])).toEqual([]);
+        });
+
+        test('saving the view leaves alone a panel whose request is running', async () => {
+            requestRunner.registerCommands(provider);
+            respondWithView('/w/views/orders.html');
+            await requestRunner.runRequest(makeItem('a'), provider);
+            resolveViewTo({ path: '/w/views/orders.html' });
+            (cliService.executeRequest as jest.Mock).mockImplementationOnce(() => new Promise(() => {}));
+            void requestRunner.runRequest(makeItem('a'), provider);
+            await settle();
+
+            saveHandler()({ uri: { fsPath: '/w/views/orders.html' } });
+            await settle();
+
+            expect(viewUpdates(panels[0])).toEqual([]);
+        });
+
+        test('a refresh renders the view where rq-lib resolves it now', async () => {
+            requestRunner.registerCommands(provider);
+            respondWithView('/w/views/orders.html');
+            await requestRunner.runRequest(makeItem('a'), provider);
+            resolveViewTo({ path: '/w/views/orders.html', error: 'views is a symbolic link that leads outside the source folder /w' });
+
+            saveHandler()({ uri: { fsPath: '/w/views/orders.html' } });
+            await settle();
+
+            expect((webviewGenerator.getViewPaneContent as jest.Mock).mock.calls[0][1].view.error).toContain('symbolic link');
+        });
+
+        test('only the last of two overlapping refreshes reaches the panel', async () => {
+            requestRunner.registerCommands(provider);
+            respondWithView('/w/views/orders.html');
+            await requestRunner.runRequest(makeItem('a'), provider);
+            let resolveFirst: (details: unknown) => void = () => {};
+            (cliService.showRequest as jest.Mock)
+                .mockImplementationOnce(() => new Promise(resolve => { resolveFirst = resolve; }))
+                .mockResolvedValueOnce({ name: 'req', requiredVariables: [], view: { path: '/w/views/orders.html' } });
+            (webviewGenerator.getViewPaneContent as jest.Mock).mockResolvedValueOnce('<p>second</p>').mockResolvedValueOnce('<p>first</p>');
+
+            saveHandler()({ uri: { fsPath: '/w/views/orders.html' } });
+            await settle();
+            saveHandler()({ uri: { fsPath: '/w/views/orders.html' } });
+            await settle();
+            resolveFirst({ name: 'req', requiredVariables: [], view: { path: '/w/views/orders.html' } });
+            await settle();
+
+            expect(viewUpdates(panels[0])).toEqual([{ command: 'updateView', html: '<p>second</p>' }]);
+        });
+
+        test('a theme change renders the view where rq-lib resolves it now', async () => {
+            requestRunner.registerCommands(provider);
+            respondWithView('/w/views/orders.html');
+            await requestRunner.runRequest(makeItem('a'), provider);
+            resolveViewTo({ path: '/w/views/orders.html', error: 'views is a symbolic link that leads outside the source folder /w' });
+
+            (vscode.window.onDidChangeActiveColorTheme as jest.Mock).mock.calls[0][0]();
+            await settle();
+
+            expect((webviewGenerator.getViewPaneContent as jest.Mock).mock.calls[0][1].view.error).toContain('symbolic link');
+        });
+
+        test('saving the view under its real path refreshes a view reached through a link', async () => {
+            const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'rq-view-link-'));
+            fs.mkdirSync(path.join(workspace, 'real'));
+            fs.writeFileSync(path.join(workspace, 'real', 'orders.html'), '<p></p>');
+            fs.symlinkSync(path.join(workspace, 'real'), path.join(workspace, 'views'));
+            requestRunner.registerCommands(provider);
+            respondWithView(path.join(workspace, 'views', 'orders.html'));
+            await requestRunner.runRequest(makeItem('a'), provider);
+            resolveViewTo({ path: path.join(workspace, 'views', 'orders.html') });
+
+            saveHandler()({ uri: { fsPath: path.join(workspace, 'real', 'orders.html') } });
+            await settle();
+            fs.rmSync(workspace, { recursive: true, force: true });
+
+            expect(viewUpdates(panels[0])).toHaveLength(1);
+        });
+
+        test('open view shows the template at the line of its error', async () => {
+            respondWithView('/w/views/orders.html');
+            await requestRunner.runRequest(makeItem('a'), provider);
+
+            messageHandler(panels[0])({ command: 'openView', line: 3 });
+            await settle();
+
+            expect(vscode.window.showTextDocument).toHaveBeenCalledWith(
+                { fsPath: '/w/views/orders.html' },
+                { selection: new vscode.Range(new vscode.Position(2, 0), new vscode.Position(2, 0)) }
+            );
+        });
+
+        test('open view reports a template it cannot open', async () => {
+            respondWithView('/w/views/orders.html');
+            await requestRunner.runRequest(makeItem('a'), provider);
+            (vscode.window.showTextDocument as jest.Mock).mockRejectedValueOnce(new Error('file not found'));
+
+            messageHandler(panels[0])({ command: 'openView', line: 3 });
+            await settle();
+
+            expect(vscode.window.showErrorMessage).toHaveBeenCalledWith('Cannot open view /w/views/orders.html: file not found');
+        });
+
         test('an error is shown in the tab of the failing request', async () => {
             useTabMode('perRequest');
             respondWith('{"a":1}');

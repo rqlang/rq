@@ -14,6 +14,7 @@ export interface ResultsSession<T> {
 export interface ResultsMessage {
     command?: string;
     text?: unknown;
+    line?: unknown;
 }
 
 export type ResultsMessageHandler<T> = (session: ResultsSession<T>, message: ResultsMessage) => void;
@@ -49,6 +50,10 @@ export class ResultsPanels<T> {
         session.panel = this.createPanel(session, title);
         this.sessions.set(session.key, session);
         return session.panel;
+    }
+
+    public openSessions(): ResultsSession<T>[] {
+        return [...this.sessions.values()].filter(session => session.panel !== undefined);
     }
 
     private keyFor(mode: ResultsTabMode, requestName: string, sourceFile: string | undefined): string {

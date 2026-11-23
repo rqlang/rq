@@ -3,12 +3,12 @@ import * as path from 'path';
 import { normalizePath, draftsJson, buildSecretsMap, DraftFile, isInsideFolder } from './utils';
 import * as execution from './execution';
 import { ExecuteRequestOptions, ExecuteRequestResult, requestScope, resolveScopeFile } from './execution';
-import type { OutputTarget } from './execution';
+import type { OutputTarget, ViewTarget } from './execution';
 import { wasmCall } from './wasmHost';
 import { UiColor } from './language/definitions';
 
 export { routeResponseBody } from './execution';
-export type { BodyFile, CancellationSignal, OutputSkipped, OutputTarget, ExecuteRequestOptions, ExecuteRequestResult, PreparedAuth, PreparedRequest, RequestExecutionResult, RoutedBody } from './execution';
+export type { BodyFile, CancellationSignal, OutputSkipped, OutputTarget, ExecuteRequestOptions, ExecuteRequestResult, PreparedAuth, PreparedRequest, RequestExecutionResult, RoutedBody, ViewTarget } from './execution';
 
 // ---------------------------------------------------------------------------
 // Shared types
@@ -122,6 +122,7 @@ export interface RequestShowOutput {
     };
     requiredVariables: string[];
     output?: OutputTarget;
+    view?: ViewTarget;
     file: string;
     line: number;
     character: number;
@@ -183,6 +184,7 @@ interface RequestShowRaw {
     Auth?: { name: string; type: string };
     RequiredVariables?: string[];
     Output?: OutputTarget;
+    View?: ViewTarget;
     file: string;
     request_file: string;
     line: number;
@@ -383,6 +385,7 @@ export async function showRequest(requestName: string, sourceDirectory?: string,
         auth: raw.Auth,
         requiredVariables: raw.RequiredVariables ?? [],
         output: raw.Output,
+        view: raw.View,
         file: normalizePath(raw.request_file),
         line: raw.line,
         character: raw.character,

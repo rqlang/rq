@@ -5,7 +5,7 @@ use crate::commands::validators;
 use crate::core::error::{BodyNotWritten, RqError};
 use crate::core::formatter::{render, to_json, OutputFormat, TextBlock};
 use clap::{Args, Subcommand};
-use rq_lib::client::models::{PreparedRequest, RequestDetails, RequestTarget};
+use rq_lib::client::models::{PreparedRequest, RequestDetails, RequestTarget, ViewTarget};
 use rq_lib::lint::LintScope;
 use rq_lib::response_body::{
     temp_download_dir, BinaryBody, BodyFileInfo, OutputBody, OutputSkipped, OutputTarget,
@@ -41,6 +41,8 @@ struct RequestDetailsView {
     confirmation_required: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     output: Option<OutputView>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    view: Option<ViewTarget>,
     #[serde(flatten)]
     location: Location,
 }
@@ -89,6 +91,7 @@ impl From<RequestDetails> for RequestDetailsView {
             auth,
             confirmation_required: details.confirmation_required,
             output: details.output.map(OutputView::from),
+            view: details.view,
             location: Location::from_zero_based(
                 details.request_file,
                 details.line,
@@ -317,6 +320,11 @@ impl RequestDetailsView {
                 self.output
                     .as_ref()
                     .and_then(|output| output.error.as_deref()),
+            )
+            .optional("view", self.view.as_ref().map(|view| view.path.as_str()))
+            .optional(
+                "view_error",
+                self.view.as_ref().and_then(|view| view.error.as_deref()),
             )
             .field("location", &self.location)
             .build()

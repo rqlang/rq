@@ -1,7 +1,7 @@
 use crate::{WasmFs, WasmHttpClient, WasmSecretProvider};
 use rq_lib::client::models::{
     AuthListEntry, EndpointEntry, EnvironmentEntry, ReferenceLocation, RequestInfo, RequestTarget,
-    VariableEntry,
+    VariableEntry, ViewTarget,
 };
 use rq_lib::error::RqError;
 use rq_lib::logger::Logger;
@@ -118,6 +118,8 @@ struct RequestDetailsJson {
     confirmation_required: bool,
     #[serde(rename = "Output", skip_serializing_if = "Option::is_none")]
     output: Option<OutputTarget>,
+    #[serde(rename = "View", skip_serializing_if = "Option::is_none")]
+    view: Option<ViewTarget>,
     file: String,
     request_file: String,
     line: usize,
@@ -137,6 +139,7 @@ struct PreparedRequestJson {
     agent_confirmation_required: bool,
     secret_values: Vec<String>,
     output: Option<OutputTarget>,
+    view: Option<ViewTarget>,
 }
 
 #[derive(Serialize)]
@@ -335,13 +338,18 @@ pub fn check(
     secrets_json: &str,
     source: &str,
     env: Option<String>,
+    source_root: Option<String>,
 ) -> Result<String, JsError> {
     let errors = make_client(
         parse_files(files_json)?,
         parse_secrets(secrets_json),
         source,
     )
-    .check_path(Path::new(source), env.as_deref())
+    .check_path_in(
+        Path::new(source),
+        Path::new(source_root.as_deref().unwrap_or(source)),
+        env.as_deref(),
+    )
     .map_err(rq_err)?;
 
     let check_errors: Vec<CheckError> = errors
@@ -411,6 +419,7 @@ pub fn get_request_details(
         required_variables: details.required_variables,
         confirmation_required: details.confirmation_required,
         output: details.output,
+        view: details.view,
         file: details.file,
         request_file: details.request_file,
         line: details.line,
@@ -462,6 +471,7 @@ pub fn prepare_request(
     let confirmation_required = prepared.confirmation_required;
     let agent_confirmation_required = prepared.agent_confirmation_required;
     let output = prepared.output;
+    let view_target = prepared.view;
     let request = prepared.request;
     let view = PreparedRequestJson {
         name: request.name,
@@ -475,6 +485,7 @@ pub fn prepare_request(
         agent_confirmation_required,
         secret_values,
         output,
+        view: view_target,
     };
     serde_json::to_string(&view).map_err(|e| JsError::new(&e.to_string()))
 }

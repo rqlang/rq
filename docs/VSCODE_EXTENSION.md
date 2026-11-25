@@ -4,6 +4,8 @@ title: VS Code Extension
 nav_order: 7
 ---
 
+{% raw %}
+
 # VS Code Extension
 
 The rq VS Code extension provides first-class support for editing and running `.rq` files directly from the editor. It is the most convenient way to explore the language, iterate on requests, and use interactive authentication flows.
@@ -278,3 +280,5 @@ Additionally, you can:
 - Use the command `RQ: Clear OAuth Cache` to clear cached tokens and force a new login.
 
 Tokens obtained through these flows are cached using VS Code's native [authentication API](https://code.visualstudio.com/api/references/vscode-api#authentication), so they can be reused across requests until you clear them or they expire.
+
+{% endraw %}

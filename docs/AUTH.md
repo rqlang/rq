@@ -4,6 +4,8 @@ canonical: https://www.rqlang.com/docs/AUTH.html
 description: How authentication works in rq and how to configure it for your provider.
 ---
 
+{% raw %}
+
 # Auth
 
 Authentication in rq is configured through **auth providers** — top-level blocks that describe how to obtain credentials for a request.
@@ -239,3 +241,5 @@ me locations and formats only.
 - [Language Definition — Secrets](LANGUAGE_DEFINITION.md#secrets) — how `.env` files and OS variables are resolved.
 - [CLI — `rq auth`](CLI.md#managing-auth-providers-rq-auth) — inspecting auth providers from the command line.
 - [VS Code Extension](VSCODE_EXTENSION.md) — interactive sign-in and how the redirect URI is handled.
+
+{% endraw %}
